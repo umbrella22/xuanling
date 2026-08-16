@@ -1,0 +1,22 @@
+{
+  "fixture": "fs-workload",
+  "version": 1,
+  "task": "task.md",
+  "task_sha256": "faff54eae2b9863225f9bd424db8d0ffa3178dcb657e3fd4eef3ce7276298000",
+  "oracle": "oracle.mjs",
+  "solved_patch": "solved.patch",
+  "files": {
+    "README.md": "069b45b07e2593828b96bdc83f22618919ead56d2a4d4634c3336a53f293856d",
+    "docs/glossary.md": "dbb7bc192c04b657d7ed329f911d74557f276425a0db7c223d0c0a354416e230",
+    "src/config.json": "5df467d0c9fb0b925798e843aeef1dcdadf45eecb1d8e42af490eda0cdc0073c",
+    "src/deep/protocol.md": "f378a47165b654c689ef5a7aa3689290ec12e6e36a89c2aca243f2c523b91b42",
+    "src/notes.md": "3c9d94f43b5680fc35c1f7c0e6644b9f2bdb1bc5d3729aa69f70bfb4cd5e9a5a"
+  },
+  "untouched": {
+    "README.md": "069b45b07e2593828b96bdc83f22618919ead56d2a4d4634c3336a53f293856d",
+    "docs/glossary.md": "dbb7bc192c04b657d7ed329f911d74557f276425a0db7c223d0c0a354416e230"
+  },
+  "allowed_new": [
+    "RELEASE.md"
+  ]
+}

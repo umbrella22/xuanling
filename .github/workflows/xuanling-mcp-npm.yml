@@ -1,0 +1,140 @@
+name: xuanling-mcp-npm
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "npm/**"
+      - "crates/xuanling-mcp/**"
+      - "crates/xuanling-toolkit/**"
+      - "crates/xuanling-memory/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/xuanling-mcp-npm.yml"
+      - ".github/workflows/npm-publish.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "npm/**"
+      - "crates/xuanling-mcp/**"
+      - "crates/xuanling-toolkit/**"
+      - "crates/xuanling-memory/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/xuanling-mcp-npm.yml"
+      - ".github/workflows/npm-publish.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  javascript-contract:
+    name: npm launcher and metadata contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install supported npm CLI
+        run: npm install --global npm@11.6.2
+      - name: Check npm metadata
+        working-directory: npm
+        run: npm run check
+      - name: Run launcher tests
+        working-directory: npm
+        run: npm test
+      - name: Stage and inspect the main package
+        run: |
+          node npm/scripts/stage-main.mjs --out npm/dist/main --commit "$GITHUB_SHA"
+          node npm/scripts/verify-package.mjs --main npm/dist/main
+          node npm/scripts/pack-package.mjs \
+            --package npm/dist/main \
+            --out npm/dist/main-pack \
+            --label main \
+            --kind main
+
+  native-package:
+    name: npm native package (${{ matrix.target_id }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target_id: linux-x64-gnu
+            rust_target: x86_64-unknown-linux-gnu
+            binary: xuanling-mcp
+          - os: macos-latest
+            target_id: darwin-arm64
+            rust_target: aarch64-apple-darwin
+            binary: xuanling-mcp
+          - os: windows-latest
+            target_id: win32-x64-msvc
+            rust_target: x86_64-pc-windows-msvc
+            binary: xuanling-mcp.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+          targets: ${{ matrix.rust_target }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install supported npm CLI
+        run: npm install --global npm@11.6.2
+      - name: Build release binary
+        run: cargo build --locked --release --target ${{ matrix.rust_target }} -p xuanling-mcp
+      - name: Smoke native MCP protocol
+        shell: bash
+        run: |
+          node npm/scripts/smoke-mcp.mjs \
+            --binary "target/${{ matrix.rust_target }}/release/${{ matrix.binary }}"
+      - name: Generate third-party notices
+        shell: bash
+        run: |
+          mkdir -p "npm/dist/${{ matrix.target_id }}"
+          node npm/scripts/generate-third-party-licenses.mjs \
+            --target "${{ matrix.rust_target }}" \
+            --output "npm/dist/${{ matrix.target_id }}/THIRD_PARTY_LICENSES.txt"
+      - name: Stage and verify native package
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./npm/packages/xuanling-mcp/package.json').version")
+          node npm/scripts/stage-platform.mjs \
+            --target "${{ matrix.target_id }}" \
+            --binary "target/${{ matrix.rust_target }}/release/${{ matrix.binary }}" \
+            --notices "npm/dist/${{ matrix.target_id }}/THIRD_PARTY_LICENSES.txt" \
+            --out "npm/dist/${{ matrix.target_id }}/package" \
+            --commit "$GITHUB_SHA"
+          node npm/scripts/verify-package.mjs \
+            --platform "npm/dist/${{ matrix.target_id }}/package" \
+            --target "${{ matrix.target_id }}" \
+            --version "$VERSION"
+          node npm/scripts/pack-package.mjs \
+            --package "npm/dist/${{ matrix.target_id }}/package" \
+            --out "npm/dist/${{ matrix.target_id }}/pack" \
+            --label "${{ matrix.target_id }}" \
+            --kind platform
+      - name: Verify installed launcher against the tarballs
+        shell: bash
+        run: |
+          node npm/scripts/stage-main.mjs --out npm/dist/main --commit "$GITHUB_SHA"
+          node npm/scripts/pack-package.mjs \
+            --package npm/dist/main \
+            --out npm/dist/main-pack \
+            --label main \
+            --kind main
+          MAIN_TARBALL=$(node -p "require('./npm/dist/main-pack/main.pack.json').filename")
+          PLATFORM_TARBALL=$(node -p "require('./npm/dist/${{ matrix.target_id }}/pack/${{ matrix.target_id }}.pack.json').filename")
+          LAUNCHER=$(node npm/scripts/install-local-tarballs.mjs \
+            --main "npm/dist/main-pack/$MAIN_TARBALL" \
+            --platform "npm/dist/${{ matrix.target_id }}/pack/$PLATFORM_TARBALL" \
+            --target "${{ matrix.target_id }}" \
+            --out "npm/dist/${{ matrix.target_id }}/install")
+          node npm/scripts/smoke-mcp.mjs --launcher "$LAUNCHER"

@@ -1,0 +1,47 @@
+# XuanLing tools for DeepSeek Harness — replace variant.
+#
+# Same mount as xuanling-dsh-tools (see that bundle's patch for the binary
+# resolution and capability notes), plus retirement of the built-in model-facing
+# filesystem tool rows so XuanLing becomes the filesystem layer the model sees:
+#
+#   read / write / edit / read_image   (tool-fs)            -> mcp__xuanling__fs_*
+#   glob / grep                        (tool-fs-search)     -> mcp__xuanling__fs_glob / fs_search
+#   str_replace_editor                 (tool-str-replace-editor) -> mcp__xuanling__fs_edit / fs_patch
+#
+# Intentionally NOT retired:
+#   - bash / pwsh (tool-bash, tool-pwsh): they pair with the sandbox rows and
+#     carry approval, background-job, and PTY integration. XuanLing's
+#     process_run / session_* are available alongside them instead.
+#   - web_fetch / web_search, todo_write, and every orchestration tool.
+#
+# Known regressions in this variant (documented in the integration README):
+# read_image disappears (XuanLing exposes no image tool), and the built-in fs
+# observation policy / editor cards no longer apply to filesystem calls
+# (XuanLing's own sha256/CAS contracts take over).
+#
+# Disable rows restate the full row (id + name) per the bundle patch contract:
+# a patch entry replaces the targeted row, it never deep-merges into it.
+
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'
+  disabled: true
+
+- id: tool-fs-search
+  name: '@deepseek-ai/dsh-tool-fs-search'
+  disabled: true
+
+- id: tool-str-replace-editor
+  name: '@deepseek-ai/dsh-tool-str-replace-editor'
+  disabled: true
+
+- insert:
+    - id: xuanling-tools
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: xuanling
+        transport: stdio
+        command: !!js process.env.XUANLING_MCP_BIN ?? 'xuanling-mcp'
+        args:
+          - '--workspace-root'
+          - !!js process.env.XUANLING_WORKSPACE_ROOT ?? process.cwd()
+        toolCallTimeoutMs: 120000

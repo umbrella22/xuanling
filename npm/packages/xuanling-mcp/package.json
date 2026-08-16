@@ -1,0 +1,48 @@
+{
+  "name": "xuanling-mcp",
+  "version": "0.2.1",
+  "description": "Cross-platform stdio MCP server for XuanLing typed filesystem, process, project, artifact, session, and memory tools.",
+  "license": "MIT OR Apache-2.0",
+  "author": "umbrella22 and XuanLing contributors",
+  "type": "module",
+  "bin": {
+    "xuanling-mcp": "bin/xuanling-mcp.js"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "LICENSE-APACHE",
+    "LICENSE-MIT",
+    "README.md",
+    "README-ZH.md"
+  ],
+  "engines": {
+    "node": ">=18.17.0"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "xuanling",
+    "agent-tools",
+    "stdio"
+  ],
+  "homepage": "https://github.com/umbrella22/xuanling#readme",
+  "bugs": {
+    "url": "https://github.com/umbrella22/xuanling/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/umbrella22/xuanling.git",
+    "directory": "npm/packages/xuanling-mcp"
+  },
+  "optionalDependencies": {
+    "xuanling-mcp-darwin-arm64": "npm:xuanling-mcp@0.2.1-darwin-arm64",
+    "xuanling-mcp-linux-x64-gnu": "npm:xuanling-mcp@0.2.1-linux-x64-gnu",
+    "xuanling-mcp-win32-x64-msvc": "npm:xuanling-mcp@0.2.1-win32-x64-msvc"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "registry": "https://registry.npmjs.org"
+  }
+}

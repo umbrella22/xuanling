@@ -1,0 +1,23 @@
+{
+  "name": "xuanling-dsh-skills",
+  "version": "0.2.1",
+  "description": "DeepSeek Harness bundle: mounts isolated XuanLing workflow skills and the strict MCP overwrite policy.",
+  "license": "MIT OR Apache-2.0",
+  "private": false,
+  "dependencies": {
+    "@deepseek-ai/dsh-skill-filesystem": "^0.1.0-rc.5"
+  },
+  "files": [
+    "cordis.patch.yml",
+    "strict-overwrite-policy.mjs",
+    "skills/xuanling-file-workflow/SKILL.md",
+    "skills/xuanling-file-workflow/agents/openai.yaml",
+    "skills/xuanling-memory-workflow/SKILL.md",
+    "skills/xuanling-memory-workflow/agents/openai.yaml"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

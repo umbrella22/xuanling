@@ -1,0 +1,71 @@
+# Shared isolation for every filesystem-evaluation arm (A/B/C).
+#
+# Model-facing BYPASS rows are disabled for all arms (C-02: no routing around
+# the two file families): the shell tools, background jobs, every delegation
+# entry point (subagent control/list/spawn/fork/report), workflow execution
+# (worker + tool + ralph), and Code Mode's code runtime. The subagent
+# REGISTRY rows stay mounted — nothing model-facing resolves them once the
+# tools above are gone, and disabling them could break sibling injects.
+# Session transcripts are raw newline-delimited JSONL with chunk packing off
+# so the offline analyzer reads the evidence without the DSH decoder; the
+# session root stays derived from the isolated per-trial DSH_HOME.
+
+- id: credentials
+  name: '@deepseek-ai/dsh-credentials-local'
+  config:
+    path: !!js process.env.XUANLING_DSH_CREDENTIALS_FILE ?? process.getBuiltinModule('node:assert').fail('XUANLING_DSH_CREDENTIALS_FILE is required')
+    watch: false
+
+- id: tool-bash
+  name: '@deepseek-ai/dsh-tool-bash'
+  disabled: true
+
+- id: tool-pwsh
+  name: '@deepseek-ai/dsh-tool-pwsh'
+  disabled: true
+
+- id: tool-jobs
+  name: '@deepseek-ai/dsh-tool-jobs'
+  disabled: true
+
+- id: tool-subagent-control
+  name: '@deepseek-ai/dsh-tool-subagent-control'
+  disabled: true
+
+- id: tool-subagent-list-agents
+  name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
+  disabled: true
+
+- id: tool-subagent
+  name: '@deepseek-ai/dsh-tool-subagent'
+  disabled: true
+
+- id: tool-subagent-fork
+  name: '@deepseek-ai/dsh-tool-subagent'
+  disabled: true
+
+- id: tool-subagent-report
+  name: '@deepseek-ai/dsh-tool-subagent-report'
+  disabled: true
+
+- id: workflow-worker-thread
+  name: '@deepseek-ai/dsh-workflow-worker-thread'
+  disabled: true
+
+- id: tool-workflow
+  name: '@deepseek-ai/dsh-tool-workflow'
+  disabled: true
+
+- id: tool-ralph
+  name: '@deepseek-ai/dsh-tool-ralph'
+  disabled: true
+
+- id: code-runtime
+  name: '@deepseek-ai/dsh-code-runtime-worker-thread'
+  disabled: true
+
+- id: session-persistence-jsonl
+  config:
+    root: !!js dshHomePath('sessions')
+    compression: 'none'
+    packChunks: false

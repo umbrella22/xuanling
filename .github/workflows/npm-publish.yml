@@ -1,0 +1,234 @@
+name: publish-xuanling-mcp-to-npm
+
+on:
+  push:
+    tags:
+      - "xuanling-mcp-v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: xuanling-mcp-npm-publish
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  validate-release:
+    name: validate npm release tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install supported npm CLI
+        run: npm install --global npm@11.6.2
+      - id: version
+        name: Validate tag and repository versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=${GITHUB_REF_NAME#xuanling-mcp-v}
+          if [ "xuanling-mcp-v$VERSION" != "$GITHUB_REF_NAME" ]; then
+            echo "invalid release tag: $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "release tag must contain a stable semver version: $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "release tag commit $GITHUB_SHA is not merged into origin/main" >&2
+            exit 1
+          fi
+          XUANLING_VERSION="$VERSION" node npm/scripts/check-version.mjs
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Canonical repository guard (plan W8.3)
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED="git+https://github.com/umbrella22/xuanling.git"
+          ACTUAL=$(node -p "require('./npm/packages/xuanling-mcp/package.json').repository.url")
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "publish refused: repository.url is '$ACTUAL', expected '$EXPECTED'" >&2
+            exit 1
+          fi
+          if [ "${GITHUB_REPOSITORY:-}" != "umbrella22/xuanling" ]; then
+            echo "publish refused: running in '${GITHUB_REPOSITORY:-<unknown>}', expected umbrella22/xuanling" >&2
+            exit 1
+          fi
+          echo "canonical repository confirmed: $GITHUB_REPOSITORY"
+      - name: Run npm release tests
+        working-directory: npm
+        run: npm test
+
+  build-main:
+    name: build npm launcher tarball
+    needs: validate-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install supported npm CLI
+        run: npm install --global npm@11.6.2
+      - name: Stage, verify, and pack launcher
+        run: |
+          node npm/scripts/stage-main.mjs --out npm/dist/main/package --commit "$GITHUB_SHA"
+          node npm/scripts/verify-package.mjs --main npm/dist/main/package
+          node npm/scripts/pack-package.mjs \
+            --package npm/dist/main/package \
+            --out npm/dist/main/pack \
+            --label main \
+            --kind main
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-main
+          path: npm/dist/main/pack
+          if-no-files-found: error
+          retention-days: 7
+
+  build-native:
+    name: build npm native tarball (${{ matrix.target_id }})
+    needs: validate-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target_id: linux-x64-gnu
+            rust_target: x86_64-unknown-linux-gnu
+            binary: xuanling-mcp
+          - os: macos-latest
+            target_id: darwin-arm64
+            rust_target: aarch64-apple-darwin
+            binary: xuanling-mcp
+          - os: windows-latest
+            target_id: win32-x64-msvc
+            rust_target: x86_64-pc-windows-msvc
+            binary: xuanling-mcp.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+          targets: ${{ matrix.rust_target }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install supported npm CLI
+        run: npm install --global npm@11.6.2
+      - name: Build locked release binary
+        run: cargo build --locked --release --target ${{ matrix.rust_target }} -p xuanling-mcp
+      - name: Smoke native MCP protocol
+        shell: bash
+        run: |
+          node npm/scripts/smoke-mcp.mjs \
+            --binary "target/${{ matrix.rust_target }}/release/${{ matrix.binary }}"
+      - name: Generate notices, stage, and pack
+        shell: bash
+        run: |
+          mkdir -p "npm/dist/${{ matrix.target_id }}"
+          node npm/scripts/generate-third-party-licenses.mjs \
+            --target "${{ matrix.rust_target }}" \
+            --output "npm/dist/${{ matrix.target_id }}/THIRD_PARTY_LICENSES.txt"
+          node npm/scripts/stage-platform.mjs \
+            --target "${{ matrix.target_id }}" \
+            --binary "target/${{ matrix.rust_target }}/release/${{ matrix.binary }}" \
+            --notices "npm/dist/${{ matrix.target_id }}/THIRD_PARTY_LICENSES.txt" \
+            --out "npm/dist/${{ matrix.target_id }}/package" \
+            --commit "$GITHUB_SHA"
+          node npm/scripts/verify-package.mjs \
+            --platform "npm/dist/${{ matrix.target_id }}/package" \
+            --target "${{ matrix.target_id }}" \
+            --version "${{ needs.validate-release.outputs.version }}"
+          node npm/scripts/pack-package.mjs \
+            --package "npm/dist/${{ matrix.target_id }}/package" \
+            --out "npm/dist/${{ matrix.target_id }}/pack" \
+            --label "${{ matrix.target_id }}" \
+            --kind platform
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-${{ matrix.target_id }}
+          path: npm/dist/${{ matrix.target_id }}/pack
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: publish npm packages
+    needs: [validate-release, build-main, build-native]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    environment: npmjs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+      - name: Install trusted-publishing npm CLI
+        run: npm install --global npm@11.6.2
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: npm-*
+          path: npm/release
+          merge-multiple: false
+      - name: Verify complete release artifact set
+        shell: bash
+        run: |
+          set -euo pipefail
+          node npm/scripts/verify-release-set.mjs \
+            --root npm/release \
+            --version "${{ needs.validate-release.outputs.version }}" \
+            --commit "$GITHUB_SHA"
+      - name: Smoke the Linux launcher from downloaded release tarballs
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAIN_TARBALL=$(node -p "require('./npm/release/npm-main/main.pack.json').filename")
+          PLATFORM_TARBALL=$(node -p "require('./npm/release/npm-linux-x64-gnu/linux-x64-gnu.pack.json').filename")
+          LAUNCHER=$(node npm/scripts/install-local-tarballs.mjs \
+            --main "npm/release/npm-main/$MAIN_TARBALL" \
+            --platform "npm/release/npm-linux-x64-gnu/$PLATFORM_TARBALL" \
+            --target linux-x64-gnu \
+            --out npm/release/linux-install)
+          node npm/scripts/smoke-mcp.mjs --launcher "$LAUNCHER"
+      - name: Publish or bootstrap the first native variant
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
+          NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/xuanling-bootstrap.npmrc
+        run: |
+          set -euo pipefail
+          umask 077
+          trap 'rm -f "$NPM_CONFIG_USERCONFIG"' EXIT
+          if [ -n "${NODE_AUTH_TOKEN:-}" ]; then
+            printf '//registry.npmjs.org/:_authToken=%s\n' "$NODE_AUTH_TOKEN" > "$NPM_CONFIG_USERCONFIG"
+          fi
+          node npm/scripts/publish-idempotent.mjs \
+            --manifest npm/release/npm-darwin-arm64/darwin-arm64.pack.json \
+            --tag platform-darwin-arm64
+      - name: Publish remaining native variants with npm Trusted Publishing
+        run: |
+          set -euo pipefail
+          for TARGET in linux-x64-gnu win32-x64-msvc; do
+            node npm/scripts/publish-idempotent.mjs \
+              --manifest "npm/release/npm-$TARGET/$TARGET.pack.json" \
+              --tag "platform-$TARGET"
+          done
+      - name: Publish stable launcher last with npm Trusted Publishing
+        run: |
+          node npm/scripts/publish-idempotent.mjs \
+            --manifest npm/release/npm-main/main.pack.json \
+            --tag latest

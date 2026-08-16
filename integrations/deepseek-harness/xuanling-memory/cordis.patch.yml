@@ -1,0 +1,27 @@
+# Recommended XuanLing bundle for DeepSeek Harness.
+#
+# DSH already has deeply integrated filesystem, shell, web, LSP, and
+# orchestration tools. This additive mount exposes only XuanLing's canonical
+# Memory v2 workflow so the model does not pay for a second, overlapping tool
+# catalog. The complete memory profile is intentional: proposals, review,
+# replacement, archival, feedback, and read/search remain one coherent API.
+#
+# Production uses XuanLing's shared default memory database.
+
+- insert:
+    - id: xuanling-tools
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: xuanling
+        transport: stdio
+        command: !!js process.execPath
+        args:
+          - !!js process.env.XUANLING_DSH_SCHEMA_ADAPTER ?? process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('xuanling-dsh-memory/schema-adapter.mjs')
+          - '--binary'
+          - !!js process.env.XUANLING_MCP_BIN ?? 'xuanling-mcp'
+          - '--'
+          - '--workspace-root'
+          - !!js process.env.XUANLING_WORKSPACE_ROOT ?? process.cwd()
+          - '--tool-profile'
+          - 'memory'
+        toolCallTimeoutMs: 120000

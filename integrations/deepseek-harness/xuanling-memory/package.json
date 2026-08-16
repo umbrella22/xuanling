@@ -1,0 +1,23 @@
+{
+  "name": "xuanling-dsh-memory",
+  "version": "0.2.1",
+  "description": "Recommended DeepSeek Harness bundle: add the complete XuanLing Memory v2 profile while retaining DSH's native tools.",
+  "license": "MIT OR Apache-2.0",
+  "private": false,
+  "bin": {
+    "xuanling-dsh-schema-adapter": "schema-adapter.mjs"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-mcp-client": "^0.1.0-rc.5"
+  },
+  "files": [
+    "cordis.patch.yml",
+    "schema-adapter.mjs",
+    "schema-projection.mjs"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

@@ -1,0 +1,48 @@
+[package]
+name = "xuanling-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "xuanling-mcp"
+path = "src/main.rs"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+xuanling-toolkit = { path = "../xuanling-toolkit" }
+xuanling-memory = { path = "../xuanling-memory" }
+anyhow = "1"
+clap.workspace = true
+schemars = "1"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+# MCP SDK (plan §3.1). Locked features:
+#   server          -> ServerHandler trait, tool system, serve loop
+#   macros          -> #[tool] / #[tool_router] / #[tool_handler]
+#   schemars        -> JSON Schema generation for tool input DTOs
+#   transport-io    -> stdio() transport for the local MVP server
+# Default features (base64, macros, server) are kept; we enable schemars +
+# transport-io explicitly. No client/HTTP/auth features are needed for the
+# local stdio MVP (plan §1.2).
+rmcp = { version = "3.1.2", features = ["server", "macros", "schemars", "transport-io"] }
+tokio-util = "0.7"
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt", "std"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+tempfile = "3"
+base64 = "0.22"
+fs4 = "0.13"
+sha2 = { workspace = true }
+
+[target.'cfg(unix)'.dev-dependencies]
+libc = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,41 @@
+# Arm B — the XuanLing fs family replaces the native one.
+#
+# The three model-facing native filesystem rows are retired (full-row
+# restatement), and the official MCP bridge mounts the server-side fs profile
+# (exactly 16 mcp__xuanling__fs_* tools; discovery and dispatch are both
+# trimmed by the server, not by a host-side allowlist). Every bridge argument
+# is fail-closed: a missing environment variable aborts startup instead of
+# silently falling back to a default path or the shared memory database.
+
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'
+  disabled: true
+
+- id: tool-fs-search
+  name: '@deepseek-ai/dsh-tool-fs-search'
+  disabled: true
+
+- id: tool-str-replace-editor
+  name: '@deepseek-ai/dsh-tool-str-replace-editor'
+  disabled: true
+
+- insert:
+    - id: xuanling-tools
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: xuanling
+        transport: stdio
+        command: !!js process.execPath
+        args:
+          - !!js process.env.XUANLING_DSH_SCHEMA_ADAPTER ?? process.getBuiltinModule('node:assert').fail('XUANLING_DSH_SCHEMA_ADAPTER is required')
+          - '--binary'
+          - !!js process.env.XUANLING_TEST_MCP_BIN ?? process.getBuiltinModule('node:assert').fail('XUANLING_TEST_MCP_BIN is required')
+          - '--'
+          - '--workspace-root'
+          - !!js process.env.XUANLING_TEST_WORKSPACE_ROOT ?? process.getBuiltinModule('node:assert').fail('XUANLING_TEST_WORKSPACE_ROOT is required')
+          - '--memory-db'
+          - !!js process.env.XUANLING_TEST_MEMORY_DB ?? process.getBuiltinModule('node:assert').fail('XUANLING_TEST_MEMORY_DB is required')
+          - '--tool-profile'
+          - 'fs'
+        failOnStartupError: true
+        toolCallTimeoutMs: 120000

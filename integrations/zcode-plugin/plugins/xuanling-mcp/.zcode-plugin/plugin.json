@@ -1,0 +1,22 @@
+{
+  "name": "xuanling-mcp",
+  "version": "0.2.1",
+  "description": "Cross-platform stdio MCP server: typed filesystem/process/project/memory/session tools for XuanLing. workspace-root follows the current project.",
+  "author": {
+    "name": "umbrella22 and XuanLing contributors",
+    "url": "https://github.com/umbrella22/xuanling"
+  },
+  "license": "MIT OR Apache-2.0",
+  "homepage": "https://github.com/umbrella22/xuanling",
+  "skills": "skills",
+  "mcpServers": {
+    "xuanling": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/node_modules/xuanling-mcp-darwin-arm64/bin/xuanling-mcp",
+      "args": [
+        "--workspace-root",
+        "${CLAUDE_PROJECT_DIR}",
+        "--compat-lenient-object-params"
+      ]
+    }
+  }
+}

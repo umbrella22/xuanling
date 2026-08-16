@@ -1,0 +1,28 @@
+# XuanLing on-demand skills for DeepSeek Harness.
+#
+# One insert block mounts a dedicated @deepseek-ai/dsh-skill-filesystem
+# provider that sees ONLY this bundle's skills/ directory and the strict
+# XuanLing overwrite policy from this installed package:
+#   - providerName is unique ("xuanling-dsh-skills"), so it never clashes
+#     with the preset's own "filesystem" provider registration;
+#   - includeDefaultRoots stays false: no dependence on ~/.dsh/skills or any
+#     project skill root — the two skills travel with the bundle;
+#   - watch stays false: the shipped contents are static, so the catalog
+#     digest and request history stay stable.
+#
+# An installed profile resolves the skill directory and policy module through
+# this package. XUANLING_DSH_SKILLS_ROOT remains a development override for the
+# content root; the policy module itself must be profile-installed so Loader
+# resolves one stable package specifier.
+
+- insert:
+    - id: xuanling-skills
+      name: '@deepseek-ai/dsh-skill-filesystem'
+      config:
+        providerName: xuanling-dsh-skills
+        includeDefaultRoots: false
+        watch: false
+        customSkillDirs:
+          - !!js process.env.XUANLING_DSH_SKILLS_ROOT ?? process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('xuanling-dsh-skills/package.json')), 'skills')
+    - id: xuanling-file-policy
+      name: xuanling-dsh-skills/strict-overwrite-policy.mjs

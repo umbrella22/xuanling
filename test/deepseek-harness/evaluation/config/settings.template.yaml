@@ -1,0 +1,16 @@
+# Isolated DSH settings template for the filesystem evaluation.
+#
+# The runner instantiates a fresh DSH_HOME per run and writes this file as
+# <DSH_HOME>/settings.yaml. It contains NO secret: the runner selects either
+# one environment credential or one external owner-only credential file, and
+# the credentials provider resolves that source directly for each request.
+#
+# The user's real ~/.dsh/settings.yaml (which pins permission
+# danger-full-access) is never read because DSH_HOME points elsewhere.
+
+agent-default-model:
+  provider: deepseek-official
+  model: deepseek-v4-pro
+  reasoningEffort: max
+permission:
+  defaultPreset: workspace-write

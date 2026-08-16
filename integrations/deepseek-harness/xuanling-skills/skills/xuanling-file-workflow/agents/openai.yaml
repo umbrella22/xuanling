@@ -1,0 +1,4 @@
+interface:
+  display_name: "XuanLing File Workflow"
+  short_description: "Choose between native and XuanLing file tools"
+  default_prompt: "Use $xuanling-file-workflow to pick the right file tools for this edit."

@@ -1,0 +1,49 @@
+[package]
+name = "xuanling-toolkit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[features]
+test-fixtures = []
+
+[dependencies]
+base64 = "0.22"
+globset = "0.4"
+ignore = { workspace = true }
+libc = { workspace = true }
+pathdiff = "0.2"
+regex = { workspace = true }
+schemars = "1"
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+walkdir = "2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
+
+[dev-dependencies]
+base64 = "0.22"
+tempfile = "3"
+
+[[bin]]
+name = "xuanling-process-tree-test-helper"
+path = "tests/fixtures/process_tree_helper.rs"
+test = false
+bench = false
+required-features = ["test-fixtures"]
+
+[lints]
+workspace = true

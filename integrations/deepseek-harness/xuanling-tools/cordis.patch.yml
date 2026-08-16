@@ -1,0 +1,30 @@
+# XuanLing tools for DeepSeek Harness — additive variant.
+#
+# Mounts the xuanling-mcp binary as an MCP stdio server through the official
+# @deepseek-ai/dsh-mcp-client bridge. Every XuanLing tool becomes a native
+# harness tool named mcp__xuanling__<raw> (for example mcp__xuanling__fs_read_text);
+# the bridge owns reconnect, re-sync, and generation rollback. Built-in tools
+# (read/write/edit/glob/grep/bash/…) stay registered — this variant only ADDS.
+#
+# Binary resolution (first match wins):
+#   1. XUANLING_MCP_BIN — absolute path to a xuanling-mcp binary or to the
+#      npm launcher bin/xuanling-mcp.js (repo build, custom platform package).
+#   2. plain `xuanling-mcp` from PATH — provided by `npm i -g xuanling-mcp`.
+#
+# The filesystem capability root defaults to the directory dsh was started
+# from; override with XUANLING_WORKSPACE_ROOT. Memory uses the shared default
+# database (~/.xuanling/memory.db) exactly like the ZCode plugin deployment.
+# The ZCode-only object-parameter compat shim stays OFF everywhere in this
+# integration: DeepSeek forwards model arguments as verbatim JSON.
+
+- insert:
+    - id: xuanling-tools
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: xuanling
+        transport: stdio
+        command: !!js process.env.XUANLING_MCP_BIN ?? 'xuanling-mcp'
+        args:
+          - '--workspace-root'
+          - !!js process.env.XUANLING_WORKSPACE_ROOT ?? process.cwd()
+        toolCallTimeoutMs: 120000

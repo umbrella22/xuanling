@@ -1,0 +1,12 @@
+{
+  "service": "notes-service",
+  "version": "1.4.0",
+  "defaults": {
+    "locale": "en-US",
+    "strictMode": false
+  },
+  "features": {
+    "newEditor": true,
+    "legacyIndex": true
+  }
+}

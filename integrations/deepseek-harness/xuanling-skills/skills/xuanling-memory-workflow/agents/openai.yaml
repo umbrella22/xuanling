@@ -1,0 +1,4 @@
+interface:
+  display_name: "XuanLing Memory Workflow"
+  short_description: "Proposal-first XuanLing memory lifecycle"
+  default_prompt: "Use $xuanling-memory-workflow to save this insight as a pending proposal."

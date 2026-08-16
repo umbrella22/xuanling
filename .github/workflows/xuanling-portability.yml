@@ -1,0 +1,150 @@
+name: xuanling-portability
+
+# Cross-platform CI for the XuanLing toolkit + MCP server line (plan §10 W7).
+# Runs the same gate on Linux, macOS, Windows so the typed-tool contract is
+# identical across operating systems. Produces a published `xuanling-mcp`
+# binary artifact per platform.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/xuanling-toolkit/**"
+      - "crates/xuanling-memory/**"
+      - "crates/xuanling-mcp/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/xuanling-portability.yml"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  gate:
+    name: fmt/check/clippy/test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        rust: ["1.97"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust ${{ matrix.rust }}
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+          components: rustfmt, clippy
+      - name: cargo fmt --check
+        run: cargo fmt -p xuanling-toolkit -p xuanling-memory -p xuanling-mcp -- --check
+      - name: cargo check
+        run: cargo check -p xuanling-toolkit -p xuanling-memory -p xuanling-mcp --all-targets
+      - name: cargo clippy
+        run: cargo clippy -p xuanling-toolkit -p xuanling-memory -p xuanling-mcp --all-targets -- -D warnings
+      - name: cargo test (toolkit contract)
+        run: cargo test -p xuanling-toolkit --features test-fixtures --test contract
+      - name: cargo test (memory contract)
+        run: cargo test -p xuanling-memory --test contract
+      - name: cargo test (memory contract, experimental-embeddings)
+        run: cargo test -p xuanling-memory --features experimental-embeddings --test contract
+      - name: cargo test (mcp protocol)
+        run: cargo test -p xuanling-mcp --test protocol
+      - name: cargo test (mcp golden fixtures)
+        run: cargo test -p xuanling-mcp --test golden
+      - name: dependency island guard
+        shell: bash
+        run: |
+          set -e
+          forbidden='xuanling-(core|policy|store|executor|gateway|runtime|orchestrator|source-action|source-edit|source-query|source-workspace)'
+          for crate in xuanling-mcp xuanling-toolkit xuanling-memory; do
+            if cargo tree -p "$crate" -e normal | grep -E "$forbidden"; then
+              echo "forbidden legacy dependency in $crate graph" >&2
+              exit 1
+            fi
+          done
+          echo "dependency island clean"
+
+  smoke:
+    name: binary smoke test (${{ matrix.os }})
+    needs: gate
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: xuanling-mcp-linux-x86_64.tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive: xuanling-mcp-macos-aarch64.tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: xuanling-mcp-windows-x86_64.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust 1.97
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+          targets: ${{ matrix.target }}
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }} -p xuanling-mcp
+      - name: Smoke test (initialize/tools-list/system-info)
+        shell: bash
+        run: |
+          set -e
+          BIN="./target/${{ matrix.target }}/release/xuanling-mcp"
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then BIN="$BIN.exe"; fi
+          # C-15: the smoke server must use an explicit temp memory DB, never a
+          # default path.
+          SMOKE_DB="$(mktemp -d)/smoke-memory.db"
+          printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+            '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"system_info","arguments":{}}}' \
+            > /tmp/smoke.jsonl
+          OUT=$("$BIN" --memory-db "$SMOKE_DB" < /tmp/smoke.jsonl 2>/dev/null || true)
+          # Grep a FILE (not a pipe): the tools/list payload is large (every
+          # tool now carries outputSchema + annotations), and `echo "$OUT" |
+          # grep -q` under `set -o pipefail` races SIGPIPE (grep -q closes early
+          # -> echo gets broken pipe -> pipeline "fails"), producing a false
+          # "initialize failed". Redirecting first avoids the pipe entirely.
+          printf '%s\n' "$OUT" > /tmp/smoke.out
+          grep -q '"serverInfo"' /tmp/smoke.out || { echo "initialize failed"; cat /tmp/smoke.out; exit 1; }
+          grep -q '"tools"' /tmp/smoke.out || { echo "tools/list failed"; cat /tmp/smoke.out; exit 1; }
+          grep -q '"structuredContent"' /tmp/smoke.out || { echo "system_info failed"; cat /tmp/smoke.out; exit 1; }
+          echo "smoke test OK"
+      - name: Archive binary (unix)
+        if: matrix.os != 'windows-latest'
+        run: tar -czf ${{ matrix.archive }} -C ./target/${{ matrix.target }}/release xuanling-mcp
+      - name: Archive binary (windows)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          cd ./target/${{ matrix.target }}/release
+          7z a ../../../${{ matrix.archive }} xuanling-mcp.exe
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive }}
+          path: ${{ matrix.archive }}
+          if-no-files-found: error
+
+  workspace-gate:
+    name: workspace full gate (no legacy regression)
+    needs: gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust 1.97
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+      - name: cargo check --workspace
+        run: cargo check --workspace --all-targets
