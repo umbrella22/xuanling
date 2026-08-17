@@ -3,15 +3,15 @@
 ```yaml
 schema_version: 1
 plan_id: "host-local-integration-distribution-20260817"
-updated_at: "2026-08-17T18:21:52+08:00"
+updated_at: "2026-08-17T18:29:13+08:00"
 plan_status: "executing"
 checkout:
-  revision: "a239a04e354e2877c49ddb409b529bcdf74ebad7"
+  revision: "d61e7622e1108e8020f3189460b7f03ce6ed08a1"
   branch: "main"
-  status_sha256: "2a1f144f1e012fda80eadaa815b31ca1c8d9d79857581bc4825a4026f1de4fd5"
-  status_entry_count: 37
-  relevant_diff_sha256: "4673ea363b74d4a18f4b779cf333351ac31d25812cc3ff66fdd2fe6e4ec06eda"
-  relevant_untracked_sha256: "e259cefdd767c370d85b2e64361917205ebab6854fd069dd6a0ac95f20919e61"
+  status_sha256: "8b24cb6f001a03179ff9863f81d59eacaac7cdbc9f5f5458c9d349a6f89c3d6e"
+  status_entry_count: 3
+  relevant_diff_sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  relevant_untracked_sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   notes:
     - "Existing MIT migration overlaps Cargo/npm/DSH/ZCode release files; preserve and work with it."
     - "User-owned untracked AGENTS.md and plan.md are outside this plan and must remain untouched."
@@ -19,7 +19,7 @@ checkout:
     - "The 45-entry pre-W0 set was classified as 34 tracked MIT migration entries, 9 untracked MIT files, and 2 user-owned untracked files."
     - "Current relevant_untracked_sha256 excludes user-owned AGENTS.md/plan.md and this ledger to avoid self-referential fingerprints; the plan remains included."
     - "The previous d7b415f6... release candidate is stale; a239a04... is the exact pushed and manually preflighted 0.2.1 release source."
-    - "Current relevant_diff_sha256 excludes this self-referential ledger; relevant_untracked_sha256 hashes only materialize-zcode-marketplace.mjs and excludes AGENTS.md/plan.md."
+    - "Current relevant_diff_sha256 excludes this self-referential ledger; relevant_untracked_sha256 excludes AGENTS.md/plan.md, leaving both relevant sets empty after d61e762...."
 external_checkouts:
   deepseek_harness:
     path: "../deepseek-harness"
@@ -47,7 +47,7 @@ default_memory_db:
   w4_isolation_window: "af6dbad... before npm 95/95 and still identical after final npm 96/96; sidecars absent"
 release:
   version: "0.2.2"
-  source_commit: null
+  source_commit: "d61e7622e1108e8020f3189460b7f03ce6ed08a1"
   canonical_main_remote_has_branch: true
   npm_items: []
   zcode_target_repository: "umbrella22/xuanling-zcode-marketplace"
@@ -75,12 +75,13 @@ completed_waves:
   - "W1"
   - "W2"
   - "W3"
-current_wave: "W4"
-current_work_package: "W4.7"
-wave_state: "deterministic_green"
+  - "W4"
+current_wave: "W5"
+current_work_package: "W5.5"
+wave_state: "not_started"
 clean_acceptance_count: 0
-last_completed_action: "W4.7 artifact transport was rebuilt for 0.2.2: only pack+attested archive cross the artifact boundary, strict materialization restores modes, focused positive/tamper/extra-file contracts pass, and all local Node/docs/workflow/locked Rust gates are green."
-next_action: "Commit and push the 0.2.2 artifact-transport fix, then manually dispatch npm-publish.yml from main and require the three prerequisite jobs to pass with every side-effect job skipped."
+last_completed_action: "Pushed exact 0.2.2 source d61e762... and GitHub manual preflight run 32020294499 passed all three prerequisite jobs while every build/publish/promotion job was skipped."
+next_action: "Create immutable source tag xuanling-mcp-v0.2.2 at d61e7622e1108e8020f3189460b7f03ce6ed08a1, then watch registry publication, provenance, attestation, and direct ZCode promotion."
 required_gates:
   - "W0 contract/dirty/docs tracking baseline"
   - "W1 correct distribution red contracts"
@@ -278,6 +279,9 @@ evidence:
   - command: "artifact transport red/green; npm full/check/docs; actionlint; locked cargo check; git diff --check"
     result: "Correct red first failed on the missing materializer after a fixture-import false red was repaired. The implementation transports only pack+archive, validates archive schema/digests/regular canonical paths, restores modes, reruns the strict verifier, and rejects tamper/extra files. Full Node 98/98, package check at 0.2.2, 59 Markdown files, actionlint, cargo check --locked -p xuanling-mcp, and whitespace all pass."
     recorded_at: "2026-08-17T18:21:52+08:00"
+  - command: "Git Data API exact-object push and GitHub workflow_dispatch run 32020294499"
+    result: "Remote main advanced without force to exact commit d61e762.../tree ef5f3593.... The 0.2.2 preflight passed validate-release, authenticated npm bootstrap prerequisites, and exact ZCode push permission; all six side-effect jobs were skipped."
+    recorded_at: "2026-08-17T18:29:13+08:00"
   - command: "final default DB, DSH checkout, source status, and source/target tag audit"
     result: "DB remains fab4413b... with no holder/WAL/SHM; DSH remains 47f94385.../89b2a20a... with its exact two user files; source has only user AGENTS.md/plan.md untracked; source and target have no tags. B-06 is a stable incident, not an active blocker."
     recorded_at: "2026-08-17T16:55:00+08:00"
@@ -303,34 +307,35 @@ W3 complete：源码只保留 runtime template；生成器从已验证 core tarb
 source 与 secret-shaped 文件 fail closed；Darwin launcher 使用临时 DB 完成真实 MCP smoke。完整 Node
 集的 3 个剩余失败均是 W4 的预期入口红合同，已在计划中明确为 staged gate。
 
-W4.7 deterministic_green：首次 W4 preflight run `32017485221`通过，但真实 tag run `32017795111`
+W4 complete：首次 W4 preflight run `32017485221`通过，但真实 tag run `32017795111`
 暴露 directory artifact跨 job后 executable mode丢失，严格 payload hash在任何 npm publish前正确
 拒绝。修复不放宽 mode合同：artifact只传 pack + attested archive，下游先校验并 materialize archive，
 恢复 canonical mode后复用原 verifier。0.2.2本地 Node 98/98、docs、actionlint、locked cargo check与
-diff gate全部通过；新 commit/push/preflight前 W4不回升 complete。
+diff gate全部通过；exact source `d61e762...`已推送，manual preflight run `32020294499`三个 prerequisite
+jobs通过且全部副作用 jobs skipped。
 
 Pre-release README与所有 package/template已提升到 0.2.2 trust合同：明确 publisher unsigned、npm
 provenance、source-bound SHA和 GitHub-attested ZCode archive。失败的 0.2.1 source tag保持指向
-`a239a04...`，未产生 registry item；0.2.2尚无 source candidate。目标仓库仍停在 bootstrap commit
-`54a21771...`，无 target tag、registry item或 promotion tree。
+`a239a04...`，未产生 registry item。目标仓库仍停在 bootstrap commit `54a21771...`，无 target tag、
+registry item或 promotion tree；当前 0.2.2 source candidate为 `d61e762...`。
 
-W5退回等待 W4重新 complete：target identity/bootstrap事实仍 current；旧 source/preflight证据因
-0.2.2修复而 stale。`npmjs`和 `zcode-packer` Environments均已存在；一次性 repository
-`NPM_BOOTSTRAP_TOKEN`已通过 runner认证但尚未完成首发，因此 0.2.2 tag workflow成功前不得移除。
+W5.1-W5.4 complete：target identity/bootstrap、0.2.2 source push与 credential gate均绑定当前事实。
+`npmjs`和 `zcode-packer` Environments均已存在；一次性 repository `NPM_BOOTSTRAP_TOKEN`已通过 runner
+认证但尚未完成首发，因此 0.2.2 tag workflow成功前不得移除。
 此外 W6 portability已有独立真实红色，当前分发计划禁止用 Rust修改或跳测化解。
 
 ```text
 EXECUTION_STATUS: HANDOFF_REQUIRED
 PLAN_ID: host-local-integration-distribution-20260817
-CHECKOUT_FINGERPRINT: revision a239a04e354e2877c49ddb409b529bcdf74ebad7; status 2a1f144f...; relevant diff excluding ledger 4673ea36...; relevant untracked e259cefd...
-CURRENT_WAVE: W4
-CURRENT_WORK_PACKAGE: W4.7
-WAVE_STATE: deterministic_green
-CONTRACTS_PROVEN: C-01/C-02 profile-local DSH bundles; C-03 deterministic ZCode projection/target bootstrap; C-04 explicit releaseTrust + mandatory npm provenance + OIDC attestation locally; C-05 ordered idempotent release; C-06 direct promotion; C-08 preservation; cross-job ZCode artifact mode restoration locally
-EVIDENCE_ADDED: run 32017795111 true red with zero publish; materializer correct red/green; archive tamper and extra-file rejection; 0.2.2 Node 98/98, npm check, 59 docs, actionlint, locked cargo check, diff check
+CHECKOUT_FINGERPRINT: revision d61e7622e1108e8020f3189460b7f03ce6ed08a1; ledger-only continuation plus user AGENTS.md/plan.md
+CURRENT_WAVE: W5
+CURRENT_WORK_PACKAGE: W5.5
+WAVE_STATE: not_started
+CONTRACTS_PROVEN: C-01/C-02 profile-local DSH bundles; C-03 deterministic ZCode projection/target bootstrap; C-04 explicit releaseTrust + mandatory npm provenance + OIDC attestation pipeline; C-05 ordered idempotent release; C-06 direct promotion permission; C-08 preservation; cross-job ZCode artifact mode restoration and authenticated 0.2.2 preflight
+EVIDENCE_ADDED: run 32017795111 true red with zero publish; materializer red/green; archive tamper and extra-file rejection; 0.2.2 local gates; exact d61e762 push; preflight run 32020294499 green with all side effects skipped
 FAILED_GATES: run 32017795111 publish preverification mode-loss incident; xuanling-portability 32010247767 Windows toolkit contract 102 pass/11 fail; historical npm runs retained
-NOT_RUN_GATES: 0.2.2 manual preflight; 0.2.2 tag CI provenance/attestation; npm publish/reconciliation; ZCode direct promotion; clean DSH installs/model calls; ZCode install/restart; W6 final parity and regression
+NOT_RUN_GATES: 0.2.2 tag CI provenance/attestation; npm publish/reconciliation; ZCode direct promotion; clean DSH installs/model calls; ZCode install/restart; W6 final parity and regression
 BLOCKERS: B-07 Windows capability portability requires a separately authorized Rust work package
-NEXT_EXACT_ACTION: commit and push the 0.2.2 artifact-transport fix, then manually dispatch npm-publish.yml from main and require only the three preflight jobs to pass
+NEXT_EXACT_ACTION: create immutable source tag xuanling-mcp-v0.2.2 at d61e7622e1108e8020f3189460b7f03ce6ed08a1, then watch the release workflow
 LEDGER_PATH: docs/plans/host-local-integration-distribution-execution-ledger.md
 ```
