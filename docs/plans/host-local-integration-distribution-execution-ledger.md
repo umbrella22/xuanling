@@ -3,21 +3,22 @@
 ```yaml
 schema_version: 1
 plan_id: "host-local-integration-distribution-20260817"
-updated_at: "2026-08-17T16:31:00+08:00"
+updated_at: "2026-08-17T17:04:00+08:00"
 plan_status: "executing"
 checkout:
-  revision: "c68ecfb01132f1daf9cdb0cf3e4572d42d987b4f"
+  revision: "d7b415f6d4d53363ffac3a1c1adf0c54635400ce"
   branch: "main"
-  status_sha256: "6fd708c54e561bb7aee3f97dd93c9300010f98162d6a6c97d4079d9783a66032"
-  status_entry_count: 110
-  relevant_diff_sha256: "998542099d56163aa5b5c0ef07133c4dd47d998429fa1ab63543e32ca6bc1686"
-  relevant_untracked_sha256: "16574361cb83be4be165dc1cf2523b68209bf502c586ee846e81f14f5e542531"
+  status_sha256: "ae65d65fc481092bcd1e693e0e97c0af63fe699a6f3d263017647e0ff68e7675"
+  status_entry_count: 2
+  relevant_diff_sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  relevant_untracked_sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   notes:
     - "Existing MIT migration overlaps Cargo/npm/DSH/ZCode release files; preserve and work with it."
     - "User-owned untracked AGENTS.md and plan.md are outside this plan and must remain untouched."
     - "W0.3 removed only the broad docs/* ignore; 23 attributable docs files are now visible to Git."
     - "The 45-entry pre-W0 set was classified as 34 tracked MIT migration entries, 9 untracked MIT files, and 2 user-owned untracked files."
     - "Current relevant_untracked_sha256 excludes user-owned AGENTS.md/plan.md and this ledger to avoid self-referential fingerprints; the plan remains included."
+    - "d7b415f6... is the current release-source candidate; a later ledger-only commit does not make an untagged candidate a published release."
 external_checkouts:
   deepseek_harness:
     path: "../deepseek-harness"
@@ -45,7 +46,7 @@ default_memory_db:
   w4_isolation_window: "af6dbad... before npm 95/95 and still identical after final npm 96/96; sidecars absent"
 release:
   version: "0.2.1"
-  source_commit: "523b1327b246bace7f92fd6f14baf5bbf370401d"
+  source_commit: "d7b415f6d4d53363ffac3a1c1adf0c54635400ce"
   canonical_main_remote_has_branch: true
   npm_items: []
   zcode_target_repository: "umbrella22/xuanling-zcode-marketplace"
@@ -71,11 +72,11 @@ completed_waves:
   - "W3"
   - "W4"
 current_wave: "W5"
-current_work_package: "W5.3"
+current_work_package: "W5.4"
 wave_state: "implemented_unverified"
 clean_acceptance_count: 0
-last_completed_action: "Committed and pushed source main at 523b1327...; first CI exposed a Linux-only /private/tmp evaluation-runner defect, now fixed and locally green with TMPDIR=/tmp."
-next_action: "Commit and push the os.tmpdir portability fix, then require the new xuanling-mcp-npm and xuanling-portability runs to finish green."
+last_completed_action: "W5.1-W5.3 complete: target bootstrap and source main are current; npm run 32012128449 passed launcher plus Linux/macOS/Windows native pack, install, and MCP smoke after two fail-loud Windows command-runner fixes."
+next_action: "Create the npmjs and release-signing GitHub Environments with the exact metadata required by npm-publish.yml, configure npm Trusted Publishing for all five package names, then rerun W5.4 metadata-only preflight without creating a tag."
 required_gates:
   - "W0 contract/dirty/docs tracking baseline"
   - "W1 correct distribution red contracts"
@@ -102,27 +103,26 @@ failed_commands:
   - "Expected negative: strict release-set verification rejects the unsigned W3 fixture at darwin-arm64."
   - "Expected external preflight block: all five public package names are E404 and NPM_BOOTSTRAP_TOKEN is absent."
   - "GitHub run 32010247812 job 95328077988: 94/96 Node tests; two synthetic evaluation tests failed because /private/tmp is not writable on ubuntu-latest."
+  - "GitHub run 32010247767 job 95328077927: Windows toolkit contract failed 11/113 while Linux/macOS passed; Rust capability changes are forbidden in this distribution plan."
+  - "GitHub run 32010817052 job 95329784351: Windows native staging reached npm pack and failed with spawn npm ENOENT."
+  - "GitHub run 32011470354 job 95331763667: npm.cmd was found but Node 24 direct exec rejected the batch shim with spawn EINVAL."
 not_run_commands:
   - "No protected-runner Developer ID or Authenticode signing; required in W5."
-  - "No npm publish, target bootstrap, source push/tag, direct promotion, or ZCode/DSH live install."
+  - "No release tag, npm publish, direct promotion, or ZCode/DSH live install; W5.4 is fail-closed."
   - "No Rust build/test in W4 because Rust source and MCP/Memory semantics are unchanged; W6 still requires the final Rust gates."
 blockers:
   - id: "B-03"
     scope: "W5"
-    condition: "macOS Developer ID and Windows Authenticode availability are unknown"
-    release: "Metadata-only preflight followed by publisher-sign verification on protected release runners."
+    condition: "The release-signing Environment does not exist; macOS Developer ID and Windows Authenticode secrets/variables required by npm-publish.yml are therefore absent"
+    release: "Create release-signing with the exact four secret names and three variable names from npm-publish.yml, then run metadata-only preflight followed by publisher-sign verification on protected release runners."
   - id: "B-04"
     scope: "W5"
-    condition: "npm package ownership/bootstrap and Trusted Publishing are not configured for first release"
+    condition: "Only zcode-packer exists; npmjs/NPM_BOOTSTRAP_TOKEN and package-level Trusted Publishing are not configured for the five public package names"
     release: "Configure the minimum first-publish credential and package-level trusted publishers without exposing secret values."
-  - id: "B-05"
-    scope: "W5"
-    condition: "source main push and target bootstrap authorization is now present; release tag/npm publish/host install remain separate gates"
-    release: "Use the configured source/target scope only; stop before any unconfigured external action."
-  - id: "B-06"
-    scope: "W5"
-    condition: "default Memory DB main hash changed again outside the W4 window; W5 baseline is now fab4413b..."
-    release: "Keep the 16:06:25 no-holder/no-sidecar baseline as the W5 before snapshot and verify the same hash after repository writes."
+  - id: "B-07"
+    scope: "W6"
+    condition: "xuanling-portability run 32010247767 fails 11 Windows capability contracts; ten report candidate_resolution_failed/ERROR_INVALID_FUNCTION and one reports Windows symlink-parent error-code drift"
+    release: "Open a separately authorized Rust portability work package; do not skip the Windows contracts or mix a capability semantic change into this distribution plan."
 evidence:
   - command: "git status --short --branch; git rev-parse HEAD; git branch --show-current"
     result: "main at c68ecfb01132f1daf9cdb0cf3e4572d42d987b4f with the attributable MIT migration and user untracked files"
@@ -241,6 +241,27 @@ evidence:
   - command: "GitHub run 32010247812 failed-job log; TMPDIR=/tmp focused test; npm full/check/docs/actionlint/diff"
     result: "Confirmed CI-only EACCES at /private/tmp on Ubuntu. Runner/tests now derive the evidence root from node:os.tmpdir(); TMPDIR=/tmp focused suite 30/30 and full Node 96/96 pass; manifest/docs/workflow/diff pass; DB remains fab4413b..."
     recorded_at: "2026-08-17T16:31:00+08:00"
+  - command: "GitHub run 32010247767 Windows failed-job log and capability source trace"
+    result: "Portability red is current for the unchanged Rust tree: Windows toolkit contract 102 pass/11 fail while Linux/macOS pass. Ten failures report candidate_resolution_failed with ERROR_INVALID_FUNCTION during contained mutation/entry operations; symlink/parent traversal reports not_found instead of outside_capability. No Rust/test weakening was made because this plan forbids Rust semantics changes."
+    recorded_at: "2026-08-17T16:37:00+08:00"
+  - command: "GitHub runs 32010817052 and 32011470354 Windows failed-job logs"
+    result: "First Windows native stage failed at npm pack with spawn npm ENOENT; the narrow npm.cmd mapping then failed under Node 24 with spawn EINVAL. Both failures were retained and replaced by direct node.exe + discovered npm-cli.js argv execution."
+    recorded_at: "2026-08-17T16:46:00+08:00"
+  - command: "node release contract; npm full/check/docs; actionlint; git diff --check on d7b415f6..."
+    result: "Final local distribution gates pass: release contracts 9/9, full Node 97/97, manifest contract, 59 Markdown files, workflow lint, and whitespace check."
+    recorded_at: "2026-08-17T16:48:00+08:00"
+  - command: "GitHub run 32012128449 and remote main API readback"
+    result: "Run success on d7b415f6...: launcher/metadata plus Linux, Darwin ARM64, and Windows x64 native build, MCP smoke, notices, package verification, local tarball install, and installed launcher smoke all passed. Remote main equals d7b415f6...."
+    recorded_at: "2026-08-17T16:54:00+08:00"
+  - command: "GitHub Environment/target APIs and npm view five public names"
+    result: "Only zcode-packer exists; its XL_PUBLISH_TOKEN name and exact ZCODE_REPOSITORY variable are present without reading the secret value. Target main remains bootstrap commit 54a21771... with exactly LICENSE/README.md/README-ZH.md and no tags. All five public package names at 0.2.1 remain E404; npmjs, release-signing, package Trusted Publishing, and signing metadata remain unavailable."
+    recorded_at: "2026-08-17T16:54:00+08:00"
+  - command: "GitHub Environment/secret-name/variable metadata APIs; npm whoami; check-release-prerequisites.mjs"
+    result: "W5.4 was revalidated fail-closed without reading secret values: zcode-packer is the only Environment and has the exact XL_PUBLISH_TOKEN/ZCODE_REPOSITORY metadata; no repository-level Actions secrets or variables exist; npm whoami returns E401; all five package names remain missing and the release prerequisite script exits 1 because NPM_BOOTSTRAP_TOKEN is absent."
+    recorded_at: "2026-08-17T17:04:00+08:00"
+  - command: "final default DB, DSH checkout, source status, and source/target tag audit"
+    result: "DB remains fab4413b... with no holder/WAL/SHM; DSH remains 47f94385.../89b2a20a... with its exact two user files; source has only user AGENTS.md/plan.md untracked; source and target have no tags. B-06 is a stable incident, not an active blocker."
+    recorded_at: "2026-08-17T16:55:00+08:00"
   - fact: "Pre-W1 DSH tool bundles fell back to PATH xuanling-mcp and the ZCode source carried only Darwin ARM64 plus two divergent MCP launch contracts."
     source: "pre-W1 captured package manifests, cordis patches, plugin.json, .mcp.json, and red contract tests"
 stop_conditions:
@@ -255,7 +276,8 @@ stop_conditions:
 
 W0 已完成：dirty set 已归属，`docs/*` 的过宽 ignore 已移除，23 个 attributable docs 文件可被 Git
 发现；Node、文档、diff 与 DSH 基线 current。原默认 Memory DB 基线随后因计划外 host 活动发生
-漂移，已作为 B-06 incident保留；W4 使用新基线重建了隔离窗口，W5仍必须再次即时快照。
+漂移，作为 B-06 incident保留；W5前后快照均为 `fab4413b...` 且无 holder/sidecar，因此它当前不是
+活动 blocker，但后续 live动作仍须即时复核。
 
 W3 complete：源码只保留 runtime template；生成器从已验证 core tarballs 构造三平台单插件，
 两次生成 tree/archive 字节相同，verifier 对精确文件树、package metadata、native hash、immutable
@@ -270,23 +292,29 @@ target default branch；八个 npm item完整对账后，source job checkout tar
 与发布尚未执行。
 
 Pre-release README已在 W4冻结：npm双语文档描述八项发布/恢复链，ZCode integration只保留 agent
-安装后的 marketplace、Node、runtime和安全信息。该变化使旧 W3 digest stale；当前两次生成的
-tree/archive为 `188f2adec14b17ebec08dde45c051dc8e5322ee828ec057ad0faaba261e93782` /
-`e1916a98c7a696fa79b63b1a3b34814954ea90492f5eece3f06baab2ccc62dd7`。这些仍是 dirty checkout的
-local projection，不是可发布 artifact；真实 source commit、签名和 registry integrity留给 W5。
+安装后的 marketplace、Node、runtime和安全信息。当前 source main候选为 `d7b415f6...`；run
+`32012128449`已证明三平台 native package、tarball安装和 launcher smoke，但它不是签名 release
+artifact。目标仓库仍停在 bootstrap commit `54a21771...`，无 source/target tag、registry item或
+promotion tree。
+
+W5.1-W5.3已完成并有 API readback：source/target exact identity、target bootstrap、source main push
+和最终 npm CI均 current。W5.4按合同再次实测为 fail-closed：只有 `zcode-packer` Environment，缺少
+`npmjs`、`release-signing`、五个 package的 Trusted Publishing以及 macOS/Windows publisher signing
+metadata；本机 npm未认证，不能替代 protected workflow完成首发。
+此外 W6 portability已有独立真实红色，当前分发计划禁止用 Rust修改或跳测化解。
 
 ```text
 EXECUTION_STATUS: BLOCKED
 PLAN_ID: host-local-integration-distribution-20260817
-CHECKOUT_FINGERPRINT: 2fbeb952969fe04045148e47319330a5eaa3ce6141f100807e1e4684b3688525
+CHECKOUT_FINGERPRINT: revision d7b415f6d4d53363ffac3a1c1adf0c54635400ce; status ae65d65f...; relevant diff/untracked e3b0c442...
 CURRENT_WAVE: W5
-CURRENT_WORK_PACKAGE: W5.1
-WAVE_STATE: not_started
-CONTRACTS_PROVEN: C-01/C-02 profile-local DSH distribution; C-03 deterministic cross-platform ZCode projection; C-04 signing-before-hash pipeline local contract; C-05 eight-item idempotent release; C-08 preservation
-EVIDENCE_ADDED: zcode-packer environment metadata and target ADMIN fact; previous W4 evidence marked stale; deterministic DSH/ZCode outputs; strict unsigned rejection; pre-release README freeze; DB incident and restored isolation window
-FAILED_GATES: none in W4 local scope; W5 external prerequisites are blocked, not synthetic failures
-NOT_RUN_GATES: direct-push red/green contracts; protected-runner publisher signing; canonical push/tag; npm publication/reconciliation; target bootstrap/direct promotion; DSH/ZCode/three-platform live acceptance; W6 Rust/final gates
-BLOCKERS: B-01 through B-04 and B-06; source/target write authorization is present, but origin/target branches, npm bootstrap, publisher signing and fresh DB window remain unresolved
-NEXT_EXACT_ACTION: add direct-push contract tests for zcode-packer and remove stale App/dispatch assumptions before editing the release workflow
+CURRENT_WORK_PACKAGE: W5.4
+WAVE_STATE: implemented_unverified
+CONTRACTS_PROVEN: C-01/C-02 profile-local DSH bundles; C-03 deterministic ZCode projection and target bootstrap; C-04 signing-before-hash local contract; C-05 ordered idempotent release contract; C-06 direct-promotion authorization/preflight; C-08 source/DB/DSH preservation
+EVIDENCE_ADDED: source d7b415f6... and target 54a21771... API readback; local 97/97; npm CI 32012128449 all four jobs green; two Windows npm failure/recovery chains; current Environment/npm/tag/DB/DSH audits; portability red 32010247767
+FAILED_GATES: xuanling-portability 32010247767 Windows toolkit contract 102 pass/11 fail; historical npm runs 32010247812, 32010817052, and 32011470354 remain retained but are resolved by green run 32012128449
+NOT_RUN_GATES: release tag; publisher signing/provenance; npm publish/reconciliation; ZCode direct promotion; clean DSH installs/model calls; ZCode install/restart; W6 final parity and regression
+BLOCKERS: B-03 release-signing Environment/certificates absent; B-04 npmjs/bootstrap/Trusted Publishing absent; B-07 Windows capability portability requires a separately authorized Rust work package
+NEXT_EXACT_ACTION: create npmjs and release-signing Environments with npm-publish.yml's exact secret/variable names, configure Trusted Publishing for all five package names, then rerun W5.4 metadata-only preflight without creating a tag
 LEDGER_PATH: docs/plans/host-local-integration-distribution-execution-ledger.md
 ```
