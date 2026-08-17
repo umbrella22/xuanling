@@ -3,7 +3,7 @@
 ```yaml
 schema_version: 1
 plan_id: "host-local-integration-distribution-20260817"
-updated_at: "2026-08-17T16:06:25+08:00"
+updated_at: "2026-08-17T16:31:00+08:00"
 plan_status: "executing"
 checkout:
   revision: "c68ecfb01132f1daf9cdb0cf3e4572d42d987b4f"
@@ -45,8 +45,8 @@ default_memory_db:
   w4_isolation_window: "af6dbad... before npm 95/95 and still identical after final npm 96/96; sidecars absent"
 release:
   version: "0.2.1"
-  source_commit: null
-  canonical_main_remote_has_branch: false
+  source_commit: "523b1327b246bace7f92fd6f14baf5bbf370401d"
+  canonical_main_remote_has_branch: true
   npm_items: []
   zcode_target_repository: "umbrella22/xuanling-zcode-marketplace"
   zcode_target_repository_exists: true
@@ -74,8 +74,8 @@ current_wave: "W5"
 current_work_package: "W5.3"
 wave_state: "implemented_unverified"
 clean_acceptance_count: 0
-last_completed_action: "Bootstrapped target main at 54a21771... with exactly LICENSE and the two README files; remote API readback and DB isolation checks passed."
-next_action: "Stage the attributed XuanLing change set excluding AGENTS.md and plan.md, inspect the index, commit it, and push source main."
+last_completed_action: "Committed and pushed source main at 523b1327...; first CI exposed a Linux-only /private/tmp evaluation-runner defect, now fixed and locally green with TMPDIR=/tmp."
+next_action: "Commit and push the os.tmpdir portability fix, then require the new xuanling-mcp-npm and xuanling-portability runs to finish green."
 required_gates:
   - "W0 contract/dirty/docs tracking baseline"
   - "W1 correct distribution red contracts"
@@ -101,15 +101,12 @@ changed_files:
 failed_commands:
   - "Expected negative: strict release-set verification rejects the unsigned W3 fixture at darwin-arm64."
   - "Expected external preflight block: all five public package names are E404 and NPM_BOOTSTRAP_TOKEN is absent."
+  - "GitHub run 32010247812 job 95328077988: 94/96 Node tests; two synthetic evaluation tests failed because /private/tmp is not writable on ubuntu-latest."
 not_run_commands:
   - "No protected-runner Developer ID or Authenticode signing; required in W5."
   - "No npm publish, target bootstrap, source push/tag, direct promotion, or ZCode/DSH live install."
   - "No Rust build/test in W4 because Rust source and MCP/Memory semantics are unchanged; W6 still requires the final Rust gates."
 blockers:
-  - id: "B-01"
-    scope: "W5"
-    condition: "origin has no remote branch/default branch"
-    release: "Create and verify canonical main branch before release tag."
   - id: "B-03"
     scope: "W5"
     condition: "macOS Developer ID and Windows Authenticode availability are unknown"
@@ -238,6 +235,12 @@ evidence:
   - command: "target bootstrap commit/push and GitHub API readback"
     result: "Created target root commit 54a21771... on main; remote root contains exactly LICENSE, README-ZH.md, README.md; no xuanling-mcp-v tag exists; default DB remained fab4413b... with no holder/WAL/SHM."
     recorded_at: "2026-08-17T16:12:00+08:00"
+  - command: "source commit/push and GitHub API readback"
+    result: "Committed 105 attributed files as 523b1327... and pushed canonical origin/main; AGENTS.md and plan.md remain untracked and excluded. GitHub API reports the exact commit."
+    recorded_at: "2026-08-17T16:24:00+08:00"
+  - command: "GitHub run 32010247812 failed-job log; TMPDIR=/tmp focused test; npm full/check/docs/actionlint/diff"
+    result: "Confirmed CI-only EACCES at /private/tmp on Ubuntu. Runner/tests now derive the evidence root from node:os.tmpdir(); TMPDIR=/tmp focused suite 30/30 and full Node 96/96 pass; manifest/docs/workflow/diff pass; DB remains fab4413b..."
+    recorded_at: "2026-08-17T16:31:00+08:00"
   - fact: "Pre-W1 DSH tool bundles fell back to PATH xuanling-mcp and the ZCode source carried only Darwin ARM64 plus two divergent MCP launch contracts."
     source: "pre-W1 captured package manifests, cordis patches, plugin.json, .mcp.json, and red contract tests"
 stop_conditions:

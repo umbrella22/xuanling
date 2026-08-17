@@ -22,6 +22,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
 
@@ -184,7 +185,7 @@ function resolveCredentialSource(required) {
 }
 
 const runId = process.env.XUANLING_DSH_RUN_ID;
-const evalRoot = runId ? `/private/tmp/xuanling-dsh-fs-eval.${runId}` : undefined;
+const evalRoot = runId ? path.join(tmpdir(), `xuanling-dsh-fs-eval.${runId}`) : undefined;
 let credentialSource = null;
 
 function childEnv(trial) {

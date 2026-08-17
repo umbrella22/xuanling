@@ -594,7 +594,7 @@ not_started -> red_confirmed -> implemented_unverified -> deterministic_green ->
 
 - `test/deepseek-harness/evaluation/filesystem-tools-report.md` 的 evidence 段。
 - ledger。
-- runtime 只写 `/private/tmp/xuanling-dsh-fs-eval.${XUANLING_DSH_RUN_ID}/**`；runner 必须先校验该变量为新生成的非空安全标识且目标目录不存在。
+- runtime 只写 `<os.tmpdir()>/xuanling-dsh-fs-eval.${XUANLING_DSH_RUN_ID}/**`；runner 必须先校验该变量为新生成的非空安全标识且目标目录不存在。
 
 ### Forbidden changes
 
@@ -663,7 +663,7 @@ not_started -> red_confirmed -> implemented_unverified -> deterministic_green ->
 - `test/deepseek-harness/evaluation/scripts/verify-report.mjs`。
 - `npm/test/deepseek-filesystem-evaluation.test.mjs`（只覆盖 report verifier 的 fail-closed 合同）。
 - integration README、ledger。
-- runtime 只写 `/private/tmp/xuanling-dsh-web-eval.${XUANLING_DSH_RUN_ID}/**`；沿用 W5 已落账的 run id 时必须新建 `web/` 子树，不得覆盖评估 evidence。
+- runtime 只写 `<os.tmpdir()>/xuanling-dsh-web-eval.${XUANLING_DSH_RUN_ID}/**`；沿用 W5 已落账的 run id 时必须新建 `web/` 子树，不得覆盖评估 evidence。
 
 ### Forbidden changes
 

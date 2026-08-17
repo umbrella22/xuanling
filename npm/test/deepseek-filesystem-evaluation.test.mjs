@@ -497,7 +497,7 @@ test("credential file mode reaches each isolated child without reading or copyin
   const credential = path.join(credentialDir, ".credentials.yaml");
   writeFileSync(credential, "SYNTHETIC_ONLY: not-a-provider-key\n", { mode: 0o600 });
   const runId = `credential-file-${process.pid}-${Date.now()}`;
-  const evalRoot = `/private/tmp/xuanling-dsh-fs-eval.${runId}`;
+  const evalRoot = path.join(tmpdir(), `xuanling-dsh-fs-eval.${runId}`);
   try {
     const result = spawnSync(
       process.execPath,
@@ -542,7 +542,7 @@ function assertCredentialFilePreflightRejects({ label, env, mode, pattern }) {
   const credential = path.join(credentialDir, ".credentials.yaml");
   writeFileSync(credential, "SYNTHETIC_ONLY: not-a-provider-key\n", { mode });
   const runId = `credential-deny-${label}-${process.pid}-${Date.now()}`;
-  const evalRoot = `/private/tmp/xuanling-dsh-fs-eval.${runId}`;
+  const evalRoot = path.join(tmpdir(), `xuanling-dsh-fs-eval.${runId}`);
   try {
     const result = spawnSync(
       process.execPath,
@@ -623,7 +623,7 @@ test("the live runner collects synthetic sessions and snapshots each cache state
   chmodSync(fakeTsx, 0o755);
 
   const runId = `synthetic-${process.pid}-${Date.now()}`;
-  const evalRoot = `/private/tmp/xuanling-dsh-fs-eval.${runId}`;
+  const evalRoot = path.join(tmpdir(), `xuanling-dsh-fs-eval.${runId}`);
   const env = Object.fromEntries(
     ["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "TERM"]
       .filter((name) => process.env[name] !== undefined)
