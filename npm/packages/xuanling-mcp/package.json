@@ -2,7 +2,7 @@
   "name": "xuanling-mcp",
   "version": "0.2.1",
   "description": "Cross-platform stdio MCP server for XuanLing typed filesystem, process, project, artifact, session, and memory tools.",
-  "license": "MIT OR Apache-2.0",
+  "license": "MIT",
   "author": "umbrella22 and XuanLing contributors",
   "type": "module",
   "bin": {
@@ -11,8 +11,7 @@
   "files": [
     "bin",
     "lib",
-    "LICENSE-APACHE",
-    "LICENSE-MIT",
+    "LICENSE",
     "README.md",
     "README-ZH.md"
   ],

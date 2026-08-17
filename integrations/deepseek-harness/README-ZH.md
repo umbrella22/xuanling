@@ -9,21 +9,17 @@
 
 ## 推荐配置
 
-先安装 XuanLing binary：
-
-```sh
-npm install --global xuanling-mcp@0.2.1
-xuanling-mcp --version
-```
-
 将 Memory 与 Skills bundle 安装进目标 DSH profile：
 
 ```sh
-dsh plugin --profile demo add /path/to/xuanling/integrations/deepseek-harness/xuanling-memory
-dsh plugin --profile demo add /path/to/xuanling/integrations/deepseek-harness/xuanling-skills
+dsh plugin --profile demo add xuanling-dsh-memory@0.2.1
+dsh plugin --profile demo add xuanling-dsh-skills@0.2.1
 dsh --profile demo --dump-config
 dsh --profile demo
 ```
+
+Memory bundle 会在 profile 内安装精确版本的 `xuanling-mcp@0.2.1` launcher 和原生 optional
+dependency；不需要全局 npm package、`npx` 或安装时下载 binary。
 
 推荐组合会增加完整的 Memory v2 九工具生命周期，保留全部 Harness 原生工具，加载两个按需
 工作流 Skill，并在 MCP dispatch 前拒绝不安全的 XuanLing 整文件覆盖。
@@ -32,10 +28,10 @@ dsh --profile demo
 
 | Bundle | 行为 | 适用场景 |
 | --- | --- | --- |
-| `xuanling-memory` | 增加带 DSH schema projection 的完整 Memory v2 九工具 profile；保留全部 Harness 原生工具 | 推荐日常配置 |
-| `xuanling-skills` | 增加隔离的文件与 Memory 工作流 Skill 以及严格 overwrite policy；不挂载 MCP 工具 | 与任意 XuanLing 工具 bundle 组合 |
-| `xuanling-tools` | 增加完整 XuanLing catalog，并保留 Harness 原生工具 | 使用 Artifact、Project、Filesystem、Process 与 Advanced 工具 |
-| `xuanling-tools-replace` | 增加完整 catalog，并停用三个模型可见的原生文件系统工具行 | 受控完整目录替换 |
+| `xuanling-dsh-memory` | 增加带 DSH schema projection 的完整 Memory v2 九工具 profile；保留全部 Harness 原生工具 | 推荐日常配置 |
+| `xuanling-dsh-skills` | 增加隔离的文件与 Memory 工作流 Skill 以及严格 overwrite policy；不挂载 MCP 工具 | 与任意 XuanLing 工具 bundle 组合 |
+| `xuanling-dsh-tools` | 增加完整 XuanLing catalog，并保留 Harness 原生工具 | 使用 Artifact、Project、Filesystem、Process 与 Advanced 工具 |
+| `xuanling-dsh-tools-replace` | 增加完整 catalog，并停用三个模型可见的原生文件系统工具行 | 受控完整目录替换 |
 
 Memory bundle 会暴露完整生命周期。Search、get、candidate create/replace/archive、review 与
 feedback 共同构成一个合同；只暴露两个只读工具会向模型隐藏必要的状态转换。
@@ -50,9 +46,9 @@ Bundle 表达式在 DSH 启动时解析以下设置：
 
 | 设置 | 默认值 | 作用 |
 | --- | --- | --- |
-| `XUANLING_MCP_BIN` | `PATH` 中的 `xuanling-mcp` | 绝对 launcher/binary 路径或命令名 |
+| MCP runtime | Profile 内的 `xuanling-mcp@0.2.1` | 经过校验的 JS launcher 与原生 optional dependency |
 | `XUANLING_WORKSPACE_ROOT` | DSH 进程工作目录 | XuanLing 文件系统 capability root |
-| `XUANLING_DSH_SCHEMA_ADAPTER` | 已安装的 `xuanling-memory/schema-adapter.mjs` | 仅源码 checkout overlay 需要 |
+| Schema adapter | 已安装的 `xuanling-dsh-memory/schema-adapter.mjs` | 为 DSH 投影 discovery schema |
 | MCP tool profile | 推荐 bundle 固定为 `memory` | 服务端工具发现与调用分发选择 |
 | Tool-call timeout | 120 秒 | Harness MCP bridge 的调用预算 |
 
@@ -61,31 +57,6 @@ workspace 或 database 配置，它会从已安装 package 解析 Skill 内容�
 
 生产 Memory bundle 使用 XuanLing 共享默认数据库 `~/.xuanling/memory.db`。需要隔离存储的 Host
 可以重述 bridge row，并提供显式 `--memory-db` 路径。
-
-## 源码 Checkout Overlay
-
-从 DeepSeek Harness 源码 checkout 直接运行时，设置 schema adapter 路径并应用 bundle patch：
-
-```sh
-export XUANLING_MCP_BIN=/absolute/path/to/xuanling-mcp
-export XUANLING_DSH_SCHEMA_ADAPTER=/absolute/path/to/xuanling/integrations/deepseek-harness/xuanling-memory/schema-adapter.mjs
-export XUANLING_WORKSPACE_ROOT=/absolute/path/to/project
-
-pnpm dsh web \
-  --patch /absolute/path/to/xuanling/integrations/deepseek-harness/xuanling-memory/cordis.patch.yml
-```
-
-完整 catalog 变体使用各自 patch：
-
-```sh
-pnpm dsh web \
-  --patch /absolute/path/to/xuanling/integrations/deepseek-harness/xuanling-tools/cordis.patch.yml
-
-pnpm dsh web \
-  --patch /absolute/path/to/xuanling/integrations/deepseek-harness/xuanling-tools-replace/cordis.patch.yml
-```
-
-已安装 bundle 会解析自身 dependency 与 adapter 路径，不依赖 DSH 的启动目录。
 
 ## Schema Projection
 

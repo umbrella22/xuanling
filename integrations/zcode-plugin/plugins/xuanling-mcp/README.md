@@ -2,66 +2,46 @@
 
 English | [Simplified Chinese](README-ZH.md)
 
-This directory is the canonical ZCode marketplace source for the self-contained
-`xuanling-mcp` 0.2.1 plugin. The installed copy is managed by ZCode; repository
-release scripts never edit the ZCode plugin cache directly.
+The released `xuanling-mcp` 0.2.1 plugin is a self-contained ZCode integration.
+It carries the verified Node.js launcher and native packages for macOS ARM64,
+Linux x64 glibc, and Windows x64. It does not require a global npm installation
+and does not download an executable during installation.
+
+## Installation
+
+Add `umbrella22/xuanling-zcode-marketplace` as a GitHub marketplace source in
+ZCode, then install `xuanling-mcp` through ZCode's plugin manager. The runtime
+requires Node.js 18.17 or newer on `PATH`.
 
 ## Runtime Paths
 
-The plugin exposes one XuanLing MCP server through two equivalent launch paths:
-
-- `.zcode-plugin/plugin.json` is the canonical marketplace manifest. It starts
-  the bundled native binary and passes the current project as
-  `--workspace-root`.
-- `.mcp.json` is the Node.js launcher compatibility mirror. It applies the same
-  workspace capability and the ZCode-specific object-parameter compatibility
-  mode.
-
-Both paths resolve files relative to the plugin root and use the same
-`xuanling-mcp` version. `npm/test/zcode-plugin-contract.test.mjs` verifies that
-the manifests and repository package versions remain aligned.
+`.mcp.json` is the only launch contract. The plugin manifest references that
+file, which starts the profile-local Node.js launcher through
+`${ZCODE_PLUGIN_ROOT}` and passes `${ZCODE_PROJECT_DIR}` as the filesystem
+capability root. The launcher selects the current platform package and verifies
+its SHA-256 before executing it.
 
 ## Included Components
 
 | Path | Purpose |
 | --- | --- |
-| `.zcode-plugin/plugin.json` | Canonical ZCode plugin and inline MCP server manifest |
-| `.mcp.json` | Compatibility launcher configuration |
-| `bin/node_modules/xuanling-mcp` | Node.js launcher runtime |
-| `bin/node_modules/xuanling-mcp-darwin-arm64` | Bundled native binary, licenses, and third-party notices |
+| `.zcode-plugin/plugin.json` | Plugin metadata and `.mcp.json` component reference |
+| `.mcp.json` | Sole MCP launch configuration |
+| `bin/node_modules` | Release-generated launcher and three native package aliases |
+| `LICENSE` | MIT license |
 | `skills/xuanling-mcp-tools/SKILL.md` | Tool usage, Memory proposal/review, output, and process guidance |
-| `scripts/sync-binary.mjs` | Rebuilds the self-contained runtime from verified npm staging |
 
-The vendored runtime excludes package-manager lock metadata and dependency
-READMEs. Those files are not used by either launch path; the plugin-level
-English and Simplified Chinese READMEs are the user-facing documentation.
-License and third-party notice files remain in the runtime payload.
-
-## Updating the Runtime
-
-Create and verify the npm staging tree before synchronizing the plugin:
-
-```sh
-node integrations/zcode-plugin/plugins/xuanling-mcp/scripts/sync-binary.mjs \
-  --source /absolute/path/to/verified/node_modules
-```
-
-The script derives the repository and plugin roots from its own location,
-replaces only `bin/node_modules`, and prunes non-runtime package-manager and
-README files. It does not install or update the user's ZCode cache.
-
-## Verification
-
-```sh
-node --test npm/test/zcode-plugin-contract.test.mjs
-```
-
-The contract verifies version alignment, manifest parity, workspace capability
-arguments, Memory v2 Skill terminology, and the cleaned vendored payload.
+The launcher selects the current platform package, validates its metadata and
+SHA-256, and starts the native MCP server. Unsupported OS, CPU, or libc
+combinations fail before execution. The default catalog exposes all tool
+profiles. Memory uses `~/.xuanling/memory.db` unless the launch contract is
+restated with an explicit `--memory-db`.
 
 ## Security Boundary
 
 `--workspace-root` constrains paths opened by XuanLing filesystem tools. It is
 not a process sandbox. ZCode remains responsible for tool approval, and child
 process isolation requires an OS sandbox or container when hostile execution
-is possible.
+is possible. Publisher signatures, npm provenance, and package hashes reduce
+distribution risk; they do not guarantee that every security product will
+classify a new binary the same way.

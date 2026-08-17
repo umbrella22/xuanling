@@ -1,11 +1,18 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
-// ZCode plugin marketplace contract (plan W8.4-W8.8):
+import { TARGETS } from "../packages/xuanling-mcp/lib/targets.js";
+import { describeProjection } from "../scripts/zcode-promotion-lib.mjs";
+
+// ZCode plugin marketplace contract:
 //   - plugin.json / .mcp.json / npm package / Cargo workspace versions agree;
-//   - .mcp.json is a consistent compatibility mirror of plugin.json;
+//   - .mcp.json is the sole launch contract;
+//   - integration documentation contains installed-runtime guidance only;
 //   - the Skill carries no legacy tool names, no hardcoded tool count, and
 //     states the omitted-output=complete semantics.
 
@@ -16,6 +23,14 @@ const skillPath = path.join(pluginPackageRoot, "skills", "xuanling-mcp-tools", "
 
 function readJson(relative) {
   return JSON.parse(readFileSync(path.join(repoRoot, relative), "utf8"));
+}
+
+function runNode(args) {
+  return execFileSync(process.execPath, args, {
+    cwd: repoRoot,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
 }
 
 test("plugin/npm/cargo/marketplace versions agree", () => {
@@ -35,35 +50,57 @@ test("plugin/npm/cargo/marketplace versions agree", () => {
   );
 });
 
-test(".mcp.json is a consistent compatibility mirror", () => {
+test("plugin manifest references the sole .mcp.json launch contract", () => {
   const plugin = readJson("integrations/zcode-plugin/plugins/xuanling-mcp/.zcode-plugin/plugin.json");
-  const mirror = readJson("integrations/zcode-plugin/plugins/xuanling-mcp/.mcp.json");
-  const inline = plugin.mcpServers?.xuanling;
-  const launcher = mirror.mcpServers?.xuanling;
-  assert.ok(inline, "plugin.json must inline the xuanling mcpServer");
-  assert.ok(launcher, ".mcp.json must define the xuanling mcpServer");
-  // Same workspace capability contract through both launchers.
-  assert.deepEqual(
-    inline.args,
-    [
-      "--workspace-root",
-      "${CLAUDE_PROJECT_DIR}",
-      "--compat-lenient-object-params",
-    ],
-    "inline server args are the workspace root pair plus the ZCode compat shim",
-  );
+  const launch = readJson("integrations/zcode-plugin/plugins/xuanling-mcp/.mcp.json");
+  assert.equal(plugin.mcpServers, ".mcp.json");
+  assert.ok(launch.mcpServers?.xuanling, ".mcp.json defines the xuanling server");
+});
+
+test(".mcp.json is the sole ZCode launch contract", () => {
+  const plugin = readJson("integrations/zcode-plugin/plugins/xuanling-mcp/.zcode-plugin/plugin.json");
+  const launch = readJson("integrations/zcode-plugin/plugins/xuanling-mcp/.mcp.json");
+  assert.equal(plugin.mcpServers, ".mcp.json", "plugin.json names the sole MCP component path");
+  assert.deepEqual(launch.mcpServers?.xuanling?.command, "node");
   assert.ok(
-    launcher.args.includes("--workspace-root"),
-    "mirror must pass --workspace-root",
+    launch.mcpServers.xuanling.args.includes(
+      "${ZCODE_PLUGIN_ROOT}/bin/node_modules/xuanling-mcp/bin/xuanling-mcp.js",
+    ),
+    "launcher path is rooted at the installed ZCode plugin",
   );
-  assert.ok(
-    launcher.args.includes("--compat-lenient-object-params"),
-    "mirror must enable the same ZCode compat shim",
+  assert.ok(launch.mcpServers.xuanling.args.includes("${ZCODE_PROJECT_DIR}"));
+  assert.doesNotMatch(JSON.stringify({ plugin, launch }), /CLAUDE_PLUGIN_ROOT|CLAUDE_PROJECT_DIR/);
+});
+
+test("ZCode source is a runtime template, not a checked-in host staging tree", () => {
+  assert.equal(existsSync(path.join(pluginPackageRoot, "bin")), false, "native bytes are generated for release");
+  assert.equal(
+    existsSync(path.join(pluginPackageRoot, "scripts", "sync-binary.mjs")),
+    false,
+    "release staging lives outside integrations",
   );
-  assert.ok(
-    launcher.args.includes("${CLAUDE_PROJECT_DIR}"),
-    "mirror must resolve the project dir the same way",
-  );
+  const marketplace = readJson("integrations/zcode-plugin/marketplace.json");
+  const entry = marketplace.plugins.find((candidate) => candidate.name === "xuanling-mcp");
+  assert.deepEqual(entry.source, {
+    source: "github",
+    repo: "umbrella22/xuanling-zcode-marketplace",
+    path: "plugins/xuanling-mcp",
+    ref: `xuanling-mcp-v${entry.version}`,
+  });
+});
+
+test("ZCode plugin READMEs contain installed-runtime guidance only", () => {
+  for (const name of ["README.md", "README-ZH.md"]) {
+    const readme = readFileSync(path.join(pluginPackageRoot, name), "utf8");
+    assert.match(readme, /umbrella22\/xuanling-zcode-marketplace/);
+    assert.match(readme, /Node\.js 18\.17/);
+    assert.match(readme, /does not require a global npm|不依赖全局 npm/);
+    assert.doesNotMatch(
+      readme,
+      /npm\/scripts|stage-zcode-marketplace|sync-binary|Updating the Runtime|更新 Runtime|source template/i,
+      `${name} must not expose repository staging procedures to installed agents`,
+    );
+  }
 });
 
 test("Skill has no legacy memory tool names", () => {
@@ -104,22 +141,131 @@ test("Skill states omitted-output=complete and direct-argv", () => {
   assert.match(skill, /idempotency_key/, "proposal/review memory usage");
 });
 
-test("vendored runtime excludes package-manager and dependency documentation", () => {
-  for (const relative of [
-    "bin/node_modules/.package-lock.json",
-    "bin/node_modules/xuanling-mcp/README.md",
-    "bin/node_modules/xuanling-mcp/README-ZH.md",
-  ]) {
+test("ZCode runtime payload is generated outside the source integration", () => {
+  for (const relative of ["bin", "scripts/sync-binary.mjs"]) {
     assert.equal(
       existsSync(path.join(pluginPackageRoot, relative)),
       false,
-      `${relative} is not required by either ZCode launch path`,
+      `${relative} must be release-generated rather than checked into integrations`,
     );
   }
-  const syncScript = readFileSync(
-    path.join(pluginPackageRoot, "scripts", "sync-binary.mjs"),
-    "utf8",
-  );
-  assert.match(syncScript, /\.package-lock\.json/);
-  assert.match(syncScript, /README-ZH\.md/);
+
+  for (const script of ["stage-zcode-marketplace.mjs", "verify-zcode-marketplace.mjs"]) {
+    assert.equal(
+      existsSync(path.join(repoRoot, "npm", "scripts", script)),
+      true,
+      `${script} owns the generated marketplace contract`,
+    );
+  }
+});
+
+test("ZCode marketplace generation is deterministic and fails closed", async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "xuanling-zcode-contract-"));
+  const commit = "0".repeat(40);
+  const payload = path.join(repoRoot, "test", "release", "fixtures", "synthetic-payload.txt");
+  const stageRoot = path.join(temporary, "stage");
+  const releaseRoot = path.join(temporary, "release");
+
+  try {
+    runNode([
+      "npm/scripts/stage-main.mjs",
+      "--out", path.join(stageRoot, "main"),
+      "--commit", commit,
+    ]);
+    runNode([
+      "npm/scripts/pack-package.mjs",
+      "--package", path.join(stageRoot, "main"),
+      "--out", path.join(releaseRoot, "npm-main"),
+      "--label", "main",
+      "--kind", "main",
+    ]);
+
+    for (const targetId of Object.keys(TARGETS)) {
+      const packageRoot = path.join(stageRoot, targetId);
+      const signatureArgs = targetId === "darwin-arm64"
+        ? [
+            "--signature-kind", "developer-id-application",
+            "--signature-identity", "Developer ID Application: Fixture (TEAMID)",
+          ]
+        : targetId === "win32-x64-msvc"
+          ? [
+              "--signature-kind", "authenticode",
+              "--signature-identity", "CN=XuanLing Fixture",
+              "--signature-timestamped", "true",
+            ]
+          : ["--signature-kind", "npm-provenance"];
+      runNode([
+        "npm/scripts/stage-platform.mjs",
+        "--target", targetId,
+        "--binary", payload,
+        "--notices", payload,
+        "--out", packageRoot,
+        "--commit", commit,
+        ...signatureArgs,
+      ]);
+      runNode([
+        "npm/scripts/pack-package.mjs",
+        "--package", packageRoot,
+        "--out", path.join(releaseRoot, `npm-${targetId}`),
+        "--label", targetId,
+        "--kind", "platform",
+      ]);
+    }
+
+    const generated = [];
+    for (const label of ["first", "second"]) {
+      const parent = path.join(temporary, label);
+      const root = path.join(parent, "marketplace");
+      runNode([
+        "npm/scripts/stage-zcode-marketplace.mjs",
+        "--release-root", releaseRoot,
+        "--out", root,
+        "--version", "0.2.1",
+        "--commit", commit,
+        "--require-release-signatures",
+      ]);
+      runNode([
+        "npm/scripts/verify-zcode-marketplace.mjs",
+        "--root", root,
+        "--version", "0.2.1",
+        "--commit", commit,
+        "--require-release-signatures",
+      ]);
+      generated.push({
+        pack: JSON.parse(await readFile(path.join(parent, "zcode-marketplace.pack.json"), "utf8")),
+        root,
+      });
+    }
+    assert.deepEqual(generated[0].pack, generated[1].pack, "repeated staging is byte-identical");
+    assert.equal(
+      (await describeProjection(generated[0].root, { strictRoot: true })).sha256,
+      generated[0].pack.tree_sha256,
+      "target promotion computes the generator's canonical tree identity",
+    );
+
+    const extraFileRoot = path.join(temporary, "negative-extra", "marketplace");
+    await cp(generated[0].root, extraFileRoot, { recursive: true });
+    await writeFile(path.join(extraFileRoot, "unexpected.txt"), "unexpected\n");
+    assert.throws(() => runNode([
+      "npm/scripts/verify-zcode-marketplace.mjs",
+      "--root", extraFileRoot,
+      "--version", "0.2.1",
+      "--commit", commit,
+    ]), "an extra release file must be rejected");
+
+    const mutableRefRoot = path.join(temporary, "negative-ref", "marketplace");
+    await cp(generated[0].root, mutableRefRoot, { recursive: true });
+    const marketplacePath = path.join(mutableRefRoot, "marketplace.json");
+    const marketplace = JSON.parse(await readFile(marketplacePath, "utf8"));
+    marketplace.plugins[0].source.ref = "main";
+    await writeFile(marketplacePath, `${JSON.stringify(marketplace, null, 2)}\n`);
+    assert.throws(() => runNode([
+      "npm/scripts/verify-zcode-marketplace.mjs",
+      "--root", mutableRefRoot,
+      "--version", "0.2.1",
+      "--commit", commit,
+    ]), "a mutable marketplace source ref must be rejected");
+  } finally {
+    await rm(temporary, { force: true, recursive: true });
+  }
 });

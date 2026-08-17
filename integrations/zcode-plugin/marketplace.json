@@ -1,6 +1,6 @@
 {
-  "name": "xuanling-local",
-  "description": "Local XuanLing MCP plugin — cross-platform typed filesystem/process/project/memory/session tools as a stdio MCP server.",
+  "name": "xuanling-zcode-marketplace",
+  "description": "Official XuanLing MCP plugin marketplace for immutable cross-platform releases.",
   "owner": {
     "name": "umbrella22 and XuanLing contributors",
     "url": "https://github.com/umbrella22/xuanling"
@@ -9,15 +9,18 @@
     {
       "name": "xuanling-mcp",
       "version": "0.2.1",
-      "description": "Cross-platform stdio MCP server: typed filesystem/process/project/memory/session tools. workspace-root follows the current project via ${CLAUDE_PROJECT_DIR}.",
+      "description": "Cross-platform stdio MCP server with typed filesystem, process, project, artifact, session, and Memory tools.",
       "author": {
         "name": "umbrella22 and XuanLing contributors",
         "url": "https://github.com/umbrella22/xuanling"
       },
       "homepage": "https://github.com/umbrella22/xuanling",
-      "source": "./plugins/xuanling-mcp",
-      "skills": "./skills/",
-      "mcpServers": "./.mcp.json",
+      "source": {
+        "source": "github",
+        "repo": "umbrella22/xuanling-zcode-marketplace",
+        "path": "plugins/xuanling-mcp",
+        "ref": "xuanling-mcp-v0.2.1"
+      },
       "category": "Developer Tools",
       "policy": {
         "installation": "AVAILABLE",

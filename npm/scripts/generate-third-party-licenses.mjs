@@ -77,7 +77,7 @@ const sections = [
   "",
   "Generated from the target's Cargo normal dependency tree and Cargo metadata.",
   "License texts are copied from exact Cargo package sources when present and are de-duplicated by SHA-256.",
-  "Packages with SPDX metadata but no archive text are listed with metadata only; canonical MIT/Apache texts ship as LICENSE-MIT and LICENSE-APACHE.",
+  "Packages with SPDX metadata but no archive text are listed with metadata only.",
 ];
 
 const textByHash = new Map();

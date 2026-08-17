@@ -28,6 +28,18 @@ export async function readWorkspaceVersion() {
   return version;
 }
 
+export async function readWorkspaceLicense() {
+  const cargoToml = await readFile(path.join(REPO_ROOT, "Cargo.toml"), "utf8");
+  const workspacePackage = cargoToml.match(
+    /\[workspace\.package\]([\s\S]*?)(?:\n\[|$)/,
+  )?.[1];
+  const license = workspacePackage?.match(/^license\s*=\s*"([^"]+)"/m)?.[1];
+  if (!license) {
+    throw new Error("Cargo.toml is missing [workspace.package].license");
+  }
+  return license;
+}
+
 export function parseArgs(argv) {
   const result = {};
   for (let index = 0; index < argv.length; index += 1) {
@@ -94,4 +106,3 @@ export async function currentCommit() {
 export function stableJson(value) {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
-

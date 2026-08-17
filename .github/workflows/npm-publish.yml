@@ -17,9 +17,10 @@ env:
 
 jobs:
   validate-release:
-    name: validate npm release tag
+    name: validate release tag and source
     runs-on: ubuntu-latest
     outputs:
+      commit: ${{ steps.version.outputs.commit }}
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
@@ -44,13 +45,15 @@ jobs:
             echo "release tag must contain a stable semver version: $GITHUB_REF_NAME" >&2
             exit 1
           fi
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "release tag commit $GITHUB_SHA is not merged into origin/main" >&2
+          COMMIT=$(git rev-parse HEAD)
+          if ! git merge-base --is-ancestor "$COMMIT" origin/main; then
+            echo "release tag commit $COMMIT is not merged into origin/main" >&2
             exit 1
           fi
           XUANLING_VERSION="$VERSION" node npm/scripts/check-version.mjs
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-      - name: Canonical repository guard (plan W8.3)
+      - name: Verify canonical repository
         shell: bash
         run: |
           set -euo pipefail
@@ -61,17 +64,80 @@ jobs:
             exit 1
           fi
           if [ "${GITHUB_REPOSITORY:-}" != "umbrella22/xuanling" ]; then
-            echo "publish refused: running in '${GITHUB_REPOSITORY:-<unknown>}', expected umbrella22/xuanling" >&2
+            echo "publish refused: running in '${GITHUB_REPOSITORY:-<unknown>}'" >&2
             exit 1
           fi
-          echo "canonical repository confirmed: $GITHUB_REPOSITORY"
-      - name: Run npm release tests
+      - name: Run release contract tests
         working-directory: npm
         run: npm test
 
+  npm-prerequisites:
+    name: verify npm ownership and bootstrap prerequisites
+    needs: validate-release
+    runs-on: ubuntu-latest
+    environment: npmjs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+      - name: Install supported npm CLI
+        run: npm install --global npm@11.6.2
+      - name: Check package-name bootstrap requirements without publishing
+        env:
+          NPM_BOOTSTRAP_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
+        run: node npm/scripts/check-release-prerequisites.mjs
+
+  zcode-prerequisites:
+    name: verify ZCode target identity and push permission
+    needs: validate-release
+    runs-on: ubuntu-latest
+    environment: zcode-packer
+    steps:
+      - name: Require exact Environment configuration
+        shell: bash
+        env:
+          TARGET_REPOSITORY: ${{ vars.ZCODE_REPOSITORY }}
+          XL_PUBLISH_TOKEN: ${{ secrets.XL_PUBLISH_TOKEN }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "umbrella22/xuanling" || {
+            echo "promotion refused from unexpected source repository: $GITHUB_REPOSITORY" >&2
+            exit 1
+          }
+          test "$TARGET_REPOSITORY" = "umbrella22/xuanling-zcode-marketplace" || {
+            echo "ZCODE_REPOSITORY must be umbrella22/xuanling-zcode-marketplace" >&2
+            exit 1
+          }
+          test -n "$XL_PUBLISH_TOKEN" || {
+            echo "XL_PUBLISH_TOKEN is not configured in zcode-packer" >&2
+            exit 1
+          }
+      - name: Verify authenticated target repository access
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.XL_PUBLISH_TOKEN }}
+          TARGET_REPOSITORY: ${{ vars.ZCODE_REPOSITORY }}
+        run: |
+          set -euo pipefail
+          REPOSITORY=$(gh api "repos/$TARGET_REPOSITORY")
+          test "$(jq -r .full_name <<<"$REPOSITORY")" = "$TARGET_REPOSITORY" || {
+            echo "authenticated target repository identity mismatch" >&2
+            exit 1
+          }
+          test "$(jq -r .default_branch <<<"$REPOSITORY")" = "main" || {
+            echo "target default branch must be main" >&2
+            exit 1
+          }
+          test "$(jq -r '.permissions.push // false' <<<"$REPOSITORY")" = "true" || {
+            echo "XL_PUBLISH_TOKEN does not have target contents push permission" >&2
+            exit 1
+          }
+
   build-main:
     name: build npm launcher tarball
-    needs: validate-release
+    needs: [validate-release, npm-prerequisites, zcode-prerequisites]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -82,7 +148,9 @@ jobs:
         run: npm install --global npm@11.6.2
       - name: Stage, verify, and pack launcher
         run: |
-          node npm/scripts/stage-main.mjs --out npm/dist/main/package --commit "$GITHUB_SHA"
+          node npm/scripts/stage-main.mjs \
+            --out npm/dist/main/package \
+            --commit "${{ needs.validate-release.outputs.commit }}"
           node npm/scripts/verify-package.mjs --main npm/dist/main/package
           node npm/scripts/pack-package.mjs \
             --package npm/dist/main/package \
@@ -97,8 +165,9 @@ jobs:
           retention-days: 7
 
   build-native:
-    name: build npm native tarball (${{ matrix.target_id }})
-    needs: validate-release
+    name: build signed npm native tarball (${{ matrix.target_id }})
+    needs: [validate-release, npm-prerequisites, zcode-prerequisites]
+    environment: release-signing
     strategy:
       fail-fast: false
       matrix:
@@ -107,16 +176,50 @@ jobs:
             target_id: linux-x64-gnu
             rust_target: x86_64-unknown-linux-gnu
             binary: xuanling-mcp
+            signature_kind: npm-provenance
           - os: macos-latest
             target_id: darwin-arm64
             rust_target: aarch64-apple-darwin
             binary: xuanling-mcp
+            signature_kind: developer-id-application
           - os: windows-latest
             target_id: win32-x64-msvc
             rust_target: x86_64-pc-windows-msvc
             binary: xuanling-mcp.exe
+            signature_kind: authenticode
     runs-on: ${{ matrix.os }}
     steps:
+      - name: Validate macOS signing prerequisites
+        if: matrix.target_id == 'darwin-arm64'
+        shell: bash
+        env:
+          CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          SIGNING_IDENTITY: ${{ vars.MACOS_SIGNING_IDENTITY }}
+        run: |
+          set -euo pipefail
+          test -n "$CERTIFICATE" || { echo "MACOS_CERTIFICATE_P12_BASE64 is missing" >&2; exit 1; }
+          test -n "$CERTIFICATE_PASSWORD" || { echo "MACOS_CERTIFICATE_PASSWORD is missing" >&2; exit 1; }
+          [[ "$SIGNING_IDENTITY" == "Developer ID Application:"* ]] || {
+            echo "MACOS_SIGNING_IDENTITY must name a Developer ID Application identity" >&2
+            exit 1
+          }
+      - name: Validate Windows signing prerequisites
+        if: matrix.target_id == 'win32-x64-msvc'
+        shell: pwsh
+        env:
+          CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE_PFX_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          SIGNING_SUBJECT: ${{ vars.WINDOWS_SIGNING_SUBJECT }}
+          TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CERTIFICATE)) { throw "WINDOWS_CERTIFICATE_PFX_BASE64 is missing" }
+          if ([string]::IsNullOrWhiteSpace($env:CERTIFICATE_PASSWORD)) { throw "WINDOWS_CERTIFICATE_PASSWORD is missing" }
+          if ([string]::IsNullOrWhiteSpace($env:SIGNING_SUBJECT)) { throw "WINDOWS_SIGNING_SUBJECT is missing" }
+          if (-not $env:TIMESTAMP_URL.StartsWith("https://")) { throw "WINDOWS_TIMESTAMP_URL must use HTTPS" }
+      - name: Record Linux provenance prerequisite
+        if: matrix.target_id == 'linux-x64-gnu'
+        run: test "${{ matrix.signature_kind }}" = "npm-provenance"
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -129,33 +232,134 @@ jobs:
         run: npm install --global npm@11.6.2
       - name: Build locked release binary
         run: cargo build --locked --release --target ${{ matrix.rust_target }} -p xuanling-mcp
-      - name: Smoke native MCP protocol
+      - name: Sign macOS binary with Developer ID Application
+        if: matrix.target_id == 'darwin-arm64'
+        shell: bash
+        env:
+          CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          SIGNING_IDENTITY: ${{ vars.MACOS_SIGNING_IDENTITY }}
+        run: |
+          set -euo pipefail
+          BINARY="target/${{ matrix.rust_target }}/release/${{ matrix.binary }}"
+          P12="$RUNNER_TEMP/xuanling-signing.p12"
+          KEYCHAIN="$RUNNER_TEMP/xuanling-signing.keychain-db"
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 32)
+          cleanup() {
+            security delete-keychain "$KEYCHAIN" >/dev/null 2>&1 || true
+            rm -f "$P12"
+          }
+          trap cleanup EXIT
+          umask 077
+          printf '%s' "$CERTIFICATE" | base64 --decode > "$P12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$P12" -k "$KEYCHAIN" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          codesign --force --options runtime --timestamp --keychain "$KEYCHAIN" \
+            --sign "$SIGNING_IDENTITY" "$BINARY"
+      - name: Verify macOS publisher signature
+        if: matrix.target_id == 'darwin-arm64'
+        shell: bash
+        env:
+          SIGNING_IDENTITY: ${{ vars.MACOS_SIGNING_IDENTITY }}
+        run: |
+          set -euo pipefail
+          BINARY="target/${{ matrix.rust_target }}/release/${{ matrix.binary }}"
+          codesign --verify --strict --verbose=2 "$BINARY"
+          DETAILS=$(codesign --display --verbose=4 "$BINARY" 2>&1)
+          grep -F "Authority=$SIGNING_IDENTITY" <<<"$DETAILS" >/dev/null
+          if grep -F "Signature=adhoc" <<<"$DETAILS" >/dev/null; then
+            echo "ad-hoc signatures are forbidden for release artifacts" >&2
+            exit 1
+          fi
+      - name: Sign Windows binary with Authenticode
+        if: matrix.target_id == 'win32-x64-msvc'
+        shell: pwsh
+        env:
+          CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE_PFX_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $binary = Join-Path $env:GITHUB_WORKSPACE "target\${{ matrix.rust_target }}\release\${{ matrix.binary }}"
+          $pfx = Join-Path $env:RUNNER_TEMP "xuanling-signing.pfx"
+          try {
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:CERTIFICATE))
+            $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
+              Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
+            if (-not $signtool) { throw "signtool.exe was not found" }
+            & $signtool sign /fd SHA256 /td SHA256 /tr $env:TIMESTAMP_URL /f $pfx /p $env:CERTIFICATE_PASSWORD $binary
+            if ($LASTEXITCODE -ne 0) { throw "signtool sign failed with exit code $LASTEXITCODE" }
+          } finally {
+            Remove-Item -Force -ErrorAction SilentlyContinue $pfx
+          }
+      - name: Verify Windows publisher signature
+        if: matrix.target_id == 'win32-x64-msvc'
+        shell: pwsh
+        env:
+          SIGNING_SUBJECT: ${{ vars.WINDOWS_SIGNING_SUBJECT }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $binary = Join-Path $env:GITHUB_WORKSPACE "target\${{ matrix.rust_target }}\release\${{ matrix.binary }}"
+          $signature = Get-AuthenticodeSignature $binary
+          if ($signature.Status -ne "Valid") { throw "Authenticode status is $($signature.Status)" }
+          if (-not $signature.TimeStamperCertificate) { throw "Authenticode timestamp is missing" }
+          if (-not $signature.SignerCertificate.Subject.Contains($env:SIGNING_SUBJECT)) {
+            throw "Authenticode signer does not match WINDOWS_SIGNING_SUBJECT"
+          }
+      - name: Smoke signed native MCP protocol
         shell: bash
         run: |
           node npm/scripts/smoke-mcp.mjs \
             --binary "target/${{ matrix.rust_target }}/release/${{ matrix.binary }}"
-      - name: Generate notices, stage, and pack
+      - name: Stage signed native package
         shell: bash
+        env:
+          MACOS_SIGNING_IDENTITY: ${{ vars.MACOS_SIGNING_IDENTITY }}
+          WINDOWS_SIGNING_SUBJECT: ${{ vars.WINDOWS_SIGNING_SUBJECT }}
         run: |
+          set -euo pipefail
           mkdir -p "npm/dist/${{ matrix.target_id }}"
           node npm/scripts/generate-third-party-licenses.mjs \
             --target "${{ matrix.rust_target }}" \
             --output "npm/dist/${{ matrix.target_id }}/THIRD_PARTY_LICENSES.txt"
+          SIGNATURE_ARGS=(--signature-kind "${{ matrix.signature_kind }}")
+          if [ "${{ matrix.target_id }}" = "darwin-arm64" ]; then
+            SIGNATURE_ARGS+=(--signature-identity "$MACOS_SIGNING_IDENTITY")
+          elif [ "${{ matrix.target_id }}" = "win32-x64-msvc" ]; then
+            SIGNATURE_ARGS+=(--signature-identity "$WINDOWS_SIGNING_SUBJECT" --signature-timestamped true)
+          fi
           node npm/scripts/stage-platform.mjs \
             --target "${{ matrix.target_id }}" \
             --binary "target/${{ matrix.rust_target }}/release/${{ matrix.binary }}" \
             --notices "npm/dist/${{ matrix.target_id }}/THIRD_PARTY_LICENSES.txt" \
             --out "npm/dist/${{ matrix.target_id }}/package" \
-            --commit "$GITHUB_SHA"
+            --commit "${{ needs.validate-release.outputs.commit }}" \
+            "${SIGNATURE_ARGS[@]}"
           node npm/scripts/verify-package.mjs \
             --platform "npm/dist/${{ matrix.target_id }}/package" \
             --target "${{ matrix.target_id }}" \
-            --version "${{ needs.validate-release.outputs.version }}"
+            --version "${{ needs.validate-release.outputs.version }}" \
+            --require-release-signature
           node npm/scripts/pack-package.mjs \
             --package "npm/dist/${{ matrix.target_id }}/package" \
             --out "npm/dist/${{ matrix.target_id }}/pack" \
             --label "${{ matrix.target_id }}" \
             --kind platform
+      - name: Verify staged macOS publisher signature
+        if: matrix.target_id == 'darwin-arm64'
+        run: codesign --verify --strict --verbose=2 "npm/dist/${{ matrix.target_id }}/package/bin/xuanling-mcp"
+      - name: Verify staged Windows publisher signature
+        if: matrix.target_id == 'win32-x64-msvc'
+        shell: pwsh
+        run: |
+          $signature = Get-AuthenticodeSignature "npm/dist/${{ matrix.target_id }}/package/bin/xuanling-mcp.exe"
+          if ($signature.Status -ne "Valid" -or -not $signature.TimeStamperCertificate) {
+            throw "staged Authenticode signature is not valid and timestamped"
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: npm-${{ matrix.target_id }}
@@ -163,9 +367,88 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  build-dsh:
+    name: build four DSH bundle tarballs
+    needs: [validate-release, npm-prerequisites, zcode-prerequisites]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install supported npm CLI
+        run: npm install --global npm@11.6.2
+      - name: Pack and verify DSH bundles
+        run: |
+          node npm/scripts/pack-dsh-bundles.mjs \
+            --out npm/dist/dsh \
+            --commit "${{ needs.validate-release.outputs.commit }}"
+          node npm/scripts/verify-dsh-release-set.mjs \
+            --root npm/dist/dsh \
+            --version "${{ needs.validate-release.outputs.version }}" \
+            --commit "${{ needs.validate-release.outputs.commit }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dsh-bundles
+          path: npm/dist/dsh
+          if-no-files-found: error
+          retention-days: 7
+
+  assemble-release:
+    name: verify complete release set and build ZCode projection
+    needs: [validate-release, build-main, build-native, build-dsh]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install supported npm CLI
+        run: npm install --global npm@11.6.2
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: npm-*
+          path: npm/release
+          merge-multiple: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: dsh-bundles
+          path: npm/dsh-release
+      - name: Verify all signed core and DSH artifacts
+        run: |
+          node npm/scripts/verify-release-set.mjs \
+            --root npm/release \
+            --version "${{ needs.validate-release.outputs.version }}" \
+            --commit "${{ needs.validate-release.outputs.commit }}" \
+            --require-release-signatures
+          node npm/scripts/verify-dsh-release-set.mjs \
+            --root npm/dsh-release \
+            --version "${{ needs.validate-release.outputs.version }}" \
+            --commit "${{ needs.validate-release.outputs.commit }}"
+      - name: Generate and verify immutable ZCode marketplace artifact
+        run: |
+          node npm/scripts/stage-zcode-marketplace.mjs \
+            --release-root npm/release \
+            --out npm/dist/zcode/marketplace \
+            --version "${{ needs.validate-release.outputs.version }}" \
+            --commit "${{ needs.validate-release.outputs.commit }}" \
+            --require-release-signatures
+          node npm/scripts/verify-zcode-marketplace.mjs \
+            --root npm/dist/zcode/marketplace \
+            --version "${{ needs.validate-release.outputs.version }}" \
+            --commit "${{ needs.validate-release.outputs.commit }}" \
+            --require-release-signatures
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zcode-marketplace
+          path: npm/dist/zcode
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+
   publish:
-    name: publish npm packages
-    needs: [validate-release, build-main, build-native]
+    name: publish ordered npm release set
+    needs: [validate-release, assemble-release]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -176,7 +459,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-          registry-url: "https://registry.npmjs.org"
       - name: Install trusted-publishing npm CLI
         run: npm install --global npm@11.6.2
       - uses: actions/download-artifact@v4
@@ -184,51 +466,175 @@ jobs:
           pattern: npm-*
           path: npm/release
           merge-multiple: false
-      - name: Verify complete release artifact set
-        shell: bash
+      - uses: actions/download-artifact@v4
+        with:
+          name: dsh-bundles
+          path: npm/dsh-release
+      - uses: actions/download-artifact@v4
+        with:
+          name: zcode-marketplace
+          path: npm/zcode-release
+      - name: Reverify exact release bytes before publishing
         run: |
-          set -euo pipefail
           node npm/scripts/verify-release-set.mjs \
             --root npm/release \
             --version "${{ needs.validate-release.outputs.version }}" \
-            --commit "$GITHUB_SHA"
-      - name: Smoke the Linux launcher from downloaded release tarballs
-        shell: bash
-        run: |
-          set -euo pipefail
-          MAIN_TARBALL=$(node -p "require('./npm/release/npm-main/main.pack.json').filename")
-          PLATFORM_TARBALL=$(node -p "require('./npm/release/npm-linux-x64-gnu/linux-x64-gnu.pack.json').filename")
-          LAUNCHER=$(node npm/scripts/install-local-tarballs.mjs \
-            --main "npm/release/npm-main/$MAIN_TARBALL" \
-            --platform "npm/release/npm-linux-x64-gnu/$PLATFORM_TARBALL" \
-            --target linux-x64-gnu \
-            --out npm/release/linux-install)
-          node npm/scripts/smoke-mcp.mjs --launcher "$LAUNCHER"
-      - name: Publish or bootstrap the first native variant
+            --commit "${{ needs.validate-release.outputs.commit }}" \
+            --require-release-signatures
+          node npm/scripts/verify-dsh-release-set.mjs \
+            --root npm/dsh-release \
+            --version "${{ needs.validate-release.outputs.version }}" \
+            --commit "${{ needs.validate-release.outputs.commit }}"
+          node npm/scripts/verify-zcode-marketplace.mjs \
+            --root npm/zcode-release/marketplace \
+            --version "${{ needs.validate-release.outputs.version }}" \
+            --commit "${{ needs.validate-release.outputs.commit }}" \
+            --require-release-signatures
+      - name: Configure optional first-release bootstrap authentication
         shell: bash
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
-          NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/xuanling-bootstrap.npmrc
+          NPM_BOOTSTRAP_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
         run: |
           set -euo pipefail
-          umask 077
-          trap 'rm -f "$NPM_CONFIG_USERCONFIG"' EXIT
-          if [ -n "${NODE_AUTH_TOKEN:-}" ]; then
-            printf '//registry.npmjs.org/:_authToken=%s\n' "$NODE_AUTH_TOKEN" > "$NPM_CONFIG_USERCONFIG"
+          if [ -n "${NPM_BOOTSTRAP_TOKEN:-}" ]; then
+            umask 077
+            NPMRC="$RUNNER_TEMP/xuanling-bootstrap.npmrc"
+            printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_BOOTSTRAP_TOKEN" > "$NPMRC"
+            echo "NPM_CONFIG_USERCONFIG=$NPMRC" >> "$GITHUB_ENV"
           fi
-          node npm/scripts/publish-idempotent.mjs \
-            --manifest npm/release/npm-darwin-arm64/darwin-arm64.pack.json \
-            --tag platform-darwin-arm64
-      - name: Publish remaining native variants with npm Trusted Publishing
+      - name: Publish native variants
         run: |
           set -euo pipefail
-          for TARGET in linux-x64-gnu win32-x64-msvc; do
+          for TARGET in darwin-arm64 linux-x64-gnu win32-x64-msvc; do
             node npm/scripts/publish-idempotent.mjs \
               --manifest "npm/release/npm-$TARGET/$TARGET.pack.json" \
               --tag "platform-$TARGET"
           done
-      - name: Publish stable launcher last with npm Trusted Publishing
+      - name: Publish stable launcher
         run: |
           node npm/scripts/publish-idempotent.mjs \
             --manifest npm/release/npm-main/main.pack.json \
             --tag latest
+      - name: Publish DSH bundles
+        run: |
+          set -euo pipefail
+          for PACKAGE in \
+            xuanling-dsh-memory \
+            xuanling-dsh-skills \
+            xuanling-dsh-tools \
+            xuanling-dsh-tools-replace; do
+            node npm/scripts/publish-idempotent.mjs \
+              --manifest "npm/dsh-release/$PACKAGE/$PACKAGE.pack.json" \
+              --tag latest
+          done
+      - name: Reconcile all eight immutable registry items
+        run: |
+          node npm/scripts/verify-published-release.mjs \
+            --core-root npm/release \
+            --dsh-root npm/dsh-release \
+            --version "${{ needs.validate-release.outputs.version }}"
+      - name: Remove bootstrap authentication material
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/xuanling-bootstrap.npmrc"
+
+  promote:
+    name: directly promote verified ZCode marketplace
+    needs: [validate-release, publish, zcode-prerequisites]
+    runs-on: ubuntu-latest
+    environment: zcode-packer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install supported npm CLI
+        run: npm install --global npm@11.6.2
+      - name: Revalidate exact target identity and push permission
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.XL_PUBLISH_TOKEN }}
+          TARGET_REPOSITORY: ${{ vars.ZCODE_REPOSITORY }}
+        run: |
+          set -euo pipefail
+          test "$TARGET_REPOSITORY" = "umbrella22/xuanling-zcode-marketplace"
+          test -n "$GH_TOKEN"
+          REPOSITORY=$(gh api "repos/$TARGET_REPOSITORY")
+          test "$(jq -r .full_name <<<"$REPOSITORY")" = "$TARGET_REPOSITORY"
+          test "$(jq -r .default_branch <<<"$REPOSITORY")" = "main"
+          test "$(jq -r '.permissions.push // false' <<<"$REPOSITORY")" = "true"
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.ZCODE_REPOSITORY }}
+          ref: main
+          fetch-depth: 0
+          path: target
+          token: ${{ secrets.XL_PUBLISH_TOKEN }}
+          persist-credentials: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: npm-*
+          path: npm/release
+          merge-multiple: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: dsh-bundles
+          path: npm/dsh-release
+      - uses: actions/download-artifact@v4
+        with:
+          name: zcode-marketplace
+          path: npm/zcode-release
+      - name: Reconcile registry and ZCode artifact before promotion
+        run: |
+          node npm/scripts/verify-published-release.mjs \
+            --core-root npm/release \
+            --dsh-root npm/dsh-release \
+            --version "${{ needs.validate-release.outputs.version }}"
+          node npm/scripts/verify-zcode-marketplace.mjs \
+            --root npm/zcode-release/marketplace \
+            --version "${{ needs.validate-release.outputs.version }}" \
+            --commit "${{ needs.validate-release.outputs.commit }}" \
+            --require-release-signatures
+      - name: Promote or verify immutable target tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.validate-release.outputs.version }}"
+          SOURCE_COMMIT="${{ needs.validate-release.outputs.commit }}"
+          TREE_SHA256=$(node -p "require('./npm/zcode-release/zcode-marketplace.pack.json').tree_sha256")
+          TAG="xuanling-mcp-v$VERSION"
+          INCOMING="$GITHUB_WORKSPACE/npm/zcode-release/marketplace"
+
+          git -C target fetch --force --tags origin
+          if git -C target rev-parse --verify --quiet "refs/tags/$TAG" >/dev/null; then
+            EXISTING="$RUNNER_TEMP/existing-zcode-tag"
+            git -C target worktree add --detach "$EXISTING" "$TAG"
+            trap 'git -C target worktree remove --force "$EXISTING"' EXIT
+            node npm/scripts/promote-zcode-marketplace.mjs \
+              --incoming "$INCOMING" \
+              --target "$EXISTING" \
+              --version "$VERSION" \
+              --source-commit "$SOURCE_COMMIT" \
+              --tree-sha256 "$TREE_SHA256" \
+              --mode compare-only
+            exit 0
+          fi
+
+          node npm/scripts/promote-zcode-marketplace.mjs \
+            --incoming "$INCOMING" \
+            --target "$GITHUB_WORKSPACE/target" \
+            --version "$VERSION" \
+            --source-commit "$SOURCE_COMMIT" \
+            --tree-sha256 "$TREE_SHA256" \
+            --mode promote
+          git -C target config user.name "xuanling-release[bot]"
+          git -C target config user.email "xuanling-release[bot]@users.noreply.github.com"
+          git -C target add marketplace.json plugins release-manifest.json
+          if ! git -C target diff --cached --quiet; then
+            git -C target commit -m "release: promote XuanLing MCP $VERSION"
+          fi
+          git -C target tag "$TAG"
+          git -C target push --atomic origin \
+            "HEAD:refs/heads/main" \
+            "refs/tags/$TAG"

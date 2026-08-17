@@ -108,4 +108,4 @@ sibling project 之间发生召回泄漏。
 - DeepSeek Harness 集成：<https://github.com/umbrella22/xuanling/tree/main/integrations/deepseek-harness>
 - Issues：<https://github.com/umbrella22/xuanling/issues>
 
-本项目可选择 Apache-2.0 或 MIT 许可证。
+本项目采用 [MIT License](LICENSE)。

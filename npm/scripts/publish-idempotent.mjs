@@ -1,5 +1,8 @@
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 
+import { classifyIntegrityLookup } from "./registry-release.mjs";
 import { parseArgs, readJson, requiredArg, run } from "./shared.mjs";
 
 const args = parseArgs(process.argv.slice(2));
@@ -14,32 +17,27 @@ if (!/^[a-z][a-z0-9-]*$/.test(tag)) {
 }
 const manifest = await readJson(manifestPath);
 const specifier = `${manifest.name}@${manifest.version}`;
+const tarballPath = path.join(path.dirname(manifestPath), manifest.filename);
+const tarball = await readFile(tarballPath);
+const localIntegrity = `sha512-${createHash("sha512").update(tarball).digest("base64")}`;
+if (localIntegrity !== manifest.integrity) {
+  throw new Error(`${specifier} local tarball integrity does not match its pack manifest`);
+}
 const lookup = await run(
   "npm",
   ["view", specifier, "dist.integrity", "--json", "--registry", registry],
   { allowFailure: true },
 );
 
-if (lookup.exitCode === undefined) {
-  const publishedIntegrity = JSON.parse(lookup.stdout);
-  if (typeof publishedIntegrity !== "string" || publishedIntegrity.length === 0) {
-    throw new Error(
-      `${specifier} registry lookup returned an invalid integrity: ${lookup.stdout.trim()}`,
-    );
-  }
-  if (publishedIntegrity !== manifest.integrity) {
-    throw new Error(
-      `${specifier} already exists with integrity ${publishedIntegrity}; local tarball is ${manifest.integrity}`,
-    );
-  }
+const decision = classifyIntegrityLookup(lookup, {
+  expectedIntegrity: manifest.integrity,
+  specifier,
+});
+if (decision.action === "skip") {
   console.log(`${specifier} already exists with matching integrity; publish skipped`);
   process.exit(0);
 }
-if (!`${lookup.stdout}\n${lookup.stderr}`.includes("E404")) {
-  throw new Error(`Unable to query ${specifier}:\n${lookup.stderr || lookup.stdout}`);
-}
 
-const tarballPath = path.join(path.dirname(manifestPath), manifest.filename);
 await run("npm", [
   "publish",
   tarballPath,
@@ -50,4 +48,22 @@ await run("npm", [
   "--registry",
   registry,
 ]);
-console.log(`published ${specifier} with dist-tag ${tag}`);
+let reconciled = false;
+for (let attempt = 0; attempt < 6; attempt += 1) {
+  const published = await run(
+    "npm",
+    ["view", specifier, "dist.integrity", "--json", "--registry", registry],
+    { allowFailure: true },
+  );
+  const reconciliation = classifyIntegrityLookup(published, {
+    expectedIntegrity: manifest.integrity,
+    specifier,
+  });
+  if (reconciliation.action === "skip") {
+    reconciled = true;
+    break;
+  }
+  if (attempt < 5) await new Promise((resolve) => setTimeout(resolve, 2_000));
+}
+if (!reconciled) throw new Error(`${specifier} did not become visible after publish reconciliation`);
+console.log(`published and reconciled ${specifier} with dist-tag ${tag}`);

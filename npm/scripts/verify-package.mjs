@@ -9,6 +9,7 @@ import {
   platformVersion,
 } from "../packages/xuanling-mcp/lib/targets.js";
 import { parseArgs, readJson, requiredArg, sha256File } from "./shared.mjs";
+import { verifyReleaseSignature } from "./release-signature.mjs";
 
 const args = parseArgs(process.argv.slice(2));
 if ((args.main === undefined) === (args.platform === undefined)) {
@@ -27,6 +28,7 @@ if (args.main !== undefined) {
   const directory = path.resolve(requiredArg(args, "main"));
   const packageJson = await readJson(path.join(directory, "package.json"));
   assert.equal(packageJson.name, PACKAGE_NAME);
+  assert.equal(packageJson.license, "MIT");
   assert.match(packageJson.version, /^\d+\.\d+\.\d+$/);
   assert.deepEqual(
     packageJson.optionalDependencies,
@@ -42,8 +44,7 @@ if (args.main !== undefined) {
   await stat(path.join(directory, "bin", "xuanling-mcp.js"));
   await stat(path.join(directory, "lib", "launcher.js"));
   await stat(path.join(directory, "lib", "targets.js"));
-  await stat(path.join(directory, "LICENSE-APACHE"));
-  await stat(path.join(directory, "LICENSE-MIT"));
+  await stat(path.join(directory, "LICENSE"));
   await stat(path.join(directory, "README.md"));
   await stat(path.join(directory, "README-ZH.md"));
   console.log(`main npm package OK: ${packageJson.name}@${packageJson.version}`);
@@ -57,6 +58,7 @@ if (args.main !== undefined) {
   }
   const packageJson = await readJson(path.join(directory, "package.json"));
   assert.equal(packageJson.name, PACKAGE_NAME);
+  assert.equal(packageJson.license, "MIT");
   assert.equal(packageJson.version, platformVersion(releaseVersion, targetId));
   assert.deepEqual(packageJson.os, [target.os]);
   assert.deepEqual(packageJson.cpu, [target.cpu]);
@@ -65,6 +67,9 @@ if (args.main !== undefined) {
   assert.equal(packageJson.xuanlingBinary?.binary, target.binary);
   assert.match(packageJson.xuanlingBinary?.sourceCommit ?? "", /^[0-9a-f]{40}$/);
   assert.match(packageJson.xuanlingBinary?.sha256 ?? "", /^[0-9a-f]{64}$/);
+  if (args["require-release-signature"] === true) {
+    verifyReleaseSignature(packageJson.xuanlingBinary?.signature, targetId);
+  }
   assert.equal(packageJson.dependencies, undefined);
   assert.equal(packageJson.optionalDependencies, undefined);
   assert.equal(packageJson.bin, undefined);
@@ -73,6 +78,7 @@ if (args.main !== undefined) {
   }
   const binaryPath = path.join(directory, target.binary);
   assert.equal(await sha256File(binaryPath), packageJson.xuanlingBinary.sha256);
+  await stat(path.join(directory, "LICENSE"));
   assert.ok((await stat(path.join(directory, "THIRD_PARTY_LICENSES.txt"))).size > 0);
   if (target.os !== "win32") {
     assert.notEqual((await stat(binaryPath)).mode & 0o111, 0, "native binary must be executable");

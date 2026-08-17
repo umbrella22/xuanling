@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { test } from "node:test";
+import { pathToFileURL } from "node:url";
 
 // DeepSeek Harness bundle contract (integrations/deepseek-harness):
 //   - all bundles declare the dsh bundle manifest and pin the npm package
@@ -208,14 +212,21 @@ test("bundle manifests declare the dsh bundle and pin the npm version", () => {
     const manifest = readJson(path.join(bundle, "package.json"));
     assert.equal(manifest.dsh?.bundle?.patch, "./cordis.patch.yml", `${bundle}: dsh.bundle.patch`);
     assert.equal(manifest.version, npmPackage.version, `${bundle}: version tracks the npm package`);
-    assert.equal(manifest.license, "MIT OR Apache-2.0", `${bundle}: license`);
+    assert.equal(manifest.license, "MIT", `${bundle}: license`);
     assert.ok(
       manifest.dependencies?.["@deepseek-ai/dsh-mcp-client"] === "^0.1.0-rc.5",
       `${bundle}: pins the harness MCP bridge package`,
     );
     const expectedFiles = bundle === "xuanling-memory"
-      ? ["cordis.patch.yml", "schema-adapter.mjs", "schema-projection.mjs"]
-      : ["cordis.patch.yml"];
+      ? [
+          "LICENSE",
+          "README.md",
+          "README-ZH.md",
+          "cordis.patch.yml",
+          "schema-adapter.mjs",
+          "schema-projection.mjs",
+        ]
+      : ["LICENSE", "README.md", "README-ZH.md", "cordis.patch.yml"];
     assert.deepEqual(manifest.files, expectedFiles, `${bundle}: ships the declared runtime files`);
   }
   const additive = readJson(path.join("xuanling-tools", "package.json"));
@@ -225,6 +236,70 @@ test("bundle manifests declare the dsh bundle and pin the npm version", () => {
   assert.equal(memory.name, "xuanling-dsh-memory");
   assert.deepEqual(memory.bin, { "xuanling-dsh-schema-adapter": "schema-adapter.mjs" });
   assert.equal(replace.name, "xuanling-dsh-tools-replace");
+});
+
+test("tool bundles depend on the exact profile-local XuanLing runtime", () => {
+  const runtime = JSON.parse(
+    readFileSync(path.join(repoRoot, "npm", "packages", "xuanling-mcp", "package.json"), "utf8"),
+  );
+  for (const bundle of bundles) {
+    const manifest = readJson(path.join(bundle, "package.json"));
+    assert.equal(
+      manifest.dependencies?.["xuanling-mcp"],
+      runtime.version,
+      `${bundle}: installs the exact launcher and optional native dependency into the DSH profile`,
+    );
+    assert.equal(manifest.private, false, `${bundle}: publishable bundle`);
+    assert.deepEqual(manifest.scripts, undefined, `${bundle}: no install-time lifecycle scripts`);
+  }
+});
+
+test("tool bundle patches resolve the launcher from their profile-local dependency", () => {
+  const localLauncher =
+    "process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('xuanling-mcp/bin/xuanling-mcp.js')";
+
+  for (const bundle of fullCatalogBundles) {
+    const config = mountRow(readText(path.join(bundle, "cordis.patch.yml"))).config;
+    assert.deepEqual(config.command, { js: "process.execPath" }, `${bundle}: Node launches the JS shim`);
+    assert.deepEqual(config.args[0], { js: localLauncher }, `${bundle}: profile-local launcher path`);
+  }
+
+  const memoryConfig = mountRow(readText(path.join("xuanling-memory", "cordis.patch.yml"))).config;
+  const separator = memoryConfig.args.indexOf("--");
+  assert.notEqual(separator, -1, "memory adapter separates its argv from the child argv");
+  assert.deepEqual(memoryConfig.args.slice(separator + 1, separator + 2), [{ js: localLauncher }]);
+
+  for (const bundle of bundles) {
+    const patch = readText(path.join(bundle, "cordis.patch.yml"));
+    assert.doesNotMatch(patch, /\?\?\s*['"]xuanling-mcp['"]|npm\s+(?:i|install)\s+-g|from PATH/i);
+  }
+});
+
+test("profile-local launcher resolution works with no global command on PATH", () => {
+  const profile = mkdtempSync(path.join(os.tmpdir(), "xuanling-dsh-profile-"));
+  try {
+    const bundleRoot = path.join(profile, "node_modules", "xuanling-dsh-tools");
+    const runtimeRoot = path.join(profile, "node_modules", "xuanling-mcp");
+    mkdirSync(path.join(runtimeRoot, "bin"), { recursive: true });
+    mkdirSync(bundleRoot, { recursive: true });
+    writeFileSync(path.join(bundleRoot, "package.json"), '{"name":"xuanling-dsh-tools"}\n');
+    writeFileSync(path.join(runtimeRoot, "package.json"), '{"name":"xuanling-mcp"}\n');
+    writeFileSync(
+      path.join(runtimeRoot, "bin", "xuanling-mcp.js"),
+      'process.stdout.write(JSON.stringify(process.argv.slice(2)));\n',
+    );
+
+    const baseUrl = pathToFileURL(path.join(bundleRoot, "package.json"));
+    const launcher = createRequire(baseUrl).resolve("xuanling-mcp/bin/xuanling-mcp.js");
+    const result = spawnSync(process.execPath, [launcher, "--profile-local"], {
+      encoding: "utf8",
+      env: { PATH: "" },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), ["--profile-local"]);
+  } finally {
+    rmSync(profile, { force: true, recursive: true });
+  }
 });
 
 test("all patches mount the bridge with the documented xuanling identity", () => {
@@ -241,12 +316,8 @@ test("all patches mount the bridge with the documented xuanling identity", () =>
 
   for (const bundle of fullCatalogBundles) {
     const config = mountRow(readText(path.join(bundle, "cordis.patch.yml"))).config;
-    assert.deepEqual(
-      config.command,
-      { js: "process.env.XUANLING_MCP_BIN ?? 'xuanling-mcp'" },
-      `${bundle}: binary resolution (env override, PATH fallback)`,
-    );
-    assert.deepEqual(config.args.slice(0, 2), [
+    assert.deepEqual(config.command, { js: "process.execPath" }, `${bundle}: Node runtime`);
+    assert.deepEqual(config.args.slice(1, 3), [
       "--workspace-root",
       { js: "process.env.XUANLING_WORKSPACE_ROOT ?? process.cwd()" },
     ]);
@@ -258,10 +329,13 @@ test("all patches mount the bridge with the documented xuanling identity", () =>
     memoryConfig.args[0].js,
     /XUANLING_DSH_SCHEMA_ADAPTER.*xuanling-dsh-memory\/schema-adapter\.mjs/,
   );
-  assert.deepEqual(memoryConfig.args.slice(1, 6), [
+  assert.deepEqual(memoryConfig.args.slice(1, 7), [
     "--binary",
-    { js: "process.env.XUANLING_MCP_BIN ?? 'xuanling-mcp'" },
+    { js: "process.execPath" },
     "--",
+    {
+      js: "process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('xuanling-mcp/bin/xuanling-mcp.js')",
+    },
     "--workspace-root",
     { js: "process.env.XUANLING_WORKSPACE_ROOT ?? process.cwd()" },
   ]);
@@ -378,9 +452,9 @@ test("README documents the mount and the legacy tool surface stays out", () => {
   const readme = readText("README.md");
   assert.ok(readme.includes("mcp__xuanling__"), "public name shape documented");
   assert.ok(readme.includes("dsh plugin --profile"), "profile install path documented");
-  assert.ok(readme.includes("XUANLING_MCP_BIN"), "binary resolution documented");
-  assert.ok(readme.includes("xuanling-memory"), "recommended memory bundle documented");
-  assert.ok(readme.includes("XUANLING_DSH_SCHEMA_ADAPTER"), "source adapter resolution documented");
+  assert.ok(readme.includes("xuanling-dsh-memory@0.2.1"), "recommended memory bundle documented");
+  assert.ok(readme.includes("Profile-local `xuanling-mcp@0.2.1`"), "local runtime documented");
+  assert.doesNotMatch(readme, /npm\s+(?:i|install)\s+(?:--global|-g)|XUANLING_MCP_BIN/);
   const legacyNames = [
     "memory_put",
     "memory_update",

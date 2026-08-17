@@ -22,7 +22,7 @@ export function resolveNativeBinary(
     packageJsonPath = resolvePackageJson(`${target.alias}/package.json`);
   } catch {
     throw new Error(
-      `Missing optional dependency ${target.alias}. Reinstall with: npm install -g xuanling-mcp@latest`,
+      `Missing optional dependency ${target.alias}. Reinstall the current xuanling-mcp package before retrying`,
     );
   }
 
@@ -41,7 +41,7 @@ export function resolveNativeBinary(
   const binaryPath = path.join(path.dirname(packageJsonPath), metadata.binary);
   if (!existsSync(binaryPath)) {
     throw new Error(
-      `Native binary is missing from ${target.alias}. Reinstall xuanling-mcp before retrying`,
+      `Native binary is missing from ${target.alias}. Reinstall the current xuanling-mcp package before retrying`,
     );
   }
   const actualSha256 = createHash("sha256")
@@ -49,7 +49,7 @@ export function resolveNativeBinary(
     .digest("hex");
   if (actualSha256 !== metadata.sha256) {
     throw new Error(
-      `Native binary checksum mismatch in ${target.alias}. Reinstall xuanling-mcp before retrying`,
+      `Native binary checksum mismatch in ${target.alias}. Reinstall the current xuanling-mcp package before retrying`,
     );
   }
   return binaryPath;

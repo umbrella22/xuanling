@@ -119,4 +119,4 @@ database is `~/.xuanling/memory.db`; use `--memory-db <PATH>` to override it.
 - DeepSeek Harness integration: <https://github.com/umbrella22/xuanling/tree/main/integrations/deepseek-harness>
 - Issues: <https://github.com/umbrella22/xuanling/issues>
 
-Licensed under either Apache-2.0 or MIT, at your option.
+Licensed under the [MIT License](LICENSE).

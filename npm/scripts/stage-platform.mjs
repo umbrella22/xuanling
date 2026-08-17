@@ -2,6 +2,7 @@ import { chmod, copyFile, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { TARGETS, platformVersion } from "../packages/xuanling-mcp/lib/targets.js";
+import { signatureFromArgs } from "./release-signature.mjs";
 import {
   MAIN_PACKAGE_DIR,
   currentCommit,
@@ -30,6 +31,7 @@ if (!/^[0-9a-f]{40}$/.test(sourceCommit)) {
 const mainPackage = await readJson(path.join(MAIN_PACKAGE_DIR, "package.json"));
 const releaseVersion = mainPackage.version;
 const binarySha256 = await sha256File(binarySource);
+const signature = signatureFromArgs(args, targetId);
 
 await rm(outputDirectory, { force: true, recursive: true });
 await mkdir(path.join(outputDirectory, "bin"), { recursive: true });
@@ -39,23 +41,20 @@ await copyFile(binarySource, binaryDestination);
 if (target.os !== "win32") {
   await chmod(binaryDestination, 0o755);
 }
-for (const fileName of ["LICENSE-APACHE", "LICENSE-MIT"]) {
-  await copyFile(path.join(MAIN_PACKAGE_DIR, fileName), path.join(outputDirectory, fileName));
-}
+await copyFile(path.join(MAIN_PACKAGE_DIR, "LICENSE"), path.join(outputDirectory, "LICENSE"));
 await copyFile(noticesSource, path.join(outputDirectory, "THIRD_PARTY_LICENSES.txt"));
 
 const packageJson = {
   name: "xuanling-mcp",
   version: platformVersion(releaseVersion, targetId),
   description: `Native XuanLing MCP binary for ${target.rustTarget}.`,
-  license: "MIT OR Apache-2.0",
+  license: "MIT",
   author: "umbrella22 and XuanLing contributors",
   os: [target.os],
   cpu: [target.cpu],
   files: [
     "bin",
-    "LICENSE-APACHE",
-    "LICENSE-MIT",
+    "LICENSE",
     "THIRD_PARTY_LICENSES.txt",
   ],
   homepage: mainPackage.homepage,
@@ -68,6 +67,7 @@ const packageJson = {
     sha256: binarySha256,
     sourceCommit,
     target: target.rustTarget,
+    ...(signature ? { signature } : {}),
   },
 };
 await writeFile(path.join(outputDirectory, "package.json"), stableJson(packageJson));

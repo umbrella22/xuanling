@@ -225,4 +225,4 @@ assembly and publishing are documented in [`npm/README.md`](npm/README.md).
 
 ## License
 
-Licensed under either Apache-2.0 or MIT, at your option.
+Licensed under the [MIT License](LICENSE).

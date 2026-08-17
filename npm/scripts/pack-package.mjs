@@ -38,8 +38,7 @@ const paths = result.files.map((file) => file.path).sort();
 const expectedPaths =
   kind === "main"
     ? [
-        "LICENSE-APACHE",
-        "LICENSE-MIT",
+        "LICENSE",
         "README-ZH.md",
         "README.md",
         "bin/xuanling-mcp.js",
@@ -48,8 +47,7 @@ const expectedPaths =
         "package.json",
       ]
     : [
-        "LICENSE-APACHE",
-        "LICENSE-MIT",
+        "LICENSE",
         "THIRD_PARTY_LICENSES.txt",
         platformTarget.binary,
         "package.json",

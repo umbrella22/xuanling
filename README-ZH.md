@@ -200,4 +200,4 @@ npm --prefix npm test
 
 ## 许可证
 
-本项目可选择 Apache-2.0 或 MIT 许可证。
+本项目采用 [MIT License](LICENSE)。

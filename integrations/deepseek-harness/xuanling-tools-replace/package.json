@@ -2,17 +2,38 @@
   "name": "xuanling-dsh-tools-replace",
   "version": "0.2.1",
   "description": "DeepSeek Harness bundle: mount the XuanLing MCP server as native mcp__xuanling__* tools AND retire the built-in filesystem tool rows (tool-fs, tool-fs-search, tool-str-replace-editor) so XuanLing becomes the model-facing filesystem layer.",
-  "license": "MIT OR Apache-2.0",
+  "license": "MIT",
   "private": false,
   "dependencies": {
-    "@deepseek-ai/dsh-mcp-client": "^0.1.0-rc.5"
+    "@deepseek-ai/dsh-mcp-client": "^0.1.0-rc.5",
+    "xuanling-mcp": "0.2.1"
   },
   "files": [
+    "LICENSE",
+    "README.md",
+    "README-ZH.md",
     "cordis.patch.yml"
   ],
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
     }
+  },
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "homepage": "https://github.com/umbrella22/xuanling/tree/main/integrations/deepseek-harness#readme",
+  "bugs": {
+    "url": "https://github.com/umbrella22/xuanling/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/umbrella22/xuanling.git",
+    "directory": "integrations/deepseek-harness/xuanling-tools-replace"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "registry": "https://registry.npmjs.org"
   }
 }

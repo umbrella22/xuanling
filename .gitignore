@@ -1,8 +1,6 @@
 target/*
 npm/dist/*
 npm/node_modules/
-docs/*
-
 .rust-skills/*
 # macOS / editor junk
 .DS_Store

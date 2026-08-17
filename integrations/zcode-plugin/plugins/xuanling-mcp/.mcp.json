@@ -3,9 +3,9 @@
     "xuanling": {
       "command": "node",
       "args": [
-        "${CLAUDE_PLUGIN_ROOT}/bin/node_modules/xuanling-mcp/bin/xuanling-mcp.js",
+        "${ZCODE_PLUGIN_ROOT}/bin/node_modules/xuanling-mcp/bin/xuanling-mcp.js",
         "--workspace-root",
-        "${CLAUDE_PROJECT_DIR}",
+        "${ZCODE_PROJECT_DIR}",
         "--compat-lenient-object-params"
       ]
     }

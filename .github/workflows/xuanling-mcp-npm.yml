@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - "npm/**"
+      - "integrations/deepseek-harness/**"
+      - "integrations/zcode-plugin/**"
+      - "test/release/**"
+      - "LICENSE"
       - "crates/xuanling-mcp/**"
       - "crates/xuanling-toolkit/**"
       - "crates/xuanling-memory/**"
@@ -16,6 +20,10 @@ on:
     branches: [main]
     paths:
       - "npm/**"
+      - "integrations/deepseek-harness/**"
+      - "integrations/zcode-plugin/**"
+      - "test/release/**"
+      - "LICENSE"
       - "crates/xuanling-mcp/**"
       - "crates/xuanling-toolkit/**"
       - "crates/xuanling-memory/**"

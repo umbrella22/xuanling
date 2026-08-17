@@ -2,15 +2,19 @@
   "name": "xuanling-dsh-memory",
   "version": "0.2.1",
   "description": "Recommended DeepSeek Harness bundle: add the complete XuanLing Memory v2 profile while retaining DSH's native tools.",
-  "license": "MIT OR Apache-2.0",
+  "license": "MIT",
   "private": false,
   "bin": {
     "xuanling-dsh-schema-adapter": "schema-adapter.mjs"
   },
   "dependencies": {
-    "@deepseek-ai/dsh-mcp-client": "^0.1.0-rc.5"
+    "@deepseek-ai/dsh-mcp-client": "^0.1.0-rc.5",
+    "xuanling-mcp": "0.2.1"
   },
   "files": [
+    "LICENSE",
+    "README.md",
+    "README-ZH.md",
     "cordis.patch.yml",
     "schema-adapter.mjs",
     "schema-projection.mjs"
@@ -19,5 +23,22 @@
     "bundle": {
       "patch": "./cordis.patch.yml"
     }
+  },
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "homepage": "https://github.com/umbrella22/xuanling/tree/main/integrations/deepseek-harness#readme",
+  "bugs": {
+    "url": "https://github.com/umbrella22/xuanling/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/umbrella22/xuanling.git",
+    "directory": "integrations/deepseek-harness/xuanling-memory"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "registry": "https://registry.npmjs.org"
   }
 }

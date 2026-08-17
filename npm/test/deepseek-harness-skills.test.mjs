@@ -189,9 +189,12 @@ test("the skills bundle manifest declares the dsh bundle and pins its dependenci
   const manifest = JSON.parse(readBundle("package.json"));
   assert.equal(manifest.name, "xuanling-dsh-skills");
   assert.equal(manifest.version, npmPackage.version, "version tracks the npm package");
-  assert.equal(manifest.license, "MIT OR Apache-2.0");
+  assert.equal(manifest.license, "MIT");
   assert.equal(manifest.dsh?.bundle?.patch, "./cordis.patch.yml");
   assert.deepEqual(manifest.files, [
+    "LICENSE",
+    "README.md",
+    "README-ZH.md",
     "cordis.patch.yml",
     "strict-overwrite-policy.mjs",
     "skills/xuanling-file-workflow/SKILL.md",
