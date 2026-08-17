@@ -45,6 +45,7 @@ await run("npm", [
   "public",
   "--tag",
   tag,
+  "--provenance",
   "--registry",
   registry,
 ]);

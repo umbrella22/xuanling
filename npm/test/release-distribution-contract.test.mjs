@@ -19,6 +19,18 @@ function workflow() {
   return readFileSync(workflowPath, "utf8");
 }
 
+function workflowJob(source, name) {
+  const marker = `\n  ${name}:\n`;
+  const start = source.indexOf(marker);
+  assert.notEqual(start, -1, `release workflow is missing job ${name}`);
+  const tail = source.slice(start + marker.length);
+  const nextJob = /\n  [a-z][a-z0-9-]*:\n/.exec(tail);
+  const end = nextJob === null
+    ? source.length
+    : start + marker.length + nextJob.index;
+  return source.slice(start, end);
+}
+
 test("shared runner invokes the Windows npm CLI directly without rewriting native executables", () => {
   const npmCliPath = "C:\\node\\node_modules\\npm\\bin\\npm-cli.js";
   assert.deepEqual(
@@ -180,21 +192,49 @@ test("ZCode target bootstrap template contains documentation only", async () => 
   assert.equal(existsSync(path.join(template, ".github")), false);
 });
 
-test("release workflow signs and verifies publisher bytes before package staging", () => {
+test("release workflow requires provenance and attestation without publisher certificates", () => {
   const source = workflow();
   const build = source.indexOf("Build locked release binary");
-  const macSign = source.indexOf("Sign macOS binary with Developer ID Application");
-  const macVerify = source.indexOf("Verify macOS publisher signature");
-  const windowsSign = source.indexOf("Sign Windows binary with Authenticode");
-  const windowsVerify = source.indexOf("Verify Windows publisher signature");
-  const stage = source.indexOf("Stage signed native package");
-  for (const [name, position] of Object.entries({ build, macSign, macVerify, windowsSign, windowsVerify, stage })) {
+  const stage = source.indexOf("Stage native package with explicit release trust");
+  const attest = source.indexOf("Attest immutable ZCode marketplace archive");
+  for (const [name, position] of Object.entries({ build, stage, attest })) {
     assert.notEqual(position, -1, `release workflow is missing ${name}`);
   }
-  assert.ok(build < macSign && macSign < macVerify && macVerify < stage, "macOS sign -> verify -> stage");
-  assert.ok(build < windowsSign && windowsSign < windowsVerify && windowsVerify < stage, "Windows sign -> verify -> stage");
-  assert.match(source, /timestamp/i, "Authenticode signing must use a timestamp service");
+  assert.ok(build < stage, "native bytes are hashed and staged after the locked build");
+  assert.match(source, /actions\/attest-build-provenance@v2/);
+  assert.match(source, /attestations: write/);
+  assert.match(source, /id-token: write/);
+  assert.doesNotMatch(source, /environment: release-signing/);
+  assert.doesNotMatch(source, /MACOS_CERTIFICATE|WINDOWS_CERTIFICATE|WINDOWS_TIMESTAMP_URL/);
   assert.doesNotMatch(source, /codesign\s+(?:--sign\s+-|-s\s+-)/, "ad-hoc signing is not a release substitute");
+
+  const publisher = readFileSync(
+    path.join(repoRoot, "npm", "scripts", "publish-idempotent.mjs"),
+    "utf8",
+  );
+  assert.match(publisher, /"--provenance"/);
+});
+
+test("release workflow has a no-tag preflight for npm and ZCode credentials", () => {
+  const source = workflow();
+  assert.match(source, /workflow_dispatch:/);
+  assert.match(source, /environment: npmjs/);
+  assert.match(source, /npm whoami/);
+  assert.match(source, /NPM_CONFIG_USERCONFIG/);
+  for (const job of [
+    "build-main",
+    "build-native",
+    "build-dsh",
+    "assemble-release",
+    "publish",
+    "promote",
+  ]) {
+    assert.match(
+      workflowJob(source, job),
+      /if: github\.event_name == 'push'/,
+      `${job} must stay disabled during a manual preflight`,
+    );
+  }
 });
 
 test("release workflow publishes the complete ordered npm set", () => {

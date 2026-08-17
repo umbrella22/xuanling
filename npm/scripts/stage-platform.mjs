@@ -2,7 +2,7 @@ import { chmod, copyFile, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { TARGETS, platformVersion } from "../packages/xuanling-mcp/lib/targets.js";
-import { signatureFromArgs } from "./release-signature.mjs";
+import { releaseTrustFromArgs } from "./release-signature.mjs";
 import {
   MAIN_PACKAGE_DIR,
   currentCommit,
@@ -31,7 +31,7 @@ if (!/^[0-9a-f]{40}$/.test(sourceCommit)) {
 const mainPackage = await readJson(path.join(MAIN_PACKAGE_DIR, "package.json"));
 const releaseVersion = mainPackage.version;
 const binarySha256 = await sha256File(binarySource);
-const signature = signatureFromArgs(args, targetId);
+const releaseTrust = releaseTrustFromArgs(args, targetId);
 
 await rm(outputDirectory, { force: true, recursive: true });
 await mkdir(path.join(outputDirectory, "bin"), { recursive: true });
@@ -67,7 +67,7 @@ const packageJson = {
     sha256: binarySha256,
     sourceCommit,
     target: target.rustTarget,
-    ...(signature ? { signature } : {}),
+    releaseTrust,
   },
 };
 await writeFile(path.join(outputDirectory, "package.json"), stableJson(packageJson));

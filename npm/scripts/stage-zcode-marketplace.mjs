@@ -155,7 +155,7 @@ await run(process.execPath, [
   "--root", releaseRoot,
   "--version", version,
   "--commit", sourceCommit,
-  ...(args["require-release-signatures"] === true ? ["--require-release-signatures"] : []),
+  ...(args["require-release-trust"] === true ? ["--require-release-trust"] : []),
 ]);
 
 const templateRoot = path.join(REPO_ROOT, "integrations", "zcode-plugin");
@@ -190,13 +190,13 @@ for (const [targetId, target] of Object.entries(TARGETS)) {
     binary: target.binary,
     rust_target: target.rustTarget,
     sha256: packageJson.xuanlingBinary.sha256,
-    signature: packageJson.xuanlingBinary.signature ?? { kind: "unverified" },
+    release_trust: packageJson.xuanlingBinary.releaseTrust,
   };
 }
 
 const payload = await describeTree(outputRoot);
 const releaseManifest = {
-  schema_version: 1,
+  schema_version: 2,
   version,
   source_commit: sourceCommit,
   payload_sha256: payload.sha256,

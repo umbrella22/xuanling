@@ -3,10 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
-import {
-  signatureFromArgs,
-  verifyReleaseSignature,
-} from "../scripts/release-signature.mjs";
+import * as releaseTrustModule from "../scripts/release-signature.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 
@@ -46,29 +43,65 @@ test("launcher recovery never recommends a global or floating install", async ()
   assert.match(source, /reinstall the current [^\n]+ package|reinstall[^\n]+profile/i);
 });
 
-test("release signature metadata is target-specific and fail-closed", () => {
-  const darwin = signatureFromArgs({
-    "signature-kind": "developer-id-application",
-    "signature-identity": "Developer ID Application: Example (TEAMID)",
+test("release trust requires npm provenance and records publisher signing explicitly", () => {
+  assert.equal(
+    typeof releaseTrustModule.releaseTrustFromArgs,
+    "function",
+    "release trust staging must classify provenance separately from publisher signing",
+  );
+  assert.equal(
+    typeof releaseTrustModule.verifyReleaseTrust,
+    "function",
+    "release trust verification must reject malformed trust metadata",
+  );
+  const {
+    releaseTrustFromArgs,
+    verifyReleaseTrust,
+  } = releaseTrustModule;
+  const unsignedDarwin = releaseTrustFromArgs({}, "darwin-arm64");
+  const unsignedWindows = releaseTrustFromArgs({}, "win32-x64-msvc");
+  const signedDarwin = releaseTrustFromArgs({
+    "publisher-signature-kind": "developer-id-application",
+    "publisher-signature-identity": "Developer ID Application: Example (TEAMID)",
   }, "darwin-arm64");
-  const linux = signatureFromArgs({
-    "signature-kind": "npm-provenance",
-  }, "linux-x64-gnu");
-  const windows = signatureFromArgs({
-    "signature-kind": "authenticode",
-    "signature-identity": "CN=Example",
-    "signature-timestamped": "true",
+  const linux = releaseTrustFromArgs({}, "linux-x64-gnu");
+  const signedWindows = releaseTrustFromArgs({
+    "publisher-signature-kind": "authenticode",
+    "publisher-signature-identity": "CN=Example",
+    "publisher-signature-timestamped": "true",
   }, "win32-x64-msvc");
 
-  assert.doesNotThrow(() => verifyReleaseSignature(darwin, "darwin-arm64"));
-  assert.doesNotThrow(() => verifyReleaseSignature(linux, "linux-x64-gnu"));
-  assert.doesNotThrow(() => verifyReleaseSignature(windows, "win32-x64-msvc"));
+  assert.deepEqual(unsignedDarwin, {
+    npmProvenance: { status: "required-at-publish" },
+    publisherSigning: { status: "not-provided" },
+  });
+  assert.deepEqual(unsignedWindows, unsignedDarwin);
+  for (const [trust, targetId] of [
+    [unsignedDarwin, "darwin-arm64"],
+    [linux, "linux-x64-gnu"],
+    [unsignedWindows, "win32-x64-msvc"],
+    [signedDarwin, "darwin-arm64"],
+    [signedWindows, "win32-x64-msvc"],
+  ]) {
+    assert.doesNotThrow(() => verifyReleaseTrust(trust, targetId));
+  }
   assert.throws(
-    () => verifyReleaseSignature({ ...windows, timestamped: false }, "win32-x64-msvc"),
+    () => verifyReleaseTrust({
+      ...signedWindows,
+      publisherSigning: { ...signedWindows.publisherSigning, timestamped: false },
+    }, "win32-x64-msvc"),
     /timestamped/,
   );
   assert.throws(
-    () => signatureFromArgs({ "signature-kind": "authenticode" }, "darwin-arm64"),
+    () => releaseTrustFromArgs({ "publisher-signature-kind": "authenticode" }, "darwin-arm64"),
     /requires signature kind/,
+  );
+  assert.throws(
+    () => verifyReleaseTrust(undefined, "darwin-arm64"),
+    /missing release trust metadata/,
+  );
+  assert.throws(
+    () => releaseTrustFromArgs({}, "future-target"),
+    /Unknown release trust target/,
   );
 });

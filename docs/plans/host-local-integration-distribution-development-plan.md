@@ -4,8 +4,8 @@
 > 基线日期：2026-08-17。
 > 基线 revision：`c68ecfb01132f1daf9cdb0cf3e4572d42d987b4f`。
 > 缺陷等级：`CONFIRMED P1 release blocker`（当前 DSH 包依赖全局
-> `xuanling-mcp`，当前 ZCode 插件仅携带 Darwin ARM64）；签名凭据、ZCode 远程重装与
-> 杀毒软件信誉为 `UNVERIFIED_RISK`。
+> `xuanling-mcp`，当前 ZCode 插件仅携带 Darwin ARM64）；ZCode 远程重装与杀毒软件信誉为
+> `UNVERIFIED_RISK`。2026-08-17 经用户授权，平台发布者证书签名改为可选增强，不再是发布门禁。
 > 计划路径：`docs/plans/host-local-integration-distribution-development-plan.md`。
 > 执行账本：`docs/plans/host-local-integration-distribution-execution-ledger.md`。
 > 目标首发版本：`0.2.1`。
@@ -62,19 +62,20 @@ Failure：unsupported OS/CPU/libc、缺少 Node、platform package 不匹配或 
 Evidence：generated tree manifest、三平台 launcher smoke、ZCode clean install、MCP discovery 与
 至少一个 read-only tool call。
 
-#### C-04：发布 binary 在计算最终 hash 前完成发布者签名
+#### C-04：发布 binary 必须具有显式 release trust、provenance 与完整性证明
 
 Given：tag release 构建出的三个 native binary。
 When：进入 npm staging 和 ZCode marketplace staging。
-Then：macOS binary 使用 Developer ID Application 签名并通过 strict verification；Windows
-binary 使用有效 Authenticode 发布者证书和 timestamp 并显示 `Valid`；Linux 由 npm provenance、
-source commit 和 SHA-256 绑定；所有 package metadata 记录签名后的 byte hash。
-And not：不得使用 ad-hoc 签名冒充发布签名，不得在 hash 后再次 strip/sign，不使用 UPX，
-不得关闭杀毒软件或建议用户跳过安全检查。
-Failure：凭据缺失、证书过期、timestamp 失败、签名验证失败或签名后 hash 漂移时 release job
-在任何 build/publish 前失败。
-Evidence：`codesign`/Authenticode 验证输出、package `xuanlingBinary.sha256`、release manifest、
-npm provenance 和 artifact digest。
+Then：每个 native package 记录 source commit、binary SHA-256 与显式 `releaseTrust`；其中
+`npmProvenance.status=required-at-publish`，`publisherSigning` 必须明确为 `not-provided` 或经过验证的
+平台发布者签名。全部 npm item 使用 npm provenance 发布，ZCode archive 在 promotion 前生成
+GitHub OIDC build-provenance attestation。
+And not：不得用缺失字段表达 unsigned，不得使用 ad-hoc/self-signed 冒充发布者签名，不得在 hash
+后修改 binary，不使用 UPX，也不得关闭杀毒软件或建议用户跳过安全检查。
+Failure：release trust 缺失/畸形、hash 漂移、npm provenance 失败或 ZCode attestation 失败时
+release 停止；若未来提供发布者签名，则其身份、timestamp 或验证失败同样停止。
+Evidence：package `xuanlingBinary.releaseTrust`、binary SHA-256、release manifest schema v2、npm
+provenance、GitHub artifact attestation 与 archive digest。
 
 #### C-05：npm 发布顺序可恢复且不暴露悬空依赖
 
@@ -143,7 +144,8 @@ Evidence：allowed-path review、Git fingerprints、package file lists、default
 - 不支持 Darwin x64、Linux ARM64、musl 或 Windows ARM64；新增平台需要独立 target/package
   合同。
 - 不嵌入 Node runtime；ZCode 插件明确要求可执行的 Node.js，用户只是不需要全局 npm package。
-- 不承诺签名后杀毒软件零误报，也不通过压缩壳、白名单绕过或关闭保护来制造通过。
+- 不承诺 provenance、attestation 或未来可选签名能消除杀毒软件误报，也不通过压缩壳、白名单
+  绕过或关闭保护来制造通过。
 - 本计划生成本身不授权建仓、commit、push、tag、npm publish、GitHub Release 或 ZCode cache修改；
   这些动作只在 W5 取得独立外部授权后执行。2026-08-17 的执行授权已覆盖 source `main` push
   和空 target repository bootstrap；release tag、npm publish和 host install仍受各自 entry gate约束。
@@ -211,8 +213,8 @@ Evidence：allowed-path review、Git fingerprints、package file lists、default
   `XL_PUBLISH_TOKEN`，variable `ZCODE_REPOSITORY` 为
   `umbrella22/xuanling-zcode-marketplace`。secret value 未读取；实际授权必须由 authenticated API
   的 `permissions.push=true` 证明，Environment 名称存在本身不构成授权证据。
-- macOS Developer ID、Windows Authenticode和 npm bootstrap token availability 仍为 `UNKNOWN`；
-  只允许检查是否配置，不读取或记录 secret 值。
+- 平台发布者证书不是 0.2.1 发布前提；当前明确按 `publisherSigning.status=not-provided` 发布。
+  npm bootstrap token只允许检查是否配置和认证是否成功，不读取或记录 secret 值。
 
 ### 2.4 当前验证基线
 
@@ -222,8 +224,8 @@ Evidence：allowed-path review、Git fingerprints、package file lists、default
   `docs/`，但这不证明它们可提交。
 - `git diff --check`：通过；存在一个 THIRD_PARTY_LICENSES CRLF warning，无 whitespace error。
 - 当前本地 release binary SHA-256 分别为 `a81b5c79...`（host release）和
-  `5813718e...`（aarch64 target release）；它们未绑定本计划的发布者签名，不可复用为 release
-  artifact。
+  `5813718e...`（aarch64 target release）；它们未绑定 final source commit、npm provenance 与
+  ZCode attestation，不可复用为 release artifact。
 
 ### 2.5 事实分级
 
@@ -232,9 +234,9 @@ Evidence：allowed-path review、Git fingerprints、package file lists、default
 | DSH 默认依赖 PATH/global package | CONFIRMED P1 release blocker | clean profile 无全局命令即无法启动 | C-01 red/green + clean install |
 | ZCode plugin 只有 Darwin ARM64 | CONFIRMED P1 release blocker | Linux/Windows 必然缺 package | 三平台 generated tree + smoke |
 | plugin.json/.mcp.json 双 launch contract | CONFIRMED P1 release blocker | 不同 command/args 可漂移 | `.mcp.json` 成为唯一合同 |
-| 发布者签名凭据可用性 | UNKNOWN | 缺失则不能安全首发 | W4 preflight + 签名验证 |
+| 发布者签名凭据可用性 | NON_BLOCKING | 0.2.1 明确记录 `not-provided`；不影响 MCP 执行 | 未来有真实证书时另行启用并验证 |
 | ZCode remote reinstall 行为 | UNVERIFIED_RISK | 当前代码/文档支持，尚无新仓库 live 证据 | W5 local + remote-source transcript |
-| 杀毒软件误报概率 | UNVERIFIED_RISK | 签名降低但不消除信誉风险 | 记录签名/扫描事实，不承诺零误报 |
+| 杀毒软件误报概率 | UNVERIFIED_RISK | provenance/attestation 不等于 OS publisher reputation | 记录 trust/hash/扫描事实，不承诺零误报 |
 | ZCode 网页 npm source | NON_BLOCKING | 与 3.7.7 runtime 漂移 | 继续使用 GitHub source |
 
 ## 3. 已确认路径与目标路径
@@ -264,14 +266,14 @@ flowchart TD
 ```mermaid
 flowchart TD
     A["xuanling-mcp-v0.2.1 tag"] --> B["三平台 locked release build"]
-    B --> C["macOS/Windows publisher signing"]
-    C --> D["signed-byte SHA + smoke + npm pack"]
+    B --> C["explicit release trust + byte SHA"]
+    C --> D["MCP smoke + npm pack + provenance"]
     D --> E["发布 native prerelease variants"]
     E --> F["发布 stable xuanling-mcp launcher"]
     F --> G["发布四个 DSH bundles"]
 
     D --> H["生成一个 cross-platform ZCode plugin tree"]
-    H --> I["release manifest + archive digest"]
+    H --> I["release manifest + archive digest + OIDC attestation"]
     G --> J["registry integrity 全量一致"]
     I --> J
     J --> K["zcode-packer identity + push preflight"]
@@ -307,7 +309,7 @@ flowchart TD
 | ZCode 单独分发仓库 | C-06 | 仓库不存在 | generated GitHub marketplace | W3-W5 | target contract absent | target commit/tag |
 | ZCode 一个插件跨三平台 | C-03 | Darwin-only | 三 native aliases + selector | W1-W3 | missing platform packages | three-OS smoke |
 | `.mcp.json` 唯一 launch contract | C-03 | plugin.json inline command | component path reference | W1-W3 | dual-contract assertion | manifest verifier |
-| 降低未签名/杀毒风险 | C-04 | release workflow 未签名 | publisher sign before hash | W1/W4 | signing-order oracle | signature + SHA |
+| 降低分发与误报风险 | C-04 | 无显式 trust/attestation | provenance + explicit unsigned + SHA + attestation | W1/W4 | release-trust oracle | provenance/attestation + SHA |
 | CI 构建后推送分发仓库 | C-06 | 无 promotion | verified artifact + direct atomic push | W1/W4-W5 | direct-push contract absent | source workflow + target tag |
 | npm 发布顺序和失败恢复 | C-05 | 只发布 core | ordered idempotent eight-item set | W1/W4-W5 | order/integrity test | registry report |
 | integrations 仅保留 runtime | C-08 | ZCode staging script/binary 混在 source | template/runtime 与 test/generator 分离 | W2-W3 | package allowlist | final tree review |
@@ -323,7 +325,7 @@ flowchart TD
 | DSH package manifests | bundle metadata/deps/files | exact core dep、publish metadata、README | 四包身份/能力边界 | C-01/C-02 | pack verifier |
 | DSH patches/adapters | bridge/Skill host glue | local launcher resolution | profiles、strict overwrite、schema projection | C-01/C-02 | patch/probe tests |
 | npm main launcher | target select/hash/spawn | 去除 global-only recovery wording | target map、signal/exit behavior | C-01/C-03 | launcher unit tests |
-| native package staging | binary metadata/hash | signed-byte input | target/os/cpu/libc/notice | C-04/C-05 | verify-package |
+| native package staging | binary metadata/hash | release-trust input | target/os/cpu/libc/notice | C-04/C-05 | verify-package |
 | npm release workflow | build/publish core | sign、DSH pack/publish、ZCode artifact | native-before-main | C-04/C-05 | workflow contract/live run |
 | ZCode runtime template | plugin metadata/Skill/MCP | single `.mcp.json` contract | workspace root/compat mode | C-03/C-08 | zcode contract test |
 | ZCode generator | 当前 host-only sync | all-target immutable staging | no runtime network/install scripts | C-03/C-06 | synthetic + release set |
@@ -341,14 +343,15 @@ flowchart TD
 ### 6.1 Canonical facts 与 derived projections
 
 - canonical source facts：tag、source commit、Cargo/npm version、target map、package source files。
-- canonical built facts：signed native bytes、native SHA-256、npm tarball integrity、ZCode archive digest、
-  generated tree hash。
-- canonical external facts：npm registry integrity、target repo commit/tag tree、signature identities。
+- canonical built facts：native bytes、explicit release trust、native SHA-256、npm tarball integrity、
+  ZCode archive digest、generated tree hash。
+- canonical external facts：npm registry integrity/provenance、GitHub artifact attestation、target repo
+  commit/tag tree；可选 publisher signature identity仅在真实验证后出现。
 - DSH profile、ZCode installed cache、README tables和 CI summaries 是 derived projections；必须能回指
   canonical version/hash，不得反向修改 release facts。
 
-目标 `release-manifest.json` 至少包含：`schema_version=1`、`version`、`source_commit`、每个平台
-Rust target/binary/SHA/signature kind、全部 npm package name/version/integrity、ZCode tree/archive digest、
+目标 `release-manifest.json` 至少包含：`schema_version=2`、`version`、`source_commit`、每个平台
+Rust target/binary/SHA/release trust、全部 npm package name/version/integrity、ZCode tree/archive digest、
 生成器版本和目标 marketplace tag。JSON key 排序与输出稳定，secret/certificate 私钥内容永不进入。
 
 ### 6.2 Success、partial、failure、cancel 与 recovery
@@ -371,8 +374,8 @@ Rust target/binary/SHA/signature kind、全部 npm package name/version/integrit
 - target promotion identity 是 `(tag, source_commit, tree_sha256)`；相同 no-op，不同 hard failure。
 - GitHub Actions concurrency 对 release tag禁止 cancel-in-progress；target main/tag 使用单次 atomic
   push；第二个同版 run在 registry/target reconciliation 后退出或恢复。
-- 网络、rate limit、artifact download 可以有有界 retry；签名失败、hash mismatch、schema mismatch、
-  unsupported platform 不重试掩盖。
+- 网络、rate limit、artifact download 可以有有界 retry；release-trust、provenance、attestation、
+  optional signature、hash、schema mismatch 或 unsupported platform 不重试掩盖。
 
 ### 6.4 Compatibility 与版本
 
@@ -384,14 +387,14 @@ Rust target/binary/SHA/signature kind、全部 npm package name/version/integrit
   通过 mutable branch取得 runtime。
 - npm/ZCode package中不执行 lifecycle install scripts；升级通过 package manager/marketplace reinstall。
 
-### 6.5 Secret、签名、日志与 telemetry
+### 6.5 Secret、release trust、日志与 telemetry
 
-- 允许的 secret names 只出现在 workflow expression：npm bootstrap、macOS certificate/password、
-  Windows signing credential和 `zcode-packer` 的 `XL_PUBLISH_TOKEN`。日志只记录
-  configured/missing、authenticated permission 和公钥身份。
-- temporary keychain、PFX、`.npmrc`和 checkout credential只存在于临时 runner；artifact、cache、
-  tarball、README、ledger和 target tree中禁止出现 secret bytes。
-- codesign/Authenticode timestamp属于签名后的 canonical bytes；签名后不得再修改 binary。
+- 0.2.1 允许的 secret names 只有一次性 npm bootstrap token 与 `zcode-packer` 的
+  `XL_PUBLISH_TOKEN`。日志只记录 configured/missing 与 authenticated permission，不记录 token值。
+- temporary `.npmrc` 与 checkout credential只存在于临时 runner；artifact、cache、tarball、README、
+  ledger和 target tree中禁止出现 secret bytes。
+- `publisherSigning=not-provided` 是 canonical 状态；未来若启用平台签名，必须记录真实验证身份且签名后
+  不得再修改 binary。
 - telemetry：N/A，本计划不新增 runtime telemetry。Release logs 由 GitHub/npm保留，需通过 leak scan。
 
 ### 6.6 数据、权限与 sandbox
@@ -414,7 +417,7 @@ not_started
 实现、manifest、workflow 或目标合同变化
   -> implemented_unverified
 
-失败 gate、stale artifact、签名/hash 漂移或 red test 失效
+失败 gate、stale artifact、release-trust/provenance/attestation/hash 漂移或 red test 失效
   -> red_confirmed
 ```
 
@@ -425,14 +428,15 @@ W0 contract_and_dirty_baseline
   -> W1_release_red_contracts
   -> W2_dsh_profile_local_packages
   -> W3_zcode_cross_platform_projection
-  -> W4_signing_publish_and_promotion_pipeline
+  -> W4_release_trust_publish_and_promotion_pipeline
   -> W5_authorized_live_release_acceptance
   -> W6_final_gates_and_release_docs
 ```
 
 只有前一 Wave 在当前 checkout 为 `complete` 才解锁下一 Wave。W4 的范围是 release pipeline
-实现与本地/合成验证；所有本地 required gate 通过后可以标为 `complete`。真实发布者签名、
-canonical remote、npm ownership、目标 token push permission 和 host acceptance 都是 W5 entry/live gate，
+实现与本地/合成验证；所有本地 required gate 通过后可以标为 `complete`。真实 npm provenance、
+GitHub attestation、canonical remote、npm ownership、目标 token push permission 和 host acceptance
+都是 W5 entry/live gate，
 不得用 W4 的 metadata 或 fixture 代替。W5 包含不可逆外部 side effects，必须取得当轮独立授权。
 
 ## 8. Wave 0：冻结合同、dirty 归属与可恢复文档
@@ -442,7 +446,7 @@ canonical remote、npm ownership、目标 token push permission 和 host accepta
 - 覆盖合同：C-08；为 C-01 至 C-07 建立 current fingerprint。
 - 本 Wave 完成后的可观测结果：计划、账本和现有 docs 可进入版本控制；MIT dirty set、外部
   checkouts、registry names、remote 和默认 DB 均有可重复基线。
-- 明确不处理：package behavior、runtime staging、签名、发布和外部仓库创建。
+- 明确不处理：package behavior、runtime staging、release trust、发布和外部仓库创建。
 
 ### 8.2 Entry gate
 
@@ -572,7 +576,7 @@ release contract red tests，并运行 focused test 确认失败原因。
 | no-global recovery | 扫 launcher/READMEs | 仍建议 `npm install -g` | 无关文字命中 |
 | ZCode sole MCP contract | 读 plugin/mcp manifests | plugin.json仍 inline server | JSON schema读取失败 |
 | ZCode target set | 读 source/generated contract | 只有 Darwin package | 真实 binary缺失本身导致 crash |
-| signing before hash | 解析 release workflow步骤 | 无 publisher-sign/verify gate | PR workflow未签名 |
+| release trust before publish | 解析 release workflow与 package metadata | 无 explicit trust/provenance/attestation gate | PR workflow未发布 |
 | DSH publish order | 解析 release workflow/scripts | 无四 bundle pack/publish | YAML parser故障 |
 | promotion contract | 解析 workflow | 无 immutable artifact/direct push | target repo不存在 |
 | runtime-source hygiene | 扫 integrations tree | ZCode host binary和 staging script混入 | README/Skill误报 |
@@ -600,7 +604,7 @@ release contract red tests，并运行 focused test 确认失败原因。
 
 ### 9.8 Evidence
 
-- Behavior before：global PATH、Darwin-only、无签名/DSH publish/promotion。
+- Behavior before：global PATH、Darwin-only、无 explicit release trust/attestation/DSH publish/promotion。
 - Red failure：每个 test name、assertion、expected current value和实际 current value。
 - Behavior after：N/A，本 Wave 不实现。
 - Files changed：tests/fixtures/ledger only。
@@ -741,7 +745,7 @@ all-target generated projection，不复用 `integrations` 中的旧 Darwin byte
 - 覆盖合同：C-03、C-06、C-08。
 - 本 Wave 完成后的可观测结果：从已验证 core release tarballs确定性生成一个含三平台 runtime的
   marketplace tree/archive；`.mcp.json` 是唯一 launch contract，source template不再提交 host binary。
-- 明确不处理：签名凭据、npm publish、target repo创建/push和 ZCode cache安装。
+- 明确不处理：npm publish、target repo创建/push、可选发布者签名和 ZCode cache安装。
 
 ### 11.2 Entry gate
 
@@ -780,7 +784,7 @@ all-target generated projection，不复用 `integrations` 中的旧 Darwin byte
 | sole launch contract | parse plugin/mcp | inline + mirror双合同 | invalid JSON |
 | root variable | inspect command args | 使用 CLAUDE alias/host-only native | ZCode env docs不可访问 |
 | all targets | stage verified synthetic set | source只有 Darwin | synthetic hash不匹配 |
-| signed-byte hash propagation | compare package/release tree | 旧 sync只复制 host | tar extraction failure |
+| release-trust/hash propagation | compare package/release tree | 旧 sync只复制 host且无 trust metadata | tar extraction failure |
 | deterministic projection | stage两次 | tree/hash必须相同，旧 script会就地改 source | timestamps进入输出 |
 | runtime hygiene | `find integrations` | checked-in bin + release script存在 | LICENSE/Skill误判 |
 | remote immutable source | marketplace entry | 当前 relative local source | GitHub API网络错误 |
@@ -839,25 +843,26 @@ all-target generated projection，不复用 `integrations` 中的旧 Darwin byte
 
 ### 11.11 Handoff
 
-W3 保存 generated archive digest、tree hash、每平台 unsigned/signed-status metadata和本机 raw smoke。
-W4 只能以重新构建的 release binary开始，不能给 W3旧 byte补写虚假签名 metadata。
+W3 保存 generated archive digest、tree hash、每平台 explicit release-trust metadata和本机 raw smoke。
+W4 只能以重新构建的 release binary开始，不能给 W3旧 byte补写虚假 provenance、attestation或签名
+metadata。
 
-## 12. Wave 4：签名、npm release set 与直接 promotion pipeline
+## 12. Wave 4：release trust、npm release set 与直接 promotion pipeline
 
 ### 12.1 目标与合同
 
 - 覆盖合同：C-04、C-05、C-06；辅助 C-01 至 C-03。
-- 本 Wave 完成后的可观测结果：tag workflow能从 locked source构建、签名、验证、pack、按序发布
-  八个 npm release items，生成 ZCode artifact，并在 registry完整后通过 `zcode-packer` 直接验证、
-  checkout和原子推送 target `main` + immutable tag；未配置 signing/promotion prerequisites时在
-  build/publish前 fail closed。
+- 本 Wave 完成后的可观测结果：tag workflow能从 locked source构建、记录显式 release trust、验证、
+  pack并按序发布八个 npm release items，生成带 GitHub OIDC attestation 的 ZCode artifact，并在
+  registry完整后通过 `zcode-packer` 直接验证、checkout和原子推送 target `main` + immutable tag；
+  npm bootstrap或 promotion prerequisites未配置时在 build/publish前 fail closed。
 - 明确不处理：本 Wave不实际创建 repo、push tag、publish package或安装 host；只实现和验证 pipeline。
 
 ### 12.2 Entry gate
 
 - [ ] W3 complete，generated tree和全部 package pack manifests current。
 - [ ] release workflow current source已读取，existing bootstrap/Trusted Publishing行为有基线。
-- [ ] 签名身份、npm bootstrap和 `zcode-packer` 只做 presence/permission design，不读取 secret。
+- [ ] npm bootstrap和 `zcode-packer` 只做 presence/authentication/permission design，不读取 secret。
 - [ ] main/native/DSH/ZCode release set版本和 source commit单一。
 
 ### 12.3 Allowed files
@@ -890,18 +895,18 @@ W4 只能以重新构建的 release binary开始，不能给 W3旧 byte补写虚
 ### 12.4 Forbidden changes
 
 - Rust source/schema、integration runtime语义、真实 secrets、npm registry、Git tags/remotes、external repo。
-- 取消现有 npm provenance、降低 package allowlist、把签名设为可选 release warning。
-- 在 PR workflow要求私密签名；PR允许 unsigned build validation，但不能产生 releasable artifact。
-- secret echo、credential写入 Git remote/repo/artifact、base64 certificate artifact、无 timestamp
-  publisher signature和 UPX。
+- 取消现有 npm provenance、降低 package allowlist或允许缺失/模糊的 release-trust metadata。
+- 把 unsigned伪装成已签名，或让 PR artifact绕过 tag release provenance进入 promotion。
+- secret echo、credential写入 Git remote/repo/artifact、伪造 publisher signature和 UPX。
 
 ### 12.5 红测试与基线
 
 | Test/Oracle | Trigger | Expected old failure | Wrong failure |
 | --- | --- | --- | --- |
-| mac signing order | inspect release job DAG | build直接stage，无 Developer ID gate | runner OS不支持 |
-| Windows signing order | inspect DAG | 无 Authenticode verify | PowerShell syntax fixture error |
-| signed hash | mutate byte after sign fixture | verifier必须拒绝 | fixture certificate unavailable |
+| explicit unsigned state | inspect staged package | 缺字段与 unsigned无法区分 | JSON fixture不可读 |
+| npm provenance | inspect publish argv/metadata | provenance未强制 | registry fixture不可用 |
+| ZCode attestation | inspect release DAG | archive无 OIDC attestation | action parser故障 |
+| source-bound hash | mutate staged byte | verifier必须拒绝 | fixture binary不存在 |
 | complete npm set | inspect/execute verifier | current set无四 DSH packages | core tarball invalid |
 | publish ordering | mocked registry transcript | current workflow无 DSH phase | actual npm network call |
 | partial retry | synthetic registry states | existing same integrity skip，mismatch fail | E404 parser误判 |
@@ -913,9 +918,9 @@ W4 只能以重新构建的 release binary开始，不能给 W3旧 byte补写虚
 | Package | Symbol/path | Contract | Failure behavior | Targeted validation |
 | --- | --- | --- | --- | --- |
 | W4.1 | release prerequisite job | C-04/C-06 | missing secret、wrong repo、push=false或非 main在build/publish前失败 | dry-run/static verifier |
-| W4.2 | macOS signing step | C-04 | temp keychain cleanup，strict verify失败停止 | codesign fixture/live conditional |
-| W4.3 | Windows signing step | C-04 | timestamp/status非 Valid停止 | Authenticode fixture/live conditional |
-| W4.4 | signed native staging | C-04/C-05 | sign后任何 byte漂移拒绝 | package hash verifier |
+| W4.2 | explicit release-trust staging | C-04 | missing/malformed trust拒绝；unsigned必须显式 | package contract |
+| W4.3 | npm provenance + ZCode OIDC attestation | C-04 | provenance/attestation失败停止 | workflow contract/live run |
+| W4.4 | source-bound native staging | C-04/C-05 | stage后任何 byte漂移拒绝 | package hash verifier |
 | W4.5 | DSH pack/publish jobs | C-02/C-05 | native/main未完成不执行 | DAG/order tests |
 | W4.6 | registry reconciliation | C-05 | mismatch hard fail，E404 publish | mocked + script tests |
 | W4.7 | ZCode artifact/attestation | C-03/C-06 | npm set不完整不进入 promotion | release manifest verifier |
@@ -928,7 +933,7 @@ W4 只能以重新构建的 release binary开始，不能给 W3旧 byte补写虚
 | Command | Provenance | Expected result | Required/conditional |
 | --- | --- | --- | --- |
 | `node --test npm/test/release-distribution-contract.test.mjs` | C-04-C-06 | all pass | required |
-| `node --test npm/test/zcode-plugin-contract.test.mjs` | synthetic strict core/ZCode set generated in temp | signed metadata, deterministic tree/archive, extra/mutable rejection | required |
+| `node --test npm/test/zcode-plugin-contract.test.mjs` | synthetic strict core/ZCode set generated in temp | release-trust metadata, deterministic tree/archive, extra/mutable rejection | required |
 | `node npm/scripts/pack-dsh-bundles.mjs --out npm/dist/w4-dsh --commit $(git rev-parse HEAD) && node npm/scripts/verify-dsh-release-set.mjs --root npm/dist/w4-dsh --version 0.2.1 --commit $(git rev-parse HEAD)` | DSH release staging | four packages, source commit, allowlist and integrity | required |
 | `node --test npm/test/release-distribution-contract.test.mjs` | fake registry/target replay | partial retry, immutable conflict, direct promotion idempotency | required |
 | `actionlint .github/workflows/*.yml` | workflow syntax | pass | required；若未安装先记录 tool prerequisite，不用替代 parser伪绿 |
@@ -936,38 +941,40 @@ W4 只能以重新构建的 release binary开始，不能给 W3旧 byte补写虚
 | `npm --prefix npm test` | full Node | all pass after W4; W3 entry had exactly three correct W4 reds | staged required |
 | `npm --prefix npm run check:docs` | docs | pass | required |
 | `git diff --check` | Git | clean | required |
-| macOS/Windows signing commands | protected release runner | not run前状态上限 deterministic_green | conditional in W4，required in W5 |
+| GitHub OIDC artifact attestation | release workflow | ZCode archive attestation created | conditional in W4，required in W5 |
 
 ### 12.8 Evidence
 
-- Behavior before：release仅 core，无 publisher sign、DSH packages或 ZCode direct promotion。
+- Behavior before：release仅 core，无 explicit release trust、artifact attestation、DSH packages或
+  ZCode direct promotion。
 - Red failure/behavior after：DAG/order/auth/hash fixtures逐项转绿。
 - Files changed：Allowed files；无 generated credential/archive被 Git跟踪。
 - Commands passed：static workflow、synthetic registry/promotion replay、full Node/docs。
-- Commands failed/not run：真实 signing和 release明确留给 W5。
+- Commands failed/not run：真实 npm provenance、artifact attestation和 release明确留给 W5。
 - API/storage/UI/restart evidence：N/A，所有外部 side effects禁止。
 - External dependency evidence：仅 metadata presence和 mock adapter；不得声称 publish成功。
-- Secret/redaction evidence：workflow/fixture/log grep无 token/private-key/cert bytes。
+- Secret/redaction evidence：workflow/fixture/log grep无 token/private-key bytes。
 
 ### 12.9 Exit gate
 
-- [ ] release DAG确保 zcode preflight → sign → verify → hash/stage → native publish → main publish →
-  DSH publish → registry reconciliation → direct atomic promotion。
+- [ ] release DAG确保 credential preflight → hash/release-trust/stage → ZCode attestation → native publish
+  → main publish → DSH publish → registry reconciliation → direct atomic promotion。
 - [ ] registry/tag mismatch均 fail closed，重复相同 release可恢复。
-- [ ] PR CI与 release signing界限清楚，unsigned PR artifact不会进入 promotion。
+- [ ] PR CI与 tag release provenance界限清楚，PR artifact不会进入 promotion。
 - [ ] target bootstrap tree不含 executable workflow；source workflow只接受 verified immutable artifact。
 - [ ] 本地 required gates全绿；真实 external gates列入 W5 blockers。
 - [ ] package内 README 在 W5 pack/publish前定稿；W6不得修改已发布版本携带的 README bytes。
-- [ ] 本地 W4 implementation gates先达到 `deterministic_green`，再将 W4 标为 `complete`；真实签名、
-  registry、target bootstrap/token permission和 host gates明确保留为 W5，不得伪造为本地证据。
+- [ ] 本地 W4 implementation gates先达到 `deterministic_green`，再将 W4 标为 `complete`；真实 npm
+  provenance/attestation、registry、target token permission和 host gates明确保留为 W5，不得伪造为
+  本地证据。
 
 ### 12.10 Stop conditions
 
-- 签名必须在 GitHub-hosted runner以不安全方式暴露 certificate/private key。
+- provenance或 attestation只能通过泄露长期 credential才能生成。
 - npm first-publish无法在不使用宽账户 token情况下完成，且 Trusted Publishing也无法预配置。
 - `zcode-packer` token不能认证 exact target或没有 `permissions.push=true`。
 - workflow只能靠 mutable branch/latest恢复 artifact。
-- signing后 binary必须被重新打包工具修改，导致 canonical hash不稳定。
+- stage后 binary被重新打包工具修改，导致 canonical hash不稳定。
 
 ### 12.11 Handoff
 
@@ -990,8 +997,8 @@ bootstrap 空 target repo、提交/push source main、创建 release tag、发�
   direct promotion和本机 host install由 W5.4 再做独立 gate。
 - [ ] source/target exact identity、interactive bootstrap permission、`zcode-packer` Environment
   secret/variable metadata已记录；不读取 secret value。
-- [ ] npm package ownership/bootstrap、Trusted Publishing、Developer ID和 Authenticode状态已盘点；
-  缺失项允许 W5.1-W5.3继续，但必须在 W5.4 阻止 tag。
+- [ ] npm package ownership/bootstrap与 Trusted Publishing状态已盘点；publisher signing明确为
+  `not-provided`，不作为 W5.4 tag blocker。
 - [ ] release version `0.2.1` registry reconciliation无 immutable conflict；E404可作为首发 blocker输入。
 - [ ] 默认 Memory DB、DSH checkout、ZCode当前 installed record已做 before snapshot。
 
@@ -1020,7 +1027,7 @@ bootstrap 空 target repo、提交/push source main、创建 release tag、发�
 | target repo preflight | `gh repo view` | 创建前 not-found | GitHub outage |
 | no-global DSH | clean PATH/profile | 旧 package无法启动 | dsh/pnpm本身不在 PATH |
 | ZCode GitHub source | clean marketplace install | 旧 local source/Darwin cache不可作证 | 手工 cache已污染 |
-| signature verification | downloaded package binary | 旧 artifact无 publisher signature | verifier tool missing |
+| release trust/attestation | downloaded package/archive | 旧 artifact无 explicit trust或 attestation | verifier tool missing |
 | three-platform launch | released tree on CI matrix | 旧 tree缺 Linux/Windows | runner unrelated failure |
 
 ### 13.6 实施工作包
@@ -1030,12 +1037,12 @@ bootstrap 空 target repo、提交/push source main、创建 release tag、发�
 | W5.1 | repository preflight window | C-06/C-08 | source/target identity或写权限缺失则 BLOCKED | snapshots/API checks |
 | W5.2 | target repo bootstrap | C-06 | token push权限或 default branch未就绪不进入 release | repo settings/readback |
 | W5.3 | source release commit + main push | C-05/C-08 | dirty未归属或 remote ancestry不一致则停止；不创建 tag | remote ancestry |
-| W5.4 | release credential/registry gate | C-04/C-05 | npm/signing任一缺失则 BLOCKED，零 tag/publish | Environment metadata + registry |
-| W5.5 | release tag + signed npm run | C-04/C-05 | 从首个失败 item恢复 | workflow + registry report |
+| W5.4 | release credential/registry gate | C-04/C-05 | npm/ZCode认证任一缺失则 BLOCKED，零 tag/publish | Environment metadata + registry |
+| W5.5 | release tag + provenance npm run | C-04/C-05 | 从首个失败 item恢复 | workflow + registry report |
 | W5.6 | ZCode direct promotion | C-03/C-06 | digest/tag mismatch拒绝；main/tag atomic push | target tag/tree |
 | W5.7 | DSH Memory+Skills clean profile | C-01/C-02/C-07 | global command命中即失败 | install/dump/model transcript |
 | W5.8 | DSH full-tools+Skills clean profile | C-01/C-02/C-07 | native fallback/unsafe overwrite即失败 | fs read/hash/policy |
-| W5.9 | three-platform released launcher | C-03/C-04 | target/signature/hash任一不符 | CI matrix smoke |
+| W5.9 | three-platform released launcher | C-03/C-04 | target/release-trust/hash任一不符 | CI matrix smoke |
 | W5.10 | ZCode 3.7.7 install/restart | C-03/C-07 | UI/cache/manual divergence停止 | discovery/call/restart |
 | W5.11 | post-side-effect audit | C-05-C-08 | DB/DSH/source drift为 incident | fingerprints/reconciliation |
 
@@ -1050,8 +1057,8 @@ bootstrap 空 target repo、提交/push source main、创建 release tag、发�
 | `dsh --profile xuanling-memory-e2e --dump-config` | DSH | exact Memory+Skills rows | required |
 | `dsh plugin --profile xuanling-tools-e2e add xuanling-dsh-tools@0.2.1 xuanling-dsh-skills@0.2.1` | DSH official CLI | profile-local install | required |
 | DSH live read-only Memory/fs prompts | real model/bridge | expected tool family与结果 | required；billable授权随 W5 |
-| `codesign --verify --strict --verbose=2 npm/release/downloaded/darwin-arm64/xuanling-mcp` | macOS | publisher signature valid | required |
-| `Get-AuthenticodeSignature npm/release/downloaded/win32-x64-msvc/xuanling-mcp.exe` | Windows | Status `Valid` | required |
+| `gh attestation verify <zcode-archive> --repo umbrella22/xuanling` | GitHub | OIDC build provenance valid | required |
+| published native package `releaseTrust` + npm provenance | npm/GitHub | explicit `not-provided` publisher signing and valid provenance | required |
 | generated launcher MCP smoke on Linux/macOS/Windows | release CI | all pass with temp DB | required |
 | ZCode UI add GitHub marketplace/install/restart | host acceptance | MCP/Skill可发现、read-only call pass | required |
 | ZCode remote source sync/reinstall | host behavior | immutable source ref保留 | conditional；无 remote环境记 `UNVERIFIED_RISK`，不外推 |
@@ -1061,7 +1068,7 @@ bootstrap 空 target repo、提交/push source main、创建 release tag、发�
 - Behavior before：registry E404、target repo已创建但无 default branch/workflow、local directory ZCode install。
 - Red failure/behavior after：公开 registry/repo/host evidence，不使用 source link。
 - Files changed：source release commit与target generated commit分别列出。
-- Commands passed：workflow IDs、npm integrities、signature identities、profile/install transcripts。
+- Commands passed：workflow IDs、npm integrities/provenance、artifact attestation、profile/install transcripts。
 - Commands failed：保留原 exit/result；不得删除失败 run。
 - Commands not run：remote ZCode环境若不可用明确记录。
 - API/storage/UI/restart evidence：DSH model、ZCode UI/restart、registry和target API。
@@ -1072,7 +1079,7 @@ bootstrap 空 target repo、提交/push source main、创建 release tag、发�
 
 - [ ] 八个 npm release items存在且 integrity与 manifest一致。
 - [ ] target repo main/tag/tree与 source commit/archive digest一致。
-- [ ] macOS/Windows publisher signature和 Linux provenance current。
+- [ ] 三平台 explicit release trust、npm provenance和 ZCode artifact attestation current。
 - [ ] 两个 clean DSH profiles不含全局 `xuanling-mcp`依赖并完成 real calls。
 - [ ] ZCode从 GitHub marketplace clean install，MCP/Skill/restart通过。
 - [ ] 三平台 released launcher smoke绿色。
@@ -1083,7 +1090,7 @@ bootstrap 空 target repo、提交/push source main、创建 release tag、发�
 
 - 外部授权未覆盖某个 action或目标身份不精确。
 - 任何 package/version已存在不同 integrity。
-- publisher signature、timestamp、npm provenance或 `zcode-packer` push权限失败。
+- release trust、npm provenance、artifact attestation或 `zcode-packer` push权限失败。
 - main commit不在 canonical remote default branch。
 - ZCode安装只能靠直接 cache写入或 local directory source。
 - AV/Gatekeeper阻止且原因不明；不得关闭保护继续。
@@ -1133,7 +1140,7 @@ bootstrap 空 target repo、提交/push source main、创建 release tag、发�
 | stale install docs | scan READMEs | global npm/local path/双合同文字已不存在 | historical plan命中 |
 | version/link parity | source/packed/published compare | 任一 `0.2.1`/URL漂移拒绝 | registry outage |
 | supported matrix | docs vs targets/manifest | 恰好三平台 | 文案顺序差异 |
-| security claims | scan/review | 签名降低风险但不承诺零误报 | 合法的“不保证”被拒 |
+| security claims | scan/review | 明确 unsigned，provenance/attestation不承诺零误报 | 合法的“不保证”被拒 |
 | final release set | full verifier | source/tree/registry全部一致 | stale local dist被误用 |
 
 ### 14.6 实施工作包
@@ -1160,7 +1167,7 @@ bootstrap 空 target repo、提交/push source main、创建 release tag、发�
 | complete release/DSH/ZCode verifiers | W2-W4 | source/published exact | required |
 | `git diff --check` | Git | clean | required |
 | durable-doc leak scan | documentation skill | no conversation/secret/local absolute-path leaks | required |
-| registry/target/signature reconciliation | external | exact current facts | required |
+| registry/target/provenance/attestation reconciliation | external | exact current facts | required |
 
 ### 14.8 Evidence
 
@@ -1179,7 +1186,7 @@ bootstrap 空 target repo、提交/push source main、创建 release tag、发�
 - [ ] Requirement Coverage Matrix无未映射或未证明项。
 - [ ] W0-W6全部 complete，所有 evidence绑定 final checkout/source commit。
 - [ ] required gates无 failed/stale/not-run/ignored。
-- [ ] npm/target/signature/DSH/ZCode live facts current且可重算。
+- [ ] npm/target/provenance/attestation/DSH/ZCode live facts current且可重算。
 - [ ] published双语 README没有 global npm、手工 cache、零误报或未验证远程声明。
 - [ ] final ledger列出所有 source/target files、commands、failures、external IDs和 residual risk。
 
@@ -1203,7 +1210,8 @@ bootstrap 空 target repo、提交/push source main、创建 release tag、发�
 | npm unit/contract | launcher/manifests/generator | local resolution、hash、allowlist、order | implemented_unverified |
 | synthetic integration | fake registry/tree/direct promotion | partial retry、tag/tree idempotency | implemented_unverified |
 | package tarball | core/native/四 DSH | 实际 publish bytes和文件边界 | implemented_unverified |
-| signed native verify | macOS/Windows release runners | publisher identity在 hash前生效 | deterministic_green |
+| release trust + provenance | three release runners/npm | explicit unsigned state、source hash与 npm provenance | deterministic_green |
+| ZCode artifact attestation | GitHub release workflow | archive由 canonical workflow/commit生成 | deterministic_green |
 | three-platform launcher | Linux/macOS/Windows | target selection、SHA、MCP smoke | deterministic_green |
 | DSH clean profile | published npm + real DSH | 无 global package的实际安装/调用 | deterministic_green |
 | ZCode clean install/restart | published GitHub marketplace | host discovery、MCP/Skill、restart | deterministic_green |
@@ -1227,9 +1235,9 @@ verifier和 registry reconciliation必须在 final source上连续三次通过�
 | native optional package missing | dependency_unavailable | package/version/target | profile/plugin重新安装提示 | 重装同一 host package |
 | native SHA mismatch | integrity_failed | expected/actual SHA，不含 binary dump | 拒绝执行 | 删除受损安装并从 canonical source重装 |
 | DSH bridge unavailable | host_dependency_failed | DSH/bridge versions + startup error | profile启动非零 | 修 profile dependency，不改 Rust |
-| signing secret missing | release_blocked | secret name configured=false | publish未开始 | 配置 protected secret再完整重跑 |
-| certificate expired/timestamp failed | signature_failed | public cert identity/status | publish未开始 | 更新证书/timestamp service后重建签名 |
-| AV/Gatekeeper阻止 | security_product_blocked | product/version/signature/hash | 不执行 binary | 保留保护，调查/提交 vendor复核；不绕过 |
+| npm bootstrap secret missing for unclaimed names | release_blocked | secret configured=false + E404 names | publish未开始 | 配置短期 token后先跑无 tag preflight |
+| publisher certificate unavailable | non_blocking | `publisherSigning.status=not-provided` | release继续且文档明确 unsigned | 未来版本可另行增加真实证书签名 |
+| AV/Gatekeeper阻止 | security_product_blocked | product/version/release-trust/hash | 不执行 binary | 保留保护，调查/提交 vendor复核；不绕过 |
 | npm E404 during lookup | publish_candidate_missing | name/version/local integrity | 进入 publish step | 按序发布 |
 | npm existing same integrity | idempotent_replay | registry/local integrity | 跳过并继续 | 无需修改 |
 | npm existing different integrity | immutable_conflict | registry/local integrity | hard failure | bump新版本并另立 release，不覆盖 |
@@ -1253,8 +1261,9 @@ verifier和 registry reconciliation必须在 final source上连续三次通过�
 ### 17.1 Pre-release（无外部写入）
 
 1. 重新构建三平台 locked release binary。
-2. macOS/Windows 在 protected runner完成 publisher签名；Linux保留 source/provenance身份。
-3. 对签名后 bytes执行 MCP smoke并生成 notices。
+2. 三平台写入 explicit release trust并绑定 source commit与 native SHA；publisher signing为
+   `not-provided`。
+3. 对 canonical bytes执行 MCP smoke并生成 notices。
 4. stage/verify/pack native packages，再 stage/verify/pack main launcher。
 5. pack/verify四个 DSH bundles。
 6. 从上述 verified tarballs生成 ZCode tree/archive和 release manifest。
@@ -1267,7 +1276,7 @@ verifier和 registry reconciliation必须在 final source上连续三次通过�
 3. publish stable core launcher。
 4. publish四个 DSH packages；first release使用受限 bootstrap credential，后续切换 Trusted Publishing。
 5. 再次读取八个 release items的 registry integrity。
-6. upload/attest ZCode marketplace artifact。
+6. 使用 GitHub OIDC upload/attest ZCode marketplace artifact。
 7. source workflow用 `zcode-packer` token验证 exact target identity、default branch和 push permission。
 8. source workflow验证 artifact并原子更新 target main与 immutable tag。
 9. DSH/ZCode clean install、restart、real tool acceptance。
@@ -1280,12 +1289,13 @@ verifier和 registry reconciliation必须在 final source上连续三次通过�
 - 上游 DSH/ZCode合同与本计划关键假设冲突且无法用当前 host验证时停止。
 - dirty worktree overlap无法归因、用户文件将被覆盖或 docs tracking暴露敏感内容时停止。
 - 公共 package/version/launch schema变化超出 C-01 至 C-08时停止并更新计划/红测。
-- signing、npm publish、repo创建、push/tag或 ZCode install缺少当轮独立授权时停止。
+- npm publish、repo创建、push/tag或 ZCode install缺少当轮独立授权时停止。
 - secret只能通过打印、hash、copy或 artifact保存才能使用时停止。
 - required gate失败根因不明时停止；不能删除测试、弱化断言、缩小平台或降级错误继续。
-- 不能用 ad-hoc signature、unsigned binary、local source、manual cache、global npm或 mock host替代验收。
+- 不能用缺失字段表达 unsigned，也不能用 ad-hoc/self-signed 冒充 publisher signing；local source、
+  manual cache、global npm或 mock host不能替代验收。
 - 不能把单一 macOS live成功外推为 Linux/Windows，也不能把 CI binary smoke外推为 ZCode UI成功。
-- 不能把“签名有效”写成“杀毒软件保证不误报”。
+- 不能把 provenance、attestation或未来可选签名写成“杀毒软件保证不误报”。
 - 不能自动 unpublish、force push、移动 tag、覆盖 external repo tree或清理用户 DB。
 - 任一 smoke server省略 explicit temp `--memory-db` 时停止并标记隔离证据 stale。
 
@@ -1297,14 +1307,14 @@ verifier和 registry reconciliation必须在 final source上连续三次通过�
 4. DSH三工具包 exact依赖 core，Skills保持纯包，四 tarballs和 registry bytes一致。
 5. DSH clean profile在无全局 `xuanling-mcp`时完成实际安装、启动和工具调用。
 6. ZCode一个 plugin携带三平台，`.mcp.json`唯一，GitHub clean install/restart通过。
-7. macOS/Windows publisher signature、Linux/npm provenance和全部 SHA/integrity current。
+7. 三平台 release trust、npm provenance、ZCode attestation和全部 SHA/integrity current。
 8. npm发布顺序、partial retry、duplicate/mismatch和 cancel recovery有证据。
 9. target repo由 source workflow从 immutable artifact直接 promotion，main/tag/tree与 source commit一致。
 10. source integration无 checked-in staging binary/test/evaluation，generated bytes只存在发布 artifact/target repo。
 11. default Memory DB、DSH checkout、用户无关文件和 ZCode cache边界无计划外变化。
 12. English READMEs为 canonical，README-ZH提供等价中文，安装/安全/支持矩阵与发布事实一致。
-13. 最终报告列出 source/target files、commands、failures、未运行项、external IDs、integrities、签名身份和
-    residual risks。
+13. 最终报告列出 source/target files、commands、failures、未运行项、external IDs、integrities、
+    release trust/attestation和 residual risks。
 14. plans/ledger/docs均可被 Git跟踪，状态只依据 final checkout与外部可重算证据。
 
 只要任一 required项未满足，最终状态只能是 `implemented_unverified`、`deterministic_green`、
@@ -1418,7 +1428,8 @@ HANDOFF_REQUIRED结束，并输出计划规定的全部状态字段。
 - Red baseline：每条目标合同映射正确旧失败与 wrong failure。
 - Waves：W0-W6严格串行，每个含 Entry、Allowed、Forbidden、tests、packages、commands、Evidence、
   Exit、Stop和 Handoff。
-- Acceptance：签名、partial publish、cancel/retry、target promotion、clean install、restart、三平台、
+- Acceptance：release trust/provenance/attestation、partial publish、cancel/retry、target promotion、
+  clean install、restart、三平台、
   secret和用户数据隔离均有 gate。
 - Continuation：sidecar ledger、首轮/续作和固定状态协议已包含。
 - Adversarial review：已检查遗漏、false-complete、stale external evidence、mock替代和 dirty覆盖风险。
@@ -1429,7 +1440,7 @@ PLAN_PATH: docs/plans/host-local-integration-distribution-development-plan.md
 BASELINE_REVISION: c68ecfb01132f1daf9cdb0cf3e4572d42d987b4f
 REQUIREMENTS_MAPPED: C-01..C-08; 12 requirement rows
 SECTIONS_COMPLETE: control, goals/non-goals, baseline, flows, coverage, boundaries, invariants, W0-W6, tests, failures, release order, stop conditions, completion, ledger, first-run, continuation
-UNKNOWN_OR_BLOCKED: signing credentials; npm first-publish bootstrap/ownership; canonical remote has no branch; target repo is empty with no default branch; ZCode remote-sync and AV reputation remain live evidence gates
+UNKNOWN_OR_BLOCKED: npm first-publish bootstrap/ownership; canonical remote has no branch; target repo is empty with no default branch; ZCode remote-sync and AV reputation remain live evidence gates; publisher signing is optional
 VALIDATION_RUN: check:docs 49 files passed; mandatory-wave field audit passed; durable-doc wording/absolute-path scan passed; trailing-whitespace scan passed; git diff --check passed with one pre-existing CRLF normalization warning
 NEXT_EXACT_ACTION: initialize ledger W0.1 after revalidating current fingerprints; do not modify production before W1 red contracts
 ```

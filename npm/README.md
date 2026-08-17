@@ -71,9 +71,13 @@ The capability contract is documented in the
   metadata and SHA-256, and forwards argv, stdio, signals, and exit status.
 - Linux artifacts are built on `ubuntu-22.04` to preserve the glibc 2.35
   baseline.
-- macOS release bytes require a timestamped Developer ID Application signature;
-  Windows release bytes require a timestamped, valid Authenticode signature.
-  Every npm item requires npm provenance at publication.
+- Every native package records an explicit release-trust state, requires npm
+  provenance at publication, and binds its binary SHA-256 to the source commit.
+  The ZCode marketplace archive also receives a GitHub OIDC build-provenance
+  attestation before promotion.
+- XuanLing 0.2.1 does not claim a Developer ID or Authenticode publisher
+  signature. Those signatures may be added in a later release, but their
+  absence does not change the MCP protocol or package integrity contract.
 - Every native package contains the XuanLing MIT license and generated
   third-party notices.
 - The launcher package includes matching English and Simplified Chinese
@@ -141,14 +145,17 @@ release requires:
    contents, and integrity checks to pass on all three platforms.
 3. `verify-release-set.mjs` and `verify-dsh-release-set.mjs` to observe all
    eight npm items from the same commit.
-4. The generated ZCode tree and archive to pass exact file, signature metadata,
-   package hash, source commit, and deterministic digest checks.
+4. The generated ZCode tree and archive to pass exact file, release-trust
+   metadata, package hash, source commit, deterministic digest, and GitHub
+   artifact-attestation checks.
 5. The release commit to be present on `origin/main`. The GitHub
    `zcode-packer` Environment must define `ZCODE_REPOSITORY` as
    `umbrella22/xuanling-zcode-marketplace` and provide `XL_PUBLISH_TOKEN` with
    authenticated push permission to that repository. Its default branch must
    be `main`.
-6. A stable tag named `xuanling-mcp-v<version>` to trigger
+6. A manual run of the workflow from `main` to verify npm bootstrap
+   authentication and ZCode target permission without creating a tag.
+7. A stable tag named `xuanling-mcp-v<version>` to trigger
    [npm-publish.yml](../.github/workflows/npm-publish.yml).
 
 The publish workflow publishes three native versions, the stable launcher, and

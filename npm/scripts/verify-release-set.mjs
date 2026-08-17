@@ -10,7 +10,7 @@ import {
   platformVersion,
 } from "../packages/xuanling-mcp/lib/targets.js";
 import { parseArgs, readJson, requiredArg, run, sha256File } from "./shared.mjs";
-import { verifyReleaseSignature } from "./release-signature.mjs";
+import { verifyReleaseTrust } from "./release-signature.mjs";
 
 const args = parseArgs(process.argv.slice(2));
 const root = path.resolve(requiredArg(args, "root"));
@@ -89,8 +89,8 @@ for (const [targetId, target] of Object.entries(TARGETS)) {
       await sha256File(path.join(platformPackage.directory, target.binary)),
       platformPackage.packageJson.xuanlingBinary?.sha256,
     );
-    if (args["require-release-signatures"] === true) {
-      verifyReleaseSignature(platformPackage.packageJson.xuanlingBinary?.signature, targetId);
+    if (args["require-release-trust"] === true) {
+      verifyReleaseTrust(platformPackage.packageJson.xuanlingBinary?.releaseTrust, targetId);
     }
   } finally {
     await platformPackage.dispose();

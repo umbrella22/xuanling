@@ -16,7 +16,7 @@ import {
   run,
   sha256File,
 } from "./shared.mjs";
-import { verifyReleaseSignature } from "./release-signature.mjs";
+import { verifyReleaseTrust } from "./release-signature.mjs";
 
 function sha256(data) {
   return createHash("sha256").update(data).digest("hex");
@@ -145,13 +145,13 @@ for (const [targetId, target] of Object.entries(TARGETS)) {
     await sha256File(path.join(packageRoot, target.binary)),
     packageJson.xuanlingBinary?.sha256,
   );
-  if (args["require-release-signatures"] === true) {
-    verifyReleaseSignature(packageJson.xuanlingBinary?.signature, targetId);
+  if (args["require-release-trust"] === true) {
+    verifyReleaseTrust(packageJson.xuanlingBinary?.releaseTrust, targetId);
   }
 }
 
 const releaseManifest = await readJson(path.join(root, "release-manifest.json"));
-assert.equal(releaseManifest.schema_version, 1);
+assert.equal(releaseManifest.schema_version, 2);
 assert.equal(releaseManifest.version, version);
 assert.equal(releaseManifest.source_commit, sourceCommit);
 const payload = await describeTree(root, new Set(["release-manifest.json"]));
@@ -175,7 +175,7 @@ for (const [targetId, target] of Object.entries(TARGETS)) {
     binary: target.binary,
     rust_target: target.rustTarget,
     sha256: binary.sha256,
-    signature: binary.signature ?? { kind: "unverified" },
+    release_trust: binary.releaseTrust,
   });
 }
 

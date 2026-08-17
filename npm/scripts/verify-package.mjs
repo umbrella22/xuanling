@@ -9,7 +9,7 @@ import {
   platformVersion,
 } from "../packages/xuanling-mcp/lib/targets.js";
 import { parseArgs, readJson, requiredArg, sha256File } from "./shared.mjs";
-import { verifyReleaseSignature } from "./release-signature.mjs";
+import { verifyReleaseTrust } from "./release-signature.mjs";
 
 const args = parseArgs(process.argv.slice(2));
 if ((args.main === undefined) === (args.platform === undefined)) {
@@ -67,8 +67,8 @@ if (args.main !== undefined) {
   assert.equal(packageJson.xuanlingBinary?.binary, target.binary);
   assert.match(packageJson.xuanlingBinary?.sourceCommit ?? "", /^[0-9a-f]{40}$/);
   assert.match(packageJson.xuanlingBinary?.sha256 ?? "", /^[0-9a-f]{64}$/);
-  if (args["require-release-signature"] === true) {
-    verifyReleaseSignature(packageJson.xuanlingBinary?.signature, targetId);
+  if (args["require-release-trust"] === true) {
+    verifyReleaseTrust(packageJson.xuanlingBinary?.releaseTrust, targetId);
   }
   assert.equal(packageJson.dependencies, undefined);
   assert.equal(packageJson.optionalDependencies, undefined);

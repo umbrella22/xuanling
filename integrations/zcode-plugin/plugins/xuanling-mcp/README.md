@@ -42,6 +42,7 @@ restated with an explicit `--memory-db`.
 `--workspace-root` constrains paths opened by XuanLing filesystem tools. It is
 not a process sandbox. ZCode remains responsible for tool approval, and child
 process isolation requires an OS sandbox or container when hostile execution
-is possible. Publisher signatures, npm provenance, and package hashes reduce
-distribution risk; they do not guarantee that every security product will
+is possible. XuanLing 0.2.1 is not publisher-signed; npm provenance, the
+source-bound native hashes, and the GitHub-attested marketplace archive reduce
+distribution risk. They do not guarantee that every security product will
 classify a new binary the same way.

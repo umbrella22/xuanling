@@ -182,18 +182,6 @@ test("ZCode marketplace generation is deterministic and fails closed", async () 
 
     for (const targetId of Object.keys(TARGETS)) {
       const packageRoot = path.join(stageRoot, targetId);
-      const signatureArgs = targetId === "darwin-arm64"
-        ? [
-            "--signature-kind", "developer-id-application",
-            "--signature-identity", "Developer ID Application: Fixture (TEAMID)",
-          ]
-        : targetId === "win32-x64-msvc"
-          ? [
-              "--signature-kind", "authenticode",
-              "--signature-identity", "CN=XuanLing Fixture",
-              "--signature-timestamped", "true",
-            ]
-          : ["--signature-kind", "npm-provenance"];
       runNode([
         "npm/scripts/stage-platform.mjs",
         "--target", targetId,
@@ -201,7 +189,6 @@ test("ZCode marketplace generation is deterministic and fails closed", async () 
         "--notices", payload,
         "--out", packageRoot,
         "--commit", commit,
-        ...signatureArgs,
       ]);
       runNode([
         "npm/scripts/pack-package.mjs",
@@ -222,14 +209,14 @@ test("ZCode marketplace generation is deterministic and fails closed", async () 
         "--out", root,
         "--version", "0.2.1",
         "--commit", commit,
-        "--require-release-signatures",
+        "--require-release-trust",
       ]);
       runNode([
         "npm/scripts/verify-zcode-marketplace.mjs",
         "--root", root,
         "--version", "0.2.1",
         "--commit", commit,
-        "--require-release-signatures",
+        "--require-release-trust",
       ]);
       generated.push({
         pack: JSON.parse(await readFile(path.join(parent, "zcode-marketplace.pack.json"), "utf8")),
@@ -237,6 +224,16 @@ test("ZCode marketplace generation is deterministic and fails closed", async () 
       });
     }
     assert.deepEqual(generated[0].pack, generated[1].pack, "repeated staging is byte-identical");
+    const releaseManifest = JSON.parse(
+      await readFile(path.join(generated[0].root, "release-manifest.json"), "utf8"),
+    );
+    assert.equal(releaseManifest.schema_version, 2);
+    for (const target of Object.values(releaseManifest.targets)) {
+      assert.deepEqual(target.release_trust, {
+        npmProvenance: { status: "required-at-publish" },
+        publisherSigning: { status: "not-provided" },
+      });
+    }
     assert.equal(
       (await describeProjection(generated[0].root, { strictRoot: true })).sha256,
       generated[0].pack.tree_sha256,

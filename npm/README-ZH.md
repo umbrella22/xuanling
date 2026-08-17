@@ -64,9 +64,11 @@ MCP Host 也可以通过 `npx` 固定同一发行版本：
 - 启动器解析原生 optional dependency，校验平台 metadata 与 SHA-256，并透传 argv、stdio、
   signal 和退出状态。
 - Linux artifact 固定在 `ubuntu-22.04` 构建，以保持 glibc 2.35 基线。
-- macOS release byte 必须带 timestamp 的 Developer ID Application 签名；Windows release
-  byte 必须带 timestamp 且 Authenticode 状态为 `Valid`。全部 npm item 在发布时都必须生成
-  npm provenance。
+- 每个原生 package 都记录显式 release-trust 状态，发布时强制生成 npm provenance，并用
+  source commit 与 binary SHA-256 绑定构建结果。ZCode marketplace archive 在 promotion 前还会
+  生成 GitHub OIDC build-provenance attestation。
+- XuanLing 0.2.1 不声明 Developer ID 或 Authenticode 发布者签名。后续版本可以增加这些签名，
+  但缺少平台发布者证书不改变 MCP 协议或 package 完整性合同。
 - 每个原生 package 都包含 XuanLing MIT 许可证和生成的第三方 notices。
 - 启动器 package 同时包含相互匹配的英文与简体中文 README。
 
@@ -130,12 +132,14 @@ CI 在三个支持平台分别构建并验证启动器与原生 tarball。安装
    integrity 检查全部通过。
 3. `verify-release-set.mjs` 与 `verify-dsh-release-set.mjs` 观察到来自同一 commit 的八个
    npm item。
-4. 生成的 ZCode tree/archive 通过精确文件、签名 metadata、package hash、source commit 和
-   确定性 digest 校验。
+4. 生成的 ZCode tree/archive 通过精确文件、release-trust metadata、package hash、source commit、
+   确定性 digest 与 GitHub artifact attestation 校验。
 5. release commit 已进入 `origin/main`；GitHub `zcode-packer` Environment 中的
    `ZCODE_REPOSITORY` 必须为 `umbrella22/xuanling-zcode-marketplace`，并提供对该仓库具有
    authenticated push 权限的 `XL_PUBLISH_TOKEN`；target 默认分支必须为 `main`。
-6. 创建稳定 tag `xuanling-mcp-v<version>`，触发
+6. 先从 `main` 手动运行 workflow，在不创建 tag 的情况下验证 npm bootstrap 认证与 ZCode target
+   权限。
+7. 创建稳定 tag `xuanling-mcp-v<version>`，触发
    [npm-publish.yml](../.github/workflows/npm-publish.yml)。
 
 发布 workflow 按顺序发布三个原生版本、稳定 launcher 和四个 DSH bundle。八项 registry

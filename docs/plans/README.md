@@ -14,7 +14,7 @@
 | [memory-retrieval-pipeline-development-plan.md](memory-retrieval-pipeline-development-plan.md) | RFC 0003：Memory 词法召回质量、可见候选、重排、真实验收与向量触发决策实施计划。 |
 | [memory-retrieval-pipeline-execution-ledger.md](memory-retrieval-pipeline-execution-ledger.md) | RFC 0003 实施的 canonical 中断恢复账本。 |
 | [memory-retrieval-pipeline-semantic-decision.md](memory-retrieval-pipeline-semantic-decision.md) | RFC 0003 semantic trigger 的五项证据与 `not_triggered` 决策。 |
-| [host-local-integration-distribution-development-plan.md](host-local-integration-distribution-development-plan.md) | DSH profile-local npm packages、单一跨平台 ZCode marketplace、发布者签名与跨仓库 promotion 实施计划。 |
+| [host-local-integration-distribution-development-plan.md](host-local-integration-distribution-development-plan.md) | DSH profile-local npm packages、单一跨平台 ZCode marketplace、release trust/provenance/attestation 与跨仓库 promotion 实施计划。 |
 | [host-local-integration-distribution-execution-ledger.md](host-local-integration-distribution-execution-ledger.md) | Host 本地集成与分发计划的 canonical 中断恢复账本。 |
 
 ## 恢复顺序

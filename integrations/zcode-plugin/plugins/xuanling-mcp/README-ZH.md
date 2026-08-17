@@ -37,5 +37,6 @@ Memory 默认使用 `~/.xuanling/memory.db`；需要隔离数据库时，可以�
 ## 安全边界
 
 `--workspace-root` 约束 XuanLing 文件工具打开的路径，但不是进程 sandbox。工具审批仍由
-ZCode 负责；可能执行恶意代码时，子进程隔离需要 OS sandbox 或 container。发布者签名、npm
-provenance 与 package hash 可以降低分发风险，但不能保证所有安全软件对新 binary 给出相同判断。
+ZCode 负责；可能执行恶意代码时，子进程隔离需要 OS sandbox 或 container。XuanLing 0.2.1
+不带发布者证书签名；npm provenance、绑定 source commit 的 native hash 与 GitHub attested
+marketplace archive 可以降低分发风险，但不能保证所有安全软件对新 binary 给出相同判断。
