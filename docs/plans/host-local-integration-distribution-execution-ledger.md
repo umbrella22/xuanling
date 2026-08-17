@@ -3,10 +3,10 @@
 ```yaml
 schema_version: 1
 plan_id: "host-local-integration-distribution-20260817"
-updated_at: "2026-08-17T18:45:20+08:00"
+updated_at: "2026-08-17T19:06:29+08:00"
 plan_status: "executing"
 checkout:
-  revision: "3f49f9679714e3dbfd1542db11766450a6eeb2c7"
+  revision: "66d497088a53d542835392ba1fc25172e5577dd6"
   branch: "main"
   status_sha256: "ae65d65fc481092bcd1e693e0e97c0af63fe699a6f3d263017647e0ff68e7675"
   status_entry_count: 2
@@ -50,8 +50,9 @@ release:
   source_commit: "d61e7622e1108e8020f3189460b7f03ce6ed08a1"
   source_tag: "xuanling-mcp-v0.2.2"
   release_run: 32020739545
+  release_run_attempt: 2
   release_run_conclusion: "failure"
-  release_failure: "The first native npm publish returned E403 after npm whoami and provenance generation; zero registry items were published and ZCode promotion was skipped."
+  release_failure: "After removing the shadowing npmjs Environment secret, attempt 2 used the repository bootstrap secret and the first native npm publish still returned E403 after npm whoami and provenance generation; zero registry items were published and ZCode promotion was skipped."
   canonical_main_remote_has_branch: true
   npm_items: []
   zcode_target_repository: "umbrella22/xuanling-zcode-marketplace"
@@ -93,8 +94,8 @@ current_wave: "W5"
 current_work_package: "W5.5"
 wave_state: "deterministic_green"
 clean_acceptance_count: 0
-last_completed_action: "Created immutable 0.2.2 source tag and observed release run 32020739545 through the first real npm publish: all build/smoke/assembly/attestation and cross-job ZCode materialization gates passed, then npm rejected the first item with E403; registry remained empty and promotion was skipped."
-next_action: "Remove or rename only the npmjs Environment-level NPM_BOOTSTRAP_TOKEN so the intended repository-level NPM_BOOTSTRAP_TOKEN is no longer shadowed, then run gh run rerun 32020739545 and reconcile all eight registry items plus the ZCode target tag/tree."
+last_completed_action: "Removed scope ambiguity and ran release attempt 2 with the repository NPM_BOOTSTRAP_TOKEN: prerequisites, all builds/smokes, release assembly, attestation and ZCode materialization passed, but npm rejected the first native item with E403; all eight registry items remain absent and promotion was skipped."
+next_action: "Replace the repository NPM_BOOTSTRAP_TOKEN with a granular npm token owned by the intended publisher account, granting read/write package access for public package creation and bypassing 2FA for automation when required; then rerun 32020739545 and reconcile all eight registry items plus the ZCode target tag/tree."
 required_gates:
   - "W0 contract/dirty/docs tracking baseline"
   - "W1 correct distribution red contracts"
@@ -131,14 +132,15 @@ failed_commands:
   - "Expected contract red: release trust API absent, workflow still required release-signing certificates, no workflow_dispatch preflight/attestation, and ZCode release manifest remained schema v1."
   - "GitHub tag run 32017795111 job 95352471779: downloaded ZCode marketplace payload_sha256 differed because actions/upload-artifact does not preserve executable modes; failure occurred in pre-publish reverify, so zero npm items were published and promotion was skipped."
   - "GitHub tag run 32020739545 job 95361218225: first npm publish xuanling-mcp@0.2.2-darwin-arm64 returned E403 'You may not perform that action with these credentials' after npm whoami and provenance generation; all eight registry items remain missing and ZCode promotion was skipped."
+  - "GitHub run 32020739545 attempt 2 job 95366930103: repository-scoped bootstrap secret authenticated, but the same first native publish returned E403; all eight registry items remain missing and ZCode promotion was skipped."
 not_run_commands:
   - "The immutable 0.2.2 release tag exists and its build/attestation path passed, but npm publish/reconciliation, direct promotion, and ZCode/DSH live installs have not succeeded; failed immutable 0.2.1 tag is retained."
   - "No full Rust test in this W4.7 repair because Rust semantics are unchanged; locked xuanling-mcp cargo check passed and W6 still requires the final Rust gates."
 blockers:
-  - id: "B-08"
+  - id: "B-09"
     scope: "W5"
-    condition: "NPM_BOOTSTRAP_TOKEN exists at both repository and npmjs Environment scope; GitHub resolves the Environment secret for environment-bound jobs, so the repository secret requested for bootstrap testing is shadowed. The resolved credential authenticated with npm whoami but failed the first publish with E403."
-    release: "Keep the npmjs Environment, remove or rename only its duplicate NPM_BOOTSTRAP_TOKEN (or replace it with a token that can create public packages and satisfy npm write/2FA policy), retain the repository secret, then rerun 32020739545. Remove the repository bootstrap secret only after all eight items reconcile and Trusted Publishing is configured."
+    condition: "After removing the npmjs Environment duplicate, attempt 2 proved the repository NPM_BOOTSTRAP_TOKEN authenticates with npm whoami but cannot create xuanling-mcp@0.2.2-darwin-arm64: npm returns E403 'You may not perform that action with these credentials'. This is an npm authorization/2FA-policy failure, not a GitHub secret-scope failure."
+    release: "Replace the repository secret with a granular npm token owned by the intended publisher, configured for package/scopes read and write, covering public package creation, with bypass 2FA enabled when npm requires it for automation. Rerun 32020739545; remove the bootstrap secret only after all eight items reconcile and Trusted Publishing is configured."
   - id: "B-07"
     scope: "W6"
     condition: "xuanling-portability run 32010247767 fails 11 Windows capability contracts; ten report candidate_resolution_failed/ERROR_INVALID_FUNCTION and one reports Windows symlink-parent error-code drift"
@@ -309,6 +311,9 @@ evidence:
   - command: "default Memory DB SHA-256/stat/sidecar/lsof snapshot"
     result: "Unrelated incident: main DB is now 45c359aa... with mtime 2026-08-17T18:26:10+08:00; no WAL/SHM or holder exists. No DB write or recovery was attempted."
     recorded_at: "2026-08-17T18:45:20+08:00"
+  - command: "GitHub run 32020739545 attempt 2 after removing npmjs Environment NPM_BOOTSTRAP_TOKEN; failed log; eight-item registry, target, and DB reconciliation"
+    result: "The repository secret was the only remaining NPM_BOOTSTRAP_TOKEN and passed npm whoami. All three native build/smoke/staging jobs, DSH bundles, release assembly, OIDC attestation, and cross-job ZCode materialization passed. The first publish still returned E403 after emitting provenance; all eight exact registry items remain E404, target main/tag are unchanged, and default DB remains 45c359aa... without sidecars or holder."
+    recorded_at: "2026-08-17T19:06:29+08:00"
   - command: "final default DB, DSH checkout, source status, and source/target tag audit"
     result: "DB remains fab4413b... with no holder/WAL/SHM; DSH remains 47f94385.../89b2a20a... with its exact two user files; source has only user AGENTS.md/plan.md untracked; source and target have no tags. B-06 is a stable incident, not an active blocker."
     recorded_at: "2026-08-17T16:55:00+08:00"
@@ -352,24 +357,24 @@ W5.1-W5.4 complete：target identity/bootstrap、0.2.2 source push与 credential
 与跨 job ZCode materialization均通过；首个 `xuanling-mcp@0.2.2-darwin-arm64` publish 在生成 provenance
 后返回 npm E403。八个 registry item仍全部缺失，target仍为 bootstrap commit且无 0.2.2 tag。
 
-`NPM_BOOTSTRAP_TOKEN`当前同时存在于 repository与 `npmjs` Environment；environment-bound job解析到
-Environment secret，因此上次运行没有验证 repository secret。若要按用户要求测试 repository secret，
-必须保留 `npmjs` Environment但先删除或改名其中的同名 secret；发布成功并配置 Trusted Publishing后
-再删除 repository bootstrap secret。此外 W6 portability已有独立真实红色，当前分发计划禁止用 Rust
-修改或跳测化解。
+`npmjs` Environment中的同名 `NPM_BOOTSTRAP_TOKEN`已删除，attempt 2明确使用 repository secret。
+该凭据通过 `npm whoami`，但真实 publish仍以同一 E403失败，因此 B-08作用域问题已解除，B-09精确
+收敛为 npm package write/public creation或 2FA automation策略不满足。必须替换 repository token并
+再次运行同一 idempotent release；发布成功并配置 Trusted Publishing后才删除 bootstrap secret。
+此外 W6 portability已有独立真实红色，当前分发计划禁止用 Rust修改或跳测化解。
 
 ```text
 EXECUTION_STATUS: HANDOFF_REQUIRED
 PLAN_ID: host-local-integration-distribution-20260817
-CHECKOUT_FINGERPRINT: revision 3f49f9679714e3dbfd1542db11766450a6eeb2c7; status baseline ae65d65f... with only user AGENTS.md/plan.md, plus this ledger-only continuation
+CHECKOUT_FINGERPRINT: revision 66d497088a53d542835392ba1fc25172e5577dd6; status baseline ae65d65f... with only user AGENTS.md/plan.md, plus this ledger-only continuation
 CURRENT_WAVE: W5
 CURRENT_WORK_PACKAGE: W5.5
 WAVE_STATE: deterministic_green
 CONTRACTS_PROVEN: C-01/C-02 profile-local DSH bundles; C-03 deterministic ZCode projection/target bootstrap; C-04 explicit releaseTrust + mandatory npm provenance + OIDC attestation pipeline; C-05 ordered idempotent release; C-06 direct promotion permission; C-08 preservation; cross-job ZCode artifact mode restoration and authenticated 0.2.2 preflight
-EVIDENCE_ADDED: run 32020739545 three-platform build/smoke, DSH bundles, OIDC attestation and cross-job ZCode materialization green; first npm publish E403; eight registry items absent; target unchanged; duplicate-scope secret metadata and Memory DB isolation incident recorded
-FAILED_GATES: run 32020739545 first npm publish E403 with zero registry items; run 32017795111 historical artifact mode-loss incident; xuanling-portability 32010247767 Windows toolkit contract 102 pass/11 fail
+EVIDENCE_ADDED: run 32020739545 attempt 2 used repository secret; three-platform build/smoke, DSH bundles, OIDC attestation and cross-job ZCode materialization green; first npm publish E403; eight registry items absent; target and Memory DB unchanged
+FAILED_GATES: run 32020739545 attempts 1 and 2 first npm publish E403 with zero registry items; run 32017795111 historical artifact mode-loss incident; xuanling-portability 32010247767 Windows toolkit contract 102 pass/11 fail
 NOT_RUN_GATES: successful npm publish/reconciliation; ZCode direct promotion; clean DSH installs/model calls; ZCode install/restart; W6 final parity and regression
-BLOCKERS: B-08 npmjs Environment secret shadows the repository bootstrap secret and the resolved credential returned E403; B-07 Windows capability portability requires a separately authorized Rust work package
-NEXT_EXACT_ACTION: remove or rename only npmjs Environment NPM_BOOTSTRAP_TOKEN, keep the repository secret, then rerun GitHub run 32020739545 and reconcile npm plus ZCode
+BLOCKERS: B-09 repository bootstrap token authenticates but lacks effective npm public package creation/write or required 2FA bypass; B-07 Windows capability portability requires a separately authorized Rust work package
+NEXT_EXACT_ACTION: replace repository NPM_BOOTSTRAP_TOKEN with a write-capable granular npm token with automation 2FA bypass as required, then rerun GitHub run 32020739545 and reconcile npm plus ZCode
 LEDGER_PATH: docs/plans/host-local-integration-distribution-execution-ledger.md
 ```
