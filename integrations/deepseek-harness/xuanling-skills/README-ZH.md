@@ -3,10 +3,10 @@
 [English](README.md) | 简体中文
 
 该 DeepSeek Harness bundle 包含两个按需 XuanLing 工作流 Skill 和严格整文件覆盖 policy。
-它不注册 MCP server，也不依赖 `xuanling-mcp`。
+它不注册 MCP server，也不依赖 `@xuanling-rs/xuanling-mcp`。
 
 ```sh
-dsh plugin --profile demo add xuanling-dsh-skills@0.2.2
+dsh plugin --profile demo add @xuanling-rs/xuanling-dsh-skills@0.2.3
 ```
 
 请与且仅与一个 XuanLing 工具 bundle 组合使用。`xuanling-file-workflow` 在 Harness 原生文件

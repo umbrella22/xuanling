@@ -4,10 +4,10 @@ English | [Simplified Chinese](README-ZH.md)
 
 DeepSeek Harness bundle containing two on-demand XuanLing workflow Skills and
 the strict whole-file overwrite policy. It registers no MCP server and has no
-dependency on `xuanling-mcp`.
+dependency on `@xuanling-rs/xuanling-mcp`.
 
 ```sh
-dsh plugin --profile demo add xuanling-dsh-skills@0.2.2
+dsh plugin --profile demo add @xuanling-rs/xuanling-dsh-skills@0.2.3
 ```
 
 Use it with exactly one XuanLing tool bundle. `xuanling-file-workflow` routes

@@ -13,7 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
 
-import { TARGETS } from "../packages/xuanling-mcp/lib/targets.js";
+import { PACKAGE_NAME, TARGETS } from "../packages/xuanling-mcp/lib/targets.js";
 import {
   NPM_ROOT,
   REPO_ROOT,
@@ -172,7 +172,7 @@ packageManifests.push(await extractPackage(
   releaseRoot,
   "npm-main",
   "main.pack.json",
-  path.join(nodeModules, "xuanling-mcp"),
+  path.join(nodeModules, ...PACKAGE_NAME.split("/")),
 ));
 
 const targetFacts = {};

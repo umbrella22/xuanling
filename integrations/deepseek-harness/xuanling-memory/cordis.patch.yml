@@ -16,11 +16,11 @@
         transport: stdio
         command: !!js process.execPath
         args:
-          - !!js process.env.XUANLING_DSH_SCHEMA_ADAPTER ?? process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('xuanling-dsh-memory/schema-adapter.mjs')
+          - !!js process.env.XUANLING_DSH_SCHEMA_ADAPTER ?? process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@xuanling-rs/xuanling-dsh-memory/schema-adapter.mjs')
           - '--binary'
           - !!js process.execPath
           - '--'
-          - !!js process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('xuanling-mcp/bin/xuanling-mcp.js')
+          - !!js process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@xuanling-rs/xuanling-mcp/bin/xuanling-mcp.js')
           - '--workspace-root'
           - !!js process.env.XUANLING_WORKSPACE_ROOT ?? process.cwd()
           - '--tool-profile'

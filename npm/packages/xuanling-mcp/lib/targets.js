@@ -1,9 +1,22 @@
-export const PACKAGE_NAME = "xuanling-mcp";
+export const NPM_SCOPE = "@xuanling-rs";
+export const PACKAGE_BASENAME = "xuanling-mcp";
+export const PACKAGE_NAME = `${NPM_SCOPE}/${PACKAGE_BASENAME}`;
+
+export const DSH_BUNDLES = Object.freeze([
+  Object.freeze({ id: "xuanling-dsh-memory", packageName: `${NPM_SCOPE}/xuanling-dsh-memory` }),
+  Object.freeze({ id: "xuanling-dsh-skills", packageName: `${NPM_SCOPE}/xuanling-dsh-skills` }),
+  Object.freeze({ id: "xuanling-dsh-tools", packageName: `${NPM_SCOPE}/xuanling-dsh-tools` }),
+  Object.freeze({
+    id: "xuanling-dsh-tools-replace",
+    packageName: `${NPM_SCOPE}/xuanling-dsh-tools-replace`,
+  }),
+]);
 
 export const TARGETS = Object.freeze({
   "darwin-arm64": Object.freeze({
     id: "darwin-arm64",
     alias: "xuanling-mcp-darwin-arm64",
+    packageName: `${NPM_SCOPE}/xuanling-mcp-darwin-arm64`,
     binary: "bin/xuanling-mcp",
     cpu: "arm64",
     os: "darwin",
@@ -13,6 +26,7 @@ export const TARGETS = Object.freeze({
   "linux-x64-gnu": Object.freeze({
     id: "linux-x64-gnu",
     alias: "xuanling-mcp-linux-x64-gnu",
+    packageName: `${NPM_SCOPE}/xuanling-mcp-linux-x64-gnu`,
     binary: "bin/xuanling-mcp",
     cpu: "x64",
     libc: "glibc",
@@ -23,6 +37,7 @@ export const TARGETS = Object.freeze({
   "win32-x64-msvc": Object.freeze({
     id: "win32-x64-msvc",
     alias: "xuanling-mcp-win32-x64-msvc",
+    packageName: `${NPM_SCOPE}/xuanling-mcp-win32-x64-msvc`,
     binary: "bin/xuanling-mcp.exe",
     cpu: "x64",
     os: "win32",
@@ -49,7 +64,7 @@ export function expectedOptionalDependencies(releaseVersion) {
       .sort((left, right) => left.alias.localeCompare(right.alias))
       .map((target) => [
         target.alias,
-        `npm:${PACKAGE_NAME}@${platformVersion(releaseVersion, target.id)}`,
+        `npm:${target.packageName}@${platformVersion(releaseVersion, target.id)}`,
       ]),
   );
 }

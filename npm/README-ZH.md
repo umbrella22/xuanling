@@ -2,7 +2,7 @@
 
 [English](README.md) | 简体中文
 
-本目录维护 XuanLing MCP 0.2.2 的 npm 分发与发布自动化。完整发行版包含八个不可变 npm
+本目录维护 XuanLing MCP 0.2.3 的 npm 分发与发布自动化。完整发行版包含八个不可变 npm
 item：一个稳定的 Node.js 启动器、三个使用平台 prerelease 版本的原生变体，以及四个
 DeepSeek Harness bundle。同一组经过验证的 core artifact 还会生成 ZCode marketplace archive。
 
@@ -10,31 +10,31 @@ DeepSeek Harness bundle。同一组经过验证的 core artifact 还会生成 ZC
 
 | 安装别名 | 发布版本 | 平台 |
 | --- | --- | --- |
-| `xuanling-mcp` | `0.2.2` | 稳定 Node.js 启动器 |
-| `xuanling-mcp-darwin-arm64` | `0.2.2-darwin-arm64` | macOS Apple Silicon |
-| `xuanling-mcp-linux-x64-gnu` | `0.2.2-linux-x64-gnu` | Linux x64，glibc 2.35 或更高版本 |
-| `xuanling-mcp-win32-x64-msvc` | `0.2.2-win32-x64-msvc` | Windows x64 MSVC |
+| `@xuanling-rs/xuanling-mcp` | `0.2.3` | 稳定 Node.js 启动器 |
+| `@xuanling-rs/xuanling-mcp-darwin-arm64` | `0.2.3-darwin-arm64` | macOS Apple Silicon |
+| `@xuanling-rs/xuanling-mcp-linux-x64-gnu` | `0.2.3-linux-x64-gnu` | Linux x64，glibc 2.35 或更高版本 |
+| `@xuanling-rs/xuanling-mcp-win32-x64-msvc` | `0.2.3-win32-x64-msvc` | Windows x64 MSVC |
 
-四个变体都使用 npm package 名 `xuanling-mcp`。稳定 package 通过 optional dependency 的
-npm alias 引用原生变体，npm 根据 `os`、`cpu` 和 `libc` metadata 选择兼容版本。本发行版
+启动器与原生变体都发布在 `@xuanling-rs` npm organization 下。稳定 package 通过 optional
+dependency 的 npm alias 引用原生变体，npm 根据 `os`、`cpu` 和 `libc` metadata 选择兼容版本。本发行版
 不发布 Intel macOS、ARM Linux、glibc 2.34 及更早版本、musl Linux 或 ARM Windows。
 
 DeepSeek Harness 会把以下公开 bundle 直接安装到指定 profile：
 
 | Package | 作用 |
 | --- | --- |
-| `xuanling-dsh-memory@0.2.2` | 带 DSH schema projection 的完整 Memory v2 profile |
-| `xuanling-dsh-skills@0.2.2` | 文件与 Memory 工作流 Skill 以及严格 overwrite policy |
-| `xuanling-dsh-tools@0.2.2` | 增量挂载完整 XuanLing catalog |
-| `xuanling-dsh-tools-replace@0.2.2` | 完整 catalog，并停用模型可见的原生文件系统工具行 |
+| `@xuanling-rs/xuanling-dsh-memory@0.2.3` | 带 DSH schema projection 的完整 Memory v2 profile |
+| `@xuanling-rs/xuanling-dsh-skills@0.2.3` | 文件与 Memory 工作流 Skill 以及严格 overwrite policy |
+| `@xuanling-rs/xuanling-dsh-tools@0.2.3` | 增量挂载完整 XuanLing catalog |
+| `@xuanling-rs/xuanling-dsh-tools-replace@0.2.3` | 完整 catalog，并停用模型可见的原生文件系统工具行 |
 
-三个工具 bundle 在同一 DSH profile 内精确依赖稳定版 `xuanling-mcp`。Skills bundle 不包含
+三个工具 bundle 在同一 DSH profile 内精确依赖稳定版 `@xuanling-rs/xuanling-mcp`。Skills bundle 不包含
 MCP runtime。
 
 ## 安装
 
 ```sh
-npm install --global xuanling-mcp@0.2.2
+npm install --global @xuanling-rs/xuanling-mcp@0.2.3
 xuanling-mcp --workspace-root /absolute/path/to/project
 ```
 
@@ -47,7 +47,7 @@ MCP Host 也可以通过 `npx` 固定同一发行版本：
       "command": "npx",
       "args": [
         "-y",
-        "xuanling-mcp@0.2.2",
+        "@xuanling-rs/xuanling-mcp@0.2.3",
         "--workspace-root",
         "/absolute/path/to/project"
       ]
@@ -67,7 +67,7 @@ MCP Host 也可以通过 `npx` 固定同一发行版本：
 - 每个原生 package 都记录显式 release-trust 状态，发布时强制生成 npm provenance，并用
   source commit 与 binary SHA-256 绑定构建结果。ZCode marketplace archive 在 promotion 前还会
   生成 GitHub OIDC build-provenance attestation。
-- XuanLing 0.2.2 不声明 Developer ID 或 Authenticode 发布者签名。后续版本可以增加这些签名，
+- XuanLing 0.2.3 不声明 Developer ID 或 Authenticode 发布者签名。后续版本可以增加这些签名，
   但缺少平台发布者证书不改变 MCP 协议或 package 完整性合同。
 - 每个原生 package 都包含 XuanLing MIT 许可证和生成的第三方 notices。
 - 启动器 package 同时包含相互匹配的英文与简体中文 README。
@@ -86,7 +86,7 @@ node npm/scripts/pack-dsh-bundles.mjs \
   --commit "$(git rev-parse HEAD)"
 node npm/scripts/verify-dsh-release-set.mjs \
   --root npm/dist/dsh \
-  --version 0.2.2 \
+  --version 0.2.3 \
   --commit "$(git rev-parse HEAD)"
 
 node npm/scripts/generate-third-party-licenses.mjs \
@@ -151,9 +151,8 @@ tree 冲突都会硬失败。本地执行 `npm publish` 不属于正式发布路
 ### 首次发布
 
 新 package 名出现前，npm 无法绑定 Trusted Publisher。仅首次发布需要在 GitHub `npmjs`
-environment 中配置短期 `NPM_BOOTSTRAP_TOKEN`。workflow 会用它发布尚不存在的五个 package
-名称：`xuanling-mcp` 和四个 DSH bundle。名称出现在 npm 后，使用以下信息逐个配置
-package-level Trusted Publishing：
+environment 中配置短期 `NPM_BOOTSTRAP_TOKEN`。workflow 会用它发布尚不存在的 scoped package。
+名称出现在 npm 后，使用以下信息为八个 package 逐个配置 package-level Trusted Publishing：
 
 ```text
 GitHub owner: umbrella22
@@ -164,7 +163,7 @@ Allowed action: npm publish
 ```
 
 保持 tag、commit 和 artifact 不变，重跑失败的 publish job。幂等发布器会跳过所有 integrity
-已匹配的 item。五个 package 名称都配置 Trusted Publisher 后，删除 bootstrap secret 并撤销
+已匹配的 item。八个 package 名称都配置 Trusted Publisher 后，删除 bootstrap secret 并撤销
 短期 token。
 
 ## 失败恢复

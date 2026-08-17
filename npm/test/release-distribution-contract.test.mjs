@@ -60,7 +60,7 @@ test("synthetic release fixture is hash-pinned before distribution tests use it"
 
 test("registry integrity reconciliation has exact publish, skip, and failure states", () => {
   const expectedIntegrity = "sha512-fixture";
-  const specifier = "xuanling-mcp@0.2.2";
+  const specifier = "@xuanling-rs/xuanling-mcp@0.2.3";
   assert.deepEqual(
     classifyIntegrityLookup({ stdout: "", stderr: "npm ERR! E404", exitCode: 1 }, {
       expectedIntegrity,
@@ -241,11 +241,12 @@ test("release workflow publishes the complete ordered npm set", () => {
   const source = workflow();
   assert.ok(existsSync(path.join(repoRoot, "npm", "scripts", "pack-dsh-bundles.mjs")));
   assert.ok(existsSync(path.join(repoRoot, "npm", "scripts", "verify-dsh-release-set.mjs")));
-  const nativePublish = source.indexOf("Publish native variants");
-  const launcherPublish = source.indexOf("Publish stable launcher");
-  const dshPublish = source.indexOf("Publish DSH bundles");
+  const nativePublish = source.indexOf("Publish scoped native variants");
+  const launcherPublish = source.indexOf("Publish scoped stable launcher");
+  const dshPublish = source.indexOf("Publish scoped DSH bundles");
   assert.ok(nativePublish !== -1 && launcherPublish !== -1 && dshPublish !== -1);
   assert.ok(nativePublish < launcherPublish && launcherPublish < dshPublish);
+  assert.match(source, /check-release-prerequisites\.mjs/);
   for (const name of [
     "xuanling-dsh-memory",
     "xuanling-dsh-tools",
@@ -280,7 +281,7 @@ test("promotion is gated on the complete registry set and zcode-packer permissio
   );
   const sourcePreflight = source.indexOf("Verify authenticated target repository access");
   const build = source.indexOf("Build locked release binary");
-  const publish = source.indexOf("Publish native variants");
+  const publish = source.indexOf("Publish scoped native variants");
   assert.ok(sourcePreflight !== -1 && sourcePreflight < build && build < publish);
   assert.match(
     source,

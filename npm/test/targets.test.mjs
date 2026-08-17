@@ -48,9 +48,9 @@ test("target selection distinguishes OS, CPU, and libc", () => {
 test("platform versions and aliases are deterministic", () => {
   assert.equal(platformVersion("0.1.0", "darwin-arm64"), "0.1.0-darwin-arm64");
   assert.deepEqual(expectedOptionalDependencies("0.1.0"), {
-    "xuanling-mcp-darwin-arm64": "npm:xuanling-mcp@0.1.0-darwin-arm64",
-    "xuanling-mcp-linux-x64-gnu": "npm:xuanling-mcp@0.1.0-linux-x64-gnu",
-    "xuanling-mcp-win32-x64-msvc": "npm:xuanling-mcp@0.1.0-win32-x64-msvc",
+    "xuanling-mcp-darwin-arm64": "npm:@xuanling-rs/xuanling-mcp-darwin-arm64@0.1.0-darwin-arm64",
+    "xuanling-mcp-linux-x64-gnu": "npm:@xuanling-rs/xuanling-mcp-linux-x64-gnu@0.1.0-linux-x64-gnu",
+    "xuanling-mcp-win32-x64-msvc": "npm:@xuanling-rs/xuanling-mcp-win32-x64-msvc@0.1.0-win32-x64-msvc",
   });
   assert.throws(() => platformVersion("0.1.0-beta.1", "darwin-arm64"), /stable semver/);
 });

@@ -7,10 +7,10 @@
 编排集成。
 
 ```sh
-dsh plugin --profile replace add xuanling-dsh-tools-replace@0.2.2
+dsh plugin --profile replace add @xuanling-rs/xuanling-dsh-tools-replace@0.2.3
 ```
 
-精确版本的 `xuanling-mcp@0.2.2` runtime 会安装在 profile 内，并通过带校验的 JS launcher
+精确版本的 `@xuanling-rs/xuanling-mcp@0.2.3` runtime 会安装在 profile 内，并通过带校验的 JS launcher
 启动；不会使用全局 npm package。
 
 该变体会从模型可见的文件系统表面移除原生 `read_image`、先读后改 observation guard 和 editor

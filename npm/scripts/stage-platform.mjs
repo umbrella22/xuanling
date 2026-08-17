@@ -45,7 +45,7 @@ await copyFile(path.join(MAIN_PACKAGE_DIR, "LICENSE"), path.join(outputDirectory
 await copyFile(noticesSource, path.join(outputDirectory, "THIRD_PARTY_LICENSES.txt"));
 
 const packageJson = {
-  name: "xuanling-mcp",
+  name: target.packageName,
   version: platformVersion(releaseVersion, targetId),
   description: `Native XuanLing MCP binary for ${target.rustTarget}.`,
   license: "MIT",

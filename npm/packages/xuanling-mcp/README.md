@@ -2,7 +2,7 @@
 
 English | [Simplified Chinese](README-ZH.md)
 
-`xuanling-mcp` is a cross-platform local Model Context Protocol server for
+`@xuanling-rs/xuanling-mcp` is a cross-platform local Model Context Protocol server for
 coding agents. It exposes 42 typed tools over stdio for filesystem work,
 process execution, project discovery, artifacts, sessions, and proposal-first
 SQLite memory.
@@ -12,7 +12,7 @@ SQLite memory.
 The launcher requires Node.js 18.17 or newer.
 
 ```sh
-npm install --global xuanling-mcp@0.2.2
+npm install --global @xuanling-rs/xuanling-mcp@0.2.3
 xuanling-mcp --version
 ```
 
@@ -25,7 +25,7 @@ MCP clients can also pin the version with `npx`:
       "command": "npx",
       "args": [
         "-y",
-        "xuanling-mcp@0.2.2",
+        "@xuanling-rs/xuanling-mcp@0.2.3",
         "--workspace-root",
         "/absolute/path/to/project",
         "--tool-profile",

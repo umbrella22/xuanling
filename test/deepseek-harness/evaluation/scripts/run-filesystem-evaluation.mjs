@@ -215,7 +215,7 @@ function childEnv(trial) {
     TSX_TSCONFIG_PATH: path.join(dshRoot, "tsconfig.json"),
     DSH_PERMISSION_MODE: "workspace-write",
     DSH_TELEMETRY_DISABLED: "1",
-    XUANLING_DSH_SKILLS_ROOT: path.join(trial.dshHome, "profiles", "headless", "node_modules", "xuanling-dsh-skills", "skills"),
+    XUANLING_DSH_SKILLS_ROOT: path.join(trial.dshHome, "profiles", "headless", "node_modules", "@xuanling-rs", "xuanling-dsh-skills", "skills"),
     XUANLING_DSH_SCHEMA_ADAPTER: adapterPath,
     XUANLING_TEST_MCP_BIN: binary,
     XUANLING_TEST_WORKSPACE_ROOT: trial.workspace,
@@ -248,7 +248,7 @@ function treeSha256(root) {
 }
 
 function profileSkillsBundlePath(dshHome) {
-  return path.join(dshHome, "profiles", "headless", "node_modules", "xuanling-dsh-skills");
+  return path.join(dshHome, "profiles", "headless", "node_modules", "@xuanling-rs", "xuanling-dsh-skills");
 }
 
 function installSkillsBundle(dshHome) {
@@ -546,7 +546,7 @@ if (dryRun) {
       skills_patch: sha256(skillsPatch),
       skills_bundle: existsSync(skillsBundleRoot) ? treeSha256(skillsBundleRoot) : null,
       strict_overwrite_policy: sha256(strictOverwritePolicy),
-      skills_bundle_profile_path: path.join("profiles", "headless", "node_modules", "xuanling-dsh-skills"),
+      skills_bundle_profile_path: path.join("profiles", "headless", "node_modules", "@xuanling-rs", "xuanling-dsh-skills"),
       common_patch: sha256(commonPatch),
       arm_patches: Object.fromEntries(arms.map((arm) => [arm, sha256(armPatch(arm))])),
       settings_template: sha256(settingsTemplate),

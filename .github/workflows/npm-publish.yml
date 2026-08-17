@@ -415,7 +415,7 @@ jobs:
             printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_BOOTSTRAP_TOKEN" > "$NPMRC"
             echo "NPM_CONFIG_USERCONFIG=$NPMRC" >> "$GITHUB_ENV"
           fi
-      - name: Publish native variants
+      - name: Publish scoped native variants
         run: |
           set -euo pipefail
           for TARGET in darwin-arm64 linux-x64-gnu win32-x64-msvc; do
@@ -423,12 +423,12 @@ jobs:
               --manifest "npm/release/npm-$TARGET/$TARGET.pack.json" \
               --tag "platform-$TARGET"
           done
-      - name: Publish stable launcher
+      - name: Publish scoped stable launcher
         run: |
           node npm/scripts/publish-idempotent.mjs \
             --manifest npm/release/npm-main/main.pack.json \
             --tag latest
-      - name: Publish DSH bundles
+      - name: Publish scoped DSH bundles
         run: |
           set -euo pipefail
           for PACKAGE in \
@@ -440,7 +440,7 @@ jobs:
               --manifest "npm/dsh-release/$PACKAGE/$PACKAGE.pack.json" \
               --tag latest
           done
-      - name: Reconcile all eight immutable registry items
+      - name: Reconcile all eight scoped immutable registry items
         run: |
           node npm/scripts/verify-published-release.mjs \
             --core-root npm/release \

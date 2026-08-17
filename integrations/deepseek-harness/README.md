@@ -12,13 +12,13 @@ workflow Skills, and overwrite policy remain outside the Rust MCP contract.
 Install the Memory and Skills bundles into the target DSH profile:
 
 ```sh
-dsh plugin --profile demo add xuanling-dsh-memory@0.2.2
-dsh plugin --profile demo add xuanling-dsh-skills@0.2.2
+dsh plugin --profile demo add @xuanling-rs/xuanling-dsh-memory@0.2.3
+dsh plugin --profile demo add @xuanling-rs/xuanling-dsh-skills@0.2.3
 dsh --profile demo --dump-config
 dsh --profile demo
 ```
 
-The Memory bundle installs the exact `xuanling-mcp@0.2.2` launcher and native
+The Memory bundle installs the exact `@xuanling-rs/xuanling-mcp@0.2.3` launcher and native
 optional dependency inside the profile. No global npm package, `npx`, or
 install-time binary download is used.
 
@@ -30,10 +30,10 @@ rejects unsafe XuanLing whole-file overwrites before MCP dispatch.
 
 | Bundle | Behavior | Use case |
 | --- | --- | --- |
-| `xuanling-dsh-memory` | Adds the complete nine-tool Memory v2 profile with DSH schema projection; retains every native Harness tool | Recommended daily configuration |
-| `xuanling-dsh-skills` | Adds isolated file and Memory workflow Skills plus strict overwrite policy; mounts no MCP tools | Combine with any XuanLing tool bundle |
-| `xuanling-dsh-tools` | Adds the complete XuanLing catalog and retains native Harness tools | Access artifact, project, filesystem, process, and advanced tools |
-| `xuanling-dsh-tools-replace` | Adds the complete catalog and disables the three model-facing native filesystem rows | Controlled full-catalog replacement |
+| `@xuanling-rs/xuanling-dsh-memory` | Adds the complete nine-tool Memory v2 profile with DSH schema projection; retains every native Harness tool | Recommended daily configuration |
+| `@xuanling-rs/xuanling-dsh-skills` | Adds isolated file and Memory workflow Skills plus strict overwrite policy; mounts no MCP tools | Combine with any XuanLing tool bundle |
+| `@xuanling-rs/xuanling-dsh-tools` | Adds the complete XuanLing catalog and retains native Harness tools | Access artifact, project, filesystem, process, and advanced tools |
+| `@xuanling-rs/xuanling-dsh-tools-replace` | Adds the complete catalog and disables the three model-facing native filesystem rows | Controlled full-catalog replacement |
 
 The Memory bundle deliberately exposes the complete lifecycle. Search, get,
 candidate creation/replacement/archive, review, and feedback form one contract;
@@ -52,7 +52,7 @@ Bundle expressions resolve these values when DSH starts:
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| MCP runtime | Profile-local `xuanling-mcp@0.2.2` | Verified JS launcher and native optional dependency |
+| MCP runtime | Profile-local `@xuanling-rs/xuanling-mcp@0.2.3` | Verified JS launcher and native optional dependency |
 | `XUANLING_WORKSPACE_ROOT` | DSH process working directory | XuanLing filesystem capability root |
 | Schema adapter | Installed `xuanling-dsh-memory/schema-adapter.mjs` | Projects discovery schemas for DSH |
 | MCP tool profile | `memory` in the recommended bundle | Server-side discovery and dispatch selection |

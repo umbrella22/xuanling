@@ -2,6 +2,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { DSH_BUNDLES } from "../packages/xuanling-mcp/lib/targets.js";
 import {
   REPO_ROOT,
   currentCommit,
@@ -11,13 +12,6 @@ import {
   run,
   stableJson,
 } from "./shared.mjs";
-
-const BUNDLES = Object.freeze([
-  "xuanling-dsh-memory",
-  "xuanling-dsh-tools",
-  "xuanling-dsh-tools-replace",
-  "xuanling-dsh-skills",
-]);
 
 const sourceDirectories = Object.freeze({
   "xuanling-dsh-memory": "xuanling-memory",
@@ -37,19 +31,19 @@ const integrationRoot = path.join(REPO_ROOT, "integrations", "deepseek-harness")
 await rm(outputRoot, { force: true, recursive: true });
 await mkdir(outputRoot, { recursive: true });
 
-for (const name of BUNDLES) {
-  const packageRoot = path.join(integrationRoot, sourceDirectories[name]);
+for (const { id, packageName } of DSH_BUNDLES) {
+  const packageRoot = path.join(integrationRoot, sourceDirectories[id]);
   const packageJson = await readJson(path.join(packageRoot, "package.json"));
-  if (packageJson.name !== name) {
-    throw new Error(`${packageRoot} declares ${packageJson.name}, expected ${name}`);
+  if (packageJson.name !== packageName) {
+    throw new Error(`${packageRoot} declares ${packageJson.name}, expected ${packageName}`);
   }
   for (const script of ["preinstall", "install", "postinstall", "prepublish", "prepare"]) {
     if (packageJson.scripts?.[script] !== undefined) {
-      throw new Error(`${name} must not declare lifecycle script ${script}`);
+      throw new Error(`${packageName} must not declare lifecycle script ${script}`);
     }
   }
 
-  const destination = path.join(outputRoot, name);
+  const destination = path.join(outputRoot, id);
   await mkdir(destination, { recursive: true });
   const stagingParent = await mkdtemp(path.join(os.tmpdir(), "xuanling-dsh-package-"));
   const stagingRoot = path.join(stagingParent, "package");
@@ -69,18 +63,18 @@ for (const name of BUNDLES) {
   }
   const results = JSON.parse(stdout);
   if (!Array.isArray(results) || results.length !== 1) {
-    throw new Error(`npm pack returned ${results.length} results for ${name}`);
+    throw new Error(`npm pack returned ${results.length} results for ${packageName}`);
   }
   const result = results[0];
   const files = result.files.map((file) => file.path).sort();
   const expected = [...packageJson.files, "package.json"].sort();
   if (JSON.stringify(files) !== JSON.stringify(expected)) {
     throw new Error(
-      `Unexpected ${name} tarball contents:\n${files.map((file) => `- ${file}`).join("\n")}`,
+      `Unexpected ${packageName} tarball contents:\n${files.map((file) => `- ${file}`).join("\n")}`,
     );
   }
   if (result.unpackedSize > 512 * 1024) {
-    throw new Error(`${name} unpacked size ${result.unpackedSize} exceeds 512 KiB`);
+    throw new Error(`${packageName} unpacked size ${result.unpackedSize} exceeds 512 KiB`);
   }
   const manifest = {
     filename: result.filename,
@@ -93,10 +87,10 @@ for (const name of BUNDLES) {
     unpackedSize: result.unpackedSize,
     version: result.version,
   };
-  await writeFile(path.join(destination, `${name}.pack.json`), stableJson(manifest));
+  await writeFile(path.join(destination, `${id}.pack.json`), stableJson(manifest));
 
   // Force an immediate read so a failed filesystem write cannot leave a
   // seemingly complete release directory.
   await readFile(path.join(destination, result.filename));
-  console.log(`${name}: ${path.join(destination, result.filename)}`);
+  console.log(`${packageName}: ${path.join(destination, result.filename)}`);
 }

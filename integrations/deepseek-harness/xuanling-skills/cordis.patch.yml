@@ -23,6 +23,6 @@
         includeDefaultRoots: false
         watch: false
         customSkillDirs:
-          - !!js process.env.XUANLING_DSH_SKILLS_ROOT ?? process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('xuanling-dsh-skills/package.json')), 'skills')
+          - !!js process.env.XUANLING_DSH_SKILLS_ROOT ?? process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@xuanling-rs/xuanling-dsh-skills/package.json')), 'skills')
     - id: xuanling-file-policy
-      name: xuanling-dsh-skills/strict-overwrite-policy.mjs
+      name: '@xuanling-rs/xuanling-dsh-skills/strict-overwrite-policy.mjs'

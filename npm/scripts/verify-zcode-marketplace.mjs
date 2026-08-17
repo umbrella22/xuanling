@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 
 import {
+  PACKAGE_NAME,
   TARGETS,
   expectedOptionalDependencies,
   platformVersion,
@@ -93,7 +94,7 @@ const mcp = await readJson(path.join(pluginRoot, ".mcp.json"));
 assert.deepEqual(mcp.mcpServers?.xuanling, {
   command: "node",
   args: [
-    "${ZCODE_PLUGIN_ROOT}/bin/node_modules/xuanling-mcp/bin/xuanling-mcp.js",
+    "${ZCODE_PLUGIN_ROOT}/bin/node_modules/@xuanling-rs/xuanling-mcp/bin/xuanling-mcp.js",
     "--workspace-root",
     "${ZCODE_PROJECT_DIR}",
     "--compat-lenient-object-params",
@@ -103,15 +104,17 @@ assert.deepEqual(mcp.mcpServers?.xuanling, {
 const nodeModules = path.join(pluginRoot, "bin", "node_modules");
 assert.deepEqual(
   (await readdir(nodeModules)).sort(),
-  ["xuanling-mcp", ...Object.values(TARGETS).map((target) => target.alias)].sort(),
+  ["@xuanling-rs", ...Object.values(TARGETS).map((target) => target.alias)].sort(),
   "plugin contains the launcher and exactly three native aliases",
 );
-const mainPackage = await readJson(path.join(nodeModules, "xuanling-mcp", "package.json"));
+const mainPackageRoot = path.join(nodeModules, ...PACKAGE_NAME.split("/"));
+const mainPackage = await readJson(path.join(mainPackageRoot, "package.json"));
+assert.equal(mainPackage.name, PACKAGE_NAME);
 assert.equal(mainPackage.version, version);
 assert.equal(mainPackage.xuanlingRelease?.sourceCommit, sourceCommit);
 assert.deepEqual(mainPackage.optionalDependencies, expectedOptionalDependencies(version));
 assert.deepEqual(
-  (await walkFiles(path.join(nodeModules, "xuanling-mcp"))).sort(),
+  (await walkFiles(mainPackageRoot)).sort(),
   [
     "LICENSE",
     "README-ZH.md",
@@ -132,6 +135,7 @@ for (const [targetId, target] of Object.entries(TARGETS)) {
   const packageRoot = path.join(nodeModules, target.alias);
   const packageJson = await readJson(path.join(packageRoot, "package.json"));
   targetPackageJson[targetId] = packageJson;
+  assert.equal(packageJson.name, target.packageName);
   assert.deepEqual(
     (await walkFiles(packageRoot)).sort(),
     ["LICENSE", "THIRD_PARTY_LICENSES.txt", target.binary, "package.json"].sort(),
@@ -163,8 +167,11 @@ assert.deepEqual(
   "release manifest lists the launcher and every native package version exactly once",
 );
 for (const entry of releaseManifest.packages) {
-  assert.equal(entry.name, "xuanling-mcp");
-  assert.match(entry.filename, /^xuanling-mcp-[^/]+\.tgz$/);
+  assert.ok(
+    [PACKAGE_NAME, ...Object.values(TARGETS).map((target) => target.packageName)].includes(entry.name),
+    `unexpected package identity in release manifest: ${entry.name}`,
+  );
+  assert.match(entry.filename, /^xuanling-rs-xuanling-mcp-[^/]+\.tgz$/);
   assert.match(entry.integrity, /^sha512-[A-Za-z0-9+/]+={0,2}$/);
   assert.match(entry.shasum, /^[0-9a-f]{40}$/);
 }

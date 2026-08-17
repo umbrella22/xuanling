@@ -606,7 +606,7 @@ test("the live runner collects synthetic sessions and snapshots each cache state
     "#!/usr/bin/env node",
     "const fs = require('node:fs');",
     "const path = require('node:path');",
-    "const bundle = path.join(process.env.DSH_HOME, 'profiles', 'headless', 'node_modules', 'xuanling-dsh-skills');",
+    "const bundle = path.join(process.env.DSH_HOME, 'profiles', 'headless', 'node_modules', '@xuanling-rs', 'xuanling-dsh-skills');",
     "for (const relative of ['package.json', 'strict-overwrite-policy.mjs', 'skills/xuanling-file-workflow/SKILL.md']) {",
     "  if (!fs.existsSync(path.join(bundle, relative))) {",
     "    console.error(`missing profile-local XuanLing bundle file: ${relative}`);",
@@ -658,7 +658,7 @@ test("the live runner collects synthetic sessions and snapshots each cache state
       path.join(evalRoot, "cache", "A", "pair-1", "cold", "dsh-home"),
       path.join(evalRoot, "cache", "A", "pair-1", "warm", "dsh-home"),
     ]) {
-      const installed = path.join(trialHome, "profiles", "headless", "node_modules", "xuanling-dsh-skills");
+      const installed = path.join(trialHome, "profiles", "headless", "node_modules", "@xuanling-rs", "xuanling-dsh-skills");
       assert.ok(existsSync(path.join(installed, "package.json")), "each fresh profile installs the bundle package");
       assert.ok(existsSync(path.join(installed, "strict-overwrite-policy.mjs")), "each fresh profile installs the policy module");
       assert.ok(existsSync(path.join(installed, "skills", "xuanling-file-workflow", "SKILL.md")), "each fresh profile installs the file Skill");
@@ -1089,7 +1089,7 @@ test("evaluation launchers isolate the store that the fs-profile server still op
   );
   assert.match(
     runner,
-    /path\.join\(trial\.dshHome, "profiles", "headless", "node_modules", "xuanling-dsh-skills", "skills"\)/,
+    /path\.join\(trial\.dshHome, "profiles", "headless", "node_modules", "@xuanling-rs", "xuanling-dsh-skills", "skills"\)/,
     "the child resolves Skills from the profile-local bundle",
   );
   assert.match(runner, /function installSkillsBundle\(/, "profile bundle installation is an explicit runner step");

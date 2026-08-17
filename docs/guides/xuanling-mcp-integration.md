@@ -14,7 +14,7 @@ cargo build --locked --release -p xuanling-mcp
 ./target/release/xuanling-mcp --workspace-root /absolute/path/to/project
 
 # Or via npm
-npm install --global xuanling-mcp
+npm install --global @xuanling-rs/xuanling-mcp
 xuanling-mcp --workspace-root /absolute/path/to/project
 ```
 

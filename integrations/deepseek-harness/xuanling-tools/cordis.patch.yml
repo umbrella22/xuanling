@@ -23,7 +23,7 @@
         transport: stdio
         command: !!js process.execPath
         args:
-          - !!js process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('xuanling-mcp/bin/xuanling-mcp.js')
+          - !!js process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@xuanling-rs/xuanling-mcp/bin/xuanling-mcp.js')
           - '--workspace-root'
           - !!js process.env.XUANLING_WORKSPACE_ROOT ?? process.cwd()
         toolCallTimeoutMs: 120000

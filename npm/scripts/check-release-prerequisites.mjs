@@ -1,11 +1,14 @@
 import { parseArgs, run, stableJson } from "./shared.mjs";
 
 const PACKAGE_NAMES = Object.freeze([
-  "xuanling-mcp",
-  "xuanling-dsh-memory",
-  "xuanling-dsh-skills",
-  "xuanling-dsh-tools",
-  "xuanling-dsh-tools-replace",
+  "@xuanling-rs/xuanling-mcp",
+  "@xuanling-rs/xuanling-mcp-darwin-arm64",
+  "@xuanling-rs/xuanling-mcp-linux-x64-gnu",
+  "@xuanling-rs/xuanling-mcp-win32-x64-msvc",
+  "@xuanling-rs/xuanling-dsh-memory",
+  "@xuanling-rs/xuanling-dsh-skills",
+  "@xuanling-rs/xuanling-dsh-tools",
+  "@xuanling-rs/xuanling-dsh-tools-replace",
 ]);
 
 const args = parseArgs(process.argv.slice(2));

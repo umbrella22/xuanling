@@ -2,7 +2,7 @@
 
 [English](README.md) | 简体中文
 
-`xuanling-mcp` 是面向编码 Agent 的跨平台本地 Model Context Protocol 服务器。它通过
+`@xuanling-rs/xuanling-mcp` 是面向编码 Agent 的跨平台本地 Model Context Protocol 服务器。它通过
 stdio 提供 42 个类型化工具，覆盖文件系统操作、进程执行、项目探测、Artifact、Session 和
 proposal-first SQLite Memory。
 
@@ -11,7 +11,7 @@ proposal-first SQLite Memory。
 启动器要求 Node.js 18.17 或更高版本。
 
 ```sh
-npm install --global xuanling-mcp@0.2.2
+npm install --global @xuanling-rs/xuanling-mcp@0.2.3
 xuanling-mcp --version
 ```
 
@@ -24,7 +24,7 @@ MCP Client 也可以使用 `npx` 固定版本：
       "command": "npx",
       "args": [
         "-y",
-        "xuanling-mcp@0.2.2",
+        "@xuanling-rs/xuanling-mcp@0.2.3",
         "--workspace-root",
         "/absolute/path/to/project",
         "--tool-profile",

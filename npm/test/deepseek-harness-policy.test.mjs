@@ -49,7 +49,7 @@ test("the installed skills bundle ships a directly loadable strict overwrite pol
   assert.equal(manifest.files.includes("policy.cordis.yml"), false);
 
   const patch = readBundle("cordis.patch.yml");
-  assert.match(patch, /name:\s*xuanling-dsh-skills\/strict-overwrite-policy\.mjs/);
+  assert.match(patch, /name:\s*['"]?@xuanling-rs\/xuanling-dsh-skills\/strict-overwrite-policy\.mjs/);
   assert.doesNotMatch(patch, /name:\s*cordis:include/);
   assert.doesNotMatch(patch, /XUANLING_DSH_POLICY_CONFIG/);
 });

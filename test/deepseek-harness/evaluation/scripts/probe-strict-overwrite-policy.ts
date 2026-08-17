@@ -190,7 +190,8 @@ function childEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
 type InstallKind = 'local-directory-install' | 'packed-tarball-install'
 
 function installBundle(modulesDir: string, kind: InstallKind): void {
-  const destination = path.join(modulesDir, 'xuanling-dsh-skills')
+  const destination = path.join(modulesDir, '@xuanling-rs', 'xuanling-dsh-skills')
+  mkdirSync(path.dirname(destination), { recursive: true })
   if (kind === 'local-directory-install') {
     cpSync(bundleRoot, destination, { recursive: true })
     return
@@ -274,7 +275,7 @@ function writeStartupProfile(home: string, profileName: string, kind: InstallKin
       profile: {
         bundles: [
           '@deepseek-ai/dsh-base',
-          'xuanling-dsh-skills',
+          '@xuanling-rs/xuanling-dsh-skills',
           'xuanling-policy-startup-marker',
         ],
       },

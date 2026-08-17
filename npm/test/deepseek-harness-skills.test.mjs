@@ -187,7 +187,7 @@ test("the skills bundle manifest declares the dsh bundle and pins its dependenci
     readFileSync(path.join(repoRoot, "npm", "packages", "xuanling-mcp", "package.json"), "utf8"),
   );
   const manifest = JSON.parse(readBundle("package.json"));
-  assert.equal(manifest.name, "xuanling-dsh-skills");
+  assert.equal(manifest.name, "@xuanling-rs/xuanling-dsh-skills");
   assert.equal(manifest.version, npmPackage.version, "version tracks the npm package");
   assert.equal(manifest.license, "MIT");
   assert.equal(manifest.dsh?.bundle?.patch, "./cordis.patch.yml");
@@ -226,12 +226,12 @@ test("the skills patch mounts one isolated provider and one installed policy mod
   assert.ok(Array.isArray(config.customSkillDirs) && config.customSkillDirs.length === 1);
   const [dir] = config.customSkillDirs;
   assert.match(dir.js, /XUANLING_DSH_SKILLS_ROOT/, "source-overlay override");
-  assert.match(dir.js, /xuanling-dsh-skills\/package\.json/, "installed-package self resolution");
+  assert.match(dir.js, /@xuanling-rs\/xuanling-dsh-skills\/package\.json/, "installed-package self resolution");
   assert.match(dir.js, /skills/, "resolves the bundle's own skills directory");
 
   const policy = inserts.find((candidate) => candidate.id === "xuanling-file-policy");
   assert.ok(policy, "strict overwrite policy include row present");
-  assert.equal(policy.name, "xuanling-dsh-skills/strict-overwrite-policy.mjs");
+  assert.equal(policy.name, "@xuanling-rs/xuanling-dsh-skills/strict-overwrite-policy.mjs");
   assert.equal(policy.config, undefined);
 });
 

@@ -173,7 +173,7 @@ function resolveCredentialSource(required) {
 }
 
 function profileBundlePath(dshHome) {
-  return path.join(dshHome, "profiles", "headless", "node_modules", "xuanling-dsh-skills");
+  return path.join(dshHome, "profiles", "headless", "node_modules", "@xuanling-rs", "xuanling-dsh-skills");
 }
 
 function installSkills(dshHome) {

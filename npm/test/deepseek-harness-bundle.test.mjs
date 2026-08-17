@@ -232,10 +232,10 @@ test("bundle manifests declare the dsh bundle and pin the npm version", () => {
   const additive = readJson(path.join("xuanling-tools", "package.json"));
   const memory = readJson(path.join("xuanling-memory", "package.json"));
   const replace = readJson(path.join("xuanling-tools-replace", "package.json"));
-  assert.equal(additive.name, "xuanling-dsh-tools");
-  assert.equal(memory.name, "xuanling-dsh-memory");
+  assert.equal(additive.name, "@xuanling-rs/xuanling-dsh-tools");
+  assert.equal(memory.name, "@xuanling-rs/xuanling-dsh-memory");
   assert.deepEqual(memory.bin, { "xuanling-dsh-schema-adapter": "schema-adapter.mjs" });
-  assert.equal(replace.name, "xuanling-dsh-tools-replace");
+  assert.equal(replace.name, "@xuanling-rs/xuanling-dsh-tools-replace");
 });
 
 test("tool bundles depend on the exact profile-local XuanLing runtime", () => {
@@ -245,7 +245,7 @@ test("tool bundles depend on the exact profile-local XuanLing runtime", () => {
   for (const bundle of bundles) {
     const manifest = readJson(path.join(bundle, "package.json"));
     assert.equal(
-      manifest.dependencies?.["xuanling-mcp"],
+      manifest.dependencies?.["@xuanling-rs/xuanling-mcp"],
       runtime.version,
       `${bundle}: installs the exact launcher and optional native dependency into the DSH profile`,
     );
@@ -256,7 +256,7 @@ test("tool bundles depend on the exact profile-local XuanLing runtime", () => {
 
 test("tool bundle patches resolve the launcher from their profile-local dependency", () => {
   const localLauncher =
-    "process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('xuanling-mcp/bin/xuanling-mcp.js')";
+    "process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@xuanling-rs/xuanling-mcp/bin/xuanling-mcp.js')";
 
   for (const bundle of fullCatalogBundles) {
     const config = mountRow(readText(path.join(bundle, "cordis.patch.yml"))).config;
@@ -278,19 +278,19 @@ test("tool bundle patches resolve the launcher from their profile-local dependen
 test("profile-local launcher resolution works with no global command on PATH", () => {
   const profile = mkdtempSync(path.join(os.tmpdir(), "xuanling-dsh-profile-"));
   try {
-    const bundleRoot = path.join(profile, "node_modules", "xuanling-dsh-tools");
-    const runtimeRoot = path.join(profile, "node_modules", "xuanling-mcp");
+  const bundleRoot = path.join(profile, "node_modules", "@xuanling-rs", "xuanling-dsh-tools");
+  const runtimeRoot = path.join(profile, "node_modules", "@xuanling-rs", "xuanling-mcp");
     mkdirSync(path.join(runtimeRoot, "bin"), { recursive: true });
     mkdirSync(bundleRoot, { recursive: true });
-    writeFileSync(path.join(bundleRoot, "package.json"), '{"name":"xuanling-dsh-tools"}\n');
-    writeFileSync(path.join(runtimeRoot, "package.json"), '{"name":"xuanling-mcp"}\n');
+    writeFileSync(path.join(bundleRoot, "package.json"), '{"name":"@xuanling-rs/xuanling-dsh-tools"}\n');
+    writeFileSync(path.join(runtimeRoot, "package.json"), '{"name":"@xuanling-rs/xuanling-mcp"}\n');
     writeFileSync(
       path.join(runtimeRoot, "bin", "xuanling-mcp.js"),
       'process.stdout.write(JSON.stringify(process.argv.slice(2)));\n',
     );
 
     const baseUrl = pathToFileURL(path.join(bundleRoot, "package.json"));
-    const launcher = createRequire(baseUrl).resolve("xuanling-mcp/bin/xuanling-mcp.js");
+    const launcher = createRequire(baseUrl).resolve("@xuanling-rs/xuanling-mcp/bin/xuanling-mcp.js");
     const result = spawnSync(process.execPath, [launcher, "--profile-local"], {
       encoding: "utf8",
       env: { PATH: "" },
@@ -327,14 +327,14 @@ test("all patches mount the bridge with the documented xuanling identity", () =>
   assert.deepEqual(memoryConfig.command, { js: "process.execPath" });
   assert.match(
     memoryConfig.args[0].js,
-    /XUANLING_DSH_SCHEMA_ADAPTER.*xuanling-dsh-memory\/schema-adapter\.mjs/,
+    /XUANLING_DSH_SCHEMA_ADAPTER.*@xuanling-rs\/xuanling-dsh-memory\/schema-adapter\.mjs/,
   );
   assert.deepEqual(memoryConfig.args.slice(1, 7), [
     "--binary",
     { js: "process.execPath" },
     "--",
     {
-      js: "process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('xuanling-mcp/bin/xuanling-mcp.js')",
+      js: "process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@xuanling-rs/xuanling-mcp/bin/xuanling-mcp.js')",
     },
     "--workspace-root",
     { js: "process.env.XUANLING_WORKSPACE_ROOT ?? process.cwd()" },
@@ -452,8 +452,8 @@ test("README documents the mount and the legacy tool surface stays out", () => {
   const readme = readText("README.md");
   assert.ok(readme.includes("mcp__xuanling__"), "public name shape documented");
   assert.ok(readme.includes("dsh plugin --profile"), "profile install path documented");
-  assert.ok(readme.includes("xuanling-dsh-memory@0.2.2"), "recommended memory bundle documented");
-  assert.ok(readme.includes("Profile-local `xuanling-mcp@0.2.2`"), "local runtime documented");
+  assert.ok(readme.includes("@xuanling-rs/xuanling-dsh-memory@0.2.3"), "recommended memory bundle documented");
+  assert.ok(readme.includes("Profile-local `@xuanling-rs/xuanling-mcp@0.2.3`"), "local runtime documented");
   assert.doesNotMatch(readme, /npm\s+(?:i|install)\s+(?:--global|-g)|XUANLING_MCP_BIN/);
   const legacyNames = [
     "memory_put",

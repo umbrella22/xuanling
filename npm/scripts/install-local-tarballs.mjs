@@ -58,11 +58,10 @@ await run(
 const aliasDirectory = path.join(outputDirectory, "node_modules", target.alias);
 await rm(aliasDirectory, { force: true, recursive: true });
 await cp(
-  path.join(nativeInstall, "node_modules", "xuanling-mcp"),
+  path.join(nativeInstall, "node_modules", ...target.packageName.split("/")),
   aliasDirectory,
   { recursive: true },
 );
 await rm(nativeInstall, { force: true, recursive: true });
 
-console.log(path.join(outputDirectory, "node_modules", "xuanling-mcp", "bin", "xuanling-mcp.js"));
-
+console.log(path.join(outputDirectory, "node_modules", "@xuanling-rs", "xuanling-mcp", "bin", "xuanling-mcp.js"));

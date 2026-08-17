@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 
 import {
+  PACKAGE_NAME,
   TARGETS,
   expectedOptionalDependencies,
   platformVersion,
@@ -34,9 +35,9 @@ assert.deepEqual(
   "release must contain exactly one launcher and every supported native package",
 );
 
-async function verifyTarball(manifestPath, expectedVersion) {
+async function verifyTarball(manifestPath, expectedVersion, expectedName) {
   const manifest = await readJson(manifestPath);
-  assert.equal(manifest.name, "xuanling-mcp");
+  assert.equal(manifest.name, expectedName);
   assert.equal(manifest.version, expectedVersion);
   const tarballPath = path.join(path.dirname(manifestPath), manifest.filename);
   const tarball = await readFile(tarballPath);
@@ -60,7 +61,7 @@ async function verifyTarball(manifestPath, expectedVersion) {
 }
 
 const mainManifest = path.join(root, "npm-main", "main.pack.json");
-const main = await verifyTarball(mainManifest, version);
+const main = await verifyTarball(mainManifest, version, PACKAGE_NAME);
 try {
   assert.equal(main.packageJson.xuanlingRelease?.sourceCommit, commit);
   assert.deepEqual(
@@ -80,6 +81,7 @@ for (const [targetId, target] of Object.entries(TARGETS)) {
   const platformPackage = await verifyTarball(
     manifestPath,
     platformVersion(version, targetId),
+    target.packageName,
   );
   try {
     assert.equal(platformPackage.packageJson.xuanlingBinary?.sourceCommit, commit);
@@ -97,4 +99,4 @@ for (const [targetId, target] of Object.entries(TARGETS)) {
   }
 }
 
-console.log(`complete npm release set OK: xuanling-mcp@${version} from ${commit}`);
+console.log(`complete npm release set OK: ${PACKAGE_NAME}@${version} from ${commit}`);

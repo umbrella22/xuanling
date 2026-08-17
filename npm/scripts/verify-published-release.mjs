@@ -1,15 +1,14 @@
 import path from "node:path";
 
-import { TARGETS, platformVersion } from "../packages/xuanling-mcp/lib/targets.js";
+import {
+  DSH_BUNDLES,
+  TARGETS,
+  platformVersion,
+} from "../packages/xuanling-mcp/lib/targets.js";
 import { classifyIntegrityLookup } from "./registry-release.mjs";
 import { parseArgs, readJson, requiredArg, run, stableJson } from "./shared.mjs";
 
-const DSH_PACKAGES = Object.freeze([
-  "xuanling-dsh-memory",
-  "xuanling-dsh-skills",
-  "xuanling-dsh-tools",
-  "xuanling-dsh-tools-replace",
-]);
+const DSH_PACKAGES = DSH_BUNDLES;
 
 const args = parseArgs(process.argv.slice(2));
 const coreRoot = path.resolve(requiredArg(args, "core-root"));
@@ -27,8 +26,8 @@ const releaseItems = [
     path: path.join(coreRoot, `npm-${targetId}`, `${targetId}.pack.json`),
     version: platformVersion(version, targetId),
   })),
-  ...DSH_PACKAGES.map((name) => ({
-    path: path.join(dshRoot, name, `${name}.pack.json`),
+  ...DSH_PACKAGES.map(({ id }) => ({
+    path: path.join(dshRoot, id, `${id}.pack.json`),
     version,
   })),
 ];

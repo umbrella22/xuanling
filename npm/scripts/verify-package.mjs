@@ -3,6 +3,7 @@ import { stat } from "node:fs/promises";
 import path from "node:path";
 
 import {
+  PACKAGE_BASENAME,
   PACKAGE_NAME,
   TARGETS,
   expectedOptionalDependencies,
@@ -34,7 +35,7 @@ if (args.main !== undefined) {
     packageJson.optionalDependencies,
     expectedOptionalDependencies(packageJson.version),
   );
-  assert.equal(packageJson.bin?.[PACKAGE_NAME], "bin/xuanling-mcp.js");
+  assert.equal(packageJson.bin?.[PACKAGE_BASENAME], "bin/xuanling-mcp.js");
   assert.equal(packageJson.publishConfig?.access, "public");
   assert.equal(packageJson.publishConfig?.provenance, true);
   assert.equal(packageJson.repository?.directory, "npm/packages/xuanling-mcp");
@@ -57,7 +58,7 @@ if (args.main !== undefined) {
     throw new Error(`Unknown XuanLing npm target: ${targetId}`);
   }
   const packageJson = await readJson(path.join(directory, "package.json"));
-  assert.equal(packageJson.name, PACKAGE_NAME);
+  assert.equal(packageJson.name, target.packageName);
   assert.equal(packageJson.license, "MIT");
   assert.equal(packageJson.version, platformVersion(releaseVersion, targetId));
   assert.deepEqual(packageJson.os, [target.os]);

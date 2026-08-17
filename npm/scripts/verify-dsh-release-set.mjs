@@ -4,6 +4,7 @@ import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { DSH_BUNDLES } from "../packages/xuanling-mcp/lib/targets.js";
 import {
   REPO_ROOT,
   parseArgs,
@@ -12,13 +13,8 @@ import {
   run,
 } from "./shared.mjs";
 
-const BUNDLES = Object.freeze([
-  "xuanling-dsh-memory",
-  "xuanling-dsh-tools",
-  "xuanling-dsh-tools-replace",
-  "xuanling-dsh-skills",
-]);
-const TOOL_BUNDLES = new Set(BUNDLES.filter((name) => name !== "xuanling-dsh-skills"));
+const BUNDLES = DSH_BUNDLES;
+const TOOL_BUNDLES = new Set(BUNDLES.filter(({ id }) => id !== "xuanling-dsh-skills").map(({ id }) => id));
 
 const args = parseArgs(process.argv.slice(2));
 const root = path.resolve(requiredArg(args, "root"));
@@ -33,22 +29,22 @@ if (sourceCommit !== undefined && !/^[0-9a-f]{40}$/.test(sourceCommit)) {
 
 assert.deepEqual(
   (await readdir(root)).sort(),
-  [...BUNDLES].sort(),
+  BUNDLES.map(({ id }) => id).sort(),
   "DSH release root must contain exactly the four public bundle directories",
 );
 
 const canonicalLicense = await readFile(path.join(REPO_ROOT, "LICENSE"));
-for (const name of BUNDLES) {
-  const directory = path.join(root, name);
+for (const { id, packageName } of BUNDLES) {
+  const directory = path.join(root, id);
   const entries = (await readdir(directory)).sort();
-  const manifestName = `${name}.pack.json`;
-  assert.ok(entries.includes(manifestName), `${name}: pack manifest`);
+  const manifestName = `${id}.pack.json`;
+  assert.ok(entries.includes(manifestName), `${packageName}: pack manifest`);
   const manifest = await readJson(path.join(directory, manifestName));
-  assert.equal(manifest.name, name);
+  assert.equal(manifest.name, packageName);
   assert.equal(manifest.version, version);
   assert.match(manifest.source_commit ?? "", /^[0-9a-f]{40}$/);
   if (sourceCommit !== undefined) assert.equal(manifest.source_commit, sourceCommit);
-  assert.deepEqual(entries, [manifest.filename, manifestName].sort(), `${name}: exact release files`);
+  assert.deepEqual(entries, [manifest.filename, manifestName].sort(), `${packageName}: exact release files`);
 
   const tarballPath = path.join(directory, manifest.filename);
   const tarball = await readFile(tarballPath);
@@ -63,7 +59,7 @@ for (const name of BUNDLES) {
     await run("tar", ["-xzf", tarballPath, "-C", extracted]);
     const packageRoot = path.join(extracted, "package");
     const packageJson = await readJson(path.join(packageRoot, "package.json"));
-    assert.equal(packageJson.name, name);
+    assert.equal(packageJson.name, packageName);
     assert.equal(packageJson.version, version);
     assert.equal(packageJson.xuanlingRelease?.sourceCommit, manifest.source_commit);
     assert.equal(packageJson.private, false);
@@ -74,23 +70,23 @@ for (const name of BUNDLES) {
     assert.equal(packageJson.publishConfig?.registry, "https://registry.npmjs.org");
     assert.equal(
       packageJson.repository?.directory,
-      `integrations/deepseek-harness/${name.replace("xuanling-dsh-", "xuanling-")}`,
+      `integrations/deepseek-harness/${id.replace("xuanling-dsh-", "xuanling-")}`,
     );
-    assert.deepEqual(packageJson.scripts, undefined, `${name}: no lifecycle scripts`);
+    assert.deepEqual(packageJson.scripts, undefined, `${packageName}: no lifecycle scripts`);
     assert.equal(
-      packageJson.dependencies?.["xuanling-mcp"],
-      TOOL_BUNDLES.has(name) ? version : undefined,
-      `${name}: exact local runtime dependency matrix`,
+      packageJson.dependencies?.["@xuanling-rs/xuanling-mcp"],
+      TOOL_BUNDLES.has(id) ? version : undefined,
+      `${packageName}: exact local runtime dependency matrix`,
     );
     assert.deepEqual(
       await readFile(path.join(packageRoot, "LICENSE")),
       canonicalLicense,
-      `${name}: canonical MIT license bytes`,
+      `${packageName}: canonical MIT license bytes`,
     );
     assert.deepEqual(
       manifest.files,
       [...packageJson.files, "package.json"].sort(),
-      `${name}: manifest allowlist matches package.json`,
+      `${packageName}: manifest allowlist matches package.json`,
     );
   } finally {
     await rm(extracted, { force: true, recursive: true });

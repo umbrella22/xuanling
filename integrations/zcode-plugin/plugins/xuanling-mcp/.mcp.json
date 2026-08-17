@@ -3,7 +3,7 @@
     "xuanling": {
       "command": "node",
       "args": [
-        "${ZCODE_PLUGIN_ROOT}/bin/node_modules/xuanling-mcp/bin/xuanling-mcp.js",
+        "${ZCODE_PLUGIN_ROOT}/bin/node_modules/@xuanling-rs/xuanling-mcp/bin/xuanling-mcp.js",
         "--workspace-root",
         "${ZCODE_PROJECT_DIR}",
         "--compat-lenient-object-params"

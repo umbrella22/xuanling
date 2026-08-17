@@ -12,13 +12,13 @@
 将 Memory 与 Skills bundle 安装进目标 DSH profile：
 
 ```sh
-dsh plugin --profile demo add xuanling-dsh-memory@0.2.2
-dsh plugin --profile demo add xuanling-dsh-skills@0.2.2
+dsh plugin --profile demo add @xuanling-rs/xuanling-dsh-memory@0.2.3
+dsh plugin --profile demo add @xuanling-rs/xuanling-dsh-skills@0.2.3
 dsh --profile demo --dump-config
 dsh --profile demo
 ```
 
-Memory bundle 会在 profile 内安装精确版本的 `xuanling-mcp@0.2.2` launcher 和原生 optional
+Memory bundle 会在 profile 内安装精确版本的 `@xuanling-rs/xuanling-mcp@0.2.3` launcher 和原生 optional
 dependency；不需要全局 npm package、`npx` 或安装时下载 binary。
 
 推荐组合会增加完整的 Memory v2 九工具生命周期，保留全部 Harness 原生工具，加载两个按需
@@ -28,10 +28,10 @@ dependency；不需要全局 npm package、`npx` 或安装时下载 binary。
 
 | Bundle | 行为 | 适用场景 |
 | --- | --- | --- |
-| `xuanling-dsh-memory` | 增加带 DSH schema projection 的完整 Memory v2 九工具 profile；保留全部 Harness 原生工具 | 推荐日常配置 |
-| `xuanling-dsh-skills` | 增加隔离的文件与 Memory 工作流 Skill 以及严格 overwrite policy；不挂载 MCP 工具 | 与任意 XuanLing 工具 bundle 组合 |
-| `xuanling-dsh-tools` | 增加完整 XuanLing catalog，并保留 Harness 原生工具 | 使用 Artifact、Project、Filesystem、Process 与 Advanced 工具 |
-| `xuanling-dsh-tools-replace` | 增加完整 catalog，并停用三个模型可见的原生文件系统工具行 | 受控完整目录替换 |
+| `@xuanling-rs/xuanling-dsh-memory` | 增加带 DSH schema projection 的完整 Memory v2 九工具 profile；保留全部 Harness 原生工具 | 推荐日常配置 |
+| `@xuanling-rs/xuanling-dsh-skills` | 增加隔离的文件与 Memory 工作流 Skill 以及严格 overwrite policy；不挂载 MCP 工具 | 与任意 XuanLing 工具 bundle 组合 |
+| `@xuanling-rs/xuanling-dsh-tools` | 增加完整 XuanLing catalog，并保留 Harness 原生工具 | 使用 Artifact、Project、Filesystem、Process 与 Advanced 工具 |
+| `@xuanling-rs/xuanling-dsh-tools-replace` | 增加完整 catalog，并停用三个模型可见的原生文件系统工具行 | 受控完整目录替换 |
 
 Memory bundle 会暴露完整生命周期。Search、get、candidate create/replace/archive、review 与
 feedback 共同构成一个合同；只暴露两个只读工具会向模型隐藏必要的状态转换。
@@ -46,7 +46,7 @@ Bundle 表达式在 DSH 启动时解析以下设置：
 
 | 设置 | 默认值 | 作用 |
 | --- | --- | --- |
-| MCP runtime | Profile 内的 `xuanling-mcp@0.2.2` | 经过校验的 JS launcher 与原生 optional dependency |
+| MCP runtime | Profile 内的 `@xuanling-rs/xuanling-mcp@0.2.3` | 经过校验的 JS launcher 与原生 optional dependency |
 | `XUANLING_WORKSPACE_ROOT` | DSH 进程工作目录 | XuanLing 文件系统 capability root |
 | Schema adapter | 已安装的 `xuanling-dsh-memory/schema-adapter.mjs` | 为 DSH 投影 discovery schema |
 | MCP tool profile | 推荐 bundle 固定为 `memory` | 服务端工具发现与调用分发选择 |
