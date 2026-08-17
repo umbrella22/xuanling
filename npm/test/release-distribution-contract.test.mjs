@@ -19,10 +19,24 @@ function workflow() {
   return readFileSync(workflowPath, "utf8");
 }
 
-test("shared runner selects the Windows npm command shim without rewriting native executables", () => {
-  assert.equal(resolveCommandForPlatform("npm", "win32"), "npm.cmd");
-  assert.equal(resolveCommandForPlatform("npm", "linux"), "npm");
-  assert.equal(resolveCommandForPlatform("git", "win32"), "git");
+test("shared runner invokes the Windows npm CLI directly without rewriting native executables", () => {
+  const npmCliPath = "C:\\node\\node_modules\\npm\\bin\\npm-cli.js";
+  assert.deepEqual(
+    resolveCommandForPlatform("npm", "win32", {
+      execPath: "C:\\node\\node.exe",
+      exists: (candidate) => candidate === npmCliPath,
+      env: { Path: "C:\\other" },
+    }),
+    { command: "C:\\node\\node.exe", argsPrefix: [npmCliPath] },
+  );
+  assert.deepEqual(
+    resolveCommandForPlatform("npm", "linux"),
+    { command: "npm", argsPrefix: [] },
+  );
+  assert.deepEqual(
+    resolveCommandForPlatform("git", "win32"),
+    { command: "git", argsPrefix: [] },
+  );
 });
 
 test("synthetic release fixture is hash-pinned before distribution tests use it", () => {

@@ -1,5 +1,6 @@
 import { execFile as execFileCallback } from "node:child_process";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -78,16 +79,39 @@ export async function sha256File(filePath) {
     .digest("hex");
 }
 
-export function resolveCommandForPlatform(command, platform = process.platform) {
-  if (platform === "win32" && command === "npm") {
-    return "npm.cmd";
+export function resolveCommandForPlatform(command, platform = process.platform, options = {}) {
+  if (platform !== "win32" || command !== "npm") {
+    return { command, argsPrefix: [] };
   }
-  return command;
+
+  const env = options.env ?? process.env;
+  const execPath = options.execPath ?? process.execPath;
+  const exists = options.exists ?? existsSync;
+  const candidates = [];
+  if (typeof env.npm_execpath === "string" && env.npm_execpath.length > 0) {
+    candidates.push(env.npm_execpath);
+  }
+  candidates.push(
+    path.win32.join(path.win32.dirname(execPath), "node_modules", "npm", "bin", "npm-cli.js"),
+  );
+  const searchPath = env.Path ?? env.PATH ?? env.path ?? "";
+  for (const entry of searchPath.split(path.win32.delimiter)) {
+    const directory = entry.replace(/^"(.*)"$/, "$1");
+    if (directory.length > 0) {
+      candidates.push(path.win32.join(directory, "node_modules", "npm", "bin", "npm-cli.js"));
+    }
+  }
+  const npmCliPath = options.npmCliPath ?? candidates.find((candidate) => exists(candidate));
+  if (typeof npmCliPath !== "string" || npmCliPath.length === 0 || !exists(npmCliPath)) {
+    throw new Error("Unable to locate npm-cli.js for direct execution on Windows");
+  }
+  return { command: execPath, argsPrefix: [npmCliPath] };
 }
 
 export async function run(command, args, options = {}) {
   try {
-    return await execFile(resolveCommandForPlatform(command), args, {
+    const resolved = resolveCommandForPlatform(command);
+    return await execFile(resolved.command, [...resolved.argsPrefix, ...args], {
       cwd: options.cwd ?? REPO_ROOT,
       encoding: "utf8",
       env: options.env ?? process.env,
