@@ -8,6 +8,7 @@ import path from "node:path";
 import { test } from "node:test";
 
 import { classifyIntegrityLookup } from "../scripts/registry-release.mjs";
+import { resolveCommandForPlatform } from "../scripts/shared.mjs";
 import { describeProjection } from "../scripts/zcode-promotion-lib.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
@@ -17,6 +18,12 @@ const fixtureRoot = path.join(repoRoot, "test", "release", "fixtures");
 function workflow() {
   return readFileSync(workflowPath, "utf8");
 }
+
+test("shared runner selects the Windows npm command shim without rewriting native executables", () => {
+  assert.equal(resolveCommandForPlatform("npm", "win32"), "npm.cmd");
+  assert.equal(resolveCommandForPlatform("npm", "linux"), "npm");
+  assert.equal(resolveCommandForPlatform("git", "win32"), "git");
+});
 
 test("synthetic release fixture is hash-pinned before distribution tests use it", () => {
   const manifest = JSON.parse(readFileSync(path.join(fixtureRoot, "synthetic-tree.json"), "utf8"));

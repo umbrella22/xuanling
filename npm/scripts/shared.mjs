@@ -78,9 +78,16 @@ export async function sha256File(filePath) {
     .digest("hex");
 }
 
+export function resolveCommandForPlatform(command, platform = process.platform) {
+  if (platform === "win32" && command === "npm") {
+    return "npm.cmd";
+  }
+  return command;
+}
+
 export async function run(command, args, options = {}) {
   try {
-    return await execFile(command, args, {
+    return await execFile(resolveCommandForPlatform(command), args, {
       cwd: options.cwd ?? REPO_ROOT,
       encoding: "utf8",
       env: options.env ?? process.env,
