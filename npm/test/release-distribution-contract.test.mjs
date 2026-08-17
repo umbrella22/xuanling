@@ -215,12 +215,12 @@ test("release workflow requires provenance and attestation without publisher cer
   assert.match(publisher, /"--provenance"/);
 });
 
-test("release workflow has a no-tag preflight for npm and ZCode credentials", () => {
+test("release workflow has a no-tag preflight for npm visibility and ZCode credentials", () => {
   const source = workflow();
   assert.match(source, /workflow_dispatch:/);
   assert.match(source, /environment: npmjs/);
-  assert.match(source, /npm whoami/);
-  assert.match(source, /NPM_CONFIG_USERCONFIG/);
+  assert.match(source, /check-release-prerequisites\.mjs/);
+  assert.doesNotMatch(source, /NPM_BOOTSTRAP_TOKEN|npm whoami|NPM_CONFIG_USERCONFIG/);
   for (const job of [
     "build-main",
     "build-native",

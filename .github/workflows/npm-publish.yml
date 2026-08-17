@@ -86,7 +86,7 @@ jobs:
         run: npm test
 
   npm-prerequisites:
-    name: verify npm ownership and bootstrap prerequisites
+    name: verify npm ownership and release prerequisites
     needs: validate-release
     runs-on: ubuntu-latest
     environment: npmjs
@@ -98,24 +98,8 @@ jobs:
           registry-url: "https://registry.npmjs.org"
       - name: Install supported npm CLI
         run: npm install --global npm@11.6.2
-      - name: Check package-name bootstrap requirements without publishing
-        env:
-          NPM_BOOTSTRAP_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
+      - name: Check package-name release requirements without publishing
         run: node npm/scripts/check-release-prerequisites.mjs
-      - name: Verify optional bootstrap token authentication
-        shell: bash
-        env:
-          NPM_BOOTSTRAP_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -z "${NPM_BOOTSTRAP_TOKEN:-}" ]; then
-            exit 0
-          fi
-          NPMRC="$RUNNER_TEMP/xuanling-bootstrap-preflight.npmrc"
-          trap 'rm -f "$NPMRC"' EXIT
-          umask 077
-          printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_BOOTSTRAP_TOKEN" > "$NPMRC"
-          NPM_CONFIG_USERCONFIG="$NPMRC" npm whoami --registry https://registry.npmjs.org >/dev/null
 
   zcode-prerequisites:
     name: verify ZCode target identity and push permission
@@ -403,18 +387,6 @@ jobs:
             --version "${{ needs.validate-release.outputs.version }}" \
             --commit "${{ needs.validate-release.outputs.commit }}" \
             --require-release-trust
-      - name: Configure optional first-release bootstrap authentication
-        shell: bash
-        env:
-          NPM_BOOTSTRAP_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -n "${NPM_BOOTSTRAP_TOKEN:-}" ]; then
-            umask 077
-            NPMRC="$RUNNER_TEMP/xuanling-bootstrap.npmrc"
-            printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_BOOTSTRAP_TOKEN" > "$NPMRC"
-            echo "NPM_CONFIG_USERCONFIG=$NPMRC" >> "$GITHUB_ENV"
-          fi
       - name: Publish scoped native variants
         run: |
           set -euo pipefail
@@ -446,11 +418,6 @@ jobs:
             --core-root npm/release \
             --dsh-root npm/dsh-release \
             --version "${{ needs.validate-release.outputs.version }}"
-      - name: Remove bootstrap authentication material
-        if: always()
-        shell: bash
-        run: |
-          rm -f "$RUNNER_TEMP/xuanling-bootstrap.npmrc"
 
   promote:
     name: directly promote verified ZCode marketplace

@@ -137,8 +137,8 @@ CI 在三个支持平台分别构建并验证启动器与原生 tarball。安装
 5. release commit 已进入 `origin/main`；GitHub `zcode-packer` Environment 中的
    `ZCODE_REPOSITORY` 必须为 `umbrella22/xuanling-zcode-marketplace`，并提供对该仓库具有
    authenticated push 权限的 `XL_PUBLISH_TOKEN`；target 默认分支必须为 `main`。
-6. 先从 `main` 手动运行 workflow，在不创建 tag 的情况下验证 npm bootstrap 认证与 ZCode target
-   权限。
+6. 先从 `main` 手动运行 workflow，在不创建 tag 的情况下验证 npm package 可见性与 ZCode
+   target 权限。
 7. 创建稳定 tag `xuanling-mcp-v<version>`，触发
    [npm-publish.yml](../.github/workflows/npm-publish.yml)。
 
@@ -148,11 +148,11 @@ integrity 全部对账后，workflow 使用 Environment credential checkout
 `main` 与 `xuanling-mcp-v<version>`。已存在且 tree 相同的 tag 会幂等跳过；任何 integrity 或
 tree 冲突都会硬失败。本地执行 `npm publish` 不属于正式发布路径。
 
-### 首次发布
+### Trusted Publishing
 
-新 package 名出现前，npm 无法绑定 Trusted Publisher。仅首次发布需要在 GitHub `npmjs`
-environment 中配置短期 `NPM_BOOTSTRAP_TOKEN`。workflow 会用它发布尚不存在的 scoped package。
-名称出现在 npm 后，使用以下信息为八个 package 逐个配置 package-level Trusted Publishing：
+八个 package 名称都已经存在，正式 workflow 通过 `npmjs` GitHub environment 使用 npm Trusted
+Publishing 发布。不需要长期 npm token 或 bootstrap secret。请为八个 scoped package 逐个配置
+package-level Trusted Publishing：
 
 ```text
 GitHub owner: umbrella22
@@ -163,8 +163,7 @@ Allowed action: npm publish
 ```
 
 保持 tag、commit 和 artifact 不变，重跑失败的 publish job。幂等发布器会跳过所有 integrity
-已匹配的 item。八个 package 名称都配置 Trusted Publisher 后，删除 bootstrap secret 并撤销
-短期 token。
+已匹配的 item。
 
 ## 失败恢复
 

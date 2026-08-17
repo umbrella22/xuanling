@@ -154,8 +154,8 @@ release requires:
    `umbrella22/xuanling-zcode-marketplace` and provide `XL_PUBLISH_TOKEN` with
    authenticated push permission to that repository. Its default branch must
    be `main`.
-6. A manual run of the workflow from `main` to verify npm bootstrap
-   authentication and ZCode target permission without creating a tag.
+6. A manual run of the workflow from `main` to verify npm package visibility
+   and ZCode target permission without creating a tag.
 7. A stable tag named `xuanling-mcp-v<version>` to trigger
    [npm-publish.yml](../.github/workflows/npm-publish.yml).
 
@@ -167,13 +167,12 @@ plus `xuanling-mcp-v<version>` are pushed atomically. A matching existing tag
 is an idempotent no-op; any integrity or tree mismatch is a hard failure. Local
 `npm publish` is not part of the release path.
 
-### First publication
+### Trusted Publishing
 
-npm cannot bind a Trusted Publisher before a new package name exists. For the
-first publication only, configure a short-lived `NPM_BOOTSTRAP_TOKEN` in the
-GitHub `npmjs` environment. The workflow uses it for each scoped package name
-that does not yet exist. After the names appear on npm, configure package-level
-Trusted Publishing for each of the eight scoped packages with:
+All eight package names already exist and the release workflow uses npm Trusted
+Publishing through the `npmjs` GitHub environment. No long-lived npm token or
+bootstrap secret is required. Configure package-level Trusted Publishing for
+each scoped package with:
 
 ```text
 GitHub owner: umbrella22
@@ -183,10 +182,8 @@ Environment: npmjs
 Allowed action: npm publish
 ```
 
-Rerun the failed publish job without changing the tag, commit, or artifacts.
-The idempotent publisher skips every item whose matching integrity already
-exists. Remove the bootstrap secret and revoke the short-lived token after all
-eight package names have their Trusted Publisher configured.
+Rerun a failed publish job without changing the tag, commit, or artifacts. The
+idempotent publisher skips every item whose matching integrity already exists.
 
 ## Failure Recovery
 
