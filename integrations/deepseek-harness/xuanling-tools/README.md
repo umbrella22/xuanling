@@ -7,10 +7,10 @@ keeps all Harness-native tools enabled and adds XuanLing tools under the
 `mcp__xuanling__` prefix.
 
 ```sh
-dsh plugin --profile full add xuanling-dsh-tools@0.2.1
+dsh plugin --profile full add xuanling-dsh-tools@0.2.2
 ```
 
-The exact `xuanling-mcp@0.2.1` runtime is installed in the profile and started
+The exact `xuanling-mcp@0.2.2` runtime is installed in the profile and started
 through its verified JS launcher. A global npm package is neither required nor
 used. Set `XUANLING_WORKSPACE_ROOT` only when the filesystem capability root
 must differ from the DSH working directory.

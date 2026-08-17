@@ -1,6 +1,6 @@
 {
   "name": "xuanling-dsh-skills",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "DeepSeek Harness bundle: mounts isolated XuanLing workflow skills and the strict MCP overwrite policy.",
   "license": "MIT",
   "private": false,

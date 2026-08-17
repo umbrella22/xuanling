@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -207,14 +207,14 @@ test("ZCode marketplace generation is deterministic and fails closed", async () 
         "npm/scripts/stage-zcode-marketplace.mjs",
         "--release-root", releaseRoot,
         "--out", root,
-        "--version", "0.2.1",
+        "--version", "0.2.2",
         "--commit", commit,
         "--require-release-trust",
       ]);
       runNode([
         "npm/scripts/verify-zcode-marketplace.mjs",
         "--root", root,
-        "--version", "0.2.1",
+        "--version", "0.2.2",
         "--commit", commit,
         "--require-release-trust",
       ]);
@@ -240,13 +240,71 @@ test("ZCode marketplace generation is deterministic and fails closed", async () 
       "target promotion computes the generator's canonical tree identity",
     );
 
+    const transportedRoot = path.join(temporary, "transported");
+    const materializedRoot = path.join(transportedRoot, "marketplace");
+    await mkdir(transportedRoot, { recursive: true });
+    for (const name of [
+      generated[0].pack.filename,
+      "zcode-marketplace.pack.json",
+    ]) {
+      await cp(path.join(path.dirname(generated[0].root), name), path.join(transportedRoot, name));
+    }
+    runNode([
+      "npm/scripts/materialize-zcode-marketplace.mjs",
+      "--artifact-root", transportedRoot,
+      "--out", materializedRoot,
+      "--version", "0.2.2",
+      "--commit", commit,
+    ]);
+    runNode([
+      "npm/scripts/verify-zcode-marketplace.mjs",
+      "--root", materializedRoot,
+      "--version", "0.2.2",
+      "--commit", commit,
+      "--require-release-trust",
+    ]);
+
+    const tamperedTransport = path.join(temporary, "tampered-transport");
+    await mkdir(tamperedTransport);
+    for (const name of [generated[0].pack.filename, "zcode-marketplace.pack.json"]) {
+      await cp(path.join(path.dirname(generated[0].root), name), path.join(tamperedTransport, name));
+    }
+    const tamperedArchive = path.join(tamperedTransport, generated[0].pack.filename);
+    await writeFile(
+      tamperedArchive,
+      Buffer.concat([await readFile(tamperedArchive), Buffer.from("tampered")]),
+    );
+    assert.throws(() => runNode([
+      "npm/scripts/materialize-zcode-marketplace.mjs",
+      "--artifact-root", tamperedTransport,
+      "--out", path.join(tamperedTransport, "marketplace"),
+      "--version", "0.2.2",
+      "--commit", commit,
+    ]), "a transported archive with a mismatched digest must be rejected before extraction");
+    assert.equal(existsSync(path.join(tamperedTransport, "marketplace")), false);
+
+    const extraTransport = path.join(temporary, "extra-transport");
+    await mkdir(extraTransport);
+    for (const name of [generated[0].pack.filename, "zcode-marketplace.pack.json"]) {
+      await cp(path.join(path.dirname(generated[0].root), name), path.join(extraTransport, name));
+    }
+    await writeFile(path.join(extraTransport, "unexpected.txt"), "unexpected\n");
+    assert.throws(() => runNode([
+      "npm/scripts/materialize-zcode-marketplace.mjs",
+      "--artifact-root", extraTransport,
+      "--out", path.join(extraTransport, "marketplace"),
+      "--version", "0.2.2",
+      "--commit", commit,
+    ]), "an extra transported artifact file must be rejected");
+    assert.equal(existsSync(path.join(extraTransport, "marketplace")), false);
+
     const extraFileRoot = path.join(temporary, "negative-extra", "marketplace");
     await cp(generated[0].root, extraFileRoot, { recursive: true });
     await writeFile(path.join(extraFileRoot, "unexpected.txt"), "unexpected\n");
     assert.throws(() => runNode([
       "npm/scripts/verify-zcode-marketplace.mjs",
       "--root", extraFileRoot,
-      "--version", "0.2.1",
+      "--version", "0.2.2",
       "--commit", commit,
     ]), "an extra release file must be rejected");
 
@@ -259,7 +317,7 @@ test("ZCode marketplace generation is deterministic and fails closed", async () 
     assert.throws(() => runNode([
       "npm/scripts/verify-zcode-marketplace.mjs",
       "--root", mutableRefRoot,
-      "--version", "0.2.1",
+      "--version", "0.2.2",
       "--commit", commit,
     ]), "a mutable marketplace source ref must be rejected");
   } finally {

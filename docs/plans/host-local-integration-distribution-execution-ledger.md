@@ -3,22 +3,23 @@
 ```yaml
 schema_version: 1
 plan_id: "host-local-integration-distribution-20260817"
-updated_at: "2026-08-17T17:38:00+08:00"
+updated_at: "2026-08-17T18:21:52+08:00"
 plan_status: "executing"
 checkout:
-  revision: "e5b782d65173658676ba920ead3785fa789d2233"
+  revision: "a239a04e354e2877c49ddb409b529bcdf74ebad7"
   branch: "main"
-  status_sha256: "5c4bd15917b0dadaac5e1eb2dc5e338abb56142c562671f82855d3e4c637e63a"
-  status_entry_count: 19
-  relevant_diff_sha256: "ec1051cd2eee82d5174d11dc2ec18d4f94c63870f7933c3bb920985b31a99652"
-  relevant_untracked_sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  status_sha256: "2a1f144f1e012fda80eadaa815b31ca1c8d9d79857581bc4825a4026f1de4fd5"
+  status_entry_count: 37
+  relevant_diff_sha256: "4673ea363b74d4a18f4b779cf333351ac31d25812cc3ff66fdd2fe6e4ec06eda"
+  relevant_untracked_sha256: "e259cefdd767c370d85b2e64361917205ebab6854fd069dd6a0ac95f20919e61"
   notes:
     - "Existing MIT migration overlaps Cargo/npm/DSH/ZCode release files; preserve and work with it."
     - "User-owned untracked AGENTS.md and plan.md are outside this plan and must remain untouched."
     - "W0.3 removed only the broad docs/* ignore; 23 attributable docs files are now visible to Git."
     - "The 45-entry pre-W0 set was classified as 34 tracked MIT migration entries, 9 untracked MIT files, and 2 user-owned untracked files."
     - "Current relevant_untracked_sha256 excludes user-owned AGENTS.md/plan.md and this ledger to avoid self-referential fingerprints; the plan remains included."
-    - "The previous d7b415f6... release candidate is stale after the user-authorized C-04 trust-contract change; no replacement candidate exists until the implementation is committed."
+    - "The previous d7b415f6... release candidate is stale; a239a04... is the exact pushed and manually preflighted 0.2.1 release source."
+    - "Current relevant_diff_sha256 excludes this self-referential ledger; relevant_untracked_sha256 hashes only materialize-zcode-marketplace.mjs and excludes AGENTS.md/plan.md."
 external_checkouts:
   deepseek_harness:
     path: "../deepseek-harness"
@@ -45,7 +46,7 @@ default_memory_db:
   incident: "Main DB changed again outside the recorded W4 window; no holder or WAL/SHM remained at the 2026-08-17T16:06:25+08:00 W5 snapshot."
   w4_isolation_window: "af6dbad... before npm 95/95 and still identical after final npm 96/96; sidecars absent"
 release:
-  version: "0.2.1"
+  version: "0.2.2"
   source_commit: null
   canonical_main_remote_has_branch: true
   npm_items: []
@@ -60,6 +61,9 @@ release:
   local_projection_tree_sha256: "188f2adec14b17ebec08dde45c051dc8e5322ee828ec057ad0faaba261e93782"
   local_projection_is_release_candidate: false
   local_projection_status: "stale after release-manifest schema v2 and releaseTrust contract change"
+  failed_source_tag: "xuanling-mcp-v0.2.1"
+  failed_source_commit: "a239a04e354e2877c49ddb409b529bcdf74ebad7"
+  failed_release_run: 32017795111
   missing_public_package_names:
     - "xuanling-mcp"
     - "xuanling-dsh-memory"
@@ -72,11 +76,11 @@ completed_waves:
   - "W2"
   - "W3"
 current_wave: "W4"
-current_work_package: "W4.3"
-wave_state: "implemented_unverified"
+current_work_package: "W4.7"
+wave_state: "deterministic_green"
 clean_acceptance_count: 0
-last_completed_action: "User authorized C-04 amendment: publisher certificates are optional; local red/green rebuilt explicit releaseTrust, mandatory npm provenance, ZCode OIDC attestation, and manual no-tag preflight."
-next_action: "Commit and push the release-trust contract change, then manually dispatch npm-publish.yml from main and require validate-release, npm-prerequisites, and zcode-prerequisites to pass while every side-effect job is skipped."
+last_completed_action: "W4.7 artifact transport was rebuilt for 0.2.2: only pack+attested archive cross the artifact boundary, strict materialization restores modes, focused positive/tamper/extra-file contracts pass, and all local Node/docs/workflow/locked Rust gates are green."
+next_action: "Commit and push the 0.2.2 artifact-transport fix, then manually dispatch npm-publish.yml from main and require the three prerequisite jobs to pass with every side-effect job skipped."
 required_gates:
   - "W0 contract/dirty/docs tracking baseline"
   - "W1 correct distribution red contracts"
@@ -88,6 +92,10 @@ required_gates:
 changed_files:
   - ".gitignore"
   - ".github/workflows/npm-publish.yml"
+  - "Cargo.toml"
+  - "Cargo.lock"
+  - "README.md"
+  - "README-ZH.md"
   - "integrations/deepseek-harness/**"
   - "integrations/zcode-plugin/**"
   - "npm/packages/xuanling-mcp/**"
@@ -107,15 +115,11 @@ failed_commands:
   - "GitHub run 32010817052 job 95329784351: Windows native staging reached npm pack and failed with spawn npm ENOENT."
   - "GitHub run 32011470354 job 95331763667: npm.cmd was found but Node 24 direct exec rejected the batch shim with spawn EINVAL."
   - "Expected contract red: release trust API absent, workflow still required release-signing certificates, no workflow_dispatch preflight/attestation, and ZCode release manifest remained schema v1."
+  - "GitHub tag run 32017795111 job 95352471779: downloaded ZCode marketplace payload_sha256 differed because actions/upload-artifact does not preserve executable modes; failure occurred in pre-publish reverify, so zero npm items were published and promotion was skipped."
 not_run_commands:
-  - "No GitHub manual preflight yet; repository-scoped NPM_BOOTSTRAP_TOKEN presence is known but its authentication has not been exercised."
-  - "No release tag, npm publish, direct promotion, or ZCode/DSH live install; W4 external evidence is stale until push/preflight."
-  - "No Rust build/test in W4 because Rust source and MCP/Memory semantics are unchanged; W6 still requires the final Rust gates."
+  - "No successful release tag, npm publish, direct promotion, or ZCode/DSH live install yet; failed immutable 0.2.1 tag is retained and the retry version is 0.2.2."
+  - "No full Rust test in this W4.7 repair because Rust semantics are unchanged; locked xuanling-mcp cargo check passed and W6 still requires the final Rust gates."
 blockers:
-  - id: "B-04"
-    scope: "W5"
-    condition: "npmjs Environment and repository-scoped NPM_BOOTSTRAP_TOKEN metadata exist, but token authentication and first-publish ownership remain unverified"
-    release: "Pass the no-tag GitHub preflight, then use the token only for the immutable first release; configure package-level Trusted Publishing and revoke/remove the bootstrap token afterward."
   - id: "B-07"
     scope: "W6"
     condition: "xuanling-portability run 32010247767 fails 11 Windows capability contracts; ten report candidate_resolution_failed/ERROR_INVALID_FUNCTION and one reports Windows symlink-parent error-code drift"
@@ -262,6 +266,18 @@ evidence:
   - command: "GitHub Environment and repository-secret name APIs"
     result: "npmjs and zcode-packer Environments now exist. Repository secret metadata contains NPM_BOOTSTRAP_TOKEN; no secret value was read, copied, or hashed. Authentication remains a GitHub-runner preflight gate."
     recorded_at: "2026-08-17T17:38:00+08:00"
+  - command: "Git Data API exact-object push and remote main readback"
+    result: "Uploaded the 18 committed blobs, reproduced exact tree 964c8872... and exact commit a239a04..., then advanced remote main without force from e5b782d...; user-owned AGENTS.md/plan.md remained untracked."
+    recorded_at: "2026-08-17T17:53:00+08:00"
+  - command: "GitHub workflow_dispatch run 32017485221 plus source/target tag and npm registry audit"
+    result: "Run passed on exact a239a04...: validate-release, npm-prerequisites including authenticated npm whoami, and zcode-prerequisites including permissions.push=true all succeeded; all six build/publish/promotion jobs were skipped. Source/target tags remain absent and all five public names remain E404."
+    recorded_at: "2026-08-17T17:55:00+08:00"
+  - command: "GitHub tag run 32017795111, failed publish-job log, and immediate registry reconciliation"
+    result: "All three native builds, MCP smokes, release-set assembly and OIDC attestation passed. Publish job failed before configuring npm authentication because the downloaded directory artifact lost executable modes and payload_sha256 changed; promotion was skipped and every public package remained E404. Immutable source tag xuanling-mcp-v0.2.1 remains at a239a04...."
+    recorded_at: "2026-08-17T18:05:00+08:00"
+  - command: "artifact transport red/green; npm full/check/docs; actionlint; locked cargo check; git diff --check"
+    result: "Correct red first failed on the missing materializer after a fixture-import false red was repaired. The implementation transports only pack+archive, validates archive schema/digests/regular canonical paths, restores modes, reruns the strict verifier, and rejects tamper/extra files. Full Node 98/98, package check at 0.2.2, 59 Markdown files, actionlint, cargo check --locked -p xuanling-mcp, and whitespace all pass."
+    recorded_at: "2026-08-17T18:21:52+08:00"
   - command: "final default DB, DSH checkout, source status, and source/target tag audit"
     result: "DB remains fab4413b... with no holder/WAL/SHM; DSH remains 47f94385.../89b2a20a... with its exact two user files; source has only user AGENTS.md/plan.md untracked; source and target have no tags. B-06 is a stable incident, not an active blocker."
     recorded_at: "2026-08-17T16:55:00+08:00"
@@ -270,7 +286,7 @@ evidence:
 stop_conditions:
   - "Unknown overlap with the existing MIT migration or user-owned untracked files"
   - "Any Rust/MCP/Memory/default-DB or DSH upstream mutation"
-  - "Any external write before W5 exact authorization"
+  - "Any external write outside the exact W5 authorization"
   - "Any secret content read, copied, hashed, logged, or persisted"
   - "Any missing/ambiguous releaseTrust state, fake/ad-hoc publisher-signing claim, provenance bypass, attestation bypass, or AV bypass"
 ```
@@ -287,33 +303,34 @@ W3 complete：源码只保留 runtime template；生成器从已验证 core tarb
 source 与 secret-shaped 文件 fail closed；Darwin launcher 使用临时 DB 完成真实 MCP smoke。完整 Node
 集的 3 个剩余失败均是 W4 的预期入口红合同，已在计划中明确为 staged gate。
 
-W4 的 C-06 direct-promotion实现仍保留，但用户授权修改 C-04 后，旧 W4 complete证据已 stale。
-新合同把 npm provenance、explicit release trust和 ZCode OIDC attestation设为强制，把平台发布者
-证书签名降为可选。正确红色和本地 98/98 green均已取得；只有 push后的 Actions/preflight evidence
-仍待重建，因此 W4当前为 `implemented_unverified`。
+W4.7 deterministic_green：首次 W4 preflight run `32017485221`通过，但真实 tag run `32017795111`
+暴露 directory artifact跨 job后 executable mode丢失，严格 payload hash在任何 npm publish前正确
+拒绝。修复不放宽 mode合同：artifact只传 pack + attested archive，下游先校验并 materialize archive，
+恢复 canonical mode后复用原 verifier。0.2.2本地 Node 98/98、docs、actionlint、locked cargo check与
+diff gate全部通过；新 commit/push/preflight前 W4不回升 complete。
 
-Pre-release README已重建为真实 0.2.1 trust合同：明确 publisher unsigned、npm provenance、source-bound
-SHA和 GitHub-attested ZCode archive。旧 source candidate `d7b415f6...` 与 run `32012128449`只能作为
-历史 portability/package smoke，不再是当前 release candidate。目标仓库仍停在 bootstrap commit
-`54a21771...`，无 source/target tag、registry item或 promotion tree。
+Pre-release README与所有 package/template已提升到 0.2.2 trust合同：明确 publisher unsigned、npm
+provenance、source-bound SHA和 GitHub-attested ZCode archive。失败的 0.2.1 source tag保持指向
+`a239a04...`，未产生 registry item；0.2.2尚无 source candidate。目标仓库仍停在 bootstrap commit
+`54a21771...`，无 target tag、registry item或 promotion tree。
 
-W5.1-W5.2 的 target identity/bootstrap facts仍 current；W5.3及以后需绑定新的 source candidate。
-`npmjs`和 `zcode-packer` Environments均已存在，repository secret metadata包含一次性
-`NPM_BOOTSTRAP_TOKEN`，但只有 manual GitHub preflight能证明 token认证与 target permission同时成立。
+W5退回等待 W4重新 complete：target identity/bootstrap事实仍 current；旧 source/preflight证据因
+0.2.2修复而 stale。`npmjs`和 `zcode-packer` Environments均已存在；一次性 repository
+`NPM_BOOTSTRAP_TOKEN`已通过 runner认证但尚未完成首发，因此 0.2.2 tag workflow成功前不得移除。
 此外 W6 portability已有独立真实红色，当前分发计划禁止用 Rust修改或跳测化解。
 
 ```text
 EXECUTION_STATUS: HANDOFF_REQUIRED
 PLAN_ID: host-local-integration-distribution-20260817
-CHECKOUT_FINGERPRINT: revision e5b782d65173658676ba920ead3785fa789d2233; status 5c4bd159...; relevant diff ec1051cd...; relevant untracked e3b0c442...
+CHECKOUT_FINGERPRINT: revision a239a04e354e2877c49ddb409b529bcdf74ebad7; status 2a1f144f...; relevant diff excluding ledger 4673ea36...; relevant untracked e259cefd...
 CURRENT_WAVE: W4
-CURRENT_WORK_PACKAGE: W4.3
-WAVE_STATE: implemented_unverified
-CONTRACTS_PROVEN: C-01/C-02 profile-local DSH bundles; C-03 deterministic ZCode projection/target bootstrap; amended C-04 explicit releaseTrust + npm provenance + OIDC attestation locally; C-05 ordered idempotent release; C-06 direct promotion; C-08 preservation
-EVIDENCE_ADDED: correct release-trust red; focused 24/24; full Node 98/98; npm check; 59 docs; actionlint; diff check; npmjs/zcode-packer and repository secret-name metadata without reading values
-FAILED_GATES: xuanling-portability 32010247767 Windows toolkit contract 102 pass/11 fail; historical npm runs 32010247812, 32010817052, and 32011470354 remain retained but are resolved by green run 32012128449
-NOT_RUN_GATES: GitHub manual preflight; tag CI provenance/attestation; npm publish/reconciliation; ZCode direct promotion; clean DSH installs/model calls; ZCode install/restart; W6 final parity and regression
-BLOCKERS: B-04 bootstrap token authentication/first-publish ownership unverified until no-tag preflight; B-07 Windows capability portability requires a separately authorized Rust work package
-NEXT_EXACT_ACTION: commit/push the amended trust contract, then manually dispatch npm-publish.yml from main and require only the three preflight jobs to pass
+CURRENT_WORK_PACKAGE: W4.7
+WAVE_STATE: deterministic_green
+CONTRACTS_PROVEN: C-01/C-02 profile-local DSH bundles; C-03 deterministic ZCode projection/target bootstrap; C-04 explicit releaseTrust + mandatory npm provenance + OIDC attestation locally; C-05 ordered idempotent release; C-06 direct promotion; C-08 preservation; cross-job ZCode artifact mode restoration locally
+EVIDENCE_ADDED: run 32017795111 true red with zero publish; materializer correct red/green; archive tamper and extra-file rejection; 0.2.2 Node 98/98, npm check, 59 docs, actionlint, locked cargo check, diff check
+FAILED_GATES: run 32017795111 publish preverification mode-loss incident; xuanling-portability 32010247767 Windows toolkit contract 102 pass/11 fail; historical npm runs retained
+NOT_RUN_GATES: 0.2.2 manual preflight; 0.2.2 tag CI provenance/attestation; npm publish/reconciliation; ZCode direct promotion; clean DSH installs/model calls; ZCode install/restart; W6 final parity and regression
+BLOCKERS: B-07 Windows capability portability requires a separately authorized Rust work package
+NEXT_EXACT_ACTION: commit and push the 0.2.2 artifact-transport fix, then manually dispatch npm-publish.yml from main and require only the three preflight jobs to pass
 LEDGER_PATH: docs/plans/host-local-integration-distribution-execution-ledger.md
 ```

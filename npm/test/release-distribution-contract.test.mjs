@@ -60,7 +60,7 @@ test("synthetic release fixture is hash-pinned before distribution tests use it"
 
 test("registry integrity reconciliation has exact publish, skip, and failure states", () => {
   const expectedIntegrity = "sha512-fixture";
-  const specifier = "xuanling-mcp@0.2.1";
+  const specifier = "xuanling-mcp@0.2.2";
   assert.deepEqual(
     classifyIntegrityLookup({ stdout: "", stderr: "npm ERR! E404", exitCode: 1 }, {
       expectedIntegrity,
@@ -136,7 +136,7 @@ process.exit(2);
       filename: "fixture.tgz",
       integrity,
       name: "xuanling-fixture",
-      version: "0.2.1",
+      version: "0.2.2",
     }));
     const invoke = () => execFileSync(process.execPath, [
       "npm/scripts/publish-idempotent.mjs",
@@ -260,6 +260,10 @@ test("promotion is gated on the complete registry set and zcode-packer permissio
   const source = workflow();
   assert.match(source, /stage-zcode-marketplace\.mjs/);
   assert.match(source, /verify-zcode-marketplace\.mjs/);
+  assert.match(source, /materialize-zcode-marketplace\.mjs/);
+  assert.match(source, /npm\/dist\/zcode\/zcode-marketplace\.pack\.json/);
+  assert.match(source, /npm\/dist\/zcode\/xuanling-zcode-marketplace-/);
+  assert.doesNotMatch(source, /name: zcode-marketplace\n\s+path: npm\/dist\/zcode\n/);
   assert.match(source, /environment: zcode-packer/);
   assert.match(source, /secrets\.XL_PUBLISH_TOKEN/);
   assert.match(source, /vars\.ZCODE_REPOSITORY/);
@@ -283,6 +287,11 @@ test("promotion is gated on the complete registry set and zcode-packer permissio
     /repository: \$\{\{ vars\.ZCODE_REPOSITORY \}\}[\s\S]*path: target[\s\S]*token: \$\{\{ secrets\.XL_PUBLISH_TOKEN \}\}/,
   );
   assert.match(source, /promote-zcode-marketplace\.mjs/);
+  assert.equal(
+    source.match(/node npm\/scripts\/materialize-zcode-marketplace\.mjs/g)?.length,
+    2,
+    "publish and promotion must both restore the canonical archive before verification",
+  );
   assert.match(source, /git -C target push --atomic origin/);
   assert.doesNotMatch(source, /actions\/create-github-app-token@|repository_dispatch|write-zcode-dispatch-payload/);
 });
@@ -307,14 +316,14 @@ test("target promotion replay is idempotent and rejects tree drift", async () =>
     await writeFile(path.join(incoming, "plugins", "xuanling-mcp", "runtime.txt"), "runtime\n");
     await writeFile(path.join(incoming, "release-manifest.json"), JSON.stringify({
       source_commit: sourceCommit,
-      version: "0.2.1",
+      version: "0.2.2",
     }, null, 2));
     const tree = await describeProjection(incoming, { strictRoot: true });
     const baseArgs = [
       script,
       "--incoming", incoming,
       "--target", target,
-      "--version", "0.2.1",
+      "--version", "0.2.2",
       "--source-commit", sourceCommit,
       "--tree-sha256", tree.sha256,
     ];

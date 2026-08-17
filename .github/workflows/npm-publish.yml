@@ -347,8 +347,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: zcode-marketplace
-          path: npm/dist/zcode
-          include-hidden-files: true
+          path: |
+            npm/dist/zcode/zcode-marketplace.pack.json
+            npm/dist/zcode/xuanling-zcode-marketplace-${{ needs.validate-release.outputs.version }}.tar.gz
           if-no-files-found: error
           retention-days: 7
 
@@ -383,6 +384,11 @@ jobs:
           path: npm/zcode-release
       - name: Reverify exact release bytes before publishing
         run: |
+          node npm/scripts/materialize-zcode-marketplace.mjs \
+            --artifact-root npm/zcode-release \
+            --out npm/zcode-release/marketplace \
+            --version "${{ needs.validate-release.outputs.version }}" \
+            --commit "${{ needs.validate-release.outputs.commit }}"
           node npm/scripts/verify-release-set.mjs \
             --root npm/release \
             --version "${{ needs.validate-release.outputs.version }}" \
@@ -495,6 +501,11 @@ jobs:
           path: npm/zcode-release
       - name: Reconcile registry and ZCode artifact before promotion
         run: |
+          node npm/scripts/materialize-zcode-marketplace.mjs \
+            --artifact-root npm/zcode-release \
+            --out npm/zcode-release/marketplace \
+            --version "${{ needs.validate-release.outputs.version }}" \
+            --commit "${{ needs.validate-release.outputs.commit }}"
           node npm/scripts/verify-published-release.mjs \
             --core-root npm/release \
             --dsh-root npm/dsh-release \

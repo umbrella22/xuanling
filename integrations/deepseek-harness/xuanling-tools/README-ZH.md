@@ -6,10 +6,10 @@
 原生工具，并以 `mcp__xuanling__` 前缀增加 XuanLing 工具。
 
 ```sh
-dsh plugin --profile full add xuanling-dsh-tools@0.2.1
+dsh plugin --profile full add xuanling-dsh-tools@0.2.2
 ```
 
-精确版本的 `xuanling-mcp@0.2.1` runtime 会安装在 profile 内，并通过带校验的 JS launcher
+精确版本的 `xuanling-mcp@0.2.2` runtime 会安装在 profile 内，并通过带校验的 JS launcher
 启动；不需要也不会使用全局 npm package。只有文件系统 capability root 与 DSH 工作目录不同时，
 才需要设置 `XUANLING_WORKSPACE_ROOT`。
 

@@ -27,7 +27,7 @@ XuanLing MCP 是面向编码 Agent 的跨平台本地 Model Context Protocol
 npm 启动器要求 Node.js 18.17 或更高版本，并为当前平台安装匹配的原生二进制包。
 
 ```sh
-npm install --global xuanling-mcp@0.2.1
+npm install --global xuanling-mcp@0.2.2
 xuanling-mcp --version
 ```
 
@@ -40,7 +40,7 @@ MCP Client 也可以通过 `npx` 固定同一版本，无需全局安装：
       "command": "npx",
       "args": [
         "-y",
-        "xuanling-mcp@0.2.1",
+        "xuanling-mcp@0.2.2",
         "--workspace-root",
         "/absolute/path/to/project",
         "--tool-profile",

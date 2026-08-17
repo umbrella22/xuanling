@@ -6,7 +6,7 @@
 它不注册 MCP server，也不依赖 `xuanling-mcp`。
 
 ```sh
-dsh plugin --profile demo add xuanling-dsh-skills@0.2.1
+dsh plugin --profile demo add xuanling-dsh-skills@0.2.2
 ```
 
 请与且仅与一个 XuanLing 工具 bundle 组合使用。`xuanling-file-workflow` 在 Harness 原生文件

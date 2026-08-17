@@ -7,7 +7,7 @@ the strict whole-file overwrite policy. It registers no MCP server and has no
 dependency on `xuanling-mcp`.
 
 ```sh
-dsh plugin --profile demo add xuanling-dsh-skills@0.2.1
+dsh plugin --profile demo add xuanling-dsh-skills@0.2.2
 ```
 
 Use it with exactly one XuanLing tool bundle. `xuanling-file-workflow` routes

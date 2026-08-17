@@ -8,7 +8,9 @@
 > `UNVERIFIED_RISK`。2026-08-17 经用户授权，平台发布者证书签名改为可选增强，不再是发布门禁。
 > 计划路径：`docs/plans/host-local-integration-distribution-development-plan.md`。
 > 执行账本：`docs/plans/host-local-integration-distribution-execution-ledger.md`。
-> 目标首发版本：`0.2.1`。
+> 当前发布版本：`0.2.2`。初始 `0.2.1` tag run `32017795111` 在任何 npm publish 前因
+> GitHub artifact 传输丢失 executable mode 而失败；该 tag 保持不可变。下文标为 baseline/red 的
+> `0.2.1` 事实保留历史含义，其余目标合同与执行命令使用 `0.2.2`。
 > 目标 ZCode 仓库：`umbrella22/xuanling-zcode-marketplace`（已创建但当前为空、无默认分支）。
 > 相关上游合同：[DSH package and install](https://deepseek-harness.github.io/deepseek-harness/develop/basic/)、
 > [ZCode Plugin](https://zcode.z.ai/cn/docs/plugin)、
@@ -37,9 +39,9 @@ launcher checksum negative test。
 
 Given：`xuanling-dsh-memory`、`xuanling-dsh-tools`、
 `xuanling-dsh-tools-replace` 和 `xuanling-dsh-skills` 四个发布包。
-When：用户通过 `dsh plugin --profile demo add xuanling-dsh-memory@0.2.1` 等精确 package
+When：用户通过 `dsh plugin --profile demo add xuanling-dsh-memory@0.2.2` 等精确 package
 命令安装。
-Then：前三个工具包精确依赖 `xuanling-mcp@0.2.1`；Skills 包不依赖 MCP runtime；Memory
+Then：前三个工具包精确依赖 `xuanling-mcp@0.2.2`；Skills 包不依赖 MCP runtime；Memory
 仍只暴露 Memory profile；additive/replace 的工具目录与禁用行保持现有合同。
 And not：不得把四包合并为一个隐式模式包，不得让 Skills 自行启动 MCP，也不得同时推荐安装
 多个会注册 `xuanling-tools` 行的工具包。
@@ -79,9 +81,9 @@ provenance、GitHub artifact attestation 与 archive digest。
 
 #### C-05：npm 发布顺序可恢复且不暴露悬空依赖
 
-Given：`xuanling-mcp-v0.2.1` tag 对应的完整 release set。
+Given：`xuanling-mcp-v0.2.2` tag 对应的完整 release set。
 When：CI 发布 npm artifacts。
-Then：顺序固定为 native prerelease variants → stable `xuanling-mcp@0.2.1` launcher → 四个
+Then：顺序固定为 native prerelease variants → stable `xuanling-mcp@0.2.2` launcher → 四个
 DSH bundles；每一步先查询 registry integrity，已存在且一致则幂等跳过，不一致则停止。
 And not：不得先发布依赖尚不存在的 DSH 包，不得覆盖 npm immutable version，不得在完整验证前
 更新 release announcement 或 ZCode marketplace。
@@ -110,7 +112,7 @@ log、target commit/tag/tree hash。
 
 #### C-07：发布完成必须有 clean-install 与真实 host 证据
 
-Given：registry 和 ZCode marketplace 上已发布的 `0.2.1` artifacts。
+Given：registry 和 ZCode marketplace 上已发布的 `0.2.2` artifacts。
 When：在没有全局 `xuanling-mcp` 的临时 DSH profile、三平台 CI runner 和本机 ZCode 3.7.7
 执行安装与重启。
 Then：DSH 推荐 Memory+Skills 组合可启动，full-tools profile 可完成文件 read/hash，ZCode 可发现
@@ -213,7 +215,7 @@ Evidence：allowed-path review、Git fingerprints、package file lists、default
   `XL_PUBLISH_TOKEN`，variable `ZCODE_REPOSITORY` 为
   `umbrella22/xuanling-zcode-marketplace`。secret value 未读取；实际授权必须由 authenticated API
   的 `permissions.push=true` 证明，Environment 名称存在本身不构成授权证据。
-- 平台发布者证书不是 0.2.1 发布前提；当前明确按 `publisherSigning.status=not-provided` 发布。
+- 平台发布者证书不是 0.2.2 发布前提；当前明确按 `publisherSigning.status=not-provided` 发布。
   npm bootstrap token只允许检查是否配置和认证是否成功，不读取或记录 secret 值。
 
 ### 2.4 当前验证基线
@@ -234,7 +236,7 @@ Evidence：allowed-path review、Git fingerprints、package file lists、default
 | DSH 默认依赖 PATH/global package | CONFIRMED P1 release blocker | clean profile 无全局命令即无法启动 | C-01 red/green + clean install |
 | ZCode plugin 只有 Darwin ARM64 | CONFIRMED P1 release blocker | Linux/Windows 必然缺 package | 三平台 generated tree + smoke |
 | plugin.json/.mcp.json 双 launch contract | CONFIRMED P1 release blocker | 不同 command/args 可漂移 | `.mcp.json` 成为唯一合同 |
-| 发布者签名凭据可用性 | NON_BLOCKING | 0.2.1 明确记录 `not-provided`；不影响 MCP 执行 | 未来有真实证书时另行启用并验证 |
+| 发布者签名凭据可用性 | NON_BLOCKING | 0.2.2 明确记录 `not-provided`；不影响 MCP 执行 | 未来有真实证书时另行启用并验证 |
 | ZCode remote reinstall 行为 | UNVERIFIED_RISK | 当前代码/文档支持，尚无新仓库 live 证据 | W5 local + remote-source transcript |
 | 杀毒软件误报概率 | UNVERIFIED_RISK | provenance/attestation 不等于 OS publisher reputation | 记录 trust/hash/扫描事实，不承诺零误报 |
 | ZCode 网页 npm source | NON_BLOCKING | 与 3.7.7 runtime 漂移 | 继续使用 GitHub source |
@@ -265,7 +267,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["xuanling-mcp-v0.2.1 tag"] --> B["三平台 locked release build"]
+    A["xuanling-mcp-v0.2.2 tag"] --> B["三平台 locked release build"]
     B --> C["explicit release trust + byte SHA"]
     C --> D["MCP smoke + npm pack + provenance"]
     D --> E["发布 native prerelease variants"]
@@ -379,17 +381,17 @@ Rust target/binary/SHA/release trust、全部 npm package name/version/integrity
 
 ### 6.4 Compatibility 与版本
 
-- 本计划首发版本固定为 `0.2.1`，因为 2026-08-17 registry 上五个 public names均不存在。
-- 三个 DSH 工具包必须使用 exact `xuanling-mcp: "0.2.1"`；不得用 `latest`、caret 或 git branch。
+- 当前发布版本固定为 `0.2.2`；失败的 `0.2.1` tag不删除、不移动且未产生 registry item。
+- 三个 DSH 工具包必须使用 exact `xuanling-mcp: "0.2.2"`；不得用 `latest`、caret 或 git branch。
 - DSH bridge/Skill provider 保持当前 `^0.1.0-rc.5`，除非 W1 证明上游 package contract不兼容；
   变更上游范围触发 stop condition。
-- ZCode marketplace main entry可以指向 immutable `xuanling-mcp-v0.2.1` tag；installed package不能
+- ZCode marketplace main entry指向 immutable `xuanling-mcp-v0.2.2` tag；installed package不能
   通过 mutable branch取得 runtime。
 - npm/ZCode package中不执行 lifecycle install scripts；升级通过 package manager/marketplace reinstall。
 
 ### 6.5 Secret、release trust、日志与 telemetry
 
-- 0.2.1 允许的 secret names 只有一次性 npm bootstrap token 与 `zcode-packer` 的
+- 0.2.2 允许的 secret names 只有一次性 npm bootstrap token 与 `zcode-packer` 的
   `XL_PUBLISH_TOKEN`。日志只记录 configured/missing 与 authenticated permission，不记录 token值。
 - temporary `.npmrc` 与 checkout credential只存在于临时 runner；artifact、cache、tarball、README、
   ledger和 target tree中禁止出现 secret bytes。
@@ -703,7 +705,7 @@ DSH failures，不能先改测试预期。
 | `node --test npm/test/deepseek-harness-skills.test.mjs` | Skills contract | all pass | required |
 | `node --test npm/test/package-contract.test.mjs npm/test/platform-contract.test.mjs` | launcher | all pass | required |
 | `node npm/scripts/pack-dsh-bundles.mjs --out npm/dist/dsh` | W2 new contract | four tarballs/manifests | required |
-| `node npm/scripts/verify-dsh-release-set.mjs --root npm/dist/dsh --version 0.2.1` | W2 new verifier | exact set/integrities | required |
+| `node npm/scripts/verify-dsh-release-set.mjs --root npm/dist/dsh --version 0.2.2` | W2 new verifier | exact set/integrities | required |
 | `npm --prefix npm test` | full Node contracts | all pass | required |
 | `npm --prefix npm run check:docs` | docs | pass | required |
 | `git diff --check` | Git | clean | required |
@@ -806,8 +808,8 @@ all-target generated projection，不复用 `integrations` 中的旧 Darwin byte
 | Command | Provenance | Expected result | Required/conditional |
 | --- | --- | --- | --- |
 | `node --test npm/test/zcode-plugin-contract.test.mjs` | C-03 | all pass | required |
-| `node npm/scripts/stage-zcode-marketplace.mjs --release-root npm/release --out npm/dist/zcode-marketplace --version 0.2.1 --commit "$(git rev-parse HEAD)"` | W3 new contract | deterministic tree/archive | required |
-| `node npm/scripts/verify-zcode-marketplace.mjs --root npm/dist/zcode-marketplace --version 0.2.1 --commit "$(git rev-parse HEAD)"` | W3 verifier | exact tree/hash/refs | required |
+| `node npm/scripts/stage-zcode-marketplace.mjs --release-root npm/release --out npm/dist/zcode-marketplace --version 0.2.2 --commit "$(git rev-parse HEAD)"` | W3 new contract | deterministic tree/archive | required |
+| `node npm/scripts/verify-zcode-marketplace.mjs --root npm/dist/zcode-marketplace --version 0.2.2 --commit "$(git rev-parse HEAD)"` | W3 verifier | exact tree/hash/refs | required |
 | 上述 stage 两次并比较 tree SHA-256 | reproducibility | equal | required |
 | `node npm/scripts/smoke-mcp.mjs --launcher npm/dist/zcode-marketplace/plugins/xuanling-mcp/bin/node_modules/xuanling-mcp/bin/xuanling-mcp.js` | MCP smoke | explicit temp DB，pass | host target required |
 | `npm --prefix npm test` | Node full | W0-W3 tests pass；W4 contract tests remain exact red until W4, then full suite must pass | required staged gate |
@@ -868,6 +870,8 @@ metadata。
 ### 12.3 Allowed files
 
 - `.github/workflows/npm-publish.yml`
+- `Cargo.toml`、`Cargo.lock`（仅 immutable retry 的 workspace package version；不得改变依赖）
+- `README.md`、`README-ZH.md`（仅当前安装版本）
 - `.github/workflows/xuanling-mcp-npm.yml`
 - `.github/workflows/xuanling-portability.yml`（仅 paths/artifact verification需要时）
 - `npm/scripts/check-version.mjs`
@@ -881,11 +885,16 @@ metadata。
 - `npm/scripts/verify-published-release.mjs`
 - `npm/scripts/zcode-promotion-lib.mjs`
 - `npm/scripts/promote-zcode-marketplace.mjs`
+- `npm/scripts/materialize-zcode-marketplace.mjs`
 - W2/W3 new release scripts
 - `npm/test/release-distribution-contract.test.mjs`
 - `npm/test/package-contract.test.mjs`
 - `test/release/**`
 - `npm/README.md`、`npm/README-ZH.md`
+- `npm/package.json`、`npm/packages/xuanling-mcp/package.json` 与 package READMEs（仅当前版本）
+- `integrations/deepseek-harness/**/package.json` 与 READMEs（仅 exact package/runtime version）
+- `integrations/zcode-plugin/marketplace.json`
+- `integrations/zcode-plugin/plugins/xuanling-mcp/.zcode-plugin/plugin.json`
 - `integrations/zcode-plugin/plugins/xuanling-mcp/README.md`
 - `integrations/zcode-plugin/plugins/xuanling-mcp/README-ZH.md`
 - target repository bootstrap template只允许位于 `test/release/target-repo-template/**`，且精确包含
@@ -906,6 +915,7 @@ metadata。
 | explicit unsigned state | inspect staged package | 缺字段与 unsigned无法区分 | JSON fixture不可读 |
 | npm provenance | inspect publish argv/metadata | provenance未强制 | registry fixture不可用 |
 | ZCode attestation | inspect release DAG | archive无 OIDC attestation | action parser故障 |
+| artifact mode transport | 只传 pack + archive后重新 materialize | directory artifact丢失 executable mode导致 payload hash漂移 | fixture或 tar缺失 |
 | source-bound hash | mutate staged byte | verifier必须拒绝 | fixture binary不存在 |
 | complete npm set | inspect/execute verifier | current set无四 DSH packages | core tarball invalid |
 | publish ordering | mocked registry transcript | current workflow无 DSH phase | actual npm network call |
@@ -923,7 +933,7 @@ metadata。
 | W4.4 | source-bound native staging | C-04/C-05 | stage后任何 byte漂移拒绝 | package hash verifier |
 | W4.5 | DSH pack/publish jobs | C-02/C-05 | native/main未完成不执行 | DAG/order tests |
 | W4.6 | registry reconciliation | C-05 | mismatch hard fail，E404 publish | mocked + script tests |
-| W4.7 | ZCode artifact/attestation | C-03/C-06 | npm set不完整不进入 promotion | release manifest verifier |
+| W4.7 | ZCode artifact/attestation/materialization | C-03/C-06 | npm set不完整、archive hash或 mode恢复失败不进入 promotion | transported archive verifier |
 | W4.8 | `zcode-packer` direct checkout/push | C-06 | target/token/permission/default branch缺失停止 | auth/DAG static test |
 | W4.9 | source-side promotion scripts + target bootstrap template | C-06 | digest/tag/tree mismatch拒绝；matching replay no-op | synthetic direct replay |
 | W4.10 | pre-release npm/ZCode READMEs | C-03-C-08 | package内文档必须在 pack/publish前冻结；不声称 live验收已发生 | docs/package scan |
@@ -934,7 +944,7 @@ metadata。
 | --- | --- | --- | --- |
 | `node --test npm/test/release-distribution-contract.test.mjs` | C-04-C-06 | all pass | required |
 | `node --test npm/test/zcode-plugin-contract.test.mjs` | synthetic strict core/ZCode set generated in temp | release-trust metadata, deterministic tree/archive, extra/mutable rejection | required |
-| `node npm/scripts/pack-dsh-bundles.mjs --out npm/dist/w4-dsh --commit $(git rev-parse HEAD) && node npm/scripts/verify-dsh-release-set.mjs --root npm/dist/w4-dsh --version 0.2.1 --commit $(git rev-parse HEAD)` | DSH release staging | four packages, source commit, allowlist and integrity | required |
+| `node npm/scripts/pack-dsh-bundles.mjs --out npm/dist/w4-dsh --commit $(git rev-parse HEAD) && node npm/scripts/verify-dsh-release-set.mjs --root npm/dist/w4-dsh --version 0.2.2 --commit $(git rev-parse HEAD)` | DSH release staging | four packages, source commit, allowlist and integrity | required |
 | `node --test npm/test/release-distribution-contract.test.mjs` | fake registry/target replay | partial retry, immutable conflict, direct promotion idempotency | required |
 | `actionlint .github/workflows/*.yml` | workflow syntax | pass | required；若未安装先记录 tool prerequisite，不用替代 parser伪绿 |
 | `npm --prefix npm run check` | manifest | pass | required |
@@ -986,7 +996,7 @@ bootstrap 空 target repo、提交/push source main、创建 release tag、发�
 ### 13.1 目标与合同
 
 - 覆盖合同：C-01 至 C-07，辅助 C-08。
-- 本 Wave 完成后的可观测结果：`0.2.1` 已按合同发布；target marketplace有 immutable tag；
+- 本 Wave 完成后的可观测结果：`0.2.2` 已按合同发布；target marketplace有 immutable tag；
   DSH clean profiles和 ZCode 3.7.7从公开分发面安装并完成真实工具调用。
 - 明确不处理：新功能、额外平台、host upstream修复、默认 DB迁移或杀毒软件绕过。
 
@@ -999,7 +1009,7 @@ bootstrap 空 target repo、提交/push source main、创建 release tag、发�
   secret/variable metadata已记录；不读取 secret value。
 - [ ] npm package ownership/bootstrap与 Trusted Publishing状态已盘点；publisher signing明确为
   `not-provided`，不作为 W5.4 tag blocker。
-- [ ] release version `0.2.1` registry reconciliation无 immutable conflict；E404可作为首发 blocker输入。
+- [ ] release version `0.2.2` registry reconciliation无 immutable conflict；E404可作为首发 blocker输入。
 - [ ] 默认 Memory DB、DSH checkout、ZCode当前 installed record已做 before snapshot。
 
 ### 13.3 Allowed files与外部目标
@@ -1051,11 +1061,11 @@ bootstrap 空 target repo、提交/push source main、创建 release tag、发�
 | Command/Action | Provenance | Expected result | Required/conditional |
 | --- | --- | --- | --- |
 | `gh run watch "$XUANLING_RELEASE_RUN_ID" --exit-status` | GitHub Actions | release workflow green | required |
-| `npm view xuanling-mcp@0.2.1 dist.integrity --json` | registry | manifest exact | required |
+| `npm view xuanling-mcp@0.2.2 dist.integrity --json` | registry | manifest exact | required |
 | 对四个 DSH package执行同版 `npm view` | registry | all exact | required |
-| `dsh plugin --profile xuanling-memory-e2e add xuanling-dsh-memory@0.2.1 xuanling-dsh-skills@0.2.1` | DSH official CLI | profile-local install | required |
+| `dsh plugin --profile xuanling-memory-e2e add xuanling-dsh-memory@0.2.2 xuanling-dsh-skills@0.2.2` | DSH official CLI | profile-local install | required |
 | `dsh --profile xuanling-memory-e2e --dump-config` | DSH | exact Memory+Skills rows | required |
-| `dsh plugin --profile xuanling-tools-e2e add xuanling-dsh-tools@0.2.1 xuanling-dsh-skills@0.2.1` | DSH official CLI | profile-local install | required |
+| `dsh plugin --profile xuanling-tools-e2e add xuanling-dsh-tools@0.2.2 xuanling-dsh-skills@0.2.2` | DSH official CLI | profile-local install | required |
 | DSH live read-only Memory/fs prompts | real model/bridge | expected tool family与结果 | required；billable授权随 W5 |
 | `gh attestation verify <zcode-archive> --repo umbrella22/xuanling` | GitHub | OIDC build provenance valid | required |
 | published native package `releaseTrust` + npm provenance | npm/GitHub | explicit `not-provided` publisher signing and valid provenance | required |
@@ -1138,7 +1148,7 @@ bootstrap 空 target repo、提交/push source main、创建 release tag、发�
 | Test/Oracle | Trigger | Expected old failure | Wrong failure |
 | --- | --- | --- | --- |
 | stale install docs | scan READMEs | global npm/local path/双合同文字已不存在 | historical plan命中 |
-| version/link parity | source/packed/published compare | 任一 `0.2.1`/URL漂移拒绝 | registry outage |
+| version/link parity | source/packed/published compare | 任一 `0.2.2`/URL漂移拒绝 | registry outage |
 | supported matrix | docs vs targets/manifest | 恰好三平台 | 文案顺序差异 |
 | security claims | scan/review | 明确 unsigned，provenance/attestation不承诺零误报 | 合法的“不保证”被拒 |
 | final release set | full verifier | source/tree/registry全部一致 | stale local dist被误用 |
@@ -1343,7 +1353,7 @@ external_checkouts:
   zcode:
     version: "3.7.7"
 release:
-  version: "0.2.1"
+  version: "0.2.2"
   source_commit: null
   npm_items: []
   zcode_archive_sha256: null

@@ -452,8 +452,8 @@ test("README documents the mount and the legacy tool surface stays out", () => {
   const readme = readText("README.md");
   assert.ok(readme.includes("mcp__xuanling__"), "public name shape documented");
   assert.ok(readme.includes("dsh plugin --profile"), "profile install path documented");
-  assert.ok(readme.includes("xuanling-dsh-memory@0.2.1"), "recommended memory bundle documented");
-  assert.ok(readme.includes("Profile-local `xuanling-mcp@0.2.1`"), "local runtime documented");
+  assert.ok(readme.includes("xuanling-dsh-memory@0.2.2"), "recommended memory bundle documented");
+  assert.ok(readme.includes("Profile-local `xuanling-mcp@0.2.2`"), "local runtime documented");
   assert.doesNotMatch(readme, /npm\s+(?:i|install)\s+(?:--global|-g)|XUANLING_MCP_BIN/);
   const legacyNames = [
     "memory_put",

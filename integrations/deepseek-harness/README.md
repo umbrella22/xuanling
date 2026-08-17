@@ -12,13 +12,13 @@ workflow Skills, and overwrite policy remain outside the Rust MCP contract.
 Install the Memory and Skills bundles into the target DSH profile:
 
 ```sh
-dsh plugin --profile demo add xuanling-dsh-memory@0.2.1
-dsh plugin --profile demo add xuanling-dsh-skills@0.2.1
+dsh plugin --profile demo add xuanling-dsh-memory@0.2.2
+dsh plugin --profile demo add xuanling-dsh-skills@0.2.2
 dsh --profile demo --dump-config
 dsh --profile demo
 ```
 
-The Memory bundle installs the exact `xuanling-mcp@0.2.1` launcher and native
+The Memory bundle installs the exact `xuanling-mcp@0.2.2` launcher and native
 optional dependency inside the profile. No global npm package, `npx`, or
 install-time binary download is used.
 
@@ -52,7 +52,7 @@ Bundle expressions resolve these values when DSH starts:
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| MCP runtime | Profile-local `xuanling-mcp@0.2.1` | Verified JS launcher and native optional dependency |
+| MCP runtime | Profile-local `xuanling-mcp@0.2.2` | Verified JS launcher and native optional dependency |
 | `XUANLING_WORKSPACE_ROOT` | DSH process working directory | XuanLing filesystem capability root |
 | Schema adapter | Installed `xuanling-dsh-memory/schema-adapter.mjs` | Projects discovery schemas for DSH |
 | MCP tool profile | `memory` in the recommended bundle | Server-side discovery and dispatch selection |

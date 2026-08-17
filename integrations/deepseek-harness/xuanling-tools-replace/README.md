@@ -8,10 +8,10 @@ the filesystem layer while retaining shell, web, LSP, approval, PTY, jobs, and
 orchestration integrations.
 
 ```sh
-dsh plugin --profile replace add xuanling-dsh-tools-replace@0.2.1
+dsh plugin --profile replace add xuanling-dsh-tools-replace@0.2.2
 ```
 
-The exact `xuanling-mcp@0.2.1` runtime is installed in the profile and started
+The exact `xuanling-mcp@0.2.2` runtime is installed in the profile and started
 through its verified JS launcher. No global npm package is used.
 
 This variant removes native `read_image`, read-before-edit observation guards,

@@ -2,7 +2,7 @@
 
 [English](README.md) | 简体中文
 
-发行版 `xuanling-mcp` 0.2.1 是自包含的 ZCode 集成。插件携带经过验证的 Node.js launcher，
+发行版 `xuanling-mcp` 0.2.2 是自包含的 ZCode 集成。插件携带经过验证的 Node.js launcher，
 以及 macOS ARM64、Linux x64 glibc 和 Windows x64 原生 package。它不依赖全局 npm 安装，
 安装期间也不会下载可执行文件。
 
@@ -37,6 +37,6 @@ Memory 默认使用 `~/.xuanling/memory.db`；需要隔离数据库时，可以�
 ## 安全边界
 
 `--workspace-root` 约束 XuanLing 文件工具打开的路径，但不是进程 sandbox。工具审批仍由
-ZCode 负责；可能执行恶意代码时，子进程隔离需要 OS sandbox 或 container。XuanLing 0.2.1
+ZCode 负责；可能执行恶意代码时，子进程隔离需要 OS sandbox 或 container。XuanLing 0.2.2
 不带发布者证书签名；npm provenance、绑定 source commit 的 native hash 与 GitHub attested
 marketplace archive 可以降低分发风险，但不能保证所有安全软件对新 binary 给出相同判断。

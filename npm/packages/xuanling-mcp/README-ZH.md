@@ -11,7 +11,7 @@ proposal-first SQLite Memory。
 启动器要求 Node.js 18.17 或更高版本。
 
 ```sh
-npm install --global xuanling-mcp@0.2.1
+npm install --global xuanling-mcp@0.2.2
 xuanling-mcp --version
 ```
 
@@ -24,7 +24,7 @@ MCP Client 也可以使用 `npx` 固定版本：
       "command": "npx",
       "args": [
         "-y",
-        "xuanling-mcp@0.2.1",
+        "xuanling-mcp@0.2.2",
         "--workspace-root",
         "/absolute/path/to/project",
         "--tool-profile",

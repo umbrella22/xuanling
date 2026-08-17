@@ -3,7 +3,7 @@
 English | [Simplified Chinese](README-ZH.md)
 
 This directory contains the npm distribution and release automation for
-XuanLing MCP 0.2.1. A complete release contains eight immutable npm items: one
+XuanLing MCP 0.2.2. A complete release contains eight immutable npm items: one
 stable Node.js launcher, three native variants published under platform-specific
 prerelease versions, and four DeepSeek Harness bundles. The same verified core
 artifacts produce the ZCode marketplace archive.
@@ -12,10 +12,10 @@ artifacts produce the ZCode marketplace archive.
 
 | Installed alias | Published version | Platform |
 | --- | --- | --- |
-| `xuanling-mcp` | `0.2.1` | Stable Node.js launcher |
-| `xuanling-mcp-darwin-arm64` | `0.2.1-darwin-arm64` | macOS Apple Silicon |
-| `xuanling-mcp-linux-x64-gnu` | `0.2.1-linux-x64-gnu` | Linux x64, glibc 2.35 or newer |
-| `xuanling-mcp-win32-x64-msvc` | `0.2.1-win32-x64-msvc` | Windows x64 MSVC |
+| `xuanling-mcp` | `0.2.2` | Stable Node.js launcher |
+| `xuanling-mcp-darwin-arm64` | `0.2.2-darwin-arm64` | macOS Apple Silicon |
+| `xuanling-mcp-linux-x64-gnu` | `0.2.2-linux-x64-gnu` | Linux x64, glibc 2.35 or newer |
+| `xuanling-mcp-win32-x64-msvc` | `0.2.2-win32-x64-msvc` | Windows x64 MSVC |
 
 All four variants use the npm package name `xuanling-mcp`. The stable package
 declares npm aliases as optional dependencies, and npm selects the compatible
@@ -27,10 +27,10 @@ DeepSeek Harness installs these public bundles directly into a profile:
 
 | Package | Purpose |
 | --- | --- |
-| `xuanling-dsh-memory@0.2.1` | Complete Memory v2 profile with DSH schema projection |
-| `xuanling-dsh-skills@0.2.1` | File and Memory workflow Skills plus strict overwrite policy |
-| `xuanling-dsh-tools@0.2.1` | Additive full XuanLing catalog |
-| `xuanling-dsh-tools-replace@0.2.1` | Full catalog with model-facing native filesystem rows disabled |
+| `xuanling-dsh-memory@0.2.2` | Complete Memory v2 profile with DSH schema projection |
+| `xuanling-dsh-skills@0.2.2` | File and Memory workflow Skills plus strict overwrite policy |
+| `xuanling-dsh-tools@0.2.2` | Additive full XuanLing catalog |
+| `xuanling-dsh-tools-replace@0.2.2` | Full catalog with model-facing native filesystem rows disabled |
 
 The three tool bundles depend on the exact stable `xuanling-mcp` version in the
 same DSH profile. The Skills bundle contains no MCP runtime.
@@ -38,7 +38,7 @@ same DSH profile. The Skills bundle contains no MCP runtime.
 ## Installation
 
 ```sh
-npm install --global xuanling-mcp@0.2.1
+npm install --global xuanling-mcp@0.2.2
 xuanling-mcp --workspace-root /absolute/path/to/project
 ```
 
@@ -51,7 +51,7 @@ An MCP host can pin the same release through `npx`:
       "command": "npx",
       "args": [
         "-y",
-        "xuanling-mcp@0.2.1",
+        "xuanling-mcp@0.2.2",
         "--workspace-root",
         "/absolute/path/to/project"
       ]
@@ -75,7 +75,7 @@ The capability contract is documented in the
   provenance at publication, and binds its binary SHA-256 to the source commit.
   The ZCode marketplace archive also receives a GitHub OIDC build-provenance
   attestation before promotion.
-- XuanLing 0.2.1 does not claim a Developer ID or Authenticode publisher
+- XuanLing 0.2.2 does not claim a Developer ID or Authenticode publisher
   signature. Those signatures may be added in a later release, but their
   absence does not change the MCP protocol or package integrity contract.
 - Every native package contains the XuanLing MIT license and generated
@@ -97,7 +97,7 @@ node npm/scripts/pack-dsh-bundles.mjs \
   --commit "$(git rev-parse HEAD)"
 node npm/scripts/verify-dsh-release-set.mjs \
   --root npm/dist/dsh \
-  --version 0.2.1 \
+  --version 0.2.2 \
   --commit "$(git rev-parse HEAD)"
 
 node npm/scripts/generate-third-party-licenses.mjs \
