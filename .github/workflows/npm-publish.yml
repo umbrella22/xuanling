@@ -351,8 +351,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
+          registry-url: "https://registry.npmjs.org"
       - name: Install trusted-publishing npm CLI
         run: npm install --global npm@11.6.2
+      - name: Verify GitHub OIDC publish environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" || {
+            echo "npm Trusted Publishing requires ACTIONS_ID_TOKEN_REQUEST_URL" >&2
+            exit 1
+          }
+          test -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" || {
+            echo "npm Trusted Publishing requires ACTIONS_ID_TOKEN_REQUEST_TOKEN" >&2
+            exit 1
+          }
       - uses: actions/download-artifact@v4
         with:
           pattern: npm-*

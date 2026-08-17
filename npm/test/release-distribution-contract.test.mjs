@@ -221,6 +221,12 @@ test("release workflow has a no-tag preflight for npm visibility and ZCode crede
   assert.match(source, /environment: npmjs/);
   assert.match(source, /check-release-prerequisites\.mjs/);
   assert.doesNotMatch(source, /NPM_BOOTSTRAP_TOKEN|npm whoami|NPM_CONFIG_USERCONFIG/);
+  assert.match(
+    workflowJob(source, "publish"),
+    /registry-url: "https:\/\/registry\.npmjs\.org"/,
+    "Trusted Publishing must initialize npm with the public registry",
+  );
+  assert.match(source, /ACTIONS_ID_TOKEN_REQUEST_URL/);
   for (const job of [
     "build-main",
     "build-native",
