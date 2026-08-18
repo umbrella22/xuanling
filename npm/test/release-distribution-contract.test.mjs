@@ -7,7 +7,11 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
-import { classifyIntegrityLookup } from "../scripts/registry-release.mjs";
+import {
+  classifyIntegrityLookup,
+  PUBLISH_RECONCILIATION_DELAYS_MS,
+  reconcilePublishedIntegrity,
+} from "../scripts/registry-release.mjs";
 import { resolveCommandForPlatform } from "../scripts/shared.mjs";
 import { describeProjection } from "../scripts/zcode-promotion-lib.mjs";
 
@@ -88,6 +92,47 @@ test("registry integrity reconciliation has exact publish, skip, and failure sta
       specifier,
     }),
     /Unable to query/,
+  );
+});
+
+test("published packages tolerate two minutes of delayed registry visibility", async () => {
+  const expectedIntegrity = "sha512-fixture";
+  const specifier = "@xuanling-rs/xuanling-mcp@0.2.3";
+  const waits = [];
+  let lookups = 0;
+
+  assert.deepEqual(
+    PUBLISH_RECONCILIATION_DELAYS_MS,
+    [0, 2_000, 4_000, 8_000, 16_000, 30_000, 30_000, 30_000],
+  );
+  const reconciliation = await reconcilePublishedIntegrity({
+    expectedIntegrity,
+    lookup: async () => {
+      lookups += 1;
+      if (lookups < PUBLISH_RECONCILIATION_DELAYS_MS.length) {
+        return { stdout: "", stderr: "npm ERR! E404", exitCode: 1 };
+      }
+      return { stdout: `${JSON.stringify(expectedIntegrity)}\n`, stderr: "" };
+    },
+    sleep: async (delayMs) => waits.push(delayMs),
+    specifier,
+  });
+
+  assert.deepEqual(waits, PUBLISH_RECONCILIATION_DELAYS_MS.slice(1));
+  assert.deepEqual(reconciliation, {
+    attempts: 8,
+    elapsedMs: 120_000,
+    integrity: expectedIntegrity,
+  });
+
+  await assert.rejects(
+    reconcilePublishedIntegrity({
+      expectedIntegrity,
+      lookup: async () => ({ stdout: "", stderr: "npm ERR! E404", exitCode: 1 }),
+      sleep: async () => {},
+      specifier,
+    }),
+    /did not become visible after 8 reconciliation lookups over 120 seconds/,
   );
 });
 

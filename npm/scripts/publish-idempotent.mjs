@@ -2,7 +2,10 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { classifyIntegrityLookup } from "./registry-release.mjs";
+import {
+  classifyIntegrityLookup,
+  reconcilePublishedIntegrity,
+} from "./registry-release.mjs";
 import { parseArgs, readJson, requiredArg, run } from "./shared.mjs";
 
 const args = parseArgs(process.argv.slice(2));
@@ -49,22 +52,22 @@ await run("npm", [
   "--registry",
   registry,
 ]);
-let reconciled = false;
-for (let attempt = 0; attempt < 6; attempt += 1) {
-  const published = await run(
+const reconciliation = await reconcilePublishedIntegrity({
+  expectedIntegrity: manifest.integrity,
+  lookup: () => run(
     "npm",
     ["view", specifier, "dist.integrity", "--json", "--registry", registry],
     { allowFailure: true },
-  );
-  const reconciliation = classifyIntegrityLookup(published, {
-    expectedIntegrity: manifest.integrity,
-    specifier,
-  });
-  if (reconciliation.action === "skip") {
-    reconciled = true;
-    break;
-  }
-  if (attempt < 5) await new Promise((resolve) => setTimeout(resolve, 2_000));
-}
-if (!reconciled) throw new Error(`${specifier} did not become visible after publish reconciliation`);
-console.log(`published and reconciled ${specifier} with dist-tag ${tag}`);
+  ),
+  onRetry: ({ attempt, delayMs, totalAttempts }) => {
+    console.log(
+      `${specifier} is not visible yet; retrying lookup ${attempt}/${totalAttempts} `
+        + `in ${delayMs / 1_000} seconds`,
+    );
+  },
+  specifier,
+});
+console.log(
+  `published and reconciled ${specifier} with dist-tag ${tag} `
+    + `after ${reconciliation.attempts} lookup(s)`,
+);
