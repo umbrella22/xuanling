@@ -1579,6 +1579,45 @@ fn search_filters_hidden_ignored_globs_and_extensions() {
 }
 
 #[test]
+fn search_accepts_compound_file_extensions() {
+    let mut peer = Peer::start();
+    peer.initialize();
+    let dir = tempfile::tempdir().expect("temp dir");
+    std::fs::write(dir.path().join("types.d.ts"), "target_symbol\n").expect("declaration fixture");
+    std::fs::write(dir.path().join("types.ts"), "target_symbol\n").expect("typescript fixture");
+    std::fs::write(dir.path().join("types.d.ts.map"), "target_symbol\n")
+        .expect("source map fixture");
+    let path = dir.path().to_string_lossy().into_owned();
+
+    for extension in ["d.ts", ".d.ts"] {
+        let response = peer.call(
+            "fs_search",
+            json!({
+                "path": &path,
+                "pattern": "target_symbol",
+                "literal": true,
+                "file_extensions": [extension]
+            }),
+        );
+        assert_eq!(response["result"]["isError"], json!(false), "{response}");
+        let matches = response["result"]["structuredContent"]["matches"]
+            .as_array()
+            .expect("matches");
+        assert_eq!(
+            matches.len(),
+            1,
+            "only the declaration file should match `{extension}`: {response}"
+        );
+        assert!(
+            matches[0]["path"]
+                .as_str()
+                .is_some_and(|value| value.ends_with("types.d.ts")),
+            "{response}"
+        );
+    }
+}
+
+#[test]
 fn list_cursor_snapshot_is_stable_across_directory_mutation() {
     // ADR 2027 §6.3 Phase 2: when `fs_list` is called with a `limit`, the first
     // page materializes a snapshot of the sorted entry list and the cursor

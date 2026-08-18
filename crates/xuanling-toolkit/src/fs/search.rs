@@ -57,8 +57,9 @@ pub struct FsSearchOptions {
     /// Path globs excluded after include matching.
     #[serde(default)]
     pub exclude_globs: Vec<String>,
-    /// Optional exact file extensions. `rs` and `.rs` are intentionally
-    /// equivalent; comparisons are case-sensitive on every platform.
+    /// Optional exact file extension suffixes. Simple (`rs`, `.rs`) and
+    /// compound (`d.ts`, `.d.ts`) forms are supported; a leading dot is
+    /// ignored and comparisons are case-sensitive on every platform.
     #[serde(default)]
     pub file_extensions: Vec<String>,
 }
@@ -136,7 +137,7 @@ pub fn search_with_options(
         "respect_gitignore": options.respect_gitignore,
         "include_globs": &filters.include_patterns,
         "exclude_globs": &filters.exclude_patterns,
-        "file_extensions": &filters.extensions,
+        "file_extensions": &filters.extension_suffixes,
         "root": root.to_string_lossy(),
     });
     let fingerprint_bytes = serde_json::to_vec(&fingerprint_input).map_err(|error| {
@@ -259,7 +260,7 @@ struct SearchPathFilters {
     exclude: globset::GlobSet,
     include_patterns: Vec<String>,
     exclude_patterns: Vec<String>,
-    extensions: Vec<String>,
+    extension_suffixes: Vec<String>,
 }
 
 impl SearchPathFilters {
@@ -273,19 +274,15 @@ impl SearchPathFilters {
         };
         let exclude = build_glob_set("exclude_globs", &exclude_patterns)?;
 
-        let mut extensions = Vec::with_capacity(options.file_extensions.len());
+        let mut extension_suffixes = Vec::with_capacity(options.file_extensions.len());
         for value in &options.file_extensions {
-            let extension = value.strip_prefix('.').unwrap_or(value);
-            if extension.is_empty()
-                || extension.contains('/')
-                || extension.contains('\\')
-                || extension.contains('.')
-            {
+            let suffix = value.strip_prefix('.').unwrap_or(value);
+            if suffix.is_empty() || suffix.contains('/') || suffix.contains('\\') {
                 return Err(ToolError::new(
                     ToolErrorCode::InvalidInput,
                     "fs.search",
                     format!(
-                        "invalid file extension `{value}`: use one extension segment such as `rs` or `.rs`"
+                        "invalid file extension `{value}`: use a suffix such as `rs`, `.rs`, `d.ts`, or `.d.ts`"
                     ),
                 )
                 .with_details(serde_json::json!({
@@ -293,17 +290,17 @@ impl SearchPathFilters {
                     "value": value,
                 })));
             }
-            extensions.push(extension.to_string());
+            extension_suffixes.push(suffix.to_string());
         }
-        extensions.sort();
-        extensions.dedup();
+        extension_suffixes.sort();
+        extension_suffixes.dedup();
 
         Ok(Self {
             include,
             exclude,
             include_patterns,
             exclude_patterns,
-            extensions,
+            extension_suffixes,
         })
     }
 
@@ -324,12 +321,26 @@ impl SearchPathFilters {
         if self.exclude.is_match(&portable) {
             return false;
         }
-        self.extensions.is_empty()
-            || path
-                .extension()
-                .and_then(|value| value.to_str())
-                .is_some_and(|extension| self.extensions.iter().any(|value| value == extension))
+        self.extension_suffixes.is_empty()
+            || self
+                .extension_suffixes
+                .iter()
+                .any(|suffix| matches_extension_suffix(path, suffix))
     }
+}
+
+fn matches_extension_suffix(path: &Path, suffix: &str) -> bool {
+    if suffix.contains('.') {
+        return path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .and_then(|file_name| file_name.strip_suffix(suffix))
+            .is_some_and(|prefix| prefix.ends_with('.'));
+    }
+
+    path.extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|extension| extension == suffix)
 }
 
 fn normalized_set(values: &[String]) -> Vec<String> {

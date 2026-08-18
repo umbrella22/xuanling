@@ -157,7 +157,7 @@ pub fn catalog() -> Vec<Tool> {
         ),
         tool::<FsSearchCall, FsSearchResult>(
             "fs_search",
-            "Search file contents line-by-line with a regex (or literal) pattern. include_hidden, root-local respect_gitignore, include_globs, exclude_globs, and file_extensions filter candidate paths before scanning. Globs use `/`-separated paths relative to the search root; extension matching is case-sensitive on every platform. `limit` and an explicit canonical-JSON item byte budget are independent constraints. Omitted output returns every match when limit is absent. A query-bound cursor resumes when more matches remain. Uses Rust regex/ignore/globset APIs, never grep/findstr/Select-String.",
+            "Search file contents line-by-line with a regex (or literal) pattern. include_hidden, root-local respect_gitignore, include_globs, exclude_globs, and file_extensions filter candidate paths before scanning. file_extensions accepts simple (`ts`, `.ts`) or compound (`d.ts`, `.d.ts`) suffixes. Globs use `/`-separated paths relative to the search root; extension matching is case-sensitive on every platform. `limit` and an explicit canonical-JSON item byte budget are independent constraints. Omitted output returns every match when limit is absent. A query-bound cursor resumes when more matches remain. Uses Rust regex/ignore/globset APIs, never grep/findstr/Select-String.",
             read_only(),
             FsSearchCall {
                 path: String::new(),
@@ -723,7 +723,7 @@ struct FsSearchCall {
     /// Relative path globs excluded after include matching.
     #[serde(default)]
     exclude_globs: Vec<String>,
-    /// Exact extension segments; `rs` and `.rs` are equivalent.
+    /// Exact extension suffixes; `rs`/`.rs` and `d.ts`/`.d.ts` are equivalent.
     #[serde(default)]
     file_extensions: Vec<String>,
     #[serde(default)]

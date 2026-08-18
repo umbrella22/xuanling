@@ -1829,7 +1829,7 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Search file contents line-by-line with a regex (or literal) pattern. include_hidden, root-local respect_gitignore, include_globs, exclude_globs, and file_extensions filter candidate paths before scanning. Globs use `/`-separated paths relative to the search root; extension matching is case-sensitive on every platform. `limit` and an explicit canonical-JSON item byte budget are independent constraints. Omitted output returns every match when limit is absent. A query-bound cursor resumes when more matches remain. Uses Rust regex/ignore/globset APIs, never grep/findstr/Select-String.",
+    "description": "Search file contents line-by-line with a regex (or literal) pattern. include_hidden, root-local respect_gitignore, include_globs, exclude_globs, and file_extensions filter candidate paths before scanning. file_extensions accepts simple (`ts`, `.ts`) or compound (`d.ts`, `.d.ts`) suffixes. Globs use `/`-separated paths relative to the search root; extension matching is case-sensitive on every platform. `limit` and an explicit canonical-JSON item byte budget are independent constraints. Omitted output returns every match when limit is absent. A query-bound cursor resumes when more matches remain. Uses Rust regex/ignore/globset APIs, never grep/findstr/Select-String.",
     "input_schema": {
       "$defs": {
         "OutputRequest": {
@@ -1894,7 +1894,7 @@
         },
         "file_extensions": {
           "default": [],
-          "description": "Exact extension segments; `rs` and `.rs` are equivalent.",
+          "description": "Exact extension suffixes; `rs`/`.rs` and `d.ts`/`.d.ts` are equivalent.",
           "items": {
             "type": "string"
           },
