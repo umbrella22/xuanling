@@ -880,6 +880,8 @@ not_started -> red_confirmed -> implemented_unverified -> deterministic_green ->
   locator 拼接时保留 `..` 的 OS 解析顺序
 - `crates/xuanling-toolkit/tests/contract/capability_contract.rs` 仅限 B-WIN-01
   缺失路径递归终止回归合同
+- `.gitattributes` 仅限 B-WIN-EOL-01 的
+  `crates/xuanling-memory/tests/fixtures/retrieval-corpus-v1.jsonl text eol=lf` 规则
 - `npm/scripts/**`、`npm/test/**`、`.github/workflows/**` 仅在红合同证明发布缺口时
 - `test/release/**`、计划/账本
 
@@ -902,7 +904,7 @@ not_started -> red_confirmed -> implemented_unverified -> deterministic_green ->
 
 | Package | Symbol/path | Contract | Failure behavior | Targeted validation |
 | --- | --- | --- | --- | --- |
-| W5.0 | `WorkspaceScope` Windows path semantics | B-WIN-01/C-07 | any existing contract failure keeps W5 blocked; no assertion weakening | toolkit contract + native three-platform workflow |
+| W5.0 | `WorkspaceScope` Windows path semantics and frozen Memory fixture checkout EOL | B-WIN-01/B-WIN-EOL-01/C-07 | any existing contract failure keeps W5 blocked; no assertion weakening or loader normalization | toolkit/Memory contracts + native three-platform workflow |
 | W5.1 | version freeze and registry recheck | C-07 | any item存在即重选版本 | check-version/npm view |
 | W5.2 | eight npm artifacts | C-03-C-05/C-07 | missing/integrity drift stop | release-set verifiers |
 | W5.3 | ZCode archive projection | C-02/C-07 | tree/mode/hash drift stop | stage/verify twice |
@@ -963,6 +965,23 @@ not_started -> red_confirmed -> implemented_unverified -> deterministic_green ->
 > experimental `43/43`、MCP protocol `110/110`、golden `21/21`、Windows target 与本地三
 > crate check/clippy、fmt、docs `94`、npm check、diff 和隔离指纹均通过。新的原生三平台证据
 > 尚未取得，因此 W5.0 继续为 `implemented_unverified`。
+
+> W5.0 portability 结果（2026-08-20，run `32276727500`）：提交 `274457fa241e…` 已使
+> Linux/macOS 全部 gate 通过，并使 Windows toolkit contract 首次达到 `114/114`，确认
+> B-WIN-01 的普通 verbatim `\.` 与 symlink + `..` 两类路径合同均已恢复。Windows 随后在
+> Memory `frozen_corpus_has_expected_shape_and_digest` 失败（`39 pass / 1 fail`）：runner 观察值
+> `cace5821…` 与把 canonical LF fixture 机械转为 CRLF 后的本地 SHA-256 精确相同；Git blob 与
+> 合同期望均为 LF 的 `70b15f5e…`。此前所有 Windows run 都在 toolkit 阶段停止，因此该问题是
+> 首次可观测的独立 portability blocker，不归因于 capability 修复。`xuanling-mcp-npm` run
+> `32276727511` 的 launcher 和三平台 native package jobs 全绿。W5.0 仍不能 complete，因为
+> Windows experimental Memory、MCP、dependency、workspace 和 smoke gates 被跳过。
+
+> B-WIN-EOL-01 scope gate：正确责任层是 checkout 表示合同，维护者已授权根
+> `.gitattributes` 中仅对 `crates/xuanling-memory/tests/fixtures/retrieval-corpus-v1.jsonl`
+> 声明 `text eol=lf`。不得修改 expected digest，不得在 loader 中把 CRLF 静默归一化，也不得
+> 把 rerun 当作修复。授权后的 Windows-like checkout oracle 已证明 worktree digest 为
+> `70b15f5e…`；提交该规则后必须手工 dispatch 当前 `main` 的 portability workflow，并要求
+> 所有 job 完整全绿，W5.0 才能进入 `complete`。
 
 ### 验证命令
 

@@ -4,15 +4,17 @@
 > `host-result-projection-agent-efficiency-development-plan.md` 的 canonical handoff。
 > W0-W3 已完成；W4.2/W4.3/W4.5 的当前证据已通过各自 verifier，W4.4 按维护者 waiver
 > 接受 12/12 主代理采集与独立 oracle，并明确 GLM 未运行该 DSH 协议。W4 整体已完成；W5
-> 已取得四轮 Windows portability 运行时证据。第四轮证明 broad verbatim early return 会让
-> 普通 `\.` locator 触发 `ERROR_INVALID_NAME`，同时仍未恢复 symlink + `..` 的 capability
-> 语义。当前工作树已收窄为仅对 verbatim + `ParentDir` locator 使用逐组件物理解析，并在本地
-> 通过；因此 W5 保持 `implemented_unverified`，且发布路径继续由 B-WIN-01 阻塞。
+> 已取得第五轮 Windows portability 运行时证据。提交 `274457fa…` 已使 Windows toolkit
+> contract 达到 `114/114`，B-WIN-01 的 capability path 语义得到原生证明；同一 run 首次进入
+> Windows Memory gate，并暴露 frozen corpus 被 checkout 为 CRLF 的独立 digest blocker。
+> 因后续 Windows 与 aggregate gates 被跳过，W5 保持 `implemented_unverified`。维护者已授权
+> B-WIN-EOL-01 的 fixture-only 修复；根 `.gitattributes` 规则与 Windows-like checkout oracle
+> 已通过，完整 portability workflow 仍是下一道 required gate。
 
 ```yaml
 schema_version: 1
 plan_id: "host-result-projection-agent-efficiency-20260818"
-updated_at: "2026-08-20T00:23:18+08:00"
+updated_at: "2026-08-20T00:59:02+08:00"
 plan_status: "executing"
 live_authorization:
   authorized_at: "2026-08-18T21:08:03+08:00"
@@ -39,12 +41,17 @@ live_authorization:
     authorization: "Maintainer authorized an exact B-WIN-01 repair commit and push to origin/main after local gates pass."
     scope: "Only B-WIN-01 toolkit path semantics in capability.rs/path.rs, its contract regression test, and the corresponding plan/ledger evidence; preserve all unrelated dirty and untracked paths."
     excluded: "No version bump, tag, npm publish, ZCode promotion, or unrelated Rust change."
+  w5_windows_eol_repair:
+    recorded_at: "2026-08-20T00:59:02+08:00"
+    authorization: "Maintainer authorized exactly one root .gitattributes rule for the frozen retrieval corpus fixture, followed by local checkout validation and a full portability workflow dispatch."
+    scope: "Only .gitattributes entry crates/xuanling-memory/tests/fixtures/retrieval-corpus-v1.jsonl text eol=lf, the corresponding plan/ledger evidence, and the required portability workflow dispatch."
+    excluded: "No expected digest change, loader normalization, Rust logic, version bump, tag, npm publish, ZCode promotion, or unrelated dirty/untracked change."
   forbidden_side_effects:
     - "tag, npm publish, ZCode promotion"
     - "Rust changes outside the authorized B-WIN-01 capability-path repair"
 checkout:
   revision: "9a08f33a2582e4a6c61d0eceb3bfb6f3657ef13f"
-  current_revision: "e6d50fe02f5c4988e40b656bf839f23751d9a774"
+  current_revision: "274457fa241e6d0c11ff91c4a03ade701389e2c1"
   branch: "main"
   status_sha256_before_plan_files: "bccdd9d5831df44879c3391d1cf6933e9faab1590f8358e077fc082b8a2df3b4"
   relevant_diff_sha256: "ac1b669c0459cf8e2fc119c2ae7deafb5e37a56a83ab6819a1dc29854bfd06fa"
@@ -99,6 +106,7 @@ checkout:
   capability_diff_sha256_w5_b_win_followup2: "0c911a7fcc5665f3c9e796e14dc37082b69605b697abbeb798a4ca9097483e0e"
   w5_b_win_third_push_commit: "23fd18bef23412304db96bb2dcf13f20c432f3d8"
   w5_b_win_fourth_push_commit: "e6d50fe02f5c4988e40b656bf839f23751d9a774"
+  w5_b_win_fifth_push_commit: "274457fa241e6d0c11ff91c4a03ade701389e2c1"
   status_sha256_w5_b_win_followup3_pre_ledger: "e90fe22ea4653af50f94d7b67d4ff29bfdcd62a262ce597809c77620055f4543"
   capability_path_diff_sha256_w5_b_win_followup3: "8522bc52f2fd7b436ac9de69eccc37adbb389598a4fda158c97b4f1a3c209081"
   exact_four_path_diff_sha256_w5_b_win_followup3_pre_ledger: "ea5f141e0a4eb86f68a8adbfc450df34631229f183cd6788143d18e543a45124"
@@ -203,6 +211,11 @@ ci_baseline:
   portability_followup3_run: 32273753668
   portability_followup3_conclusion: "failure"
   portability_followup3_detail: "Commit e6d50fe: Linux/macOS fully green; Windows fmt/check/clippy green but toolkit regressed to 102 pass / 12 fail. Eleven ordinary verbatim paths ending in CurDir failed with ERROR_INVALID_NAME/os error 123, while the symlink-parent contract returned IoError instead of OutsideCapability."
+  portability_followup4_run: 32276727500
+  portability_followup4_conclusion: "failure"
+  portability_followup4_detail: "Commit 274457fa: Linux/macOS fully green and Windows toolkit contract 114/114. Windows Memory contract then failed 39/40 because retrieval-corpus-v1.jsonl was checked out as CRLF: observed cace5821... exactly matches the canonical LF fixture after mechanical CRLF conversion; later Windows and aggregate jobs were skipped."
+  npm_followup4_run: 32276727511
+  npm_followup4_conclusion: "success"
   npm_repair_run: 32265457015
   npm_repair_conclusion: "success"
 completed_waves:
@@ -221,7 +234,7 @@ work_package_states:
   W4.3: "complete"
   W4.4: "complete"
   W4.5: "complete"
-  W5.0: "implemented_unverified: run 32273753668 disproved the broad verbatim guard at 102/114; the current narrow verbatim-plus-ParentDir physical resolver is locally green and awaiting a new runner"
+  W5.0: "implemented_unverified: B-WIN-01 is native green at Windows toolkit 114/114; B-WIN-EOL-01 rule and local Windows-like checkout oracle are green, while the full portability workflow remains pending"
   W5.1: "not_started: version freeze remains locked behind W5.0"
 primary_evidence:
   W4_status: "complete"
@@ -236,9 +249,9 @@ primary_evidence:
   W4.4_glm_independent: "waived_not_run"
   W4.4_acceptance_basis: "maintainer waiver plus current-revision primary-agent collector 12/12 and independent oracle 12/12"
   W4.5_layered_cost: "complete with exact schema tokenizer explicitly unavailable"
-  W5.0_windows_portability_repair: "implemented_unverified: cf38bcca made 10/11 historical Windows failures green; 246b9ad and 23fd18b retained 113/114; e6d50fe broad verbatim preservation regressed to 102/114. The working tree now preserves only verbatim locators containing ParentDir and routes those through the component-wise physical resolver; native Windows CI is pending."
-last_completed_action: "Consumed portability run 32273753668, implemented the narrow verbatim-plus-ParentDir correction, and passed focused 2/2, toolkit 133/133, Memory 40/40 and 43/43, MCP 110/110 and 21/21, native/Windows check+clippy, fmt/docs/npm/diff, and isolation gates."
-next_action: "Stage/review/commit/push only capability.rs, path.rs, and plan/ledger evidence through an isolated Git index; require a new xuanling-portability run to pass Linux/macOS/Windows and do not bump versions, tag, publish, or promote."
+  W5.0_windows_portability_repair: "implemented_unverified overall: B-WIN-01 is resolved by commit 274457fa and native Windows toolkit 114/114. B-WIN-EOL-01 now blocks the remaining full matrix because the frozen corpus checkout representation is CRLF on Windows."
+last_completed_action: "Maintainer authorized the fixture-only EOL repair; added the exact root .gitattributes rule and proved both the current checkout and a core.autocrlf=true Windows-like checkout retain the canonical LF digest 70b15f5e... without changing the expected digest or loader."
+next_action: "Commit and push .gitattributes plus the plan/ledger through an isolated index that preserves the 27 user-staged paths, then workflow_dispatch xuanling-portability and require every Linux/macOS/Windows gate green."
 required_gates:
   - "W0 checkout/release/host baseline and old-ledger reconciliation"
   - "W1 correct result/Skill/cost red oracles"
@@ -295,6 +308,9 @@ changed_files:
   - "integrations/zcode-plugin/plugins/xuanling-mcp/README-ZH.md"
   - "integrations/zcode-plugin/plugins/xuanling-mcp/skills/xuanling-mcp-tools/SKILL.md"
 failed_commands:
+  - command: "xuanling-portability run 32276727500 at 274457fa241e6d0c11ff91c4a03ade701389e2c1"
+    result: "Linux and macOS completed every gate successfully. Windows fmt/check/clippy and toolkit contract 114/114 passed, then Memory contract failed 39/40 at frozen_corpus_has_expected_shape_and_digest: observed cace5821... versus expected 70b15f5e.... Experimental Memory, MCP, dependency, workspace, and smoke jobs were skipped."
+    classification: "new independent B-WIN-EOL-01 red evidence; the observed digest exactly equals the LF Git blob after CRLF conversion and is unrelated to the capability.rs/path.rs behavior now proven green"
   - command: "xuanling-portability run 32273753668 at e6d50fe02f5c4988e40b656bf839f23751d9a774"
     result: "Linux and macOS completed every gate successfully. Windows fmt/check/clippy passed but toolkit contract regressed to 102/114: eleven ordinary verbatim locators ending in CurDir failed with ERROR_INVALID_NAME/os error 123, and symlink_followed_by_parent_traversal_keeps_os_path_semantics returned IoError instead of OutsideCapability. Later Windows steps and aggregate jobs were skipped."
     classification: "current B-WIN-01 red evidence; the broad verbatim early return preserved representations that Win32 whole-path canonicalize cannot resolve and still did not provide physical parent traversal"
@@ -368,8 +384,8 @@ not_run_commands:
   - "Before the renewed 2026-08-18T23:49:10+08:00 authorization, no additional billable model call, ZCode install change, DSH profile install, commit, push, tag, publish, or promotion was authorized or run."
   - "No full Rust workspace gate was run during plan authoring; focused MCP protocol 110/110 and npm 108/108 passed."
   - "GLM did not run the DSH W4.4 protocol. The maintainer explicitly waived that executor-identity gate and accepted the current-revision primary-agent 12/12 evidence; no GLM-independent claim is made."
-  - "No W5 version freeze, source manifest update, release candidate build, tag, publish, or ZCode promotion was performed; B-WIN-01 remains an active required gate and those actions are forbidden until separately authorized."
-  - "No current Windows runner has executed the repaired source; the authorized commit/push and portability workflow remain the next action."
+  - "No W5 version freeze, source manifest update, release candidate build, tag, publish, or ZCode promotion was performed; those actions remain forbidden."
+  - "Run 32276727500 did not execute Windows experimental Memory, MCP protocol/golden, dependency, workspace, or smoke gates after the base Memory digest failure; no result is inferred for those skipped surfaces. The fixture-only EOL repair is now locally validated, but the post-push workflow has not yet run."
 incidents:
   - id: "I-W4-ZCODE-DEFAULT-DB-SIDECAR"
     recorded_at: "2026-08-18T22:14:22+08:00"
@@ -402,11 +418,16 @@ incidents:
     containment: "Moved both files without deletion or content change to /private/tmp/xuanling-host-result-w4-20260818-a1/repo-root-db-recurrence-20260819T1025; no repository-root .xuanling-w4-memory.db* residue remains."
     status: "contained; quarantine hashes match the pre-containment files"
 blockers:
+  - id: "B-WIN-EOL-01"
+    scope: "W5/W6"
+    condition: "Run 32276727500 reached Windows Memory for the first time and failed the frozen corpus byte digest because actions/checkout materialized retrieval-corpus-v1.jsonl with CRLF. The observed cace5821... is the exact CRLF transform of the canonical LF 70b15f5e... Git blob."
+    release: "Authorization received; the exact root .gitattributes text eol=lf rule is present and the Windows-like checkout oracle retains 70b15f5e.... Dispatch the full portability workflow and require all jobs green. Do not change the expected digest or normalize inside the loader."
+    status: "implemented_unverified"
   - id: "B-WIN-01"
     scope: "W5/W6"
-    condition: "Runs 32265457027, 32268858927, and 32271448966 made ten historical Windows failures green but retained one symlink/parent failure. Run 32273753668 disproved the subsequent broad verbatim guard by regressing eleven ordinary CurDir paths and changing the remaining failure to IoError. The current narrow verbatim-plus-ParentDir resolver is locally green but has no native Windows result."
-    release: "Push the exact capability.rs/path.rs narrow physical-resolution follow-up and obtain current Linux/macOS/Windows green results; do not skip or weaken any contract."
-    status: "implemented_unverified"
+    condition: "Resolved by commit 274457fa and run 32276727500: Windows fmt/check/clippy passed and the complete toolkit contract reached 114/114, including ordinary verbatim CurDir and symlink-before-parent traversal."
+    release: "No further capability-path change. Preserve the exact assertions and do not conflate the later Memory CRLF failure with B-WIN-01."
+    status: "resolved"
   - id: "B-GLM-01"
     scope: "W4.4"
     condition: "Resolved by explicit maintainer waiver: the current-revision primary-agent DSH W4.4 protocol is independently verified at 12/12 and accepted without a GLM executor run."
@@ -431,9 +452,15 @@ blockers:
     condition: "Commit, push, tag, npm publish, and target promotion are external side effects not authorized by plan generation."
     release: "Obtain exact candidate commit/tag authorization after W5 completes."
 evidence:
+  - command: "gh run view 32276727500/32276727511; Windows failed log; CRLF transform SHA-256; Git blob/eol inspection; prior-run step history"
+    result: "Commit 274457fa is on origin/main and xuanling-mcp-npm 32276727511 is fully green. Portability 32276727500 proves Linux/macOS fully green and Windows toolkit 114/114, resolving B-WIN-01. Windows Memory then failed only frozen_corpus_has_expected_shape_and_digest at 39/40: Git LF blob and expected digest are 70b15f5e..., while a mechanical LF-to-CRLF transform yields the exact runner value cace5821.... All five prior Windows runs skipped Memory because toolkit failed first, so this is a newly exposed independent checkout-representation blocker."
+    recorded_at: "2026-08-20T00:45:37+08:00"
   - command: "focused capability contracts; toolkit/Memory/MCP contracts; native and Windows-target check/clippy; cargo fmt; npm check/docs; git diff and checkout isolation fingerprints"
     result: "Current narrow correction is locally green without test edits: focused 2/2; toolkit 133/133; Memory 40/40 and experimental 43/43; MCP protocol 110/110 and golden 21/21; native three-crate and Windows toolkit check/clippy; fmt; npm version/package check; docs 94; diff check. Default Memory DB remains 4c10be20... at 155648 bytes; repository-root DB residue is absent; DSH remains 99f6f02fec with status hash 39d1f6c6... and exactly two preserved untracked tests. The user staged set remains 27 paths with name hash b580b997... and index manifest hash 49c37a61...; none of the four work-package paths is staged."
     recorded_at: "2026-08-20T00:23:18+08:00"
+  - command: "git check-attr -a -- crates/xuanling-memory/tests/fixtures/retrieval-corpus-v1.jsonl; SHA-256 of current fixture; isolated core.autocrlf=true Windows-like checkout oracle"
+    result: "Maintainer authorization for the exact fixture-only .gitattributes rule was recorded at 2026-08-20T00:59:02+08:00. The attribute resolves to text/eol=lf; the current fixture and temporary Windows-like checkout both hash to 70b15f5ef901a29fa8a66a0c3d2b2705d6c1f860f91bd2dce153ef9c8338968d with 0 CRLF bytes and 101 LF bytes. No expected digest, loader, Rust source, or user-staged path changed."
+    recorded_at: "2026-08-20T00:59:02+08:00"
   - command: "gh run view 32273753668 --repo umbrella22/xuanling; Windows failed log; boundary-semantics review of capability locator normalization"
     result: "Run 32273753668 at e6d50fe is an attributable regression: Linux/macOS fully green; Windows fmt/check/clippy green and toolkit 102/114. Eleven ordinary verbatim paths retained a terminal CurDir and failed with ERROR_INVALID_NAME/os error 123; the symlink-parent contract returned IoError. The working-tree correction removes the broad early return, preserves only verbatim locators containing ParentDir, bypasses whole-path canonicalize only for that class, and reuses the OS-semantic join inside physical symlink expansion. Assertions and public tool schemas are unchanged."
     recorded_at: "2026-08-20T00:19:14+08:00"
@@ -643,15 +670,15 @@ evidence:
 ```text
 EXECUTION_STATUS: HANDOFF_REQUIRED
 PLAN_ID: host-result-projection-agent-efficiency-20260818
-CHECKOUT_FINGERPRINT: revision e6d50fe02f5c4988e40b656bf839f23751d9a774; pre-ledger status e90fe22e...; capability/path diff 8522bc52...; current DSH revision 99f6f02fecdb7dff40c3fbc9470f5907c29f74ca and status 39d1f6c6...; user staged set 27 paths, index manifest 49c37a61...
+CHECKOUT_FINGERPRINT: revision 274457fa241e6d0c11ff91c4a03ade701389e2c1 on origin/main; current ledger/plan evidence update unstaged; current DSH revision 99f6f02fecdb7dff40c3fbc9470f5907c29f74ca and status 39d1f6c6...; user staged set 27 paths, index manifest 49c37a61...
 CURRENT_WAVE: W5
 CURRENT_WORK_PACKAGE: W5.0
 WAVE_STATE: implemented_unverified
-CONTRACTS_PROVEN: prior W0-W4 contracts unchanged; run 32273753668 disproves broad verbatim preservation; the current boundary contract distinguishes ordinary CurDir normalization from verbatim ParentDir physical resolution; local contracts pass without test edits
-EVIDENCE_ADDED: xuanling-portability 32273753668 Linux/macOS full green and Windows 102/12 regression; exact ERROR_INVALID_NAME/IoError attribution; focused 2/2; toolkit 133/133; Memory 40/40 and 43/43; MCP 110/110 and 21/21; native/Windows check+clippy; fmt/docs/npm/diff/isolation green
-FAILED_GATES: xuanling-portability 32273753668 Windows toolkit contract 102 pass / 12 fail; later Windows and aggregate jobs skipped
-NOT_RUN_GATES: corrected-revision native Windows runtime and required three-platform matrix; corrected commit/push; W5 version freeze/source manifest update; release candidate build; 0.2.4 release/promotion
-BLOCKERS: B-WIN-01 narrow local implementation requires current Linux/macOS/Windows CI; B-ZCODE-DEFAULT-SIDECAR-01 requires future isolated restart/no-residue evidence; B-RELEASE-01 blocks W6 external side effects
-NEXT_EXACT_ACTION: create and push an isolated exact four-path commit, then require xuanling-portability to complete every Linux/macOS/Windows gate; do not bump versions, tag, publish, or promote yet
+CONTRACTS_PROVEN: prior W0-W4 unchanged; B-WIN-01 is native green at Windows toolkit 114/114 on commit 274457fa; Linux/macOS full portability and npm three-platform packaging are green
+EVIDENCE_ADDED: portability 32276727500 and npm 32276727511; exact LF 70b15f5e... versus CRLF cace5821... attribution; fixture-only .gitattributes authorization and Windows-like checkout oracle pass; prior Windows Memory steps confirmed skipped
+FAILED_GATES: xuanling-portability 32276727500 Windows Memory contract 39 pass / 1 fail at frozen corpus digest; later Windows and aggregate gates skipped
+NOT_RUN_GATES: post-push full three-platform portability; W5 version freeze/source manifest update; release candidate build; 0.2.4 release/promotion
+BLOCKERS: B-WIN-EOL-01 awaits post-push full portability evidence; B-ZCODE-DEFAULT-SIDECAR-01 requires future isolated restart/no-residue evidence; B-RELEASE-01 blocks W6 external side effects
+NEXT_EXACT_ACTION: commit and push the exact fixture-only .gitattributes change plus plan/ledger through an isolated index preserving the 27 user-staged paths, then dispatch the complete portability workflow
 LEDGER_PATH: docs/plans/host-result-projection-agent-efficiency-execution-ledger.md
 ```
