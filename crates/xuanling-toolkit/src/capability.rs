@@ -445,7 +445,21 @@ impl WorkspaceScope {
                         let target = if target.is_absolute() {
                             target
                         } else {
-                            parent.join(target)
+                            // Relative link targets are interpreted from the
+                            // physical parent, not its lexical spelling. This
+                            // matters on Windows where the parent may use an
+                            // extended-length representation after an earlier
+                            // component was canonicalized.
+                            let canonical_parent =
+                                std::fs::canonicalize(parent).map_err(|error| {
+                                    scope_io_error(
+                                        error,
+                                        operation,
+                                        requested,
+                                        "candidate_resolution_failed",
+                                    )
+                                })?;
+                            canonical_parent.join(target)
                         };
                         let suffix = components_to_path(&components[index + 1..]);
                         let expanded = target.join(suffix);

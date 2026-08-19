@@ -922,6 +922,14 @@ not_started -> red_confirmed -> implemented_unverified -> deterministic_green ->
 > contract 回归测试和计划/账本证据的精确提交推送到 `origin/main`，并触发
 > `xuanling-portability`。该授权不包含版本提升、tag、npm publish 或 ZCode promotion。
 
+> W5.0 portability 回归（2026-08-19）：修复提交 `cf38bcca6655…` 的 Linux/macOS
+> jobs 全绿，但 Windows toolkit contract 在
+> `symlink_followed_by_parent_traversal_keeps_os_path_semantics` 返回 `NotFound`。
+> 该结果确认相对 symlink target 必须从已 canonicalize 的物理 parent 解析；后续修复已
+> 将相对 target 改为 canonical-parent join，并在本地重新通过两个相关合同、toolkit
+> `133/133` 和所有静态 gates。该 follow-up 尚未取得原生 Windows runner 证据，因此
+> W5.0 仍为 `implemented_unverified`。
+
 ### 验证命令
 
 | Command | Provenance | Expected result | Required/conditional |
