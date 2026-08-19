@@ -418,6 +418,23 @@ fn symlink_followed_by_parent_traversal_keeps_os_path_semantics() {
 }
 
 #[test]
+fn missing_component_reintroduced_after_parent_traversal_returns_not_found() {
+    let workspace = tempfile::tempdir().expect("workspace");
+
+    let error = fs_stat(
+        &contained(workspace.path()),
+        &FsStatRequest {
+            path: "missing/../missing".to_string(),
+            base_dir: None,
+            follow_symlinks: true,
+        },
+    )
+    .expect_err("a missing component reintroduced after .. must terminate");
+
+    assert_eq!(error.code, ToolErrorCode::NotFound);
+}
+
+#[test]
 fn copy_validates_source_and_destination_independently() {
     let workspace = tempfile::tempdir().expect("workspace");
     let outside = tempfile::tempdir().expect("outside");

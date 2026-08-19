@@ -378,93 +378,97 @@ impl WorkspaceScope {
         }
 
         let components = absolute.components().collect::<Vec<_>>();
-        for split in (1..=components.len()).rev() {
-            let prefix = components_to_path(&components[..split]);
-            let suffix = components_to_path(&components[split..]);
-            match std::fs::canonicalize(&prefix) {
-                Ok(canonical_prefix) => {
-                    let intent = normalize_from(&canonical_prefix, &suffix);
-                    if intent == absolute {
-                        return Ok(intent);
-                    }
-                    return match std::fs::canonicalize(&intent) {
-                        Ok(canonical) => Ok(canonical),
-                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => self
-                            .resolve_missing_intent(
-                                &intent,
+        let mut resolved = PathBuf::new();
+        for (index, component) in components.iter().enumerate() {
+            match component {
+                Component::Prefix(_) | Component::RootDir => {
+                    resolved.push(component.as_os_str());
+                }
+                Component::CurDir => {}
+                Component::ParentDir => {
+                    resolved.pop();
+                }
+                Component::Normal(_) => {
+                    let candidate = resolved.join(component.as_os_str());
+                    let metadata = match std::fs::symlink_metadata(&candidate) {
+                        Ok(metadata) => metadata,
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                            let suffix = components_to_path(&components[index + 1..]);
+                            let intent = normalize_from(&candidate, &suffix);
+                            // A lexical `..` may cancel the missing component
+                            // and expose a later symlink. Re-enter the physical
+                            // resolver only when that component disappeared;
+                            // if the intent still passes through it, the OS
+                            // stops there and the lexical result is the
+                            // appropriate not-found proof. This also prevents
+                            // paths such as `missing/../missing` from
+                            // recursively resolving to themselves.
+                            return if intent.starts_with(&candidate) {
+                                Ok(intent)
+                            } else {
+                                self.resolve_missing_intent(
+                                    &intent,
+                                    requested,
+                                    access,
+                                    operation,
+                                    symlink_depth,
+                                )
+                            };
+                        }
+                        Err(error) => {
+                            return Err(scope_io_error(
+                                error,
+                                operation,
+                                requested,
+                                "candidate_resolution_failed",
+                            ));
+                        }
+                    };
+
+                    if metadata.file_type().is_symlink() {
+                        let parent = candidate.parent().ok_or_else(|| {
+                            self.outside_error(
                                 requested,
                                 access,
                                 operation,
-                                symlink_depth,
-                            ),
-                        Err(error) => Err(scope_io_error(
-                            error,
-                            operation,
-                            requested,
-                            "candidate_resolution_failed",
-                        )),
-                    };
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                Err(error) => {
-                    return Err(scope_io_error(
-                        error,
-                        operation,
-                        requested,
-                        "candidate_resolution_failed",
-                    ));
-                }
-            }
-
-            let metadata = match std::fs::symlink_metadata(&prefix) {
-                Ok(metadata) => metadata,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-                Err(error) => {
-                    return Err(scope_io_error(
-                        error,
-                        operation,
-                        requested,
-                        "candidate_resolution_failed",
-                    ));
-                }
-            };
-            if metadata.file_type().is_symlink() {
-                let parent = prefix.parent().ok_or_else(|| {
-                    self.outside_error(requested, access, operation, "path_outside_workspace")
-                })?;
-                let canonical_parent = std::fs::canonicalize(parent).map_err(|error| {
-                    scope_io_error(error, operation, requested, "candidate_resolution_failed")
-                })?;
-                let target = std::fs::read_link(&prefix).map_err(|error| {
-                    scope_io_error(error, operation, requested, "candidate_resolution_failed")
-                })?;
-                let target = if target.is_absolute() {
-                    target
-                } else {
-                    canonical_parent.join(target)
-                };
-                let expanded = target.join(suffix);
-                return match std::fs::canonicalize(&expanded) {
-                    Ok(canonical) => Ok(canonical),
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => self
-                        .resolve_missing_intent(
+                                "path_outside_workspace",
+                            )
+                        })?;
+                        let target = std::fs::read_link(&candidate).map_err(|error| {
+                            scope_io_error(
+                                error,
+                                operation,
+                                requested,
+                                "candidate_resolution_failed",
+                            )
+                        })?;
+                        let target = if target.is_absolute() {
+                            target
+                        } else {
+                            parent.join(target)
+                        };
+                        let suffix = components_to_path(&components[index + 1..]);
+                        let expanded = target.join(suffix);
+                        return self.resolve_missing_intent(
                             &expanded,
                             requested,
                             access,
                             operation,
                             symlink_depth.saturating_add(1),
-                        ),
-                    Err(error) => Err(scope_io_error(
-                        error,
-                        operation,
-                        requested,
-                        "candidate_resolution_failed",
-                    )),
-                };
+                        );
+                    }
+
+                    // Canonicalize each existing physical component before
+                    // interpreting a later `..`. Besides ordinary symlinks,
+                    // this preserves junction and mount-point semantics.
+                    resolved = std::fs::canonicalize(&candidate).map_err(|error| {
+                        scope_io_error(error, operation, requested, "candidate_resolution_failed")
+                    })?;
+                }
             }
         }
 
-        Err(self.outside_error(requested, access, operation, "path_outside_workspace"))
+        Ok(resolved)
     }
 
     fn resolve_base(&self, candidate: &Path, operation: &str) -> Result<PathBuf, ToolError> {
@@ -594,6 +598,12 @@ impl WorkspaceScope {
                 // without following.
                 if skip_final_component && index + 1 == component_count {
                     break;
+                }
+                // A Windows prefix such as `\\?\C:` is structural, not an
+                // independently accessible path. Wait for its root or first
+                // normal component before asking the OS to canonicalize it.
+                if matches!(component, Component::Prefix(_)) {
+                    continue;
                 }
                 let canonical = match std::fs::canonicalize(&current) {
                     Ok(path) => path,
