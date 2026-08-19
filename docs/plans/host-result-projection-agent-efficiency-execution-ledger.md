@@ -4,13 +4,14 @@
 > `host-result-projection-agent-efficiency-development-plan.md` 的 canonical handoff。
 > W0-W3 已完成；W4.2/W4.3/W4.5 的当前证据已通过各自 verifier，W4.4 按维护者 waiver
 > 接受 12/12 主代理采集与独立 oracle，并明确 GLM 未运行该 DSH 协议。W4 整体已完成；W5
-> 已完成获授权的 Windows portability 本地修复与可运行门禁；Windows runner 运行时证据仍
-> 未取得，因此 W5 保持 `implemented_unverified`，且发布路径继续由 B-WIN-01 阻塞。
+> 已取得两轮 Windows portability 运行时证据但仍有一个合同失败；当前 verbatim-base join
+> 修复仅在本地与交叉 target 通过。因此 W5 保持 `implemented_unverified`，且发布路径继续
+> 由 B-WIN-01 阻塞。
 
 ```yaml
 schema_version: 1
 plan_id: "host-result-projection-agent-efficiency-20260818"
-updated_at: "2026-08-19T22:55:11+08:00"
+updated_at: "2026-08-19T23:38:56+08:00"
 plan_status: "executing"
 live_authorization:
   authorized_at: "2026-08-18T21:08:03+08:00"
@@ -35,7 +36,7 @@ live_authorization:
   w5_commit_push_authorization:
     recorded_at: "2026-08-19T22:30:48+08:00"
     authorization: "Maintainer authorized an exact B-WIN-01 repair commit and push to origin/main after local gates pass."
-    scope: "Only capability.rs, its B-WIN-01 contract regression test, and the corresponding plan/ledger evidence; preserve all unrelated dirty and untracked paths."
+    scope: "Only B-WIN-01 toolkit path semantics in capability.rs/path.rs, its contract regression test, and the corresponding plan/ledger evidence; preserve all unrelated dirty and untracked paths."
     excluded: "No version bump, tag, npm publish, ZCode promotion, or unrelated Rust change."
   forbidden_side_effects:
     - "tag, npm publish, ZCode promotion"
@@ -90,6 +91,8 @@ checkout:
   w5_b_win_first_push_commit: "cf38bcca6655ca44cb228633da91215dcef0cbe1"
   status_sha256_w5_b_win_followup_pre_commit: "9444f4e990d5a0db202fc7788cc0ae193884b022e9837c2a2d7d87315183a5db"
   capability_diff_sha256_w5_b_win_followup: "be31580156913a3d44ded1a8a53bf2611511651fb307967e45510d0dfcc5c9e4"
+  w5_b_win_second_push_commit: "246b9ad57df08aa2f2a6e5fd71a65062c5814e38"
+  path_diff_sha256_w5_b_win_verbatim_join: "3e286de14764108356bcb441e2861e8161b1f150ab3c57fd4cec4a8f0766216c"
   status_sha256_method: "sha256(git status --short --untracked-files=all stdout, with trailing newline)"
   notes:
     - "Current result adapters, package manifests, READMEs, ADR text, and Node contracts are dirty implemented_unverified inputs; they are not released evidence."
@@ -179,6 +182,9 @@ ci_baseline:
   portability_repair_run: 32265457027
   portability_repair_conclusion: "failure"
   portability_repair_detail: "Commit cf38bcca: Linux/macOS green; Windows toolkit contract 113 pass / 1 fail because symlink_followed_by_parent_traversal returned NotFound instead of OutsideCapability."
+  portability_followup_run: 32268858927
+  portability_followup_conclusion: "failure"
+  portability_followup_detail: "Commit 246b9ad: Linux/macOS green; Windows toolkit contract remains 113 pass / 1 fail. The canonical-parent symlink-target change did not reach the failure because a verbatim-base PathBuf::join had already removed the parent component."
   npm_repair_run: 32265457015
   npm_repair_conclusion: "success"
 completed_waves:
@@ -197,7 +203,7 @@ work_package_states:
   W4.3: "complete"
   W4.4: "complete"
   W4.5: "complete"
-  W5.0: "implemented_unverified: first native Windows run reduced 11 failures to 1; physical-parent follow-up is locally green and awaiting a new runner"
+  W5.0: "implemented_unverified: two native Windows runs are 113/114; verbatim-base relative join fix is locally green and awaiting a new runner"
   W5.1: "not_started: version freeze remains locked behind W5.0"
 primary_evidence:
   W4_status: "complete"
@@ -212,9 +218,9 @@ primary_evidence:
   W4.4_glm_independent: "waived_not_run"
   W4.4_acceptance_basis: "maintainer waiver plus current-revision primary-agent collector 12/12 and independent oracle 12/12"
   W4.5_layered_cost: "complete with exact schema tokenizer explicitly unavailable"
-  W5.0_windows_portability_repair: "implemented_unverified: cf38bcca made 10/11 historical Windows failures green; one relative-symlink/parent traversal contract remained; physical-parent follow-up is locally green and Windows runtime CI is pending"
-last_completed_action: "Diagnosed portability run 32265457027 at commit cf38bcca, corrected relative symlink target resolution to join the canonical physical parent, and reran the two focused contracts plus toolkit 133/133 and all static gates."
-next_action: "Stage, review, commit, and push the exact physical-parent follow-up under the existing B-WIN-01 authorization, then require a new xuanling-portability run to pass Linux/macOS/Windows; do not bump versions, tag, publish, or promote."
+  W5.0_windows_portability_repair: "implemented_unverified: cf38bcca made 10/11 historical Windows failures green; 246b9ad retained the same 113/114 result; verbatim-base relative locator join now preserves parent components locally and Windows runtime CI is pending"
+last_completed_action: "Consumed portability run 32268858927 at commit 246b9ad, traced the remaining failure to Windows verbatim PathBuf::join normalization, implemented a narrow separator-aware OS-string join for ordinary relative locators, and passed all local/static gates."
+next_action: "Stage/review/commit/push only path.rs plus plan/ledger evidence, then require a new xuanling-portability run to pass Linux/macOS/Windows; do not bump versions, tag, publish, or promote."
 required_gates:
   - "W0 checkout/release/host baseline and old-ledger reconciliation"
   - "W1 correct result/Skill/cost red oracles"
@@ -225,6 +231,7 @@ required_gates:
   - "W6 authorized immutable publish/promotion and clean-install reconciliation"
 changed_files:
   - "crates/xuanling-toolkit/src/capability.rs"
+  - "crates/xuanling-toolkit/src/path.rs"
   - "crates/xuanling-toolkit/tests/contract/capability_contract.rs"
   - "docs/plans/README.md"
   - "docs/plans/host-local-integration-distribution-execution-ledger.md"
@@ -270,9 +277,12 @@ changed_files:
   - "integrations/zcode-plugin/plugins/xuanling-mcp/README-ZH.md"
   - "integrations/zcode-plugin/plugins/xuanling-mcp/skills/xuanling-mcp-tools/SKILL.md"
 failed_commands:
+  - command: "xuanling-portability run 32268858927 at 246b9ad57df08aa2f2a6e5fd71a65062c5814e38"
+    result: "Linux and macOS completed every gate successfully. Windows fmt/check/clippy passed but toolkit contract remained 113/114; symlink_followed_by_parent_traversal_keeps_os_path_semantics returned NotFound at line 406 instead of OutsideCapability, and later Windows steps were skipped."
+    classification: "current B-WIN-01 red evidence; canonical-parent target resolution was not reached because PathBuf::join normalized .. out of a relative locator when the base had a Windows verbatim prefix"
   - command: "xuanling-portability run 32265457027 at cf38bcca6655ca44cb228633da91215dcef0cbe1"
     result: "Linux and macOS completed every gate successfully. Windows fmt/check/clippy passed and toolkit contract improved from 102/11 to 113/1, but symlink_followed_by_parent_traversal_keeps_os_path_semantics returned NotFound at line 406 instead of OutsideCapability; later Windows steps were skipped."
-    classification: "current B-WIN-01 red evidence; relative symlink targets were joined to a lexical rather than canonical physical parent"
+    classification: "B-WIN-01 red evidence that narrowed the matrix to one path-ordering contract; the canonical-parent hypothesis formed here was later disproved by run 32268858927"
   - command: "node --test npm/test/mcp-result-projection.test.mjs"
     result: "20 tests: 17 passed, 3 correctly red; malformed child stdout and unresolved tools/call exited 0 instead of 1, and ZCode empty-text error projection omitted the stable marker."
     classification: "expected W2.1 red baseline; not a wrong failure"
@@ -370,8 +380,8 @@ incidents:
 blockers:
   - id: "B-WIN-01"
     scope: "W5/W6"
-    condition: "Run 32265457027 at cf38bcca made ten historical Windows failures green but still failed one symlink/parent traversal contract with NotFound. The canonical-physical-parent follow-up is locally green but has no native Windows result."
-    release: "Push the exact follow-up revision and obtain current Linux/macOS/Windows green results; do not skip or weaken the remaining contract."
+    condition: "Runs 32265457027 and 32268858927 made ten historical Windows failures green but still failed one symlink/parent traversal contract with NotFound. The second run proved the canonical-parent hypothesis incomplete; the verbatim-base join fix is locally green but has no native Windows result."
+    release: "Push the exact verbatim-base join follow-up and obtain current Linux/macOS/Windows green results; do not skip or weaken the remaining contract."
     status: "implemented_unverified"
   - id: "B-GLM-01"
     scope: "W4.4"
@@ -397,8 +407,11 @@ blockers:
     condition: "Commit, push, tag, npm publish, and target promotion are external side effects not authorized by plan generation."
     release: "Obtain exact candidate commit/tag authorization after W5 completes."
 evidence:
+  - command: "gh run view 32268858927 --job 96120044330 --log-failed; Rust 1.97 PathBuf::push source contract; focused and full toolkit contracts; Windows target check/clippy; native three-crate check/clippy; Memory/MCP contracts; fmt/docs/diff and isolation gates"
+    result: "Second repaired native matrix is an attributable unchanged remainder: Linux/macOS fully green; Windows fmt/check/clippy green and toolkit 113/114. PathBuf::join on a canonical Windows verbatim base removes relative .. before capability validation. A narrow separator-aware OS-string join preserves those components only for ordinary relative locators. Local gates pass without assertion changes: toolkit 133/133, Memory 40/40 and 43/43, MCP protocol 110/110, golden 21/21, Windows target check/clippy, native three-crate check/clippy, fmt, docs 94, diff check, default DB unchanged, no repository-root DB residue, and DSH checkout unchanged."
+    recorded_at: "2026-08-19T23:37:36+08:00"
   - command: "gh run view 32265457027 --job 96108716992 --log-failed; source trace of relative symlink target handling; focused contracts; toolkit full contract; Windows target and native check/clippy"
-    result: "First repaired native matrix is an attributable partial improvement: Linux/macOS fully green; Windows fmt/check/clippy green and toolkit 113/114. The only failure is line 406 NotFound vs OutsideCapability. Joining relative targets to canonicalize(parent) fixes the boundary locally; both focused contracts, toolkit 133/133, Memory 40/40 and 43/43, MCP protocol 110/110, golden 21/21, Windows target check/clippy, native three-crate check/clippy, fmt, docs 94, and diff checks pass. Push-triggered npm run 32265457015 is green at cf38bcca."
+    result: "First repaired native matrix is an attributable partial improvement: Linux/macOS fully green; Windows fmt/check/clippy green and toolkit 113/114. The only failure is line 406 NotFound vs OutsideCapability. A canonical-parent follow-up passed non-Windows local and cross-target static gates, but run 32268858927 later proved that hypothesis did not fix the native Windows trigger. Push-triggered npm run 32265457015 is green at cf38bcca."
     recorded_at: "2026-08-19T22:55:11+08:00"
   - command: "npm --prefix npm run check:docs; cargo fmt --all -- --check; git diff --check; default DB SHA-256; DSH revision/status; repository-root temporary DB scan"
     result: "Pre-commit isolation gates passed: 94 Markdown files, fmt, and diff checks green; default Memory DB remains 4c10be20...; repository-root temporary DB residue is absent; DSH remains 99f6f02fec with exactly the two preserved untracked comparison tests."

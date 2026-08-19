@@ -16,6 +16,13 @@
 
 use std::path::{Path, PathBuf};
 
+#[cfg(windows)]
+use std::ffi::OsString;
+#[cfg(windows)]
+use std::os::windows::ffi::{OsStrExt, OsStringExt};
+#[cfg(windows)]
+use std::path::Component;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -57,9 +64,56 @@ impl PathContext {
         if path.is_absolute() {
             path.to_path_buf()
         } else {
-            base.join(path)
+            join_relative_preserving_os_semantics(&base, path)
         }
     }
+}
+
+/// Join a relative locator without letting `PathBuf::join` normalize away
+/// `..` components on Windows verbatim paths. Those components are semantic:
+/// the OS must process them after following any preceding symlink rather than
+/// before capability validation sees the physical traversal.
+fn join_relative_preserving_os_semantics(base: &Path, relative: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let base_is_verbatim = base.components().next().is_some_and(
+            |component| {
+                matches!(component, Component::Prefix(prefix) if prefix.kind().is_verbatim())
+            },
+        );
+        let relative_has_prefix =
+            matches!(relative.components().next(), Some(Component::Prefix(_)));
+        if base_is_verbatim
+            && !relative.as_os_str().is_empty()
+            && !relative.has_root()
+            && !relative_has_prefix
+        {
+            let mut joined = base.as_os_str().to_os_string();
+            let base_has_separator = base
+                .as_os_str()
+                .encode_wide()
+                .last()
+                .is_some_and(|unit| unit == b'\\' as u16 || unit == b'/' as u16);
+            if !base_has_separator {
+                joined.push("\\");
+            }
+            let relative = relative
+                .as_os_str()
+                .encode_wide()
+                .map(|unit| {
+                    if unit == b'/' as u16 {
+                        b'\\' as u16
+                    } else {
+                        unit
+                    }
+                })
+                .collect::<Vec<_>>();
+            joined.push(OsString::from_wide(&relative));
+            return PathBuf::from(joined);
+        }
+    }
+
+    base.join(relative)
 }
 
 impl Default for PathContext {

@@ -876,6 +876,8 @@ not_started -> red_confirmed -> implemented_unverified -> deterministic_green ->
 
 - Cargo/npm/DSH/ZCode version manifests与 release README
 - `crates/xuanling-toolkit/src/capability.rs` 仅限 B-WIN-01 路径语义修复
+- `crates/xuanling-toolkit/src/path.rs` 仅限 B-WIN-01 Windows verbatim base 与相对
+  locator 拼接时保留 `..` 的 OS 解析顺序
 - `crates/xuanling-toolkit/tests/contract/capability_contract.rs` 仅限 B-WIN-01
   缺失路径递归终止回归合同
 - `npm/scripts/**`、`npm/test/**`、`.github/workflows/**` 仅在红合同证明发布缺口时
@@ -924,11 +926,16 @@ not_started -> red_confirmed -> implemented_unverified -> deterministic_green ->
 
 > W5.0 portability 回归（2026-08-19）：修复提交 `cf38bcca6655…` 的 Linux/macOS
 > jobs 全绿，但 Windows toolkit contract 在
-> `symlink_followed_by_parent_traversal_keeps_os_path_semantics` 返回 `NotFound`。
-> 该结果确认相对 symlink target 必须从已 canonicalize 的物理 parent 解析；后续修复已
-> 将相对 target 改为 canonical-parent join，并在本地重新通过两个相关合同、toolkit
-> `133/133` 和所有静态 gates。该 follow-up 尚未取得原生 Windows runner 证据，因此
-> W5.0 仍为 `implemented_unverified`。
+> `symlink_followed_by_parent_traversal_keeps_os_path_semantics` 返回 `NotFound`。第一轮
+> follow-up `246b9ad57df0…` 将相对 symlink target 改为 canonical-parent join；原生 run
+> `32268858927` 的 Linux/macOS 仍全绿，但 Windows 保持 `113 pass / 1 fail`，证明该假设
+> 不是剩余失败的触发点。源码与 Rust 1.97 `PathBuf::push` 合同复核确认：workspace base
+> canonicalize 后成为 Windows verbatim path，随后普通 `PathBuf::join` 会在 capability
+> validation 之前词法消去 relative locator 中的 `..`。当前 follow-up 仅对
+> `verbatim base + 普通相对 locator` 使用不归一化的 OS-string 拼接，保留空路径、
+> root-relative、drive-relative 与非 verbatim 路径的既有 join 语义；合同断言未修改。
+> 两个相关合同、本地 toolkit `133/133` 和 Windows target check 已通过，新的原生 Windows
+> runner 尚未运行，因此 W5.0 仍为 `implemented_unverified`。
 
 ### 验证命令
 
