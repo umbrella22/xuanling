@@ -15,7 +15,7 @@
 ```yaml
 schema_version: 1
 plan_id: "host-result-projection-agent-efficiency-20260818"
-updated_at: "2026-08-20T01:12:00+08:00"
+updated_at: "2026-08-20T01:49:09+08:00"
 plan_status: "executing"
 live_authorization:
   authorized_at: "2026-08-18T21:08:03+08:00"
@@ -49,9 +49,9 @@ live_authorization:
     excluded: "No expected digest change, loader normalization, Rust logic, version bump, tag, npm publish, ZCode promotion, or unrelated dirty/untracked change."
   w5_windows_mcp_followup:
     recorded_at: "2026-08-20T01:12:00+08:00"
-    authorization: "No scope expansion granted. The new Windows MCP failure is recorded for review; no test or public path contract change is authorized by the EOL repair scope."
-    scope: "Read-only failure attribution and plan/ledger evidence only."
-    excluded: "No contract-test edit, Rust implementation change, output path normalization, version bump, tag, publish, or promotion."
+    authorization: "Maintainer authorized the narrow test-only Windows path assertion correction and continuation of the current plan."
+    scope: "Only crates/xuanling-mcp/tests/protocol/contract_hardening.rs path-component assertion plus plan/ledger evidence, local validation, exact commit/push, and the required portability workflow rerun."
+    excluded: "No Rust implementation change, output path normalization, version bump, tag, publish, or promotion in this repair package."
   forbidden_side_effects:
     - "tag, npm publish, ZCode promotion"
     - "Rust changes outside the authorized B-WIN-01 capability-path repair"
@@ -255,9 +255,9 @@ primary_evidence:
   W4.4_glm_independent: "waived_not_run"
   W4.4_acceptance_basis: "maintainer waiver plus current-revision primary-agent collector 12/12 and independent oracle 12/12"
   W4.5_layered_cost: "complete with exact schema tokenizer explicitly unavailable"
-  W5.0_windows_portability_repair: "implemented_unverified overall: B-WIN-01 and B-WIN-EOL-01 are green through Windows Memory 43/43; run 32279712990 is blocked by the Windows MCP contract test search_filters_hidden_ignored_globs_and_extensions, which asserts a POSIX separator against an OS-native Windows result path."
-last_completed_action: "Pushed 819338f with the fixture-only EOL rule and evidence, dispatched portability run 32279712990, and confirmed Linux/macOS full green plus Windows toolkit 114/114 and Memory 40/40 + experimental 43/43. Windows MCP protocol then failed at the existing path-separator assertion (108/109); no implementation or test change was made."
-next_action: "Obtain explicit scope authorization for a test-only Windows path assertion correction (or an accepted public path-format contract), then rerun the complete portability workflow; keep all Rust implementation, version, publish, and promotion changes forbidden."
+  W5.0_windows_portability_repair: "implemented_unverified: B-WIN-01 and B-WIN-EOL-01 are green through Windows Memory 43/43; the authorized test-only path-component correction is locally green, while the exact evidence commit and complete portability rerun remain pending."
+last_completed_action: "Completed three serial descendant-cleanup runs, MCP protocol/golden, native Rust gates, and a symlink-free npm regression; source checkout npm remains setup-blocked only by the preserved user-owned self-referential skills symlink."
+next_action: "Commit and push only the MCP test correction plus plan/ledger evidence through an isolated index preserving the 27 user-staged paths, then dispatch and complete the full portability workflow."
 required_gates:
   - "W0 checkout/release/host baseline and old-ledger reconciliation"
   - "W1 correct result/Skill/cost red oracles"
@@ -271,6 +271,7 @@ changed_files:
   - "crates/xuanling-toolkit/src/path.rs"
   - "crates/xuanling-toolkit/tests/contract/capability_contract.rs"
   - ".gitattributes"
+  - "crates/xuanling-mcp/tests/protocol/contract_hardening.rs"
   - "docs/plans/README.md"
   - "docs/plans/host-local-integration-distribution-execution-ledger.md"
   - "docs/plans/host-result-projection-agent-efficiency-development-plan.md"
@@ -432,8 +433,8 @@ blockers:
   - id: "B-WIN-MCP-TEST-PATH-01"
     scope: "W5/W6"
     condition: "Run 32279712990 reaches Windows MCP protocol after the EOL repair and fails only contract_hardening::search_filters_hidden_ignored_globs_and_extensions because the test requires a POSIX suffix while fs_search returns an OS-native Windows path. Linux/macOS pass the same assertion."
-    release: "Decide and explicitly authorize the narrow test-only portability correction, or define a public cross-platform path serialization contract before changing production output. Then rerun the full portability workflow."
-    status: "authorization_required"
+    release: "Authorization received for the test-only correction. Validate the Path-component assertion, push the exact test/evidence commit, and rerun the full portability workflow; preserve native fs_search output semantics."
+    status: "implemented_unverified"
   - id: "B-WIN-EOL-01"
     scope: "W5/W6"
     condition: "Run 32276727500 reached Windows Memory for the first time and failed the frozen corpus byte digest because actions/checkout materialized retrieval-corpus-v1.jsonl with CRLF. The observed cace5821... is the exact CRLF transform of the canonical LF 70b15f5e... Git blob."
@@ -480,6 +481,18 @@ evidence:
   - command: "gh run view 32279712990 --repo umbrella22/xuanling; Windows failed log; source/test path contract inspection"
     result: "Commit 819338f is on origin/main. Linux/macOS completed every gate in the base job; Windows toolkit 114/114 and Memory 40/40 + experimental 43/43 passed. The sole MCP failure is the test assertion at crates/xuanling-mcp/tests/protocol/contract_hardening.rs:1549-1553, which compares a Windows backslash path to a POSIX slash suffix; the returned path is otherwise the expected src/main.rs file. No production source or fixture was changed after the EOL commit."
     recorded_at: "2026-08-20T01:12:00+08:00"
+  - command: "Maintainer authorization plus source patch review for crates/xuanling-mcp/tests/protocol/contract_hardening.rs:1549-1553"
+    result: "Authorization recorded at 2026-08-20T01:38:59+08:00. The test now compares Path components (`Path::new(value).ends_with(Path::new(\"src\").join(\"main.rs\"))`), preserving the OS-native fs_search locator and removing the POSIX separator assumption. No production source, schema, fixture, or public output contract changed."
+    recorded_at: "2026-08-20T01:38:59+08:00"
+  - command: "cargo test -p xuanling-mcp --test protocol contract_hardening::session_close_terminates_descendants -- --exact --nocapture (three serial runs); cargo test -p xuanling-mcp --test protocol; cargo test -p xuanling-mcp --test golden"
+    result: "The previously transient descendant cleanup test passed 1/1 on all three serial runs. The full MCP protocol suite passed 110/110 and golden passed 21/21; no process/session source was changed."
+    recorded_at: "2026-08-20T01:45:00+08:00"
+  - command: "npm --prefix npm run check; npm --prefix npm test; npm --prefix npm run check:docs; git diff --check; cargo fmt -p xuanling-toolkit -p xuanling-memory -p xuanling-mcp -- --check; cargo check -p xuanling-toolkit -p xuanling-memory -p xuanling-mcp --all-targets; cargo clippy -p xuanling-toolkit -p xuanling-memory -p xuanling-mcp --all-targets -- -D warnings; cargo test -p xuanling-toolkit --features test-fixtures --test contract; cargo test -p xuanling-memory --test contract; cargo test -p xuanling-memory --features experimental-embeddings --test contract"
+    result: "Version/package check passed; source checkout npm was 145/149 because four runner tests stopped before model launch on the preserved untracked self-referential symlink integrations/deepseek-harness/xuanling-skills/xuanling-skills. The symlink-free temporary copy /private/tmp/xuanling-w5-npm.lMQH41 ran npm test 149/149. Docs check passed, diff check passed, fmt/check/clippy passed, toolkit contract 133/133, Memory 40/40, and experimental Memory 43/43 passed. No source symlink was removed or changed."
+    recorded_at: "2026-08-20T01:49:09+08:00"
+  - command: "checkout and protected-state fingerprints after local W5.0 validation"
+    result: "HEAD and origin/main remain b6f1b008a6b3d12d41ddd230cba21b7220af4400; pre-ledger status SHA-256 is 6be2f4f2c9a00bd191847731d8df3e99ce842b16d490caff9c9dd882377ef32b. User staged set remains 27 paths with name SHA-256 b580b997e4d8e3feb2e89bd14536cdde53613c2d5ccf94bd323ece8d3b252e47 and index manifest SHA-256 49c37a613d34ec33667ebeb46c9c0dfc49d6ff9bae395f8a861f8e38d765822f; default Memory DB remains 4c10be200e4984c07927b485b6660ccf7a8787f66f006019028c5de48e489c74; DSH remains 99f6f02fecdb7dff40c3fbc9470f5907c29f74ca with status SHA-256 39d1f6c63477d3faf9beb23e6eda9bf80c8f231418e1f019bb1730fbe2a1bdc1."
+    recorded_at: "2026-08-20T01:49:09+08:00"
   - command: "gh run view 32273753668 --repo umbrella22/xuanling; Windows failed log; boundary-semantics review of capability locator normalization"
     result: "Run 32273753668 at e6d50fe is an attributable regression: Linux/macOS fully green; Windows fmt/check/clippy green and toolkit 102/114. Eleven ordinary verbatim paths retained a terminal CurDir and failed with ERROR_INVALID_NAME/os error 123; the symlink-parent contract returned IoError. The working-tree correction removes the broad early return, preserves only verbatim locators containing ParentDir, bypasses whole-path canonicalize only for that class, and reuses the OS-semantic join inside physical symlink expansion. Assertions and public tool schemas are unchanged."
     recorded_at: "2026-08-20T00:19:14+08:00"
@@ -687,17 +700,17 @@ evidence:
 ```
 
 ```text
-EXECUTION_STATUS: BLOCKED
+EXECUTION_STATUS: HANDOFF_REQUIRED
 PLAN_ID: host-result-projection-agent-efficiency-20260818
-CHECKOUT_FINGERPRINT: revision 819338f703b7ffdaa593a1ec049b71ebfb328111 on origin/main; current ledger/plan evidence update unstaged; current DSH revision 99f6f02fecdb7dff40c3fbc9470f5907c29f74ca and status 39d1f6c6...; user staged set 27 paths, index manifest 49c37a61...
+CHECKOUT_FINGERPRINT: revision b6f1b008a6b3d12d41ddd230cba21b7220af4400 on origin/main; MCP test/plan/ledger evidence update unstaged; current DSH revision 99f6f02fecdb7dff40c3fbc9470f5907c29f74ca and status 39d1f6c6...; user staged set 27 paths, index manifest 49c37a61...
 CURRENT_WAVE: W5
 CURRENT_WORK_PACKAGE: W5.0
 WAVE_STATE: implemented_unverified
-CONTRACTS_PROVEN: prior W0-W4 unchanged; B-WIN-01 is native green at Windows toolkit 114/114; B-WIN-EOL-01 is green through Windows Memory 40/40 + experimental 43/43; Linux/macOS full portability and npm three-platform packaging are green
-EVIDENCE_ADDED: commit 819338f, portability 32279712990, Windows toolkit 114/114, Memory 40/40 + experimental 43/43, and exact test-only path-separator attribution
-FAILED_GATES: xuanling-portability 32279712990 Windows MCP protocol 108 pass / 1 fail at search_filters_hidden_ignored_globs_and_extensions; later Windows and aggregate gates skipped
-NOT_RUN_GATES: authorized test-only portability correction; Windows MCP golden/dependency/workspace/smoke after correction; W5 version freeze/source manifest update; release candidate build; 0.2.4 release/promotion
-BLOCKERS: B-WIN-MCP-TEST-PATH-01 requires explicit scope authorization; B-ZCODE-DEFAULT-SIDECAR-01 requires future isolated restart/no-residue evidence; B-RELEASE-01 blocks W6 external side effects
-NEXT_EXACT_ACTION: obtain explicit authorization for the narrow test-only Windows path assertion correction (or a public path-format decision), then rerun the complete portability workflow
+CONTRACTS_PROVEN: prior W0-W4 unchanged; B-WIN-01 is native green at Windows toolkit 114/114; B-WIN-EOL-01 is green through Windows Memory 40/40 + experimental 43/43; authorized MCP path-component test correction is locally green; source npm setup is green in a symlink-free copy at 149/149
+EVIDENCE_ADDED: three serial descendant-cleanup passes, MCP protocol 110/110, golden 21/21, native Rust gates, toolkit/Memory contracts, source npm 145/149 setup attribution, and symlink-free npm 149/149
+FAILED_GATES: source checkout npm 145/149 due preserved user-owned self-referential skills symlink; portability run 32279712990 remains historical Windows MCP 108 pass / 1 fail before the authorized correction
+NOT_RUN_GATES: exact evidence commit/push; new full portability workflow including Windows MCP golden/dependency/workspace/smoke; W5 version freeze/source manifest update; release candidate build; 0.2.4 release/promotion
+BLOCKERS: B-WIN-MCP-TEST-PATH-01 is implemented_unverified pending pushed rerun; B-ZCODE-DEFAULT-SIDECAR-01 requires future isolated restart/no-residue evidence; B-RELEASE-01 blocks W6 external side effects
+NEXT_EXACT_ACTION: commit and push the exact test/plan/ledger evidence through an isolated index preserving the 27 user-staged paths, then dispatch and complete the full portability workflow
 LEDGER_PATH: docs/plans/host-result-projection-agent-efficiency-execution-ledger.md
 ```

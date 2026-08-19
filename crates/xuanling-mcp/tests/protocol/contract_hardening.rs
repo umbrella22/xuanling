@@ -1546,10 +1546,11 @@ fn search_filters_hidden_ignored_globs_and_extensions() {
         1,
         "only src/main.rs should match: {filtered}"
     );
+    let expected_relative_path = Path::new("src").join("main.rs");
     assert!(
         matches[0]["path"]
             .as_str()
-            .is_some_and(|value| value.ends_with("src/main.rs")),
+            .is_some_and(|value| Path::new(value).ends_with(&expected_relative_path)),
         "{filtered}"
     );
 

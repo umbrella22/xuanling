@@ -882,6 +882,8 @@ not_started -> red_confirmed -> implemented_unverified -> deterministic_green ->
   缺失路径递归终止回归合同
 - `.gitattributes` 仅限 B-WIN-EOL-01 的
   `crates/xuanling-memory/tests/fixtures/retrieval-corpus-v1.jsonl text eol=lf` 规则
+- `crates/xuanling-mcp/tests/protocol/contract_hardening.rs` 仅限
+  `search_filters_hidden_ignored_globs_and_extensions` 的平台路径组件断言
 - `npm/scripts/**`、`npm/test/**`、`.github/workflows/**` 仅在红合同证明发布缺口时
 - `test/release/**`、计划/账本
 
@@ -889,8 +891,7 @@ not_started -> red_confirmed -> implemented_unverified -> deterministic_green ->
 
 - 为通过 release gate跳过 Windows tests、降低断言、改 ignored、扩大 timeout掩盖错误。
 - 复用旧 binary/tarball、在 final source commit后修改 artifact、加入 bootstrap npm token。
-- 未经独立授权修改 `crates/xuanling-mcp/tests/protocol/contract_hardening.rs` 或改变
-  `fs_search` 公共路径格式；不能用 rerun 掩盖 Windows-only contract-test failure。
+- 改变 `fs_search` 公共路径格式；不能用 rerun 掩盖 Windows-only contract-test failure。
 
 ### 红测试与基线
 
@@ -995,6 +996,20 @@ not_started -> red_confirmed -> implemented_unverified -> deterministic_green ->
 > capability 实现失败。Golden、dependency、workspace 和 smoke jobs 因该失败被跳过。
 > 当前 EOL 授权不包含测试修改或公共路径格式变更；W5.0 保持 `implemented_unverified`，需取得
 > 独立范围授权后才能修正测试合同并重跑完整矩阵。
+
+> W5.0 test portability correction（2026-08-20）：维护者已授权仅修改上述 MCP contract
+> test 的路径组件断言。测试使用 `Path::ends_with` 比较 `src/main.rs` 的语义组件，保留
+> `fs_search` 的 OS-native locator，不改变 Rust 生产实现、schema 或输出格式。完成本地 gate
+> 后提交并重跑完整 portability workflow；任何其他 Rust、版本或发布修改仍不在该授权内。
+
+> W5.0 local validation（2026-08-20）：授权测试修正已通过目标 MCP protocol `110/110`、golden
+> `21/21`，目标用例 `session_close_terminates_descendants` 连续三次通过；fmt、native
+> three-crate check/clippy、toolkit `133/133`、Memory `40/40` 与 experimental `43/43` 通过。
+> 源 checkout 的 `npm test` 为 `145/149`，四个失败均在模型启动前由保留的用户自有自引用
+> symlink `integrations/deepseek-harness/xuanling-skills/xuanling-skills` 被 bundle walker
+> 拒绝（其中一个 invalid-count dry-run 因同一 setup 错误没有 JSON）；未删除或修改该 symlink。
+> 排除该 symlink 的临时副本运行完整 `npm test` 为 `149/149`。这些结果仍不能替代新的三平台
+> portability workflow，因此 W5.0 保持 `implemented_unverified`。
 
 ### 验证命令
 
