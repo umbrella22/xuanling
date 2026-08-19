@@ -710,6 +710,18 @@ fn absolute_path(path: &Path) -> std::io::Result<PathBuf> {
     } else {
         std::env::current_dir()?.join(path)
     };
+
+    #[cfg(windows)]
+    if absolute.components().next().is_some_and(
+        |component| matches!(component, Component::Prefix(prefix) if prefix.kind().is_verbatim()),
+    ) {
+        // Rebuilding an extended-length path with PathBuf::push removes `..`
+        // components on Windows. Preserve the locator so the capability
+        // resolver can apply parent traversal after following the preceding
+        // symlink instead of changing its meaning here.
+        return Ok(absolute);
+    }
+
     Ok(absolute
         .components()
         .filter(|component| !matches!(component, Component::CurDir))

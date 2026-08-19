@@ -937,6 +937,18 @@ not_started -> red_confirmed -> implemented_unverified -> deterministic_green ->
 > 两个相关合同、本地 toolkit `133/133` 和 Windows target check 已通过，新的原生 Windows
 > runner 尚未运行，因此 W5.0 仍为 `implemented_unverified`。
 
+> W5.0 portability 回归（2026-08-19，run `32271448966`）：提交 `23fd18b` 的
+> Linux/macOS jobs 全绿，Windows 仍为 `113 pass / 1 fail`，失败仍是
+> `symlink_followed_by_parent_traversal_keeps_os_path_semantics` 的 `NotFound` vs
+> `OutsideCapability`。该 run 只包含 `path.rs` 的上一轮修复；当前工作树随后定位到第二个
+> 归一化点：`capability::absolute_path` 在 verbatim locator 上再次用 `PathBuf::push`
+> 重建组件，提前消除了 `..`。新的窄修复仅在 Windows verbatim 前缀下保留该 locator，交由
+> 现有物理 resolver 按 OS 顺序处理 symlink 与 parent traversal；合同断言未改。当前本地
+> toolkit `133/133`、两个相关合同 `2/2`、Memory `40/40` 与 experimental `43/43`、MCP
+> protocol `110/110`、golden `21/21`、Windows target check/clippy、三 crate
+> check/clippy、fmt、docs `94` 和 diff gate 均通过；该修复尚未取得新的原生 Windows run，
+> 因此 W5.0 仍为 `implemented_unverified`。
+
 ### 验证命令
 
 | Command | Provenance | Expected result | Required/conditional |
