@@ -942,12 +942,27 @@ not_started -> red_confirmed -> implemented_unverified -> deterministic_green ->
 > `symlink_followed_by_parent_traversal_keeps_os_path_semantics` 的 `NotFound` vs
 > `OutsideCapability`。该 run 只包含 `path.rs` 的上一轮修复；当前工作树随后定位到第二个
 > 归一化点：`capability::absolute_path` 在 verbatim locator 上再次用 `PathBuf::push`
-> 重建组件，提前消除了 `..`。新的窄修复仅在 Windows verbatim 前缀下保留该 locator，交由
+> 重建组件，提前消除了 `..`。当时的修复在所有 Windows verbatim 前缀下保留该 locator，交由
 > 现有物理 resolver 按 OS 顺序处理 symlink 与 parent traversal；合同断言未改。当前本地
 > toolkit `133/133`、两个相关合同 `2/2`、Memory `40/40` 与 experimental `43/43`、MCP
 > protocol `110/110`、golden `21/21`、Windows target check/clippy、三 crate
 > check/clippy、fmt、docs `94` 和 diff gate 均通过；该修复尚未取得新的原生 Windows run，
 > 因此 W5.0 仍为 `implemented_unverified`。
+
+> W5.0 portability 回归（2026-08-20，run `32273753668`）：提交 `e6d50fe` 的
+> Linux/macOS jobs 再次完整全绿，Windows fmt/check/clippy 通过，但 toolkit contract 回退为
+> `102 pass / 12 fail`。其中 11 项普通 verbatim `\.` locator 以
+> `ERROR_INVALID_NAME`（os error 123）失败，原 symlink + `..` 合同则由 `NotFound` 变为
+> `IoError`，证明“所有 verbatim locator 均跳过组件重建”的 guard 过宽，且 Windows extended
+> path 不能直接依赖整路径 `canonicalize` 解析 `.`/`..`。当前修正删除 broad early return：普通
+> verbatim locator 继续由 `absolute_path` 删除 `CurDir` 后走既有 OS canonicalization；仅
+> `verbatim prefix + ParentDir` locator 保留表示并绕过整路径 canonicalization，交由现有逐组件
+> resolver 在展开 symlink 后处理 parent traversal。该 resolver 内部的 relative symlink target 与
+> remaining suffix 也统一使用保留 OS 语义的 join，避免 canonical verbatim base 再次提前消去
+> `..`。合同断言仍未修改；本地 focused `2/2`、toolkit `133/133`、Memory `40/40` 与
+> experimental `43/43`、MCP protocol `110/110`、golden `21/21`、Windows target 与本地三
+> crate check/clippy、fmt、docs `94`、npm check、diff 和隔离指纹均通过。新的原生三平台证据
+> 尚未取得，因此 W5.0 继续为 `implemented_unverified`。
 
 ### 验证命令
 

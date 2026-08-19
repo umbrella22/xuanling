@@ -73,7 +73,7 @@ impl PathContext {
 /// `..` components on Windows verbatim paths. Those components are semantic:
 /// the OS must process them after following any preceding symlink rather than
 /// before capability validation sees the physical traversal.
-fn join_relative_preserving_os_semantics(base: &Path, relative: &Path) -> PathBuf {
+pub(crate) fn join_relative_preserving_os_semantics(base: &Path, relative: &Path) -> PathBuf {
     #[cfg(windows)]
     {
         let base_is_verbatim = base.components().next().is_some_and(

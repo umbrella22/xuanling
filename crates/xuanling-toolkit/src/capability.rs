@@ -279,7 +279,8 @@ impl WorkspaceScope {
         operation: &str,
     ) -> Result<PathBuf, ToolError> {
         let has_entry_suffix = access.operates_on_entry() && entry_suffix_free(candidate).is_some();
-        let absolute = if has_entry_suffix {
+        let requires_parent_resolution = requires_verbatim_parent_resolution(candidate);
+        let absolute = if has_entry_suffix || requires_parent_resolution {
             absolute_path_preserving_representation(candidate)
         } else {
             absolute_path(candidate)
@@ -327,18 +328,22 @@ impl WorkspaceScope {
             }
         }
 
-        let containment_path = match std::fs::canonicalize(&absolute) {
-            Ok(canonical) => canonical,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                self.resolve_missing_intent(&absolute, candidate, access, operation, 0)?
-            }
-            Err(error) => {
-                return Err(scope_io_error(
-                    error,
-                    operation,
-                    candidate,
-                    "candidate_resolution_failed",
-                ));
+        let containment_path = if requires_parent_resolution {
+            self.resolve_missing_intent(&absolute, candidate, access, operation, 0)?
+        } else {
+            match std::fs::canonicalize(&absolute) {
+                Ok(canonical) => canonical,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    self.resolve_missing_intent(&absolute, candidate, access, operation, 0)?
+                }
+                Err(error) => {
+                    return Err(scope_io_error(
+                        error,
+                        operation,
+                        candidate,
+                        "candidate_resolution_failed",
+                    ));
+                }
             }
         };
         if !self.contained_in(&containment_path, access) {
@@ -459,10 +464,14 @@ impl WorkspaceScope {
                                         "candidate_resolution_failed",
                                     )
                                 })?;
-                            canonical_parent.join(target)
+                            crate::path::join_relative_preserving_os_semantics(
+                                &canonical_parent,
+                                &target,
+                            )
                         };
                         let suffix = components_to_path(&components[index + 1..]);
-                        let expanded = target.join(suffix);
+                        let expanded =
+                            crate::path::join_relative_preserving_os_semantics(&target, &suffix);
                         return self.resolve_missing_intent(
                             &expanded,
                             requested,
@@ -700,28 +709,16 @@ fn normalize_from(base: &Path, suffix: &Path) -> PathBuf {
     normalized
 }
 
-/// Make a locator absolute without normalizing its components. The operating
-/// system resolves `..` after following the preceding symlink, so lexical
-/// normalization here would change the path's meaning before capability
-/// validation.
+/// Make an ordinary locator absolute and remove `.` components before asking
+/// the OS to canonicalize it. Windows verbatim locators containing `..` bypass
+/// this helper because rebuilding those components would change their physical
+/// symlink traversal order before capability validation.
 fn absolute_path(path: &Path) -> std::io::Result<PathBuf> {
     let absolute = if path.is_absolute() {
         path.to_path_buf()
     } else {
         std::env::current_dir()?.join(path)
     };
-
-    #[cfg(windows)]
-    if absolute.components().next().is_some_and(
-        |component| matches!(component, Component::Prefix(prefix) if prefix.kind().is_verbatim()),
-    ) {
-        // Rebuilding an extended-length path with PathBuf::push removes `..`
-        // components on Windows. Preserve the locator so the capability
-        // resolver can apply parent traversal after following the preceding
-        // symlink instead of changing its meaning here.
-        return Ok(absolute);
-    }
-
     Ok(absolute
         .components()
         .filter(|component| !matches!(component, Component::CurDir))
@@ -729,6 +726,20 @@ fn absolute_path(path: &Path) -> std::io::Result<PathBuf> {
             normalized.push(component.as_os_str());
             normalized
         }))
+}
+
+#[cfg(windows)]
+fn requires_verbatim_parent_resolution(path: &Path) -> bool {
+    path.components().next().is_some_and(
+        |component| matches!(component, Component::Prefix(prefix) if prefix.kind().is_verbatim()),
+    ) && path
+        .components()
+        .any(|component| matches!(component, Component::ParentDir))
+}
+
+#[cfg(not(windows))]
+fn requires_verbatim_parent_resolution(_path: &Path) -> bool {
+    false
 }
 
 fn absolute_path_preserving_representation(path: &Path) -> std::io::Result<PathBuf> {
