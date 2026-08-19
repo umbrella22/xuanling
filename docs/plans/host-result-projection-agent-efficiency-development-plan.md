@@ -1011,6 +1011,13 @@ not_started -> red_confirmed -> implemented_unverified -> deterministic_green ->
 > 排除该 symlink 的临时副本运行完整 `npm test` 为 `149/149`。这些结果仍不能替代新的三平台
 > portability workflow，因此 W5.0 保持 `implemented_unverified`。
 
+> W5.0 完成（2026-08-20）：提交 `039a1edf549b4570e9954a347faa451514fb8cec` 已推送到
+> `origin/main`。`xuanling-portability` run `32284102425` 在 Linux、macOS、Windows 的
+> fmt/check/clippy/contract、三平台 binary smoke、workspace full gate 全部成功；Windows
+> toolkit、Memory、experimental Memory、MCP protocol、MCP golden、dependency island 均已
+> 执行并通过。`B-WIN-01`、`B-WIN-EOL-01` 与 `B-WIN-MCP-TEST-PATH-01` 均解除，W5.1
+> 版本冻结与 registry 复查现已解锁。该证据不授权 tag、npm publish 或 ZCode promotion。
+
 ### 验证命令
 
 | Command | Provenance | Expected result | Required/conditional |

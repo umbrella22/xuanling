@@ -3,19 +3,16 @@
 > 本文件是
 > `host-result-projection-agent-efficiency-development-plan.md` 的 canonical handoff。
 > W0-W3 已完成；W4.2/W4.3/W4.5 的当前证据已通过各自 verifier，W4.4 按维护者 waiver
-> 接受 12/12 主代理采集与独立 oracle，并明确 GLM 未运行该 DSH 协议。W4 整体已完成；W5
-> 已取得第五轮 Windows portability 运行时证据。提交 `274457fa…` 已使 Windows toolkit
-> contract 达到 `114/114`，B-WIN-01 的 capability path 语义得到原生证明；同一 run 首次进入
-> Windows Memory gate，并暴露 frozen corpus 被 checkout 为 CRLF 的独立 digest blocker。
-> 因后续 Windows 与 aggregate gates 被跳过，W5 保持 `implemented_unverified`。维护者已授权
-> B-WIN-EOL-01 的 fixture-only 修复；根 `.gitattributes` 规则与 Windows-like checkout oracle
-> 已通过。随后 run `32279712990` 在 Windows Memory `43/43` 后进入 MCP protocol，并暴露
-> 一个与产品逻辑无关的测试路径分隔符假设；因此 W5 仍保持 `implemented_unverified`。
+> 接受 12/12 主代理采集与独立 oracle，并明确 GLM 未运行该 DSH 协议。W4 整体已完成；W5.0
+> 已通过提交 `039a1edf549b4570e9954a347faa451514fb8cec` 与 portability run `32284102425`。
+> 三平台 required jobs、Windows toolkit/Memory/experimental Memory/MCP protocol/golden、
+> dependency island、binary smoke 与 workspace aggregate 全部成功；W5.0 已 complete，当前
+> handoff 为 W5.1 registry 复查与版本冻结。
 
 ```yaml
 schema_version: 1
 plan_id: "host-result-projection-agent-efficiency-20260818"
-updated_at: "2026-08-20T01:49:09+08:00"
+updated_at: "2026-08-20T02:08:54+08:00"
 plan_status: "executing"
 live_authorization:
   authorized_at: "2026-08-18T21:08:03+08:00"
@@ -57,7 +54,7 @@ live_authorization:
     - "Rust changes outside the authorized B-WIN-01 capability-path repair"
 checkout:
   revision: "9a08f33a2582e4a6c61d0eceb3bfb6f3657ef13f"
-  current_revision: "819338f703b7ffdaa593a1ec049b71ebfb328111"
+  current_revision: "039a1edf549b4570e9954a347faa451514fb8cec"
   branch: "main"
   status_sha256_before_plan_files: "bccdd9d5831df44879c3391d1cf6933e9faab1590f8358e077fc082b8a2df3b4"
   relevant_diff_sha256: "ac1b669c0459cf8e2fc119c2ae7deafb5e37a56a83ab6819a1dc29854bfd06fa"
@@ -119,6 +116,7 @@ checkout:
   user_staged_path_count_w5_b_win_followup3: 27
   user_staged_name_sha256_w5_b_win_followup3: "b580b997e4d8e3feb2e89bd14536cdde53613c2d5ccf94bd323ece8d3b252e47"
   user_staged_index_manifest_sha256_w5_b_win_followup3: "49c37a613d34ec33667ebeb46c9c0dfc49d6ff9bae395f8a861f8e38d765822f"
+  status_sha256_w5_0_complete_pre_ledger: "22cc353d33a863ea6520458b805cd844d9a73a55e8815a3bf8ca2f26c9678e7f"
   status_sha256_method: "sha256(git status --short --untracked-files=all stdout, with trailing newline)"
   notes:
     - "Current result adapters, package manifests, READMEs, ADR text, and Node contracts are dirty implemented_unverified inputs; they are not released evidence."
@@ -224,6 +222,9 @@ ci_baseline:
   npm_followup4_conclusion: "success"
   npm_repair_run: 32265457015
   npm_repair_conclusion: "success"
+  portability_final_run: 32284102425
+  portability_final_conclusion: "success"
+  portability_final_detail: "Commit 039a1ed: Linux/macOS/Windows base jobs, three-platform binary smoke, workspace full gate, Windows toolkit/Memory/experimental Memory/MCP protocol/golden, and dependency island all green."
 completed_waves:
   - "W0"
   - "W1"
@@ -231,7 +232,7 @@ completed_waves:
   - "W3"
   - "W4"
 current_wave: "W5"
-current_work_package: "W5.0"
+current_work_package: "W5.1"
 wave_state: "implemented_unverified"
 clean_acceptance_count: 0
 work_package_states:
@@ -240,8 +241,8 @@ work_package_states:
   W4.3: "complete"
   W4.4: "complete"
   W4.5: "complete"
-  W5.0: "implemented_unverified: B-WIN-01 is native green at Windows toolkit 114/114; B-WIN-EOL-01 rule and local Windows-like checkout oracle are green, while the full portability workflow remains pending"
-  W5.1: "not_started: version freeze remains locked behind W5.0"
+  W5.0: "complete: commit 039a1ed and portability run 32284102425 are fully green across required three-platform, Windows protocol, dependency, smoke, and workspace gates"
+  W5.1: "not_started: refresh all eight 0.2.4 registry absence checks, then freeze source versions and release metadata"
 primary_evidence:
   W4_status: "complete"
   W4.2_zcode_projection: "complete: three isolated candidate trials, one model-visible projection per trial, accepted host 3.7.7"
@@ -255,9 +256,9 @@ primary_evidence:
   W4.4_glm_independent: "waived_not_run"
   W4.4_acceptance_basis: "maintainer waiver plus current-revision primary-agent collector 12/12 and independent oracle 12/12"
   W4.5_layered_cost: "complete with exact schema tokenizer explicitly unavailable"
-  W5.0_windows_portability_repair: "implemented_unverified: B-WIN-01 and B-WIN-EOL-01 are green through Windows Memory 43/43; the authorized test-only path-component correction is locally green, while the exact evidence commit and complete portability rerun remain pending."
-last_completed_action: "Completed three serial descendant-cleanup runs, MCP protocol/golden, native Rust gates, and a symlink-free npm regression; source checkout npm remains setup-blocked only by the preserved user-owned self-referential skills symlink."
-next_action: "Commit and push only the MCP test correction plus plan/ledger evidence through an isolated index preserving the 27 user-staged paths, then dispatch and complete the full portability workflow."
+  W5.0_windows_portability_repair: "complete: commit 039a1ed and portability run 32284102425 passed all required jobs; Windows MCP path assertion now uses OS path components without changing fs_search output."
+last_completed_action: "Verified portability run 32284102425 success on commit 039a1ed; all W5.0 required platform, protocol, dependency, smoke, workspace, and local isolation gates are green."
+next_action: "Recheck that all eight exact 0.2.4 registry items remain absent, then begin W5.1 version freeze without changing user-owned staged or untracked paths."
 required_gates:
   - "W0 checkout/release/host baseline and old-ledger reconciliation"
   - "W1 correct result/Skill/cost red oracles"
@@ -396,8 +397,8 @@ not_run_commands:
   - "No full Rust workspace gate was run during plan authoring; focused MCP protocol 110/110 and npm 108/108 passed."
   - "GLM did not run the DSH W4.4 protocol. The maintainer explicitly waived that executor-identity gate and accepted the current-revision primary-agent 12/12 evidence; no GLM-independent claim is made."
   - "No W5 version freeze, source manifest update, release candidate build, tag, publish, or ZCode promotion was performed; those actions remain forbidden."
-  - "Run 32276727500 did not execute Windows experimental Memory, MCP protocol/golden, dependency, workspace, or smoke gates after the base Memory digest failure; no result is inferred for those skipped surfaces. The fixture-only EOL repair is now locally validated, but the post-push workflow has not yet run."
-  - "Run 32279712990 did not execute Windows MCP golden, dependency, workspace, or smoke gates after the path-separator assertion failure; no result is inferred for those skipped surfaces. No scope authorization exists yet to edit the test or public path-format contract."
+  - "Run 32276727500 did not execute Windows experimental Memory, MCP protocol/golden, dependency, workspace, or smoke gates after the base Memory digest failure. This is retained as historical failure evidence; run 32284102425 later executed and passed those surfaces."
+  - "Run 32279712990 did not execute Windows MCP golden, dependency, workspace, or smoke gates after the path-separator assertion failure. This is retained as historical failure evidence; the authorized test-only correction and run 32284102425 later resolved the gap."
 incidents:
   - id: "I-W4-ZCODE-DEFAULT-DB-SIDECAR"
     recorded_at: "2026-08-18T22:14:22+08:00"
@@ -433,13 +434,13 @@ blockers:
   - id: "B-WIN-MCP-TEST-PATH-01"
     scope: "W5/W6"
     condition: "Run 32279712990 reaches Windows MCP protocol after the EOL repair and fails only contract_hardening::search_filters_hidden_ignored_globs_and_extensions because the test requires a POSIX suffix while fs_search returns an OS-native Windows path. Linux/macOS pass the same assertion."
-    release: "Authorization received for the test-only correction. Validate the Path-component assertion, push the exact test/evidence commit, and rerun the full portability workflow; preserve native fs_search output semantics."
-    status: "implemented_unverified"
+    release: "Resolved by commit 039a1ed and portability run 32284102425. Preserve the Path-component assertion and native fs_search output semantics."
+    status: "resolved"
   - id: "B-WIN-EOL-01"
     scope: "W5/W6"
     condition: "Run 32276727500 reached Windows Memory for the first time and failed the frozen corpus byte digest because actions/checkout materialized retrieval-corpus-v1.jsonl with CRLF. The observed cace5821... is the exact CRLF transform of the canonical LF 70b15f5e... Git blob."
-    release: "Authorization received; the exact root .gitattributes text eol=lf rule is present and the Windows-like checkout oracle retains 70b15f5e.... Dispatch the full portability workflow and require all jobs green. Do not change the expected digest or normalize inside the loader."
-    status: "implemented_unverified"
+    release: "Resolved by the exact root .gitattributes text eol=lf rule and portability run 32284102425. Preserve the expected digest and do not normalize inside the loader."
+    status: "resolved"
   - id: "B-WIN-01"
     scope: "W5/W6"
     condition: "Resolved by commit 274457fa and run 32276727500: Windows fmt/check/clippy passed and the complete toolkit contract reached 114/114, including ordinary verbatim CurDir and symlink-before-parent traversal."
@@ -469,6 +470,12 @@ blockers:
     condition: "Commit, push, tag, npm publish, and target promotion are external side effects not authorized by plan generation."
     release: "Obtain exact candidate commit/tag authorization after W5 completes."
 evidence:
+  - command: "gh run view 32284102425 --repo umbrella22/xuanling --json status,conclusion,name,headSha,jobs"
+    result: "Portability run 32284102425 completed successfully at commit 039a1edf549b4570e9954a347faa451514fb8cec. Linux, macOS, and Windows base jobs passed; Windows executed toolkit 114/114, Memory 40/40, experimental Memory 43/43, MCP protocol 110/110, golden 21/21, and dependency island gates. Three-platform release binary smoke and workspace full gate also passed. B-WIN-01, B-WIN-EOL-01, and B-WIN-MCP-TEST-PATH-01 are resolved; W5.0 is complete."
+    recorded_at: "2026-08-20T02:08:54+08:00"
+  - command: "git rev-parse HEAD; git ls-remote origin refs/heads/main; protected checkout fingerprints"
+    result: "HEAD and origin/main are 039a1edf549b4570e9954a347faa451514fb8cec. The user staged set remains exactly 27 paths with name SHA-256 b580b997e4d8e3feb2e89bd14536cdde53613c2d5ccf94bd323ece8d3b252e47 and recorded index manifest SHA-256 49c37a613d34ec33667ebeb46c9c0dfc49d6ff9bae395f8a861f8e38d765822f. Default Memory DB remains 4c10be200e4984c07927b485b6660ccf7a8787f66f006019028c5de48e489c74; DSH remains 99f6f02fecdb7dff40c3fbc9470f5907c29f74ca with status SHA-256 39d1f6c63477d3faf9beb23e6eda9bf80c8f231418e1f019bb1730fbe2a1bdc1."
+    recorded_at: "2026-08-20T02:08:54+08:00"
   - command: "gh run view 32276727500/32276727511; Windows failed log; CRLF transform SHA-256; Git blob/eol inspection; prior-run step history"
     result: "Commit 274457fa is on origin/main and xuanling-mcp-npm 32276727511 is fully green. Portability 32276727500 proves Linux/macOS fully green and Windows toolkit 114/114, resolving B-WIN-01. Windows Memory then failed only frozen_corpus_has_expected_shape_and_digest at 39/40: Git LF blob and expected digest are 70b15f5e..., while a mechanical LF-to-CRLF transform yields the exact runner value cace5821.... All five prior Windows runs skipped Memory because toolkit failed first, so this is a newly exposed independent checkout-representation blocker."
     recorded_at: "2026-08-20T00:45:37+08:00"
@@ -702,15 +709,15 @@ evidence:
 ```text
 EXECUTION_STATUS: HANDOFF_REQUIRED
 PLAN_ID: host-result-projection-agent-efficiency-20260818
-CHECKOUT_FINGERPRINT: revision b6f1b008a6b3d12d41ddd230cba21b7220af4400 on origin/main; MCP test/plan/ledger evidence update unstaged; current DSH revision 99f6f02fecdb7dff40c3fbc9470f5907c29f74ca and status 39d1f6c6...; user staged set 27 paths, index manifest 49c37a61...
+CHECKOUT_FINGERPRINT: revision 039a1edf549b4570e9954a347faa451514fb8cec on origin/main; W5.0 completion evidence update unstaged; current DSH revision 99f6f02fecdb7dff40c3fbc9470f5907c29f74ca and status 39d1f6c6...; user staged set 27 paths, index manifest 49c37a61...
 CURRENT_WAVE: W5
-CURRENT_WORK_PACKAGE: W5.0
+CURRENT_WORK_PACKAGE: W5.1
 WAVE_STATE: implemented_unverified
-CONTRACTS_PROVEN: prior W0-W4 unchanged; B-WIN-01 is native green at Windows toolkit 114/114; B-WIN-EOL-01 is green through Windows Memory 40/40 + experimental 43/43; authorized MCP path-component test correction is locally green; source npm setup is green in a symlink-free copy at 149/149
-EVIDENCE_ADDED: three serial descendant-cleanup passes, MCP protocol 110/110, golden 21/21, native Rust gates, toolkit/Memory contracts, source npm 145/149 setup attribution, and symlink-free npm 149/149
-FAILED_GATES: source checkout npm 145/149 due preserved user-owned self-referential skills symlink; portability run 32279712990 remains historical Windows MCP 108 pass / 1 fail before the authorized correction
-NOT_RUN_GATES: exact evidence commit/push; new full portability workflow including Windows MCP golden/dependency/workspace/smoke; W5 version freeze/source manifest update; release candidate build; 0.2.4 release/promotion
-BLOCKERS: B-WIN-MCP-TEST-PATH-01 is implemented_unverified pending pushed rerun; B-ZCODE-DEFAULT-SIDECAR-01 requires future isolated restart/no-residue evidence; B-RELEASE-01 blocks W6 external side effects
-NEXT_EXACT_ACTION: commit and push the exact test/plan/ledger evidence through an isolated index preserving the 27 user-staged paths, then dispatch and complete the full portability workflow
+CONTRACTS_PROVEN: prior W0-W4 unchanged; W5.0 complete at commit 039a1ed with portability run 32284102425 fully green across three platforms, Windows protocol/dependency gates, binary smoke, and workspace aggregate
+EVIDENCE_ADDED: portability run 32284102425 success; B-WIN-01, B-WIN-EOL-01, and B-WIN-MCP-TEST-PATH-01 resolved; protected staged set, default Memory DB, and DSH checkout unchanged
+FAILED_GATES: none current for W5.0; source checkout npm 145/149 remains an attributed setup failure caused by the preserved user-owned self-referential skills symlink, with symlink-free copy 149/149
+NOT_RUN_GATES: W5.1 fresh eight-item registry recheck and source version freeze; W5.2-W5.5 release-candidate artifacts/CI/preflight; W6 tag/publish/promotion
+BLOCKERS: B-ZCODE-DEFAULT-SIDECAR-01 requires future isolated restart/no-residue evidence; B-RELEASE-01 blocks W6 external side effects
+NEXT_EXACT_ACTION: recheck all eight exact 0.2.4 registry items, then freeze source versions and release metadata without touching the protected staged or untracked paths
 LEDGER_PATH: docs/plans/host-result-projection-agent-efficiency-execution-ledger.md
 ```
