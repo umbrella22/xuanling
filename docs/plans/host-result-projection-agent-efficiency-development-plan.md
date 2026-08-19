@@ -889,6 +889,8 @@ not_started -> red_confirmed -> implemented_unverified -> deterministic_green ->
 
 - 为通过 release gate跳过 Windows tests、降低断言、改 ignored、扩大 timeout掩盖错误。
 - 复用旧 binary/tarball、在 final source commit后修改 artifact、加入 bootstrap npm token。
+- 未经独立授权修改 `crates/xuanling-mcp/tests/protocol/contract_hardening.rs` 或改变
+  `fs_search` 公共路径格式；不能用 rerun 掩盖 Windows-only contract-test failure。
 
 ### 红测试与基线
 
@@ -982,6 +984,17 @@ not_started -> red_confirmed -> implemented_unverified -> deterministic_green ->
 > 把 rerun 当作修复。授权后的 Windows-like checkout oracle 已证明 worktree digest 为
 > `70b15f5e…`；提交该规则后必须手工 dispatch 当前 `main` 的 portability workflow，并要求
 > 所有 job 完整全绿，W5.0 才能进入 `complete`。
+
+> W5.0 portability follow-up（2026-08-20，run `32279712990`）：`.gitattributes` 修复在原生
+> Windows 上生效，toolkit contract `114/114`、Memory contract `40/40`、experimental Memory
+> contract `43/43` 全部通过。MCP protocol 在
+> `contract_hardening::search_filters_hidden_ignored_globs_and_extensions` 处 `108/109` 失败；
+> 返回路径是合法的 Windows 原生 `C:\\...\\src\\main.rs`，而测试在
+> `crates/xuanling-mcp/tests/protocol/contract_hardening.rs:1549-1553` 硬编码了 POSIX
+> `ends_with("src/main.rs")`。这是测试可移植性缺陷，不是 MCP handler、Memory loader 或路径
+> capability 实现失败。Golden、dependency、workspace 和 smoke jobs 因该失败被跳过。
+> 当前 EOL 授权不包含测试修改或公共路径格式变更；W5.0 保持 `implemented_unverified`，需取得
+> 独立范围授权后才能修正测试合同并重跑完整矩阵。
 
 ### 验证命令
 
