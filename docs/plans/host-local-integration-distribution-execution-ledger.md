@@ -383,3 +383,27 @@ BLOCKERS: B-09 replacement repository token has write permission but npm returns
 NEXT_EXACT_ACTION: create a granular npm token whose final summary explicitly shows Read and write, All Packages, and Bypass 2FA enabled; replace repository NPM_BOOTSTRAP_TOKEN, then rerun 32020739545
 LEDGER_PATH: docs/plans/host-local-integration-distribution-execution-ledger.md
 ```
+
+## 2026-08-18 后续发布事实 reconciliation
+
+本节只追加后来发生的外部事实，不重写上述 `0.2.2` EOTP、artifact transport 或 Memory DB
+incident 的历史证据，也不把旧计划的未完成 Wave 追记为 `complete`。
+
+- 后续 source tag `xuanling-mcp-v0.2.3` 解析到 commit
+  `eec429d009481e193295678b9aa244d44c5d52a2`。GitHub Actions run `32041239940` 的
+  `publish ordered npm release set` job 使用 OIDC Trusted Publishing 成功发布并对账八个 scoped
+  immutable npm items；因此旧账本的 bootstrap token、E403/EOTP 与 registry-absence blocker 已被
+  `0.2.3` 发布事实 supersede，但其失败记录仍保留为历史证据。
+- 同一 run 的 `directly promote verified ZCode marketplace` job 成功；目标仓库
+  `umbrella22/xuanling-zcode-marketplace` 的 `main` 与 tag `xuanling-mcp-v0.2.3` 当前均指向
+  commit `20ffab546f470cf516a03a33d5b16be916c9390b`，tree
+  `c822eb7c6c4ef32d5f62e805dd4c347d69fe5d74`。
+- 这次 reconciliation 不证明旧计划未完成的 DSH clean profile、ZCode clean install/restart、真实
+  model route 或最终 host parity。当前本机只读基线显示 ZCode 3.7.7 build 3.7.7.4926 已缓存
+  marketplace `xuanling-mcp@0.2.3`。
+- Windows portability 仍是独立 release gate：run `32094516238` 在同一后续 source revision
+  `9a08f33a2582e4a6c61d0eceb3bfb6f3657ef13f` 上为 Linux/macOS green、Windows toolkit contract
+  `102 passed / 11 failed`。不得用 `0.2.3` 已发布的事实将该缺口标为已解决。
+- 新的 canonical 执行状态由
+  `host-result-projection-agent-efficiency-execution-ledger.md` 维护；本旧账本不再作为后续版本的
+  `next_action` 来源。

@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "evidence_id": "zcode-w4-2-projection-live-20260819",
+  "verification": {
+    "status": "pass",
+    "problems": []
+  },
+  "host": {
+    "name": "ZCode",
+    "version": "3.7.7",
+    "accepted_trial_count": 3,
+    "baseline_trial_count": 2,
+    "live_trial_count": 1
+  },
+  "candidate": {
+    "plugin": "xuanling-mcp-w4",
+    "version": "0.2.4",
+    "installed_mcp_json_sha256": "f1219c7f665f731a33898f609d64964401e1584095e9b34921f1cfeaa3e952ea"
+  },
+  "baseline": {
+    "evidence_sha256": "59b3b68839f829a5440b96084ed4b28e9cdbb75703737cdbba10f470fb78ef99",
+    "trial_ids": [
+      "zcode-restart-first",
+      "zcode-restart-second"
+    ],
+    "catalog_prefix_sha256": "6e57660ed831c57c7941d080f2ac50e572ea651099a46afa5e599de80807772b"
+  },
+  "live": {
+    "transcript_sha256": "5b57adf03792033388b56e1fab4d3bc42d04357fbf961cb8b1e97ab5ba3a9e18",
+    "transcript_bytes": 501484,
+    "record_count": 4,
+    "session_id": "sess_cac8c675-b560-4c3c-a54f-e8640c74243d",
+    "turn_id": "turn_bf6f46e7-b176-405e-a416-8d472b376cb9",
+    "model_id": "GLM-5.3",
+    "tool_call_id": "call_4dc5877848a2437a89374cb2",
+    "tool_name": "mcp__plugin_xuanling-mcp-w4_xuanling__fs_read_text",
+    "model_projection_count": 1,
+    "model_projection_sha256": "f755b073cf3c45d5a2479856eaad3f7a98f00d09ad3e3ee9b93d4eadde87af5c",
+    "structured_sha256": "45525b32844f2f185b532a93e3af2b07a4a7aef8ac2fc4d3f571d1a7456aac5c",
+    "final_text_sha256": "cb28a0e2fb99806ee40569c7e490ab10f55bd66ddc74ad1fe6bb0966a42540d0",
+    "provider_usage_records": 3
+  },
+  "storage": {
+    "workspace": {
+      "path": "/private/tmp/xuanling-zcode-w4-a1/workspace",
+      "fixture_sha256": "f87e24a5b4622199f9a9b157992539ac2ae00d4d1c1a16884e9c83e91468245d",
+      "entries": [
+        ".xuanling-w4-memory.db",
+        ".xuanling-w4-memory.db-shm",
+        ".xuanling-w4-memory.db-wal",
+        "fixture.txt"
+      ]
+    },
+    "memory_db": {
+      "path": "/private/tmp/xuanling-zcode-w4-a1/workspace/.xuanling-w4-memory.db",
+      "main_sha256": "f1c1d714b195aa1795c50ed2db1795613d868a07340cbf0b1a563384fdfebdcf",
+      "wal_sha256": "6f26ca904cb7b28df2dc9b86572559b9818ca92f93379877ce09253a1a08bddc",
+      "schema_version": 2,
+      "canonical_counts": {
+        "proposals": 0,
+        "heads": 0,
+        "versions": 0,
+        "reviews": 0,
+        "feedback": 0
+      }
+    },
+    "default_memory_db_sha256": "4c10be200e4984c07927b485b6660ccf7a8787f66f006019028c5de48e489c74"
+  },
+  "residue": {
+    "repository_root_files": 0,
+    "candidate_processes": 0
+  }
+}

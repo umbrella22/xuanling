@@ -223,10 +223,11 @@ test("bundle manifests declare the dsh bundle and pin the npm version", () => {
           "README.md",
           "README-ZH.md",
           "cordis.patch.yml",
+          "mcp-result-adapter.mjs",
           "schema-adapter.mjs",
           "schema-projection.mjs",
         ]
-      : ["LICENSE", "README.md", "README-ZH.md", "cordis.patch.yml"];
+      : ["LICENSE", "README.md", "README-ZH.md", "cordis.patch.yml", "mcp-result-adapter.mjs"];
     assert.deepEqual(manifest.files, expectedFiles, `${bundle}: ships the declared runtime files`);
   }
   const additive = readJson(path.join("xuanling-tools", "package.json"));
@@ -261,7 +262,13 @@ test("tool bundle patches resolve the launcher from their profile-local dependen
   for (const bundle of fullCatalogBundles) {
     const config = mountRow(readText(path.join(bundle, "cordis.patch.yml"))).config;
     assert.deepEqual(config.command, { js: "process.execPath" }, `${bundle}: Node launches the JS shim`);
-    assert.deepEqual(config.args[0], { js: localLauncher }, `${bundle}: profile-local launcher path`);
+    assert.match(config.args[0].js, new RegExp(`@xuanling-rs/${bundle.replace("xuanling-", "xuanling-dsh-")}/mcp-result-adapter\\.mjs`));
+    assert.deepEqual(config.args.slice(1, 5), [
+      "--binary",
+      { js: "process.execPath" },
+      "--",
+      { js: localLauncher },
+    ], `${bundle}: result adapter wraps the profile-local launcher`);
   }
 
   const memoryConfig = mountRow(readText(path.join("xuanling-memory", "cordis.patch.yml"))).config;
@@ -317,7 +324,7 @@ test("all patches mount the bridge with the documented xuanling identity", () =>
   for (const bundle of fullCatalogBundles) {
     const config = mountRow(readText(path.join(bundle, "cordis.patch.yml"))).config;
     assert.deepEqual(config.command, { js: "process.execPath" }, `${bundle}: Node runtime`);
-    assert.deepEqual(config.args.slice(1, 3), [
+    assert.deepEqual(config.args.slice(5, 7), [
       "--workspace-root",
       { js: "process.env.XUANLING_WORKSPACE_ROOT ?? process.cwd()" },
     ]);
@@ -431,6 +438,8 @@ test("the ZCode-only compat shim never leaks into DeepSeek configs", () => {
     "README.md",
     path.join("xuanling-memory", "schema-adapter.mjs"),
     path.join("xuanling-memory", "schema-projection.mjs"),
+    ...fullCatalogBundles.map((bundle) => path.join(bundle, "mcp-result-adapter.mjs")),
+    path.join("xuanling-memory", "mcp-result-adapter.mjs"),
   ];
   for (const relative of runtimeFiles) {
     const text = readText(relative);
@@ -452,8 +461,8 @@ test("README documents the mount and the legacy tool surface stays out", () => {
   const readme = readText("README.md");
   assert.ok(readme.includes("mcp__xuanling__"), "public name shape documented");
   assert.ok(readme.includes("dsh plugin --profile"), "profile install path documented");
-  assert.ok(readme.includes("@xuanling-rs/xuanling-dsh-memory@0.2.3"), "recommended memory bundle documented");
-  assert.ok(readme.includes("Profile-local `@xuanling-rs/xuanling-mcp@0.2.3`"), "local runtime documented");
+  assert.ok(readme.includes("@xuanling-rs/xuanling-dsh-memory@0.2.4"), "recommended memory bundle documented");
+  assert.ok(readme.includes("Profile-local `@xuanling-rs/xuanling-mcp@0.2.4`"), "local runtime documented");
   assert.doesNotMatch(readme, /npm\s+(?:i|install)\s+(?:--global|-g)|XUANLING_MCP_BIN/);
   const legacyNames = [
     "memory_put",

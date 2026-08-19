@@ -16,6 +16,8 @@
 | [memory-retrieval-pipeline-semantic-decision.md](memory-retrieval-pipeline-semantic-decision.md) | RFC 0003 semantic trigger 的五项证据与 `not_triggered` 决策。 |
 | [host-local-integration-distribution-development-plan.md](host-local-integration-distribution-development-plan.md) | DSH profile-local npm packages、单一跨平台 ZCode marketplace、release trust/provenance/attestation 与跨仓库 promotion 实施计划。 |
 | [host-local-integration-distribution-execution-ledger.md](host-local-integration-distribution-execution-ledger.md) | Host 本地集成与分发计划的 canonical 中断恢复账本。 |
+| [host-result-projection-agent-efficiency-development-plan.md](host-result-projection-agent-efficiency-development-plan.md) | `0.2.4` ZCode/DSH 结果投影、Agent 工具路由、L1/L2 Memory 读取策略、成本测量与发布验收实施计划。 |
+| [host-result-projection-agent-efficiency-execution-ledger.md](host-result-projection-agent-efficiency-execution-ledger.md) | 宿主结果投影与 Agent 使用效率优化的 canonical 中断恢复账本。 |
 
 ## 恢复顺序
 

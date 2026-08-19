@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -17,6 +17,15 @@ import { describeProjection } from "../scripts/zcode-promotion-lib.mjs";
 //     states the omitted-output=complete semantics.
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
+const routingVerifier = path.join(repoRoot, "test", "host-integration", "verify-skill-routing.mjs");
+const routingFixture = path.join(
+  repoRoot,
+  "test",
+  "host-integration",
+  "fixtures",
+  "skill-routing",
+  "cases.json",
+);
 const pluginRoot = path.join(repoRoot, "integrations", "zcode-plugin");
 const pluginPackageRoot = path.join(pluginRoot, "plugins", "xuanling-mcp");
 const skillPath = path.join(pluginPackageRoot, "skills", "xuanling-mcp-tools", "SKILL.md");
@@ -32,6 +41,35 @@ function runNode(args) {
     stdio: ["ignore", "pipe", "pipe"],
   });
 }
+
+test("current ZCode Skill satisfies the frozen routing contract", () => {
+  const result = spawnSync(
+    process.execPath,
+    [routingVerifier, "--fixture", routingFixture, "--host", "zcode"],
+    { encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.deepEqual(report.passed_case_ids, [
+    "repeated_validation_deterministic",
+    "existing_overwrite_cas",
+    "same_file_multi_hunk_patch",
+    "compound_extension_exact",
+    "project_local_l1_only",
+    "shared_l2_pull_then_pending",
+    "explicit_pointer_recall",
+    "no_match_or_unavailable_continues",
+  ]);
+  assert.deepEqual(report.missing_case_ids, []);
+  assert.equal(result.stderr, "");
+  assert.equal(report.measurement.unique_skill_files, 1);
+  assert.ok(report.measurement.total_skill_file_bytes > 0);
+  assert.ok(report.measurement.trigger_catalog_bytes > 0);
+  assert.match(report.measurement.trigger_catalog_sha256, /^[0-9a-f]{64}$/);
+  assert.equal(report.measurement.token_count, null);
+  assert.equal(report.measurement.token_count_status, "unknown_without_provider_tokenizer");
+  assert.equal(report.measurement.documents.length, 1);
+});
 
 test("plugin/npm/cargo/marketplace versions agree", () => {
   const marketplace = readJson("integrations/zcode-plugin/marketplace.json");
@@ -62,6 +100,11 @@ test(".mcp.json is the sole ZCode launch contract", () => {
   const launch = readJson("integrations/zcode-plugin/plugins/xuanling-mcp/.mcp.json");
   assert.equal(plugin.mcpServers, ".mcp.json", "plugin.json names the sole MCP component path");
   assert.deepEqual(launch.mcpServers?.xuanling?.command, "node");
+  assert.equal(
+    launch.mcpServers.xuanling.args[0],
+    "${ZCODE_PLUGIN_ROOT}/mcp-result-adapter.mjs",
+    "ZCode routes MCP results through the host projection adapter",
+  );
   assert.ok(
     launch.mcpServers.xuanling.args.includes(
       "${ZCODE_PLUGIN_ROOT}/bin/node_modules/@xuanling-rs/xuanling-mcp/bin/xuanling-mcp.js",
@@ -139,6 +182,10 @@ test("Skill states omitted-output=complete and direct-argv", () => {
   assert.match(skill, /omitted[^\n]{0,80}complete/i, "omitted -> complete semantics");
   assert.match(skill, /no shell/i, "direct argv / no shell contract");
   assert.match(skill, /idempotency_key/, "proposal/review memory usage");
+  assert.match(skill, /host file memory\s+\(L1\)/i, "project-local memory stays on the host");
+  assert.match(skill, /XuanLing L2/i, "shared memory routes to XuanLing");
+  assert.match(skill, /not a lightweight\s+manifest/i, "memory_search full-record cost is explicit");
+  assert.match(skill, /background\/job mechanism/i, "long-running work uses the host job surface");
 });
 
 test("ZCode runtime payload is generated outside the source integration", () => {
@@ -157,6 +204,15 @@ test("ZCode runtime payload is generated outside the source integration", () => 
       `${script} owns the generated marketplace contract`,
     );
   }
+});
+
+test("ZCode source ships the result projection adapter", () => {
+  const adapter = path.join(pluginPackageRoot, "mcp-result-adapter.mjs");
+  assert.equal(existsSync(adapter), true);
+  const source = readFileSync(adapter, "utf8");
+  assert.match(source, /projectZcodeCallResult/);
+  assert.match(source, /structuredContent/);
+  assert.match(source, /Result available in structuredContent/);
 });
 
 test("ZCode marketplace generation is deterministic and fails closed", async () => {
@@ -207,14 +263,14 @@ test("ZCode marketplace generation is deterministic and fails closed", async () 
         "npm/scripts/stage-zcode-marketplace.mjs",
         "--release-root", releaseRoot,
         "--out", root,
-        "--version", "0.2.3",
+        "--version", "0.2.4",
         "--commit", commit,
         "--require-release-trust",
       ]);
       runNode([
         "npm/scripts/verify-zcode-marketplace.mjs",
         "--root", root,
-        "--version", "0.2.3",
+        "--version", "0.2.4",
         "--commit", commit,
         "--require-release-trust",
       ]);
@@ -253,13 +309,13 @@ test("ZCode marketplace generation is deterministic and fails closed", async () 
       "npm/scripts/materialize-zcode-marketplace.mjs",
       "--artifact-root", transportedRoot,
       "--out", materializedRoot,
-      "--version", "0.2.3",
+      "--version", "0.2.4",
       "--commit", commit,
     ]);
     runNode([
       "npm/scripts/verify-zcode-marketplace.mjs",
       "--root", materializedRoot,
-      "--version", "0.2.3",
+      "--version", "0.2.4",
       "--commit", commit,
       "--require-release-trust",
     ]);
@@ -278,7 +334,7 @@ test("ZCode marketplace generation is deterministic and fails closed", async () 
       "npm/scripts/materialize-zcode-marketplace.mjs",
       "--artifact-root", tamperedTransport,
       "--out", path.join(tamperedTransport, "marketplace"),
-      "--version", "0.2.3",
+      "--version", "0.2.4",
       "--commit", commit,
     ]), "a transported archive with a mismatched digest must be rejected before extraction");
     assert.equal(existsSync(path.join(tamperedTransport, "marketplace")), false);
@@ -293,7 +349,7 @@ test("ZCode marketplace generation is deterministic and fails closed", async () 
       "npm/scripts/materialize-zcode-marketplace.mjs",
       "--artifact-root", extraTransport,
       "--out", path.join(extraTransport, "marketplace"),
-      "--version", "0.2.3",
+      "--version", "0.2.4",
       "--commit", commit,
     ]), "an extra transported artifact file must be rejected");
     assert.equal(existsSync(path.join(extraTransport, "marketplace")), false);
@@ -304,7 +360,7 @@ test("ZCode marketplace generation is deterministic and fails closed", async () 
     assert.throws(() => runNode([
       "npm/scripts/verify-zcode-marketplace.mjs",
       "--root", extraFileRoot,
-      "--version", "0.2.3",
+      "--version", "0.2.4",
       "--commit", commit,
     ]), "an extra release file must be rejected");
 
@@ -317,7 +373,7 @@ test("ZCode marketplace generation is deterministic and fails closed", async () 
     assert.throws(() => runNode([
       "npm/scripts/verify-zcode-marketplace.mjs",
       "--root", mutableRefRoot,
-      "--version", "0.2.3",
+      "--version", "0.2.4",
       "--commit", commit,
     ]), "a mutable marketplace source ref must be rejected");
   } finally {

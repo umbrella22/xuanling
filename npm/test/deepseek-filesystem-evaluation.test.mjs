@@ -615,7 +615,7 @@ test("the live runner collects synthetic sessions and snapshots each cache state
     "}",
     "const dir = path.join(process.env.DSH_HOME, 'sessions', 'synthetic');",
     "fs.mkdirSync(dir, { recursive: true });",
-    "const header = { type: 'session', version: 0, id: 'synthetic', createdAt: 0, cwd: process.env.XUANLING_TEST_WORKSPACE_ROOT, delegationDepth: 0 };",
+    "const header = { type: 'session', version: 0, id: 'synthetic', createdAt: 0, cwd: fs.realpathSync(process.env.XUANLING_TEST_WORKSPACE_ROOT), delegationDepth: 0 };",
     "fs.writeFileSync(path.join(dir, 'session.jsonl'), JSON.stringify(header) + '\\n');",
     "console.log('synthetic stdout');",
     "console.error('synthetic stderr');",

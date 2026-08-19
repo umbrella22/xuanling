@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "evidence_id": "synthetic-cost-missing-usage-v1",
+  "evidence_kind": "synthetic-negative",
+  "host": "deepseek-harness",
+  "host_version": "fixture-v1",
+  "catalog": {
+    "tools": [{"name": "fs_read_text"}],
+    "schema_tokens": {"value": 5, "source": "synthetic-provider-observed"},
+    "prefix_digests": [
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    ]
+  },
+  "trials": [
+    {
+      "trial_id": "task-b-cold",
+      "task_id": "task-b",
+      "phase": "cold",
+      "usage_candidates": [],
+      "tool_results": []
+    },
+    {
+      "trial_id": "task-b-warm",
+      "task_id": "task-b",
+      "phase": "warm",
+      "usage_candidates": [{"inputTokens": 10, "outputTokens": 1, "cacheReadTokens": 5, "cacheWriteTokens": 0}],
+      "tool_results": []
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 {
   "name": "@xuanling-rs/xuanling-dsh-memory",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Recommended DeepSeek Harness bundle: add the complete XuanLing Memory v2 profile while retaining DSH's native tools.",
   "license": "MIT",
   "private": false,
@@ -9,13 +9,14 @@
   },
   "dependencies": {
     "@deepseek-ai/dsh-mcp-client": "^0.1.0-rc.5",
-    "@xuanling-rs/xuanling-mcp": "0.2.3"
+    "@xuanling-rs/xuanling-mcp": "0.2.4"
   },
   "files": [
     "LICENSE",
     "README.md",
     "README-ZH.md",
     "cordis.patch.yml",
+    "mcp-result-adapter.mjs",
     "schema-adapter.mjs",
     "schema-projection.mjs"
   ],

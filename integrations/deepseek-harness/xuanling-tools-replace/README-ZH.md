@@ -7,11 +7,17 @@
 编排集成。
 
 ```sh
-dsh plugin --profile replace add @xuanling-rs/xuanling-dsh-tools-replace@0.2.3
+dsh plugin --profile replace add @xuanling-rs/xuanling-dsh-tools-replace@0.2.4
 ```
 
-精确版本的 `@xuanling-rs/xuanling-mcp@0.2.3` runtime 会安装在 profile 内，并通过带校验的 JS launcher
+精确版本的 `@xuanling-rs/xuanling-mcp@0.2.4` runtime 会安装在 profile 内，并通过带校验的 JS launcher
 启动；不会使用全局 npm package。
+
+该 bundle 的 result adapter 保留一个完整 Native 文本投影，只删除与 `structuredContent` 完全重复
+的意外文本块；structured value 仍可供 Code Mode 与校验使用。
+
+Adapter 只接受子进程 JSON object frame。输出 malformed 或子进程正常退出时仍有未结算 request 会以非零状态
+结束；Host 终止信号会被转发，子进程未在 500 ms grace 内退出时会被强制终止。
 
 该变体会从模型可见的文件系统表面移除原生 `read_image`、先读后改 observation guard 和 editor
 card，改用 XuanLing SHA-256 前置条件与严格 patch 合同。只有明确接受这一取舍时才应使用，且

@@ -6,7 +6,10 @@
 # catalog. The complete memory profile is intentional: proposals, review,
 # replacement, archival, feedback, and read/search remain one coherent API.
 #
-# Production uses XuanLing's shared default memory database.
+# Production uses XuanLing's shared default memory database. schema-adapter.mjs
+# also applies the DSH result projection: duplicate text blocks that repeat
+# structuredContent are reduced to one complete block without removing the
+# structured value.
 
 - insert:
     - id: xuanling-tools

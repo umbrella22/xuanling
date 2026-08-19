@@ -1,12 +1,15 @@
 ---
 name: xuanling-file-workflow
-description: Guides DeepSeek Harness agents in choosing between the harness-native file tools (read, write, edit, grep, glob) and the XuanLing mcp__xuanling__fs_ tool family mounted over MCP. Use whenever a task involves searching, reading, creating, or precisely editing files, whenever an edit must be guarded by a sha256 preimage or a reversible changeset, or whenever large tool outputs need an explicit byte budget and continuation.
+description: Guides DeepSeek Harness agents in choosing between harness-native file tools and a visible XuanLing mcp__xuanling__fs_ family. Use when both families are available and file work needs sha256/CAS guards, strict patches, complete pagination, explicit byte budgets, compound-suffix search, or deterministic repeated validation.
 ---
 
 # XuanLing File Workflow
 
 This workspace exposes two file-tool families. Pick one deliberately for each
 operation; both are first-class, and neither is a fallback for the other.
+Apply this workflow only when the named `mcp__xuanling__fs_*` tools are
+visible. A memory-only bundle does not provide file or process tools; keep
+using the native family there instead of inferring unavailable tools.
 
 ## Families
 
@@ -34,6 +37,9 @@ operation; both are first-class, and neither is a fallback for the other.
    - **Strict edits**: apply a verified unified diff with
      `mcp__xuanling__fs_patch` (preimage-hash guarded), or a unique-match
      replacement with `mcp__xuanling__fs_edit` / `mcp__xuanling__fs_replace_text`.
+     For one file with multiple hunks, prefer `mcp__xuanling__fs_patch` in a
+     single atomic call with the full preimage hash; do not split the change
+     into independently committed edits or invent another batch tool.
    - **Full pagination**: list or search with a bounded window and page
      through every remaining entry with the typed cursor.
    - **Whole-file creation or replacement**: use `mode: "create"` for a new
@@ -53,8 +59,23 @@ operation; both are first-class, and neither is a fallback for the other.
   a boolean, not a string. There is no `query` field.
 - `mcp__xuanling__fs_glob` takes `patterns` (plural array); `*.mjs` matches
   one level only, use `**/*.mjs` to recurse.
+- `mcp__xuanling__fs_search.file_extensions` uses exact simple or compound
+  suffixes. Pass `d.ts` and `d.mts` directly (and simple values such as
+  `java` or `.c`); never reduce a compound suffix to its last `ts` or `mts`
+  segment, which would broaden the search.
 - The `output` selector of any window-capable tool is a tagged object such as
   `{"mode":"bounded","max_bytes":65536}` — never a number or a bare string.
+
+## Verification
+
+For repeated validation with the same argv through `mcp__xuanling__process_run`,
+`mcp__xuanling__project_run`, or `mcp__xuanling__process_pipeline`, pass
+`deterministic: true`. This omits volatile duration fields so results can be
+byte-stable; it does not cache or skip command execution.
+
+For a long build, test suite, or watch process that may exceed the MCP call
+deadline, use the Harness-native background/job mechanism. Do not fabricate
+timeouts, sleep loops, or shell wrappers around a synchronous XuanLing call.
 
 ## Failure handling
 

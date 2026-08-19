@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "fixture_id": "dsh-47f94385-canonical-xuanling-result",
+  "host": "deepseek-harness",
+  "host_version": "47f943859bef60e4160492346772ded9b24f765a",
+  "source_contract": {
+    "native_render": "content-only",
+    "code_mode": "structuredContent-preserved"
+  },
+  "projection_mode": "dsh_native_content",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"answer\":42,\"nested\":{\"ok\":true}}"
+      }
+    ],
+    "structuredContent": {
+      "answer": 42,
+      "nested": {
+        "ok": true
+      }
+    },
+    "isError": false
+  }
+}

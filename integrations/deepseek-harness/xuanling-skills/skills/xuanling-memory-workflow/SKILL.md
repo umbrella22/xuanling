@@ -1,12 +1,27 @@
 ---
 name: xuanling-memory-workflow
-description: Guides DeepSeek Harness agents through the XuanLing shared lexical memory lifecycle. Use when the agent finds a fact, preference, procedure, solution, or summary worth keeping across sessions, when preparing a memory candidate, or when the user asks to approve, reject, replace, or recall a stored memory. Enforces the proposal and review boundary — candidates are created pending, and only an explicit user decision completes a review.
+description: Guides DeepSeek Harness agents in routing host file memory (L1) and XuanLing shared lexical memory (L2). Use when recalling an explicit memory pointer, retaining a cross-project fact, preparing a pending candidate, or handling an explicit user review decision. Enforces single-write storage and separate proposal/review turns.
 ---
 
 # XuanLing Memory Workflow
 
 XuanLing memory is proposal-first: nothing you write becomes a canonical
 record until a human decides on the proposal. Two separate turns, always.
+
+## Choose one memory layer
+
+For a project-local must-see convention that belongs in every session, write
+only the host file memory (L1). Make zero XuanLing write and do not create a
+candidate for the same content.
+
+For a cross-project, team-level, or shared fact that the user wants retained
+in XuanLing L2, call `memory_search` first. If the fact is absent or has no
+match, call `memory_candidate_create` to create a pending candidate; only a
+later explicit user review can make it canonical.
+
+At task begin or after a topic switch, follow an explicit L1 memory pointer by
+issuing one scoped `memory_search`. This is a pull trigger, not an instruction
+to search on every turn.
 
 ## Before writing anything
 
@@ -15,6 +30,10 @@ record until a human decides on the proposal. Two separate turns, always.
 2. Read the exact current content with `memory_get` when a hit looks close.
    Updating means a replace proposal against that record's current revision,
    not a second create.
+
+`memory_search` returns complete active `MemoryRecordView` values inside its
+ranked items, not a lightweight manifest. Keep the first query scoped and
+small, then use `memory_get` only when an exact current record is required.
 
 ## Creating a candidate
 
@@ -46,6 +65,9 @@ record until a human decides on the proposal. Two separate turns, always.
 
 ## When not to write
 
+- If recall has no match or the store is unavailable during ordinary work,
+  continue the main task and make zero canonical write. Do not invent a fact
+  or treat a partial candidate as a fallback result.
 - Parse failures, model hiccups, tool errors, or an unavailable store mean
   you skip the write entirely. Do not create partial or best-effort
   candidates to compensate; just continue the user's task and mention the

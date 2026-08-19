@@ -12,7 +12,7 @@
 ```yaml
 schema_version: 1
 plan_id: "host-result-projection-agent-efficiency-20260818"
-updated_at: "2026-08-20T02:08:54+08:00"
+updated_at: "2026-08-20T02:28:00+08:00"
 plan_status: "executing"
 live_authorization:
   authorized_at: "2026-08-18T21:08:03+08:00"
@@ -54,7 +54,7 @@ live_authorization:
     - "Rust changes outside the authorized B-WIN-01 capability-path repair"
 checkout:
   revision: "9a08f33a2582e4a6c61d0eceb3bfb6f3657ef13f"
-  current_revision: "039a1edf549b4570e9954a347faa451514fb8cec"
+  current_revision: "4dd7343bc3718a8336a9754c8d134e522db1e6cf"
   branch: "main"
   status_sha256_before_plan_files: "bccdd9d5831df44879c3391d1cf6933e9faab1590f8358e077fc082b8a2df3b4"
   relevant_diff_sha256: "ac1b669c0459cf8e2fc119c2ae7deafb5e37a56a83ab6819a1dc29854bfd06fa"
@@ -117,6 +117,7 @@ checkout:
   user_staged_name_sha256_w5_b_win_followup3: "b580b997e4d8e3feb2e89bd14536cdde53613c2d5ccf94bd323ece8d3b252e47"
   user_staged_index_manifest_sha256_w5_b_win_followup3: "49c37a613d34ec33667ebeb46c9c0dfc49d6ff9bae395f8a861f8e38d765822f"
   status_sha256_w5_0_complete_pre_ledger: "22cc353d33a863ea6520458b805cd844d9a73a55e8815a3bf8ca2f26c9678e7f"
+  status_sha256_w5_0_pushed_pre_w5_1: "22cc353d33a863ea6520458b805cd844d9a73a55e8815a3bf8ca2f26c9678e7f"
   status_sha256_method: "sha256(git status --short --untracked-files=all stdout, with trailing newline)"
   notes:
     - "Current result adapters, package manifests, READMEs, ADR text, and Node contracts are dirty implemented_unverified inputs; they are not released evidence."
@@ -242,7 +243,8 @@ work_package_states:
   W4.4: "complete"
   W4.5: "complete"
   W5.0: "complete: commit 039a1ed and portability run 32284102425 are fully green across required three-platform, Windows protocol, dependency, smoke, and workspace gates"
-  W5.1: "not_started: refresh all eight 0.2.4 registry absence checks, then freeze source versions and release metadata"
+  W5.1: "complete: all eight exact 0.2.4 registry checks are E404; source/release manifests and current README references are frozen at 0.2.4; version/package and 88-test release projection gates pass"
+  W5.2: "not_started: build and verify eight npm tarballs from one candidate source commit"
 primary_evidence:
   W4_status: "complete"
   W4.2_zcode_projection: "complete: three isolated candidate trials, one model-visible projection per trial, accepted host 3.7.7"
@@ -257,8 +259,8 @@ primary_evidence:
   W4.4_acceptance_basis: "maintainer waiver plus current-revision primary-agent collector 12/12 and independent oracle 12/12"
   W4.5_layered_cost: "complete with exact schema tokenizer explicitly unavailable"
   W5.0_windows_portability_repair: "complete: commit 039a1ed and portability run 32284102425 passed all required jobs; Windows MCP path assertion now uses OS path components without changing fs_search output."
-last_completed_action: "Verified portability run 32284102425 success on commit 039a1ed; all W5.0 required platform, protocol, dependency, smoke, workspace, and local isolation gates are green."
-next_action: "Recheck that all eight exact 0.2.4 registry items remain absent, then begin W5.1 version freeze without changing user-owned staged or untracked paths."
+last_completed_action: "Completed W5.1: all eight exact 0.2.4 registry items remain absent; source and release-facing manifests are aligned at 0.2.4; version/package, ZCode/DSH/release tests 88/88, docs, and diff gates pass."
+next_action: "Create the candidate source commit from the current worktree while excluding AGENTS.md, plan.md, the preserved self-referential symlink, and other protected user paths; then build the eight W5.2 npm artifacts from that commit."
 required_gates:
   - "W0 checkout/release/host baseline and old-ledger reconciliation"
   - "W1 correct result/Skill/cost red oracles"
@@ -470,6 +472,12 @@ blockers:
     condition: "Commit, push, tag, npm publish, and target promotion are external side effects not authorized by plan generation."
     release: "Obtain exact candidate commit/tag authorization after W5 completes."
 evidence:
+  - command: "git push origin HEAD:main; npm view <each of the eight release package names>@0.2.4 version --json --registry https://registry.npmjs.org; node manifest version inventory"
+    result: "Evidence commit 4dd7343bc3718a8336a9754c8d134e522db1e6cf is present on origin/main. All eight exact 0.2.4 registry lookups returned E404: the core launcher, three native variants, and four DSH bundles are all available for immutable release. Cargo workspace, npm release package, core package, and four DSH package manifests remain at 0.2.3 before W5.1 edits."
+    recorded_at: "2026-08-20T02:18:00+08:00"
+  - command: "XUANLING_VERSION=0.2.4 npm --prefix npm run check; node --test npm/test/zcode-plugin-contract.test.mjs npm/test/deepseek-harness-bundle.test.mjs npm/test/deepseek-harness-skills.test.mjs npm/test/release-distribution-contract.test.mjs npm/test/mcp-result-projection.test.mjs; npm --prefix npm run check:docs; git diff --check"
+    result: "W5.1 version/package gate passed: Cargo/npm version and MIT license contract OK at 0.2.4; ZCode, DSH bundle/Skills, release-distribution, and result-projection tests passed 88/88; check-docs passed for 94 Markdown files; git diff --check passed. Historical 0.2.3 projection fixtures and third-party Cargo.lock versions remain unchanged by design."
+    recorded_at: "2026-08-20T02:28:00+08:00"
   - command: "gh run view 32284102425 --repo umbrella22/xuanling --json status,conclusion,name,headSha,jobs"
     result: "Portability run 32284102425 completed successfully at commit 039a1edf549b4570e9954a347faa451514fb8cec. Linux, macOS, and Windows base jobs passed; Windows executed toolkit 114/114, Memory 40/40, experimental Memory 43/43, MCP protocol 110/110, golden 21/21, and dependency island gates. Three-platform release binary smoke and workspace full gate also passed. B-WIN-01, B-WIN-EOL-01, and B-WIN-MCP-TEST-PATH-01 are resolved; W5.0 is complete."
     recorded_at: "2026-08-20T02:08:54+08:00"
@@ -711,13 +719,13 @@ EXECUTION_STATUS: HANDOFF_REQUIRED
 PLAN_ID: host-result-projection-agent-efficiency-20260818
 CHECKOUT_FINGERPRINT: revision 039a1edf549b4570e9954a347faa451514fb8cec on origin/main; W5.0 completion evidence update unstaged; current DSH revision 99f6f02fecdb7dff40c3fbc9470f5907c29f74ca and status 39d1f6c6...; user staged set 27 paths, index manifest 49c37a61...
 CURRENT_WAVE: W5
-CURRENT_WORK_PACKAGE: W5.1
+CURRENT_WORK_PACKAGE: W5.2
 WAVE_STATE: implemented_unverified
-CONTRACTS_PROVEN: prior W0-W4 unchanged; W5.0 complete at commit 039a1ed with portability run 32284102425 fully green across three platforms, Windows protocol/dependency gates, binary smoke, and workspace aggregate
-EVIDENCE_ADDED: portability run 32284102425 success; B-WIN-01, B-WIN-EOL-01, and B-WIN-MCP-TEST-PATH-01 resolved; protected staged set, default Memory DB, and DSH checkout unchanged
-FAILED_GATES: none current for W5.0; source checkout npm 145/149 remains an attributed setup failure caused by the preserved user-owned self-referential skills symlink, with symlink-free copy 149/149
-NOT_RUN_GATES: W5.1 fresh eight-item registry recheck and source version freeze; W5.2-W5.5 release-candidate artifacts/CI/preflight; W6 tag/publish/promotion
+CONTRACTS_PROVEN: prior W0-W4 unchanged; W5.0 complete at commit 039a1ed with portability run 32284102425 fully green across three platforms, Windows protocol/dependency gates, binary smoke, and workspace aggregate; W5.1 version/package gates complete at 0.2.4 with eight registry E404 checks and 88/88 targeted tests
+EVIDENCE_ADDED: W5.1 eight-item registry absence, aligned Cargo/npm/DSH/ZCode manifests and README references, version/package/release projection tests 88/88, docs 94, diff check; protected staged set, default Memory DB, and DSH checkout unchanged
+FAILED_GATES: none current for W5.0/W5.1; source checkout full npm remains an attributed setup failure caused by the preserved user-owned self-referential skills symlink, with symlink-free copy previously 149/149
+NOT_RUN_GATES: candidate source commit containing current W5.1 bytes; W5.2 eight npm artifacts; W5.3 ZCode archive; W5.4 required release CI; W5.5 no-side-effect preflight; W6 tag/publish/promotion
 BLOCKERS: B-ZCODE-DEFAULT-SIDECAR-01 requires future isolated restart/no-residue evidence; B-RELEASE-01 blocks W6 external side effects
-NEXT_EXACT_ACTION: recheck all eight exact 0.2.4 registry items, then freeze source versions and release metadata without touching the protected staged or untracked paths
+NEXT_EXACT_ACTION: create and push the candidate source commit from the current worktree through an isolated index preserving protected user paths, then build and verify the eight W5.2 npm artifacts from that commit
 LEDGER_PATH: docs/plans/host-result-projection-agent-efficiency-execution-ledger.md
 ```

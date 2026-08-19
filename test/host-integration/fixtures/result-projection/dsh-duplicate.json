@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "fixture_id": "dsh-synthetic-duplicate-xuanling-result",
+  "host": "deepseek-harness",
+  "host_version": "synthetic-contract-fixture",
+  "source_contract": {
+    "native_render": "content-only",
+    "code_mode": "structuredContent-preserved"
+  },
+  "projection_mode": "dsh_native_content",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"answer\":42,\"nested\":{\"ok\":true}}"
+      },
+      {
+        "type": "text",
+        "text": "{\n  \"answer\": 42,\n  \"nested\": {\n    \"ok\": true\n  }\n}"
+      }
+    ],
+    "structuredContent": {
+      "answer": 42,
+      "nested": {
+        "ok": true
+      }
+    },
+    "isError": false
+  }
+}

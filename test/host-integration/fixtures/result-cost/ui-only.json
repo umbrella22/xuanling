@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "evidence_id": "synthetic-cost-ui-only-v1",
+  "evidence_kind": "synthetic-negative",
+  "host": "zcode",
+  "host_version": "fixture-v1",
+  "catalog": {
+    "tools": [{"name": "fs_read_text"}],
+    "schema_tokens": {"value": 5, "source": "synthetic-provider-observed"},
+    "prefix_digests": [
+      "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    ]
+  },
+  "trials": [
+    {
+      "trial_id": "task-d-cold",
+      "task_id": "task-d",
+      "phase": "cold",
+      "usage_candidates": [{"inputTokens": 20, "outputTokens": 2, "cacheReadTokens": 0, "cacheWriteTokens": 10}],
+      "tool_results": [
+        {
+          "call_id": "ui-only-call",
+          "tool_name": "fs_read_text",
+          "retry_of": null,
+          "ui_text": "Structured content appears twice in this card"
+        }
+      ]
+    },
+    {
+      "trial_id": "task-d-warm",
+      "task_id": "task-d",
+      "phase": "warm",
+      "usage_candidates": [{"inputTokens": 10, "outputTokens": 1, "cacheReadTokens": 10, "cacheWriteTokens": 0}],
+      "tool_results": []
+    }
+  ]
+}

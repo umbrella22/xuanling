@@ -1018,6 +1018,12 @@ not_started -> red_confirmed -> implemented_unverified -> deterministic_green ->
 > 执行并通过。`B-WIN-01`、`B-WIN-EOL-01` 与 `B-WIN-MCP-TEST-PATH-01` 均解除，W5.1
 > 版本冻结与 registry 复查现已解锁。该证据不授权 tag、npm publish 或 ZCode promotion。
 
+> W5.1 完成（2026-08-20）：八个精确的 `0.2.4` registry 查询均返回 E404；Cargo workspace、
+> Cargo.lock 中三个 XuanLing workspace package、npm release/core package、四个 DSH bundle、
+> ZCode marketplace/template 与发布 README 已统一到 `0.2.4`。版本合同、ZCode/DSH/release
+> 定向测试 `88/88`、docs `94` 与 diff gate 全绿。候选 source commit 尚未冻结发布制品，下一步
+> 为 W5.2 构建并验证八个 npm tarball；tag、npm publish 与 ZCode promotion 仍不在本 Wave。
+
 ### 验证命令
 
 | Command | Provenance | Expected result | Required/conditional |

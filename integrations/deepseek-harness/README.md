@@ -12,19 +12,20 @@ workflow Skills, and overwrite policy remain outside the Rust MCP contract.
 Install the Memory and Skills bundles into the target DSH profile:
 
 ```sh
-dsh plugin --profile demo add @xuanling-rs/xuanling-dsh-memory@0.2.3
-dsh plugin --profile demo add @xuanling-rs/xuanling-dsh-skills@0.2.3
+dsh plugin --profile demo add @xuanling-rs/xuanling-dsh-memory@0.2.4
+dsh plugin --profile demo add @xuanling-rs/xuanling-dsh-skills@0.2.4
 dsh --profile demo --dump-config
 dsh --profile demo
 ```
 
-The Memory bundle installs the exact `@xuanling-rs/xuanling-mcp@0.2.3` launcher and native
+The Memory bundle installs the exact `@xuanling-rs/xuanling-mcp@0.2.4` launcher and native
 optional dependency inside the profile. No global npm package, `npx`, or
 install-time binary download is used.
 
 The recommended combination adds the complete nine-tool Memory v2 lifecycle,
-retains all Harness-native tools, loads two on-demand workflow Skills, and
-rejects unsafe XuanLing whole-file overwrites before MCP dispatch.
+retains all Harness-native tools, and loads two on-demand workflow Skills. The
+Memory Skill is active in this profile; the File Skill applies only when a
+separate tools bundle makes the XuanLing fs family visible.
 
 ## Bundles
 
@@ -52,9 +53,10 @@ Bundle expressions resolve these values when DSH starts:
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| MCP runtime | Profile-local `@xuanling-rs/xuanling-mcp@0.2.3` | Verified JS launcher and native optional dependency |
+| MCP runtime | Profile-local `@xuanling-rs/xuanling-mcp@0.2.4` | Verified JS launcher and native optional dependency |
 | `XUANLING_WORKSPACE_ROOT` | DSH process working directory | XuanLing filesystem capability root |
 | Schema adapter | Installed `xuanling-dsh-memory/schema-adapter.mjs` | Projects discovery schemas for DSH |
+| Result adapter | Installed bundle-local `mcp-result-adapter.mjs` (memory is composed into the schema adapter) | Removes only duplicate equivalent text blocks |
 | MCP tool profile | `memory` in the recommended bundle | Server-side discovery and dispatch selection |
 | Tool-call timeout | 120 seconds | Budget applied by the Harness MCP bridge |
 
@@ -83,17 +85,38 @@ the official bridge and `xuanling-mcp`:
 The adapter does not create a second Memory protocol and never rewrites model
 arguments after tool selection.
 
+## Result Projection
+
+The MCP wire contract intentionally retains both `content` and
+`structuredContent`. DSH uses text blocks once for Native model rendering and
+keeps the structured value for Code Mode and output validation. The integration
+adapter removes only accidental duplicate text blocks that are an exact JSON
+representation of the same structured value; it never replaces the single
+complete text projection with a marker.
+
+The adapter accepts only JSON object frames from the child process. Malformed
+stdout, a non-object frame, or a clean exit with an unresolved request produces
+a nonzero adapter exit and no invalid frame. Host termination is forwarded to
+the child; a 500 ms grace is followed by forced termination when the child does
+not exit.
+
 ## Workflow Skills
 
 `xuanling-skills` mounts an isolated static Skill provider with two on-demand
 Skills:
 
-- `xuanling-file-workflow` prefers Harness-native tools for ordinary reads and
-  small edits. It selects XuanLing tools for hash/CAS protection, explicit byte
-  budgets, resumable reads, strict unified diffs, and complete pagination.
-- `xuanling-memory-workflow` searches before proposing a write, leaves every
-  candidate pending, and calls `memory_review` only after an explicit user
-  decision identifies the proposal.
+- `xuanling-file-workflow` applies only when XuanLing fs tools are visible. It
+  prefers Harness-native tools for ordinary reads and small edits, then selects
+  XuanLing for hash/CAS protection, exact compound-suffix search, explicit byte
+  budgets, complete pagination, and one atomic `fs_patch` for same-file
+  multi-hunk edits. Repeated short validations with the same argv use
+  `deterministic: true`; long jobs use the Harness background/job surface.
+- `xuanling-memory-workflow` uses a single-write L1/L2 split: project-local,
+  every-session facts stay in host file memory; cross-project shared facts use
+  XuanLing. An explicit L1 pointer triggers one scoped pull at task start or a
+  topic switch, not every turn. `memory_search` returns full active records,
+  not a lightweight manifest. New candidates remain pending, and
+  `memory_review` requires an explicit user decision for that proposal.
 
 The strict overwrite policy rejects
 `mcp__xuanling__fs_write_text` overwrite requests without a non-empty
@@ -107,6 +130,6 @@ server unchanged. The policy applies to Native and Code Mode dispatch.
   and an OS sandbox when hostile execution is possible.
 - DSH-specific schema projection and policy do not weaken canonical MCP
   validation.
-- MCP results may carry both text and structured representations because the
-  official bridge serves Native and Code Mode consumers. This integration
-  preserves both representations.
+- MCP results retain both text and structured representations. The integration
+  adapter de-duplicates repeated identical text projections at the DSH boundary
+  while preserving the structured value for Code Mode and validation.

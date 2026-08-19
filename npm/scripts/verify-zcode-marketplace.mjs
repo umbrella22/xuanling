@@ -71,7 +71,7 @@ assert.deepEqual(
 const pluginRoot = path.join(root, "plugins", "xuanling-mcp");
 assert.deepEqual(
   (await readdir(pluginRoot)).sort(),
-  [".mcp.json", ".zcode-plugin", "LICENSE", "README-ZH.md", "README.md", "bin", "skills"],
+  [".mcp.json", ".zcode-plugin", "LICENSE", "README-ZH.md", "README.md", "bin", "mcp-result-adapter.mjs", "skills"],
   "plugin tree contains only runtime components",
 );
 
@@ -94,6 +94,10 @@ const mcp = await readJson(path.join(pluginRoot, ".mcp.json"));
 assert.deepEqual(mcp.mcpServers?.xuanling, {
   command: "node",
   args: [
+    "${ZCODE_PLUGIN_ROOT}/mcp-result-adapter.mjs",
+    "--binary",
+    "node",
+    "--",
     "${ZCODE_PLUGIN_ROOT}/bin/node_modules/@xuanling-rs/xuanling-mcp/bin/xuanling-mcp.js",
     "--workspace-root",
     "${ZCODE_PROJECT_DIR}",

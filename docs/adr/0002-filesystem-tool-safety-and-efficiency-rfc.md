@@ -38,7 +38,8 @@ XuanLing 文件工具已经提供原子替换、精确文本匹配、统一 diff
 | `fs_edit` 默认唯一匹配，多匹配与零匹配均不写入 | `CONFIRMED` | `FsEditRequest` 与 `fs_edit` 分支 | 错误心智模型通常 fail loud，但不能替代 observation/CAS |
 | `fs_read_text(include_sha256=true)` 与 `fs_hash` 已可取得 CAS 输入 | `CONFIRMED` | 当前 toolkit DTO 与 MCP fs16 profile | 安全覆盖不依赖扩展 `fs_stat` |
 | `--tool-profile fs` 仍会初始化 MemoryStore | `CONFIRMED` | `crates/xuanling-mcp/src/main.rs` 在 profile 选择后仍无条件 `MemoryStore::open` | DSH 的 fs-only 自动化若省略 `--memory-db` 会触碰默认库；host 必须显式注入隔离路径 |
-| process 结果在 MCP `content` 与 `structuredContent` 的重复会让模型支付双份 token | `UNVERIFIED_RISK` | wire/bridge 可观察到两种表示；尚无 provider request 或 session token 归因 | 先测量 host 投影，不直接删除协议表示 |
+| ZCode 模型侧把 MCP `content` 与 `structuredContent` 同义文本各注入一次 | `CONFIRMED` | 本机 ZCode `formatMcpToolResult` 源码与 JSONL adapter contract test | 在 ZCode integration 做结果投影，Rust 双表示保持不变 |
+| DSH Native provider 因 MCP 双表示支付双份 token | `UNVERIFIED_RISK` | 当前 DSH Native `render` 只消费 `content`；尚无真实 provider token 对照 | 保留完整 content，adapter 只去重重复 text block，并继续测量 |
 | 大型文件读/列举自动落 artifact 能稳定降低上下文开销 | `UNVERIFIED_RISK` | process 已有 artifact；fs16 没有 artifact 工具和相同生命周期合同 | 涉及 profile、授权、保留和清理边界 |
 | 新增 `fs_edit_batch` 能提供当前缺失的单文件原子性 | `DEFERRED` | 当前 `fs_patch` 已支持多 hunk 并一次写入 | 新工具会扩大目录和维护重复能力 |
 
@@ -97,6 +98,21 @@ process 输出优化必须先记录以下证据：
 证据确认重复后，优先在 host adapter 或 bridge 的 consumer projection 层选择一种模型表示，
 同时保留结构化运行时结果。服务端不先行删除 `content` 或 `structuredContent`，因为这会改变
 所有 MCP host 的兼容合同。
+
+本合同已按 host 实现落地（2026-08-18）：
+
+- ZCode 的 `formatMcpToolResult` 会把 `structuredContent` 追加到模型文本；因此
+  `integrations/zcode-plugin` 的 result adapter 只移除与 structured value 完全相同的 JSON
+  text block，并保留至少一个稳定 text block，避免 ZCode 的 content fallback 再次补入 JSON。
+- DSH 的 Native render 只消费 `content`，而 Code Mode/输出校验消费
+  `structuredContent`。`integrations/deepseek-harness` 的 adapter 只收敛重复的同义 text block，
+  保留一份完整文本，不使用 ZCode marker。
+- 两个 adapter 都保留 `structuredContent`、`isError`、`_meta` 和响应 id；Rust 的
+  `CallToolResult`、schema、snapshot 与 wire 合同不变。
+
+因此“ZCode 模型侧重复”是 `CONFIRMED`；“DSH Native provider token 重复”在当前源码路径中
+没有证据，仍按 `UNVERIFIED_RISK` 处理。DSH 的无损去重是防止 bridge 重复生成文本块的边界
+保护，不是把两种 canonical 表示合并成一种。
 
 ### 5. diff 预算与 filesystem artifact 暂缓
 

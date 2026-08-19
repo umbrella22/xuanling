@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "evidence_id": "dsh-native-filesystem-live-99f6f02-w4-c1",
+  "evidence_kind": "live-isolated",
+  "host": "deepseek-harness-native",
+  "host_revision": "99f6f02fecdb7dff40c3fbc9470f5907c29f74ca",
+  "route": {
+    "provider": "deepseek-official",
+    "model": "deepseek-v4-pro",
+    "reasoning_effort": "max"
+  },
+  "run_id": "w4-20260818-fs-c1",
+  "trial_shape": {
+    "arms": ["A", "B", "C"],
+    "quality_runs_per_arm": 3,
+    "cache_pairs_per_arm": 1,
+    "total_trials": 15
+  },
+  "results": {
+    "runner_exit": 0,
+    "complete_sessions": "15/15",
+    "fixture_oracle": "15/15",
+    "route_valid": "15/15",
+    "usage_known": "15/15",
+    "secret_redactions": 0,
+    "shell_calls": 0,
+    "cache_read_share": 0.9124
+  },
+  "arms": {
+    "A": {
+      "trials": 5,
+      "tool_calls": {"native_fs": 79, "xuanling_fs": 0, "skill": 0, "control": 4, "shell": 0},
+      "tool_result_errors": 0,
+      "route_valid": "5/5",
+      "oracle_passed": "5/5"
+    },
+    "B": {
+      "trials": 5,
+      "tool_calls": {"native_fs": 0, "xuanling_fs": 96, "skill": 2, "control": 8, "shell": 0},
+      "tool_result_errors": 1,
+      "error_codes": {"XUANLING_FS_OVERWRITE_REQUIRES_SHA256": 1},
+      "retry_after_error": 1,
+      "route_valid": "5/5",
+      "oracle_passed": "5/5"
+    },
+    "C": {
+      "trials": 5,
+      "tool_calls": {"native_fs": 61, "xuanling_fs": 35, "skill": 3, "control": 8, "shell": 0},
+      "tool_result_errors": 0,
+      "route_valid": "5/5",
+      "oracle_passed": "5/5"
+    }
+  },
+  "isolation": {
+    "evaluation_copy": "/private/tmp/xuanling-dsh-fs-current.tk1xT8",
+    "evaluation_root": "/var/folders/3c/bxhhfjtx4mvcfvw1br4843qr0000gn/T/xuanling-dsh-fs-eval.w4-20260818-fs-c1",
+    "analysis_sha256": "e323bd36744b1d2e6f971fa06448350adfb84ddf871e64d76ea3a89b9e90319c",
+    "independent_oracle_sha256": "101c445c3cfe4bde42576ccd2fa03a5c61a314ba605280a8c5cbc5f592fa0bc9",
+    "run_summary_sha256": "482e8522b38aeb5ee8c0fc183949ffa19b41f0779dfcb9354f6b124818138b85",
+    "credential_source": "owner-only external file reference; value not read or hashed",
+    "default_memory_db_sha256_after": "4c10be200e4984c07927b485b6660ccf7a8787f66f006019028c5de48e489c74",
+    "repository_root_memory_db_files": 0,
+    "residual_dsh_processes": 0
+  },
+  "interpretation": {
+    "native_arm": "A used native filesystem tools only.",
+    "xuanling_arm": "B used XuanLing filesystem tools only; one strict overwrite precondition was corrected by a successful retry.",
+    "combined_arm": "C used both tool families and completed the fixture without an error.",
+    "cost_boundary": "Provider usage and cache-read share are measured. This fixture does not infer schema tokenization or provider billing from UI text."
+  }
+}

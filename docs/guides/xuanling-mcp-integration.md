@@ -91,6 +91,28 @@ for install variants and the name-mapping table. Repository acceptance uses
 [`verify-deepseek-bridge.mjs`](../../test/deepseek-harness/scripts/verify-deepseek-bridge.mjs)
 for live wire-contract checks.
 
+### Host result projection
+
+The Rust MCP result contract intentionally keeps both `content` and
+`structuredContent`. Host integrations own the model-facing projection:
+
+- ZCode appends `structuredContent` to its model text. The ZCode plugin adapter
+  removes only an equivalent JSON text block and leaves a stable text marker,
+  so the structured value is appended exactly once.
+- DSH Native rendering consumes `content` once, while Code Mode and output
+  validation consume `structuredContent`. Its integration adapter removes only
+  repeated equivalent text blocks and keeps one complete text projection.
+
+Neither adapter changes tool arguments or the Rust wire DTO. A host that does
+not use either integration receives the original dual representation.
+
+Both adapters validate each child stdout line as one JSON object. A malformed or
+non-object line terminates the adapter with a nonzero status without forwarding
+the invalid frame. A clean child exit with an unresolved `tools/call` (or
+`tools/list` in the schema adapter) is also a failure. Host termination signals
+are forwarded to the child; a child that does not exit within the 500 ms adapter
+grace is force-terminated, and the adapter exits nonzero.
+
 ## Process execution semantics
 
 `process_run`/`process_pipeline`/`session_exec` take explicit argv (`program` + `args[]`);
@@ -109,6 +131,24 @@ RRF-merged), so it works for CJK without downloading an embedding model. See
 [ADR 0001](../adr/0001-memory-v2-proposal-review.md) for the ownership and lifecycle
 contract.
 
+## Agent workflow guidance
+
+Host integrations keep routine small reads and edits on native file tools when
+their observation guard and UI are valuable. Route to XuanLing for explicit
+byte budgets, complete pagination, exact simple/compound suffix filters,
+hash/CAS overwrite, or a single atomic `fs_patch` spanning multiple hunks in
+one file. Use `deterministic=true` for repeated short validation with identical
+argv; use the host's background/job facility for work that may exceed the MCP
+call deadline.
+
+When the host also injects project file memory, treat it as L1 and XuanLing as
+review-gated L2. Keep project-local, every-session facts only in L1. Search L2
+for cross-project shared facts and create a pending candidate only when an
+absent fact should be retained. An explicit L1 pointer triggers one scoped
+search at task start or a topic switch, not every turn. `memory_search` returns
+full active `MemoryRecordView` values, not a lightweight manifest; no-match or
+store-unavailable paths continue the main task without a canonical write.
+
 ## Repository verification commands
 
 ```sh
@@ -121,6 +161,7 @@ cargo test -p xuanling-mcp --test golden
 npm --prefix npm run check
 npm --prefix npm test
 node npm/scripts/smoke-mcp.mjs --binary target/release/xuanling-mcp
+node test/host-integration/verify-adapter-real-binary.mjs --binary target/release/xuanling-mcp
 ```
 
 ## Responsibility boundary

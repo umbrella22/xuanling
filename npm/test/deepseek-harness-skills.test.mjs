@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
@@ -15,7 +16,7 @@ import { test } from "node:test";
 //   - the memory skill never authorizes memory_review without an explicit
 //     user instruction for a concrete proposal, and never presents the agent
 //     as a human reviewer;
-//   - bodies stay small on-demand guidance, never a copy of the 42-tool
+//   - bodies stay small on-demand guidance, never a copy of the full tool
 //     catalog;
 //   - the ZCode-only compat shim stays out of every DeepSeek config.
 //
@@ -25,6 +26,15 @@ import { test } from "node:test";
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 const integrationRoot = path.join(repoRoot, "integrations", "deepseek-harness");
 const bundleRoot = path.join(integrationRoot, "xuanling-skills");
+const routingVerifier = path.join(repoRoot, "test", "host-integration", "verify-skill-routing.mjs");
+const routingFixture = path.join(
+  repoRoot,
+  "test",
+  "host-integration",
+  "fixtures",
+  "skill-routing",
+  "cases.json",
+);
 
 function mustExist(relative, what) {
   const absolute = path.join(bundleRoot, relative);
@@ -182,6 +192,35 @@ function loadSkill(name) {
   return { fields, body };
 }
 
+test("current DSH Skills satisfy the frozen routing contract", () => {
+  const result = spawnSync(
+    process.execPath,
+    [routingVerifier, "--fixture", routingFixture, "--host", "dsh"],
+    { encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.deepEqual(report.passed_case_ids, [
+    "repeated_validation_deterministic",
+    "existing_overwrite_cas",
+    "same_file_multi_hunk_patch",
+    "compound_extension_exact",
+    "project_local_l1_only",
+    "shared_l2_pull_then_pending",
+    "explicit_pointer_recall",
+    "no_match_or_unavailable_continues",
+  ]);
+  assert.deepEqual(report.missing_case_ids, []);
+  assert.equal(result.stderr, "");
+  assert.equal(report.measurement.unique_skill_files, 2);
+  assert.ok(report.measurement.total_skill_file_bytes > 0);
+  assert.ok(report.measurement.trigger_catalog_bytes > 0);
+  assert.match(report.measurement.trigger_catalog_sha256, /^[0-9a-f]{64}$/);
+  assert.equal(report.measurement.token_count, null);
+  assert.equal(report.measurement.token_count_status, "unknown_without_provider_tokenizer");
+  assert.equal(report.measurement.documents.length, 2);
+});
+
 test("the skills bundle manifest declares the dsh bundle and pins its dependencies", () => {
   const npmPackage = JSON.parse(
     readFileSync(path.join(repoRoot, "npm", "packages", "xuanling-mcp", "package.json"), "utf8"),
@@ -247,6 +286,12 @@ test("xuanling-file-workflow routes between the native and XuanLing fs families"
   assert.match(body, /byte (budget|cap)|bounded|max_bytes/i, "XuanLing chosen for explicit output budgets");
   assert.match(body, /fs_patch|unified diff/i, "XuanLing chosen for strict patch application");
   assert.match(body, /cursor|pagination|resume/i, "XuanLing chosen for bounded continuation");
+  assert.match(body, /same argv|repeated validation/i, "repeated validation is identified");
+  assert.match(body, /deterministic:\s*true/i, "repeated validation removes volatile duration");
+  assert.match(body, /multiple hunks|multi.*hunks/i, "same-file multi-hunk edits use one patch");
+  assert.match(body, /file_extensions/i, "exact compound extension filtering is documented");
+  assert.match(body, /memory-only bundle does not provide file or process tools/i, "memory-only profiles do not infer absent tools");
+  assert.match(body, /background\/job/i, "long-running work stays on the host job surface");
   assert.match(body, /do not (use|invoke|run) (the )?(shell|terminal|bash|pwsh)/i, "file work never routes through shell tools");
   assert.match(body, /must not silently fall back/i, "no silent fallback between families on failure");
   assert.match(body, /typed error|tool error|error/i, "failures surface as tool errors to handle");
@@ -271,6 +316,11 @@ test("xuanling-memory-workflow keeps proposal and review in separate turns", () 
   assert.match(body, /skip (the )?write|do not (write|create)/i, "tool/model failures skip the write");
   assert.match(body, /same idempotency key/, "candidate retries reuse the idempotency key");
   assert.match(body, /same payload/, "candidate retries reuse the same payload");
+  assert.match(body, /host file memory \(L1\)/i, "project-local must-see facts stay in L1");
+  assert.match(body, /XuanLing L2/i, "shared facts route to L2");
+  assert.match(body, /not a lightweight manifest/i, "search cost reflects full record results");
+  assert.match(body, /not an instruction\s+to search on every turn/i, "L1 pointers trigger bounded pull recall");
+  assert.match(body, /zero canonical write/i, "no-match and unavailable recall do not write canonical facts");
   assert.ok(!/auto-approve|approve it yourself|immediately approve/i.test(body), "no self-approval instruction");
   assert.ok(!body.includes("mcp__xuanling__fs_"), "the memory skill stays out of file-tool routing");
 });

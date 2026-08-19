@@ -64,7 +64,7 @@ test("synthetic release fixture is hash-pinned before distribution tests use it"
 
 test("registry integrity reconciliation has exact publish, skip, and failure states", () => {
   const expectedIntegrity = "sha512-fixture";
-  const specifier = "@xuanling-rs/xuanling-mcp@0.2.3";
+  const specifier = "@xuanling-rs/xuanling-mcp@0.2.4";
   assert.deepEqual(
     classifyIntegrityLookup({ stdout: "", stderr: "npm ERR! E404", exitCode: 1 }, {
       expectedIntegrity,
@@ -97,7 +97,7 @@ test("registry integrity reconciliation has exact publish, skip, and failure sta
 
 test("published packages tolerate two minutes of delayed registry visibility", async () => {
   const expectedIntegrity = "sha512-fixture";
-  const specifier = "@xuanling-rs/xuanling-mcp@0.2.3";
+  const specifier = "@xuanling-rs/xuanling-mcp@0.2.4";
   const waits = [];
   let lookups = 0;
 

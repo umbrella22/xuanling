@@ -1,7 +1,7 @@
 # XuanLing tools for DeepSeek Harness — replace variant.
 #
-# Same mount as xuanling-dsh-tools (see that bundle's patch for the binary
-# resolution and capability notes), plus retirement of the built-in model-facing
+# Same mount as xuanling-dsh-tools (see that bundle's patch for the adapter,
+# binary resolution, and capability notes), plus retirement of the built-in model-facing
 # filesystem tool rows so XuanLing becomes the filesystem layer the model sees:
 #
 #   read / write / edit / read_image   (tool-fs)            -> mcp__xuanling__fs_*
@@ -42,6 +42,10 @@
         transport: stdio
         command: !!js process.execPath
         args:
+          - !!js process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@xuanling-rs/xuanling-dsh-tools-replace/mcp-result-adapter.mjs')
+          - '--binary'
+          - !!js process.execPath
+          - '--'
           - !!js process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@xuanling-rs/xuanling-mcp/bin/xuanling-mcp.js')
           - '--workspace-root'
           - !!js process.env.XUANLING_WORKSPACE_ROOT ?? process.cwd()

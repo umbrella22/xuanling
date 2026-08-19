@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "evidence_id": "synthetic-cost-ambiguous-usage-v1",
+  "evidence_kind": "synthetic-negative",
+  "host": "deepseek-harness",
+  "host_version": "fixture-v1",
+  "catalog": {
+    "tools": [{"name": "fs_read_text"}],
+    "schema_tokens": {"value": 5, "source": "synthetic-provider-observed"},
+    "prefix_digests": [
+      "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    ]
+  },
+  "trials": [
+    {
+      "trial_id": "task-c-cold",
+      "task_id": "task-c",
+      "phase": "cold",
+      "usage_candidates": [
+        {"inputTokens": 20, "outputTokens": 2, "cacheReadTokens": 0, "cacheWriteTokens": 10},
+        {"inputTokens": 20, "outputTokens": 2, "cacheReadTokens": 0, "cacheWriteTokens": 10}
+      ],
+      "tool_results": []
+    },
+    {
+      "trial_id": "task-c-warm",
+      "task_id": "task-c",
+      "phase": "warm",
+      "usage_candidates": [{"inputTokens": 10, "outputTokens": 1, "cacheReadTokens": 10, "cacheWriteTokens": 0}],
+      "tool_results": []
+    }
+  ]
+}

@@ -32,12 +32,27 @@ The server is contributed by the `xuanling-mcp` plugin. Tools appear as
 `fs_stat` `fs_list` `fs_read_text` `fs_read_bytes` `fs_search` `fs_glob` `fs_hash` `fs_mkdir`
 `fs_write_text` `fs_replace_text` `fs_patch` `fs_edit` `fs_copy` `fs_move` `fs_remove`
 
+Prefer the host's native Read/Edit tools for routine small edits and ordinary reads so their
+read-before-edit observation and UI remain active. Choose XuanLing for cross-OS structured
+results, complete pagination, explicit output budgets, or hash/CAS-protected writes.
+
+To replace an existing file, obtain its hash with `fs_read_text` or `fs_hash`, then call
+`fs_write_text` with `mode: "overwrite"` and `expected_sha256`. Use `mode: "create"` only for a
+new path; never turn an overwrite conflict into a create call.
+
+For multiple hunks in the same file, use `fs_patch` in a single atomic call with
+`expected_preimage_sha256`. Do not split the operation into independently committed edits or
+invent another batch tool.
+
 Schema gotchas learned from live use:
 - **`fs_search`**: the search term goes in `pattern`; `literal` is a **boolean** (treat `pattern`
   as literal text, not regex) — there is **no `query` field**, and passing a string to `literal`
   is rejected with `expected a boolean`. Example:
   `{ path: "docs", pattern: "XuanLing", literal: true, limit: 5 }` searches file contents under
   `docs` and returns `line`/`column`/`match`/`line_text` plus `next_cursor` when `has_more`.
+- **`fs_search.file_extensions`**: values are exact simple or compound suffixes. Pass `d.ts` and
+  `d.mts` directly (or simple values such as `java` and `.c`); never reduce a compound suffix to
+  its last `ts` or `mts` segment, which would broaden the search.
 - **`fs_glob`**: uses `patterns` (**array, plural**), not `pattern`. Options `include_files` /
   `include_dirs` are booleans. `*.mjs` matches top level only; use `**/*.mjs` to recurse.
 - **`fs_read_text`**: returns `sha256`, `total_bytes`, `total_lines`, `newline_style`, `truncated`.
@@ -82,11 +97,29 @@ Schema gotchas learned from live use:
   one-based RRF and deterministic field/scope reranking. Active namespace/scope/applicability
   filtering and nearest-scope dedupe happen before each channel's candidate cap; `trigram` covers
   CJK/partial and 1-2 character queries use a bound substring fallback.
+- `memory_search` returns full active `MemoryRecordView` values in ranked items, not a lightweight
+  manifest. Keep the first scoped query small; use `memory_get` for an exact current record.
 - Shared DB at `~/.xuanling/memory.db` by default — a fact written in one project is retrievable
   in another, scoped by `namespace` and `scope` (`{"type":"global"}` / `"project"` /
   `"workspace"`).
 - Maintenance: `xuanling-mcp memory export|import|rebuild-index` (JSONL v1 with SHA-256 trailer;
   import only into an EMPTY database).
+
+#### L1/L2 single-write routing
+
+For a project-local must-see convention needed in every session, write only the host file memory
+(L1). Make zero XuanLing write and do not create a candidate for the same content.
+
+For a cross-project, team-level, or shared fact that the user wants retained in XuanLing L2, call
+`memory_search` first. If it is absent or has no match, call `memory_candidate_create` to create a
+pending candidate; only a later explicit user decision may call `memory_review`.
+
+At task begin or after a topic switch, follow an explicit L1 memory pointer with one scoped
+`memory_search`. It is a pull trigger, not an instruction to search on every turn.
+
+If recall has no match or the store is unavailable during ordinary work, continue the main task
+and make zero canonical write. Do not synthesize a record or approve a pending candidate as a
+fallback.
 
 ### Artifact
 `artifact_read` `artifact_cleanup` — read a byte window from a server-owned process-output
@@ -144,10 +177,9 @@ read the `expected one of ...` list it returns and resend with the correct field
 ## Long-running work
 
 `process_run` has **no server-side timeout** and no shell fallback. For long jobs (builds,
-installations, test suites), run them through the host's own background/job mechanism with the
-`process_*`/`project_run` tools for direct-argv execution — do not fabricate timeouts, sleep
-loops, or `sh -c` wrappers, and do not claim a synchronous call can outlast the host's own
-deadline.
+installations, test suites), use the host's native background/job mechanism instead of a
+synchronous XuanLing process call. Do not fabricate timeouts, sleep loops, or `sh -c` wrappers,
+and do not claim a synchronous call can outlast the host's own deadline.
 
 ## Responsibility boundaries
 

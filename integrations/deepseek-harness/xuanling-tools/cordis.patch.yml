@@ -1,13 +1,14 @@
 # XuanLing tools for DeepSeek Harness — additive variant.
 #
-# Mounts the xuanling-mcp binary as an MCP stdio server through the official
-# @deepseek-ai/dsh-mcp-client bridge. Every XuanLing tool becomes a native
+# Mounts the xuanling-mcp binary through the local result adapter and the
+# official @deepseek-ai/dsh-mcp-client bridge. Every XuanLing tool becomes a native
 # harness tool named mcp__xuanling__<raw> (for example mcp__xuanling__fs_read_text);
 # the bridge owns reconnect, re-sync, and generation rollback. Built-in tools
 # (read/write/edit/glob/grep/bash/…) stay registered — this variant only ADDS.
 #
-# The bundle resolves its exact xuanling-mcp dependency from the DSH profile.
-# The JS launcher then selects and verifies the matching native package.
+# The bundle resolves its exact result adapter and xuanling-mcp dependency from
+# the DSH profile. The JS launcher then selects and verifies the matching native
+# package; the adapter preserves one complete text projection and structured value.
 #
 # The filesystem capability root defaults to the directory dsh was started
 # from; override with XUANLING_WORKSPACE_ROOT. Memory uses the shared default
@@ -23,6 +24,10 @@
         transport: stdio
         command: !!js process.execPath
         args:
+          - !!js process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@xuanling-rs/xuanling-dsh-tools/mcp-result-adapter.mjs')
+          - '--binary'
+          - !!js process.execPath
+          - '--'
           - !!js process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@xuanling-rs/xuanling-mcp/bin/xuanling-mcp.js')
           - '--workspace-root'
           - !!js process.env.XUANLING_WORKSPACE_ROOT ?? process.cwd()

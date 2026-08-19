@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "fixture_id": "zcode-3.7.7-raw-xuanling-0.2.3",
+  "host": "zcode",
+  "host_version": "3.7.7+3.7.7.4926",
+  "source_contract": {
+    "installed_mcp_json_sha256": "9bf92480f30f0fc89ba698ff6503bbb87faefbd89232492a6f61c0580235215f",
+    "formatter_source_sha256": "29a85476133c8946fcf821156a11d2364c19f7f7ddfbbd12a4b3a8122c2d1381",
+    "xuanling_source_commit": "eec429d009481e193295678b9aa244d44c5d52a2"
+  },
+  "projection_mode": "zcode_content_plus_structured",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"answer\":42,\"nested\":{\"ok\":true}}"
+      }
+    ],
+    "structuredContent": {
+      "answer": 42,
+      "nested": {
+        "ok": true
+      }
+    },
+    "isError": false
+  }
+}

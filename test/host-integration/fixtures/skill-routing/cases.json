@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "hosts": {
+    "dsh": {
+      "cases": [
+        {
+          "id": "repeated_validation_deterministic",
+          "skill": "integrations/deepseek-harness/xuanling-skills/skills/xuanling-file-workflow/SKILL.md",
+          "all": ["same argv|repeated validation", "process_run|project_run|process_pipeline", "deterministic:\\s*true"],
+          "ordered": ["same argv|repeated validation", "deterministic:\\s*true"]
+        },
+        {
+          "id": "existing_overwrite_cas",
+          "skill": "integrations/deepseek-harness/xuanling-skills/skills/xuanling-file-workflow/SKILL.md",
+          "all": ["existing file|replace an existing file", "hash", "mode:\\s*[`\"]?overwrite", "expected_sha256"],
+          "ordered": ["obtain.*hash|read.*hash", "mode:\\s*[`\"]?overwrite", "expected_sha256"]
+        },
+        {
+          "id": "same_file_multi_hunk_patch",
+          "skill": "integrations/deepseek-harness/xuanling-skills/skills/xuanling-file-workflow/SKILL.md",
+          "all": ["same file|one file", "multiple|multi", "hunks?", "fs_patch", "atomic|single call"],
+          "forbidden": ["fs_edit_batch"]
+        },
+        {
+          "id": "compound_extension_exact",
+          "skill": "integrations/deepseek-harness/xuanling-skills/skills/xuanling-file-workflow/SKILL.md",
+          "all": ["file_extensions", "d\\.ts", "d\\.mts", "exact|compound", "do not.*(?:last|ts|mts)|never.*(?:last|ts|mts)"]
+        },
+        {
+          "id": "project_local_l1_only",
+          "skill": "integrations/deepseek-harness/xuanling-skills/skills/xuanling-memory-workflow/SKILL.md",
+          "all": ["project-local|project local", "must-see|must see|every session", "L1|host file memory", "only|single-write|single write", "zero XuanLing write|do not.*candidate"],
+          "forbidden": ["double-write|dual-write"]
+        },
+        {
+          "id": "shared_l2_pull_then_pending",
+          "skill": "integrations/deepseek-harness/xuanling-skills/skills/xuanling-memory-workflow/SKILL.md",
+          "all": ["cross-project|team-level|shared", "L2|XuanLing", "memory_search", "memory_candidate_create|pending candidate", "absent|no match"],
+          "ordered": ["memory_search", "absent|no match", "memory_candidate_create|pending candidate"],
+          "forbidden": ["auto-approve|automatically review"]
+        },
+        {
+          "id": "explicit_pointer_recall",
+          "skill": "integrations/deepseek-harness/xuanling-skills/skills/xuanling-memory-workflow/SKILL.md",
+          "all": ["explicit.*pointer|L1.*pointer", "task.*begin|topic.*change|topic.*switch", "memory_search", "not.*every turn|do not.*every turn"]
+        },
+        {
+          "id": "no_match_or_unavailable_continues",
+          "skill": "integrations/deepseek-harness/xuanling-skills/skills/xuanling-memory-workflow/SKILL.md",
+          "all": ["no match|unavailable", "continue.*(?:task|work)|main task.*continue", "zero canonical write|no canonical write|do not.*write"]
+        }
+      ]
+    },
+    "zcode": {
+      "cases": [
+        {
+          "id": "repeated_validation_deterministic",
+          "skill": "integrations/zcode-plugin/plugins/xuanling-mcp/skills/xuanling-mcp-tools/SKILL.md",
+          "all": ["same argv|identical invocations|repeated validation", "process_run|project_run|process_pipeline", "deterministic:\\s*true"]
+        },
+        {
+          "id": "existing_overwrite_cas",
+          "skill": "integrations/zcode-plugin/plugins/xuanling-mcp/skills/xuanling-mcp-tools/SKILL.md",
+          "all": ["existing file|replace an existing file", "hash", "mode:\\s*[`\"]?overwrite", "expected_sha256"],
+          "ordered": ["obtain.*hash|read.*hash", "mode:\\s*[`\"]?overwrite", "expected_sha256"]
+        },
+        {
+          "id": "same_file_multi_hunk_patch",
+          "skill": "integrations/zcode-plugin/plugins/xuanling-mcp/skills/xuanling-mcp-tools/SKILL.md",
+          "all": ["same file|one file", "multiple|multi", "hunks?", "fs_patch", "atomic|single call"],
+          "forbidden": ["fs_edit_batch"]
+        },
+        {
+          "id": "compound_extension_exact",
+          "skill": "integrations/zcode-plugin/plugins/xuanling-mcp/skills/xuanling-mcp-tools/SKILL.md",
+          "all": ["file_extensions", "d\\.ts", "d\\.mts", "exact|compound", "do not.*(?:last|ts|mts)|never.*(?:last|ts|mts)"]
+        },
+        {
+          "id": "project_local_l1_only",
+          "skill": "integrations/zcode-plugin/plugins/xuanling-mcp/skills/xuanling-mcp-tools/SKILL.md",
+          "all": ["project-local|project local", "must-see|must see|every session", "L1|host file memory", "only|single-write|single write", "zero XuanLing write|do not.*candidate"],
+          "forbidden": ["double-write|dual-write"]
+        },
+        {
+          "id": "shared_l2_pull_then_pending",
+          "skill": "integrations/zcode-plugin/plugins/xuanling-mcp/skills/xuanling-mcp-tools/SKILL.md",
+          "all": ["cross-project|team-level|shared", "L2|XuanLing", "memory_search", "memory_candidate_create|pending candidate", "absent|no match"],
+          "ordered": ["memory_search", "absent|no match", "memory_candidate_create|pending candidate"],
+          "forbidden": ["auto-approve|automatically review"]
+        },
+        {
+          "id": "explicit_pointer_recall",
+          "skill": "integrations/zcode-plugin/plugins/xuanling-mcp/skills/xuanling-mcp-tools/SKILL.md",
+          "all": ["explicit.*pointer|L1.*pointer", "task.*begin|topic.*change|topic.*switch", "memory_search", "not.*every turn|do not.*every turn"]
+        },
+        {
+          "id": "no_match_or_unavailable_continues",
+          "skill": "integrations/zcode-plugin/plugins/xuanling-mcp/skills/xuanling-mcp-tools/SKILL.md",
+          "all": ["no match|unavailable", "continue.*(?:task|work)|main task.*continue", "zero canonical write|no canonical write|do not.*write"]
+        }
+      ]
+    }
+  }
+}

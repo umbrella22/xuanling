@@ -21,7 +21,7 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -90,6 +90,17 @@ const skillsBundleFiles = [
 const taskText = readFileSync(path.join(fixtureRoot, "task.md"), "utf8");
 const manifest = JSON.parse(readFileSync(path.join(fixtureRoot, "manifest.json"), "utf8"));
 const sha256 = (file) => createHash("sha256").update(readFileSync(file)).digest("hex");
+
+// DSH records the canonical filesystem spelling in its session header. macOS
+// commonly launches the runner through /var while realpath reports /private/var;
+// compare identity after resolving existing paths without weakening containment.
+function canonicalPath(value) {
+  try {
+    return realpathSync.native(value);
+  } catch {
+    return path.resolve(value);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Gate 1: the billable switch. --dry-run is the safe inspection mode and is
@@ -426,7 +437,7 @@ function runTrial(trial) {
       } else if (typeof header.cwd !== "string" || header.cwd.length === 0) {
         // A missing cwd makes the trial's identity unverifiable: fail closed.
         headerProblems.push(`${path.basename(log)}: session header carries no cwd`);
-      } else if (path.resolve(header.cwd) !== path.resolve(trial.workspace)) {
+      } else if (canonicalPath(header.cwd) !== canonicalPath(trial.workspace)) {
         headerProblems.push(`${path.basename(log)}: header cwd ${header.cwd} != trial workspace`);
       }
     }

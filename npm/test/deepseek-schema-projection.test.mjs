@@ -216,10 +216,17 @@ test("stdio adapter projects discovery while forwarding tools/call arguments unc
           }
         }) + "\n");
       } else if (frame.method === "tools/call") {
+        const structuredContent = { arguments: frame.params.arguments };
         process.stdout.write(JSON.stringify({
           jsonrpc: "2.0",
           id: frame.id,
-          result: { content: [], structuredContent: { arguments: frame.params.arguments } }
+          result: {
+            content: [
+              { type: "text", text: JSON.stringify(structuredContent) },
+              { type: "text", text: JSON.stringify(structuredContent, null, 2) },
+            ],
+            structuredContent,
+          }
         }) + "\n");
       }
     }
@@ -266,4 +273,5 @@ test("stdio adapter projects discovery while forwarding tools/call arguments unc
   assert.deepEqual(projectedScope.properties.type.enum, ["global", "project"]);
   assert.ok(!JSON.stringify(responses[0]).includes("$ref"));
   assert.deepEqual(responses[1].result.structuredContent.arguments.scope, scope);
+  assert.equal(responses[1].result.content.length, 1, "DSH keeps one complete text projection");
 });

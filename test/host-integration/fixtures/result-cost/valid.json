@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "evidence_id": "synthetic-cost-valid-v1",
+  "evidence_kind": "synthetic",
+  "host": "deepseek-harness",
+  "host_version": "fixture-v1",
+  "catalog": {
+    "tools": [
+      {
+        "name": "fs_read_text",
+        "description": "Read text",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      {
+        "name": "memory_search",
+        "description": "Search memory",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    ],
+    "schema_tokens": {
+      "value": 53,
+      "source": "synthetic-provider-observed"
+    },
+    "prefix_digests": [
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    ]
+  },
+  "trials": [
+    {
+      "trial_id": "task-a-cold",
+      "task_id": "task-a",
+      "phase": "cold",
+      "usage_candidates": [
+        {
+          "inputTokens": 120,
+          "outputTokens": 20,
+          "cacheReadTokens": 0,
+          "cacheWriteTokens": 80
+        }
+      ],
+      "tool_results": [
+        {
+          "call_id": "call-cold-1",
+          "tool_name": "fs_read_text",
+          "retry_of": null,
+          "wire_payload": {
+            "content": [
+              {
+                "type": "text",
+                "text": "{\"path\":\"README.md\"}"
+              }
+            ],
+            "structuredContent": {
+              "path": "README.md"
+            }
+          },
+          "model_text": "{\"path\":\"README.md\"}",
+          "structured_payload": {
+            "path": "README.md"
+          },
+          "ui_text": "Read README.md"
+        },
+        {
+          "call_id": "call-cold-2",
+          "tool_name": "fs_read_text",
+          "retry_of": "call-cold-1",
+          "wire_payload": {
+            "content": [
+              {
+                "type": "text",
+                "text": "{\"path\":\"README.md\"}"
+              }
+            ],
+            "structuredContent": {
+              "path": "README.md"
+            }
+          },
+          "model_text": "{\"path\":\"README.md\"}",
+          "structured_payload": {
+            "path": "README.md"
+          },
+          "ui_text": "Read README.md"
+        }
+      ]
+    },
+    {
+      "trial_id": "task-a-warm",
+      "task_id": "task-a",
+      "phase": "warm",
+      "usage_candidates": [
+        {
+          "inputTokens": 45,
+          "outputTokens": 18,
+          "cacheReadTokens": 75,
+          "cacheWriteTokens": 0
+        }
+      ],
+      "tool_results": [
+        {
+          "call_id": "call-warm-1",
+          "tool_name": "fs_read_text",
+          "retry_of": null,
+          "wire_payload": {
+            "content": [
+              {
+                "type": "text",
+                "text": "{\"path\":\"README.md\"}"
+              }
+            ],
+            "structuredContent": {
+              "path": "README.md"
+            }
+          },
+          "model_text": "{\"path\":\"README.md\"}",
+          "structured_payload": {
+            "path": "README.md"
+          },
+          "ui_text": "Read README.md"
+        }
+      ]
+    }
+  ]
+}
