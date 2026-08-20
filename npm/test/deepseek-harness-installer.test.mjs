@@ -41,7 +41,10 @@ const expectedSkillContract = {
   source_acquisition: {
     method: INSTALLER_CONTRACT.sourceAcquisition.method,
     repository: INSTALLER_CONTRACT.sourceAcquisition.repository,
-    read_paths: INSTALLER_CONTRACT.sourceAcquisition.readPaths,
+    allowed_document_paths: INSTALLER_CONTRACT.sourceAcquisition.allowedDocumentPaths,
+    require_root_readme: true,
+    require_installer_skill: true,
+    directory_metadata_allowed: true,
     pin_immutable_ref: true,
     execute_repository_code: false,
     install_from_checkout: false,
@@ -236,6 +239,10 @@ test("transcript verifier rejects wrong ordering, floating specs, forbidden comm
   const unsafeSource = clone(valid);
   unsafeSource.source.acquisition.checkout_used_as_package_source = true;
   expectCode(unsafeSource, "source_checkout_unsafe");
+
+  const sourceCodeRead = clone(valid);
+  sourceCodeRead.source.acquisition.read_paths.push("Cargo.toml");
+  expectCode(sourceCodeRead, "source_checkout_unsafe");
 
   const lookalikeSource = clone(valid);
   lookalikeSource.source.url = "https://github.com/umbrella22/xuanling-malicious";

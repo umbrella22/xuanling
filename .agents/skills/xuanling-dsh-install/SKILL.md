@@ -32,10 +32,16 @@ as normative data; the prose below explains how to execute it.
   "source_acquisition": {
     "method": "temporary_git_checkout",
     "repository": "https://github.com/umbrella22/xuanling.git",
-    "read_paths": [
+    "allowed_document_paths": [
       "README.md",
-      ".agents/skills/xuanling-dsh-install/SKILL.md"
+      "README-ZH.md",
+      ".agents/skills/xuanling-dsh-install/SKILL.md",
+      "integrations/deepseek-harness/README.md",
+      "integrations/deepseek-harness/README-ZH.md"
     ],
+    "require_root_readme": true,
+    "require_installer_skill": true,
+    "directory_metadata_allowed": true,
     "pin_immutable_ref": true,
     "execute_repository_code": false,
     "install_from_checkout": false,
@@ -149,9 +155,13 @@ Keep the source boundary narrow:
 - Use only `https://github.com/umbrella22/xuanling.git` as the Git remote. The
   checkout destination must not exist before this run. Never overwrite, reuse,
   or clean an existing directory.
-- Read only `README.md` and
-  `.agents/skills/xuanling-dsh-install/SKILL.md`. Do not run hooks, scripts,
-  binaries, package-manager commands, or code from the checkout.
+- Directory listings and metadata may be inspected only to locate the
+  installation documents. Read content only from `README.md`, `README-ZH.md`,
+  `.agents/skills/xuanling-dsh-install/SKILL.md`, and the English or Chinese
+  `integrations/deepseek-harness/README` guide. At least one root README and
+  the installer Skill are required. Do not read source files or manifests, and
+  do not run hooks, scripts, binaries, package-manager commands, or code from
+  the checkout.
 - After both documents are in model context, verify that the destination is
   the exact directory created by this run, remove that directory, and confirm
   it is absent before asking `xuanling_target_profile`. If checkout or cleanup

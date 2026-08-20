@@ -11,6 +11,7 @@
       "requested_ref": "main",
       "resolved_commit": "3fc3e6304a4839de292bf7470f0dbf3f6a7ebe59",
       "read_paths": ["README.md", ".agents/skills/xuanling-dsh-install/SKILL.md"],
+      "directory_metadata_only": true,
       "target_existed_before": false,
       "repository_code_executed": false,
       "checkout_used_as_package_source": false,

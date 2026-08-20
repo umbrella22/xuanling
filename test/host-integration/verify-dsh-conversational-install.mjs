@@ -10,9 +10,12 @@ export const INSTALLER_CONTRACT = Object.freeze({
   sourceAcquisition: Object.freeze({
     method: "temporary_git_checkout",
     repository: "https://github.com/umbrella22/xuanling.git",
-    readPaths: Object.freeze([
+    allowedDocumentPaths: Object.freeze([
       "README.md",
+      "README-ZH.md",
       ".agents/skills/xuanling-dsh-install/SKILL.md",
+      "integrations/deepseek-harness/README.md",
+      "integrations/deepseek-harness/README-ZH.md",
     ]),
   }),
   questions: Object.freeze({
@@ -180,8 +183,15 @@ function validateSource(candidate) {
     acquisition.read_paths,
     "fixture.source.acquisition.read_paths",
   );
+  const allowedDocumentPaths = new Set(INSTALLER_CONTRACT.sourceAcquisition.allowedDocumentPaths);
+  const hasRootReadme = readPaths.includes("README.md") || readPaths.includes("README-ZH.md");
+  const hasInstallerSkill = readPaths.includes(INSTALLER_CONTRACT.skillPath);
   if (
-    readPaths.join("\0") !== INSTALLER_CONTRACT.sourceAcquisition.readPaths.join("\0") ||
+    new Set(readPaths).size !== readPaths.length ||
+    readPaths.some((path) => !allowedDocumentPaths.has(path)) ||
+    !hasRootReadme ||
+    !hasInstallerSkill ||
+    acquisition.directory_metadata_only !== true ||
     acquisition.target_existed_before !== false ||
     acquisition.repository_code_executed !== false ||
     acquisition.checkout_used_as_package_source !== false ||
@@ -189,7 +199,7 @@ function validateSource(candidate) {
   ) {
     reject(
       "source_checkout_unsafe",
-      "temporary source checkout must read only the contract paths, start absent, remain source-only, and be removed before questions",
+      "temporary source checkout must read the required allowlisted documents, limit other inspection to directory metadata, start absent, remain source-only, and be removed before questions",
     );
   }
   return { source, acquisition };
