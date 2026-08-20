@@ -280,6 +280,14 @@ test("ZCode marketplace generation is deterministic and fails closed", async () 
       });
     }
     assert.deepEqual(generated[0].pack, generated[1].pack, "repeated staging is byte-identical");
+    const generatedArchive = await readFile(
+      path.join(path.dirname(generated[0].root), generated[0].pack.filename),
+    );
+    assert.deepEqual(
+      [...generatedArchive.subarray(0, 10)],
+      [0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff],
+      "gzip header must use zero mtime and a canonical cross-platform OS marker",
+    );
     const releaseManifest = JSON.parse(
       await readFile(path.join(generated[0].root, "release-manifest.json"), "utf8"),
     );

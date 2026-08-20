@@ -125,7 +125,12 @@ async function createDeterministicArchive(root) {
     chunks.push(tarEntry(relative, data, info.mode & 0o111 ? 0o755 : 0o644));
   }
   chunks.push(Buffer.alloc(1024));
-  return gzipSync(Buffer.concat(chunks), { level: 9, mtime: 0 });
+  const archive = gzipSync(Buffer.concat(chunks), { level: 9, mtime: 0 });
+  // Node inherits the gzip OS marker from the host (for example, macOS and
+  // Linux emit different bytes). Canonicalize it so the release archive is
+  // byte-identical across CI and local platforms.
+  archive[9] = 0xff;
+  return archive;
 }
 
 async function extractPackage(releaseRoot, artifactDirectory, manifestName, destination) {
