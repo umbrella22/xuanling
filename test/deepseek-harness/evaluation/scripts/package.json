@@ -1,5 +1,0 @@
-{
-  "private": true,
-  "type": "module",
-  "description": "ESM context for the evaluation's TypeScript probes run through the DeepSeek Harness tsx runtime."
-}

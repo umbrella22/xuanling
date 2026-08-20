@@ -6,8 +6,11 @@
 评审、召回、归档和反馈 profile，同时保留全部 Harness 原生工具。
 
 ```sh
-dsh plugin --profile demo add @xuanling-rs/xuanling-dsh-memory@0.2.4
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-memory@0.2.4
 ```
+
+该命令会扩展 DSH 内置的 Web profile。内置 Headless profile 应使用 `--profile headless`。
+未知 profile 名称只包含 base bundle，本身不会提供可运行的 Web 或 Headless 应用。
 
 Bundle 会在所选 profile 内安装 `@xuanling-rs/xuanling-mcp@0.2.4`，并从该 profile 解析 schema adapter
 和 JS launcher。Launcher 会在启动前校验当前平台的原生 package；不需要全局 package，也

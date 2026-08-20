@@ -9,14 +9,19 @@
 
 ## 推荐配置
 
-将 Memory 与 Skills bundle 安装进目标 DSH profile：
+将 Memory 与 Skills bundle 安装进 DSH 内置的 `web` profile：
 
 ```sh
-dsh plugin --profile demo add @xuanling-rs/xuanling-dsh-memory@0.2.4
-dsh plugin --profile demo add @xuanling-rs/xuanling-dsh-skills@0.2.4
-dsh --profile demo --dump-config
-dsh --profile demo
+dsh plugin --profile web add \
+  @xuanling-rs/xuanling-dsh-memory@0.2.4 \
+  @xuanling-rs/xuanling-dsh-skills@0.2.4
+dsh --profile web --dump-config
+dsh web
 ```
+
+需要扩展 DSH 内置的 Headless 应用时，将 `--profile web` 改为 `--profile headless`。任意新 profile 名称并非
+等价替换：当前 DSH 对未知名称只初始化 `@deepseek-ai/dsh-base`，不会自动加入 Web 或
+Headless 应用 bundle。
 
 Memory bundle 会在 profile 内安装精确版本的 `@xuanling-rs/xuanling-mcp@0.2.4` launcher 和原生 optional
 dependency；不需要全局 npm package、`npx` 或安装时下载 binary。

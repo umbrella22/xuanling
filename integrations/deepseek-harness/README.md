@@ -9,14 +9,20 @@ workflow Skills, and overwrite policy remain outside the Rust MCP contract.
 
 ## Recommended Setup
 
-Install the Memory and Skills bundles into the target DSH profile:
+Install the Memory and Skills bundles into DSH's shipped `web` profile:
 
 ```sh
-dsh plugin --profile demo add @xuanling-rs/xuanling-dsh-memory@0.2.4
-dsh plugin --profile demo add @xuanling-rs/xuanling-dsh-skills@0.2.4
-dsh --profile demo --dump-config
-dsh --profile demo
+dsh plugin --profile web add \
+  @xuanling-rs/xuanling-dsh-memory@0.2.4 \
+  @xuanling-rs/xuanling-dsh-skills@0.2.4
+dsh --profile web --dump-config
+dsh web
 ```
+
+Use `--profile headless` instead when extending DSH's shipped headless
+profile. A new arbitrary profile name is not a drop-in replacement: current
+DSH initializes unknown profiles with `@deepseek-ai/dsh-base` only, without a
+Web or Headless application bundle.
 
 The Memory bundle installs the exact `@xuanling-rs/xuanling-mcp@0.2.4` launcher and native
 optional dependency inside the profile. No global npm package, `npx`, or

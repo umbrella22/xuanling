@@ -1,7 +1,0 @@
-# Arm A — the native file family only.
-#
-# No bridge row is inserted and no native file row is disabled: the model sees
-# exactly the harness-native filesystem tools. An empty patch list keeps this
-# file a valid top-level YAML array while asserting the arm's composition is
-# the untouched base + the shared common overlay.
-[]

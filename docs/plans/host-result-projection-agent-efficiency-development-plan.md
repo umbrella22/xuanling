@@ -801,12 +801,18 @@ not_started -> red_confirmed -> implemented_unverified -> deterministic_green ->
 > W4.5 均达到各自 exit gate，因此 W4 整体完成并解锁 W5；W5 仍受既有 Windows portability
 > blocker 约束，不能在未获独立授权时修改 Rust 或提升版本。
 
+> W4 历史 live-evaluation runner、Memory retrieval fixture、dogfooding workspace 与
+> live-only overlay 已在验收关闭后从 `test/` 移除。下表中的对应命令只保留为历史证据索引，
+> 不再是当前 checkout 的可执行门禁；当前可重复的 bridge 合同使用保留的
+> `test/deepseek-harness/scripts/verify-deepseek-bridge.mjs`。
+
 ### 验证命令
 
 | Command | Provenance | Expected result | Required/conditional |
 | --- | --- | --- | --- |
-| existing DSH evaluation runner with `--allow-billable-live` | repository test harness | frozen route/session complete | required for complete; exact argv frozen in ledger |
-| `node test/deepseek-harness/evaluation/memory-retrieval/verify-transcripts.mjs ...` | existing verifier | read-only target hits/no writes | required for Memory live slice |
+| `ARCHIVED/REMOVED`: DSH evaluation runner with `--allow-billable-live` | W4 historical evidence recorded in the ledger | frozen route/session complete | archived; not rerunnable from this checkout |
+| `ARCHIVED/REMOVED`: `memory-retrieval/verify-transcripts.mjs` | W4 historical Memory evidence recorded in the ledger | read-only target hits/no writes | archived; not rerunnable from this checkout |
+| `node test/deepseek-harness/scripts/verify-deepseek-bridge.mjs --binary target/release/xuanling-mcp --tool-profile memory` | retained repository bridge verifier | isolated stdio/profile contract passes | current deterministic bridge gate |
 | ZCode plugin install/update + read-only MCP call | installed host contract | one model-visible structured value | required; exact UI/CLI steps discovered W0 |
 | planned `node test/host-integration/verify-result-cost-report.mjs --verify ...` | W1 verifier | closed report passes | required |
 | pre/post Git/DB/host process fingerprints | C-08 | no unrelated drift/leak | required |
@@ -1024,6 +1030,20 @@ not_started -> red_confirmed -> implemented_unverified -> deterministic_green ->
 > 定向测试 `88/88`、docs `94` 与 diff gate 全绿。候选 source commit 尚未冻结发布制品，下一步
 > 为 W5.2 构建并验证八个 npm tarball；tag、npm publish 与 ZCode promotion 仍不在本 Wave。
 
+> W5 完成（2026-08-20）：候选 source commit `945a11c9c3a4b5904ef56b07f543ee3d1959cf00`
+> 已在 `origin/main`。W5.2 的八个 npm tarball 通过 release-set verifier，W5.3 的 ZCode
+> archive 两次构建字节一致，W5.4 的 npm/portability runs `32287465007` 与 `32287464990`
+> 全绿，W5.5 的 no-side-effect `workflow_dispatch` preflight `32288861153` 全绿且发布/推广
+> jobs 均跳过。W6 的 immutable tag、Trusted npm publish、ZCode promotion 和 released-byte
+> clean acceptance 仍按 Entry gate 等待逐项外部授权；不得把 W5 candidate 证据描述为已发布。
+
+> W5 候选失效（2026-08-20）：发布前测试资产清理与 DSH 安装文档修正改变了四个 DSH bundle
+> README。DSH 当前实现只为 `web` 和 `headless` profile 自动加入可运行应用；任意新 profile 名称
+> 只初始化 `@deepseek-ai/dsh-base`。公开安装示例已统一为 `dsh plugin --profile web add ...`，并由
+> bundle contract 拒绝 `demo`、`full`、`replace` 和 `xuanling-acceptance`。因此基于 `945a11c9` 的
+> W5.2 tarball、W5.3 archive、W5.4 CI 与 W5.5 preflight 证据均为 stale；W5 回到
+> `implemented_unverified`，必须从 W5.2 重新构建候选，不能进入 W6。
+
 ### 验证命令
 
 | Command | Provenance | Expected result | Required/conditional |
@@ -1124,7 +1144,7 @@ not_started -> red_confirmed -> implemented_unverified -> deterministic_green ->
 | `gh run view "$XUANLING_RELEASE_RUN_ID" --repo umbrella22/xuanling` | release workflow | all required jobs success | required |
 | `node npm/scripts/verify-published-release.mjs --core-root "$XUANLING_CORE_RELEASE_ROOT" --dsh-root "$XUANLING_DSH_RELEASE_ROOT" --version 0.2.4` | workflow contract | eight item integrity match | required |
 | `node npm/scripts/verify-zcode-marketplace.mjs --root "$XUANLING_ZCODE_TREE" --version 0.2.4 --commit "$XUANLING_SOURCE_COMMIT" --require-release-trust` | workflow contract | target tree valid | required |
-| `dsh plugin --profile xuanling-acceptance add @xuanling-rs/xuanling-dsh-memory@0.2.4`（其余三个 bundle 逐包使用相同 profile-local 形式） | DSH public install contract | no global dependency | required |
+| `dsh plugin --profile web add @xuanling-rs/xuanling-dsh-memory@0.2.4`（其余三个 bundle 逐包使用相同 shipped-profile-local 形式；CLI 验收可使用 `headless`） | DSH public install contract | no global dependency；profile 自带可运行 app bundle | required |
 | ZCode marketplace update/install/restart | ZCode public host contract | 0.2.4 loaded, result count=1 | required |
 | `npm --prefix npm test && npm --prefix npm run check && npm --prefix npm run check:docs` | repository gates | pass | required |
 | `git status --short --untracked-files=all && git diff --check` | final delivery | only attributed/user files | required |

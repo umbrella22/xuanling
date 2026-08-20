@@ -7,8 +7,12 @@ keeps all Harness-native tools enabled and adds XuanLing tools under the
 `mcp__xuanling__` prefix.
 
 ```sh
-dsh plugin --profile full add @xuanling-rs/xuanling-dsh-tools@0.2.4
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-tools@0.2.4
 ```
+
+This command augments DSH's shipped Web profile. Use `--profile headless` for
+the shipped Headless profile. Unknown profile names start with the base bundle
+only and do not provide a runnable Web or Headless application by themselves.
 
 The exact `@xuanling-rs/xuanling-mcp@0.2.4` runtime is installed in the profile and started
 through its verified JS launcher. A global npm package is neither required nor

@@ -39,7 +39,7 @@ launcher checksum negative test。
 
 Given：`xuanling-dsh-memory`、`xuanling-dsh-tools`、
 `xuanling-dsh-tools-replace` 和 `xuanling-dsh-skills` 四个发布包。
-When：用户通过 `dsh plugin --profile demo add xuanling-dsh-memory@0.2.2` 等精确 package
+When：用户通过 `dsh plugin --profile web add xuanling-dsh-memory@0.2.2` 等精确 package
 命令安装。
 Then：前三个工具包精确依赖 `xuanling-mcp@0.2.2`；Skills 包不依赖 MCP runtime；Memory
 仍只暴露 Memory profile；additive/replace 的工具目录与禁用行保持现有合同。
@@ -196,8 +196,9 @@ Evidence：allowed-path review、Git fingerprints、package file lists、default
   revision `47f943859bef60e4160492346772ded9b24f765a`；两个既有 untracked comparison tests 必须
   保留。porcelain-z SHA-256 为
   `89b2a20a38d35a43db781e2255f5165d2ddbd77e3c7c17f2a410c7c68f627585`。
-- DSH current docs 明确：`dsh plugin --profile demo add xuanling-dsh-memory@0.2.1` 这类命令在
-  profile 目录内交给 pnpm，
+- DSH current docs 明确：`dsh plugin --profile web add xuanling-dsh-memory@0.2.1` 这类命令在
+  内置可运行 profile 的目录内交给 pnpm；未知 profile 名只初始化 base bundle，不能直接作为
+  Web/Headless 应用启动，
   out-of-tree bundle 及其 dependencies 位于 profile-local `node_modules`；npm prebuilt package
   不需要 git `prepare` 授权。
 - 本机 ZCode 为 `3.7.7` build `3.7.7.4926`。网页文档列出 npm source，但同版内置

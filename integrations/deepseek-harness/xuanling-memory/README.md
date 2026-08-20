@@ -7,8 +7,12 @@ nine-tool proposal, review, recall, archival, and feedback profile while
 retaining every Harness-native tool.
 
 ```sh
-dsh plugin --profile demo add @xuanling-rs/xuanling-dsh-memory@0.2.4
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-memory@0.2.4
 ```
+
+This command augments DSH's shipped Web profile. Use `--profile headless` for
+the shipped Headless profile. Unknown profile names start with the base bundle
+only and do not provide a runnable Web or Headless application by themselves.
 
 The bundle installs `@xuanling-rs/xuanling-mcp@0.2.4` inside the selected profile. Its
 schema adapter and JS launcher are resolved from that profile, and the launcher

@@ -10,8 +10,8 @@
 > [`filesystem-safety-stage1-development-plan.md`](../plans/filesystem-safety-stage1-development-plan.md)、
 > [`filesystem-safety-stage1-execution-ledger.md`](../plans/filesystem-safety-stage1-execution-ledger.md)、
 > [`filesystem-safety-rfc-completion-development-plan.md`](../plans/filesystem-safety-rfc-completion-development-plan.md)、
-> [`filesystem-safety-rfc-completion-execution-ledger.md`](../plans/filesystem-safety-rfc-completion-execution-ledger.md)、
-> [`filesystem-safety-stage2-report.md`](../../test/deepseek-harness/evaluation/filesystem-safety-stage2-report.md)。
+> [`filesystem-safety-rfc-completion-execution-ledger.md`](../plans/filesystem-safety-rfc-completion-execution-ledger.md)。
+> 计划关闭后已移除一次性 A/B/C runner、fixture 与报告副本；历史证据指纹仍保留在执行账本中。
 
 ## 背景
 
@@ -210,8 +210,9 @@ filesystem artifact 都必须先单独量化 schema 增量，并重新建立 sna
 ### Stage 2：A/B/C 真实模型证据
 
 状态：`Accepted`。验收使用 current policy/bundle 生成的新 population，没有复用早于 Stage 1
-的模型会话。机器可复算 manifest 与限制记录在
-[`filesystem-safety-stage2-report.md`](../../test/deepseek-harness/evaluation/filesystem-safety-stage2-report.md)。
+的模型会话。完成时的命令、population 数量、manifest 指纹和限制记录在
+[`filesystem-safety-rfc-completion-execution-ledger.md`](../plans/filesystem-safety-rfc-completion-execution-ledger.md)。
+一次性 report 与 runner 已在计划关闭后移除，不再用于重新声明当前宿主行为。
 
 - 相同 fixture、prompt、模型 route 与 session 隔离下，每个 arm 至少三次质量试验。
 - 报告工具选择、重试次数、错误分类、oracle 结果、input/cache token 和结果体积。

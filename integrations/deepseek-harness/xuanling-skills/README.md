@@ -7,8 +7,12 @@ the strict whole-file overwrite policy. It registers no MCP server and has no
 dependency on `@xuanling-rs/xuanling-mcp`.
 
 ```sh
-dsh plugin --profile demo add @xuanling-rs/xuanling-dsh-skills@0.2.4
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-skills@0.2.4
 ```
+
+This command augments DSH's shipped Web profile. Use `--profile headless` for
+the shipped Headless profile. Unknown profile names start with the base bundle
+only and do not provide a runnable Web or Headless application by themselves.
 
 Use it with exactly one XuanLing tool bundle. `xuanling-file-workflow` routes
 between Harness-native and XuanLing file tools only when the fs family is

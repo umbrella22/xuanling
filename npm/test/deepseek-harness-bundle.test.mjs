@@ -16,8 +16,8 @@ import { pathToFileURL } from "node:url";
 //     profile without replacing any built-in harness tool;
 //   - the replace bundle disables exactly the three built-in filesystem tool
 //     rows, with full-row restatement;
-//   - the live-test overlay fails closed onto an explicit temporary workspace
-//     and memory database;
+//   - public install commands target a shipped runnable profile, never a
+//     base-only arbitrary profile;
 //   - the ZCode-only compat shim never appears in any DeepSeek config;
 //   - the automation verifier carries the C-15 isolation flag.
 //
@@ -32,7 +32,12 @@ const integrationRoot = path.join(repoRoot, "integrations", "deepseek-harness");
 const testRoot = path.join(repoRoot, "test", "deepseek-harness");
 const bundles = ["xuanling-memory", "xuanling-tools", "xuanling-tools-replace"];
 const fullCatalogBundles = ["xuanling-tools", "xuanling-tools-replace"];
-const liveTestPatch = path.join("live-test", "cordis.patch.yml");
+const publicReadmes = [
+  "README.md",
+  "README-ZH.md",
+  ...["xuanling-memory", "xuanling-skills", "xuanling-tools", "xuanling-tools-replace"]
+    .flatMap((bundle) => [path.join(bundle, "README.md"), path.join(bundle, "README-ZH.md")]),
+];
 
 function readText(relative) {
   return readFileSync(path.join(integrationRoot, relative), "utf8");
@@ -370,39 +375,6 @@ test("the recommended bundle exposes only the complete memory profile", () => {
   }
 });
 
-test("the live-test overlay requires an isolated database and workspace", () => {
-  const entries = parsePatch(readTestText(liveTestPatch));
-  assert.equal(entries.length, 1, "live overlay contains one full replacement row");
-  const row = entries[0];
-  assert.equal(row.id, "xuanling-tools");
-  assert.equal(row.name, "@deepseek-ai/dsh-mcp-client");
-  assert.ok(!row.insert, "live overlay replaces the prior id instead of inserting a duplicate");
-  const config = row.config ?? {};
-  assert.deepEqual(config.command, { js: "process.execPath" });
-  assert.deepEqual(config.args, [
-    {
-      js: "process.env.XUANLING_DSH_SCHEMA_ADAPTER ?? process.getBuiltinModule('node:assert').fail('XUANLING_DSH_SCHEMA_ADAPTER is required')",
-    },
-    "--binary",
-    {
-      js: "process.env.XUANLING_MCP_BIN ?? process.getBuiltinModule('node:assert').fail('XUANLING_MCP_BIN is required')",
-    },
-    "--",
-    "--workspace-root",
-    {
-      js: "process.env.XUANLING_TEST_WORKSPACE_ROOT ?? process.getBuiltinModule('node:assert').fail('XUANLING_TEST_WORKSPACE_ROOT is required')",
-    },
-    "--tool-profile",
-    "memory",
-    "--memory-db",
-    {
-      js: "process.env.XUANLING_TEST_MEMORY_DB ?? process.getBuiltinModule('node:assert').fail('XUANLING_TEST_MEMORY_DB is required')",
-    },
-  ]);
-  assert.equal(config.failOnStartupError, true, "live test must fail when MCP startup fails");
-  assert.equal(config.toolCallTimeoutMs, 120000);
-});
-
 test("the replace bundle disables exactly the three built-in fs tool rows", () => {
   const additiveEntries = parsePatch(readText(path.join("xuanling-tools", "cordis.patch.yml")));
   assert.equal(
@@ -448,7 +420,7 @@ test("the ZCode-only compat shim never leaks into DeepSeek configs", () => {
       `${relative}: the lenient-object-params shim is ZCode-only`,
     );
   }
-  for (const relative of [liveTestPatch, path.join("scripts", "verify-deepseek-bridge.mjs")]) {
+  for (const relative of [path.join("scripts", "verify-deepseek-bridge.mjs")]) {
     const text = readTestText(relative);
     assert.ok(
       !text.includes("compat-lenient-object-params"),
@@ -473,6 +445,30 @@ test("README documents the mount and the legacy tool surface stays out", () => {
   ];
   for (const legacy of legacyNames) {
     assert.ok(!readme.includes(legacy), `README must not reference removed v1 tool ${legacy}`);
+  }
+});
+
+test("public install commands use a shipped runnable DSH profile", () => {
+  for (const relative of publicReadmes) {
+    const readme = readText(relative);
+    assert.match(
+      readme,
+      /dsh plugin --profile web add/,
+      `${relative}: install command targets the shipped Web profile`,
+    );
+    assert.doesNotMatch(
+      readme,
+      /dsh plugin --profile (?:demo|full|replace|xuanling-acceptance)\b/,
+      `${relative}: install command must not create a base-only arbitrary profile`,
+    );
+  }
+
+  for (const relative of ["README.md", "README-ZH.md"]) {
+    assert.match(
+      readText(relative),
+      /--profile headless/,
+      `${relative}: shipped Headless profile alternative is documented`,
+    );
   }
 });
 

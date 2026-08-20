@@ -2,17 +2,15 @@
 
 > 本文件是
 > `host-result-projection-agent-efficiency-development-plan.md` 的 canonical handoff。
-> W0-W3 已完成；W4.2/W4.3/W4.5 的当前证据已通过各自 verifier，W4.4 按维护者 waiver
-> 接受 12/12 主代理采集与独立 oracle，并明确 GLM 未运行该 DSH 协议。W4 整体已完成；W5.0
-> 已通过提交 `039a1edf549b4570e9954a347faa451514fb8cec` 与 portability run `32284102425`。
-> 三平台 required jobs、Windows toolkit/Memory/experimental Memory/MCP protocol/golden、
-> dependency island、binary smoke 与 workspace aggregate 全部成功；W5.0 已 complete，当前
-> handoff 为 W5.1 registry 复查与版本冻结。
+> W0-W4 已完成，W5.0 portability 与 W5.1 版本冻结仍有效。2026-08-20 的测试资产清理与 DSH
+> 安装文档修正改变了发布包 README，因此基于 `945a11c9` 的 W5.2-W5.5 候选制品、CI 与
+> preflight 证据已标记 stale。当前从 W5.2 重新构建候选；在新候选完成全部 W5 门禁前不得进入
+> W6 tag、publish 或 promotion。
 
 ```yaml
 schema_version: 1
 plan_id: "host-result-projection-agent-efficiency-20260818"
-updated_at: "2026-08-20T02:28:00+08:00"
+updated_at: "2026-08-20T12:30:12+08:00"
 plan_status: "executing"
 live_authorization:
   authorized_at: "2026-08-18T21:08:03+08:00"
@@ -54,7 +52,7 @@ live_authorization:
     - "Rust changes outside the authorized B-WIN-01 capability-path repair"
 checkout:
   revision: "9a08f33a2582e4a6c61d0eceb3bfb6f3657ef13f"
-  current_revision: "4dd7343bc3718a8336a9754c8d134e522db1e6cf"
+  current_revision: "945a11c9c3a4b5904ef56b07f543ee3d1959cf00"
   branch: "main"
   status_sha256_before_plan_files: "bccdd9d5831df44879c3391d1cf6933e9faab1590f8358e077fc082b8a2df3b4"
   relevant_diff_sha256: "ac1b669c0459cf8e2fc119c2ae7deafb5e37a56a83ab6819a1dc29854bfd06fa"
@@ -118,12 +116,28 @@ checkout:
   user_staged_index_manifest_sha256_w5_b_win_followup3: "49c37a613d34ec33667ebeb46c9c0dfc49d6ff9bae395f8a861f8e38d765822f"
   status_sha256_w5_0_complete_pre_ledger: "22cc353d33a863ea6520458b805cd844d9a73a55e8815a3bf8ca2f26c9678e7f"
   status_sha256_w5_0_pushed_pre_w5_1: "22cc353d33a863ea6520458b805cd844d9a73a55e8815a3bf8ca2f26c9678e7f"
+  status_sha256_w5_candidate_pre_ledger: "010b51263b6d122928411bd92f31f4f4e810fa80b66539c8f9151c2ab6857fd4"
+  unstaged_diff_sha256_w5_candidate_pre_ledger: "d2a2a8e5ce71ad6d3febf3a0003f9a797af5d352d14be4ae9dfecdeb75e3588c"
+  staged_diff_sha256_w5_candidate_pre_ledger: "156ea2f530e36f8953f568b60a3136695d925e44d6682151dc3fa74212cdc6ea"
+  current_index_staged_path_count_pre_ledger: 87
+  current_index_staged_name_sha256_pre_ledger: "3ff998f75357b4a93e0025486368653ad2d54cc5ee325279ca2f4afb9df6cba6"
+  current_index_staged_diff_sha256_pre_ledger: "156ea2f530e36f8953f568b60a3136695d925e44d6682151dc3fa74212cdc6ea"
+  status_sha256_w5_2_cleanup_gates: "7a79dc2e78807c69bb2960d0d505a9b5cbb804415f7ab4a5cea9a29d22c9605c"
+  unstaged_diff_sha256_w5_2_cleanup_gates: "ece8c469d5715e4f59eb7ed62ea8832fa7740410492c3cdda735a387af1f1992"
+  staged_name_sha256_w5_2_cleanup_gates: "3ff998f75357b4a93e0025486368653ad2d54cc5ee325279ca2f4afb9df6cba6"
+  untracked_name_sha256_w5_2_cleanup_gates: "dcb3683c0c3d78beec8dd34fcd891bde934d6a2d547216bb386f376f208752bf"
+  status_sha256_w5_2_recovery_pre_ledger: "7a79dc2e78807c69bb2960d0d505a9b5cbb804415f7ab4a5cea9a29d22c9605c"
+  staged_name_sha256_w5_2_recovery_pre_ledger: "3703170ee85e4b92bb254f9a7ee80a28de67248f07b1e3f946aeb71446a10b9a"
+  unstaged_diff_sha256_w5_2_recovery_pre_ledger: "a8d8030c5d9bac4b1e57d1bb98a7d503e5bf48923305f750ee506b8125a2d1a2"
+  staged_diff_sha256_w5_2_recovery_pre_ledger: "156ea2f530e36f8953f568b60a3136695d925e44d6682151dc3fa74212cdc6ea"
+  untracked_name_sha256_w5_2_recovery_pre_ledger: "dcb3683c0c3d78beec8dd34fcd891bde934d6a2d547216bb386f376f208752bf"
   status_sha256_method: "sha256(git status --short --untracked-files=all stdout, with trailing newline)"
   notes:
     - "Current result adapters, package manifests, READMEs, ADR text, and Node contracts are dirty implemented_unverified inputs; they are not released evidence."
     - "AGENTS.md and plan.md are user-owned untracked files and are excluded from every work package."
     - "Plan authoring adds this ledger, the development plan, and one docs/plans/README.md index update; W0 must refresh the post-authoring status hash."
     - "During plan authoring the existing integration/runtime/test change set moved from the worktree to the Git index without a plan-authoring action. Its known file bytes were preserved; W0 must attribute this stage-state drift before implementation."
+    - "After candidate commit 945a11c was created through an isolated index, the live checkout index contains 87 staged paths. This is an external staging state distinct from the historical 27-path protected subset; no stage/unstage operation was performed during W5.2-W6.1."
     - "W0.1 attributed that transition as an external staging-only operation: revision, path set, staged and unstaged diff hashes, all three DSH adapter hashes, the ZCode adapter hash, and the projection-test hash exactly match the post-authoring baseline. File ownership remains external/user-owned until this plan explicitly edits an allowed path; no file was unstaged or restaged."
 external_checkouts:
   deepseek_harness:
@@ -233,7 +247,7 @@ completed_waves:
   - "W3"
   - "W4"
 current_wave: "W5"
-current_work_package: "W5.1"
+current_work_package: "W5.2"
 wave_state: "implemented_unverified"
 clean_acceptance_count: 0
 work_package_states:
@@ -244,7 +258,11 @@ work_package_states:
   W4.5: "complete"
   W5.0: "complete: commit 039a1ed and portability run 32284102425 are fully green across required three-platform, Windows protocol, dependency, smoke, and workspace gates"
   W5.1: "complete: all eight exact 0.2.4 registry checks are E404; source/release manifests and current README references are frozen at 0.2.4; version/package and 88-test release projection gates pass"
-  W5.2: "not_started: build and verify eight npm tarballs from one candidate source commit"
+  W5.2: "implemented_unverified: current focused gates pass, but replacement artifacts are blocked until a clean candidate source is available; Linux/Windows native packages cannot be fabricated on this macOS host"
+  W5.3: "stale: rebuild the ZCode archive from the same replacement candidate after W5.2"
+  W5.4: "stale: prior CI runs cover 945a11c9, not the corrected DSH package bytes"
+  W5.5: "stale: rerun no-side-effect preflight only after replacement candidate CI is green"
+  W6.1: "locked: W5 is no longer complete"
 primary_evidence:
   W4_status: "complete"
   W4.2_zcode_projection: "complete: three isolated candidate trials, one model-visible projection per trial, accepted host 3.7.7"
@@ -259,8 +277,13 @@ primary_evidence:
   W4.4_acceptance_basis: "maintainer waiver plus current-revision primary-agent collector 12/12 and independent oracle 12/12"
   W4.5_layered_cost: "complete with exact schema tokenizer explicitly unavailable"
   W5.0_windows_portability_repair: "complete: commit 039a1ed and portability run 32284102425 passed all required jobs; Windows MCP path assertion now uses OS path components without changing fs_search output."
-last_completed_action: "Completed W5.1: all eight exact 0.2.4 registry items remain absent; source and release-facing manifests are aligned at 0.2.4; version/package, ZCode/DSH/release tests 88/88, docs, and diff gates pass."
-next_action: "Create the candidate source commit from the current worktree while excluding AGENTS.md, plan.md, the preserved self-referential symlink, and other protected user paths; then build the eight W5.2 npm artifacts from that commit."
+  W5.2_release_artifacts: "stale historical evidence: hashes belong to source commit 945a11c9 before the DSH profile documentation correction"
+  W5.2_local_exploratory: "not release evidence: current dirty-tree launcher, darwin-arm64 native package, and four DSH bundles were packed under /private/tmp/xuanling-w52-local.1sMQcH; all local package verifiers passed, but sourceCommit remains 945a11c9 while release-relevant bytes are dirty"
+  W5.3_zcode_archive: "stale historical evidence: archive belongs to source commit 945a11c9"
+  W5.4_required_ci: "stale historical evidence: runs 32287465007 and 32287464990 do not cover the corrected package bytes"
+  W5.5_preflight: "stale historical evidence: run 32288861153 targeted the prior candidate"
+last_completed_action: "Removed closed live-evaluation assets, corrected DSH install examples to shipped runnable profiles, reran the current DSH/npm/docs gates, attempted the local Linux native build, and completed an isolated exploratory pack of the local launcher, darwin-arm64 package, and four DSH bundles."
+next_action: "Create or receive a clean candidate commit containing the current release-relevant README and test cleanup, then rebuild and verify W5.2 artifacts from that commit; do not label dirty-tree bytes as 945a11c9."
 required_gates:
   - "W0 checkout/release/host baseline and old-ledger reconciliation"
   - "W1 correct result/Skill/cost red oracles"
@@ -315,10 +338,17 @@ changed_files:
   - "integrations/deepseek-harness/xuanling-skills/README-ZH.md"
   - "integrations/deepseek-harness/xuanling-skills/skills/xuanling-file-workflow/SKILL.md"
   - "integrations/deepseek-harness/xuanling-skills/skills/xuanling-memory-workflow/SKILL.md"
+historical_asset_policy:
+  - "The closed W4 live-evaluation runner, standalone Memory retrieval fixture, dogfooding workspace, host-live reports, and live-only overlays were removed from test/."
+  - "Evidence and not_run_commands entries below that mention those paths are archived historical records only; they are not executable recovery steps."
+  - "The retained current bridge gate is test/deepseek-harness/scripts/verify-deepseek-bridge.mjs; release and host-contract gates use the retained npm/test and test/host-integration assets."
   - "integrations/zcode-plugin/plugins/xuanling-mcp/README.md"
   - "integrations/zcode-plugin/plugins/xuanling-mcp/README-ZH.md"
   - "integrations/zcode-plugin/plugins/xuanling-mcp/skills/xuanling-mcp-tools/SKILL.md"
 failed_commands:
+  - command: "cargo build --locked --release --target x86_64-unknown-linux-gnu -p xuanling-mcp"
+    result: "The macOS host stopped before Rust compilation because the target linker tool x86_64-linux-gnu-gcc is not installed. No Linux binary was produced; this is a local cross-toolchain limitation, not a Rust source failure. The Linux native package remains a CI-produced artifact."
+    classification: "cross-host toolchain limitation; native Linux CI remains required and no artifact may be substituted"
   - command: "xuanling-portability run 32279712990 at 819338f703b7ffdaa593a1ec049b71ebfb328111"
     result: "Linux/macOS jobs completed green. Windows fmt/check/clippy, toolkit contract 114/114, Memory contract 40/40, and experimental Memory contract 43/43 passed. Windows MCP protocol stopped at 108/109 in contract_hardening::search_filters_hidden_ignored_globs_and_extensions: the result path uses the valid native C:\\...\\src\\main.rs form, while the test asserts ends_with(\"src/main.rs\") with a POSIX separator. Golden, dependency, workspace, and smoke jobs were skipped."
     classification: "new confirmed Windows-only contract-test portability defect; not caused by .gitattributes, Memory loader, MCP handler, or capability implementation"
@@ -398,7 +428,8 @@ not_run_commands:
   - "Before the renewed 2026-08-18T23:49:10+08:00 authorization, no additional billable model call, ZCode install change, DSH profile install, commit, push, tag, publish, or promotion was authorized or run."
   - "No full Rust workspace gate was run during plan authoring; focused MCP protocol 110/110 and npm 108/108 passed."
   - "GLM did not run the DSH W4.4 protocol. The maintainer explicitly waived that executor-identity gate and accepted the current-revision primary-agent 12/12 evidence; no GLM-independent claim is made."
-  - "No W5 version freeze, source manifest update, release candidate build, tag, publish, or ZCode promotion was performed; those actions remain forbidden."
+  - "W6 tag, npm publish, ZCode promotion, and clean-install acceptance were not run; they remain gated by exact release authorization."
+  - "Replacement W5.2 tarballs, W5.3 ZCode archive, W5.4 candidate CI, and W5.5 preflight were not run after the current README/test cleanup; the worktree changes are not provenance-bound to 945a11c9."
   - "Run 32276727500 did not execute Windows experimental Memory, MCP protocol/golden, dependency, workspace, or smoke gates after the base Memory digest failure. This is retained as historical failure evidence; run 32284102425 later executed and passed those surfaces."
   - "Run 32279712990 did not execute Windows MCP golden, dependency, workspace, or smoke gates after the path-separator assertion failure. This is retained as historical failure evidence; the authorized test-only correction and run 32284102425 later resolved the gap."
 incidents:
@@ -433,6 +464,16 @@ incidents:
     containment: "Moved both files without deletion or content change to /private/tmp/xuanling-host-result-w4-20260818-a1/repo-root-db-recurrence-20260819T1025; no repository-root .xuanling-w4-memory.db* residue remains."
     status: "contained; quarantine hashes match the pre-containment files"
 blockers:
+  - id: "B-W5-CANDIDATE-DIRTY-01"
+    scope: "W5.2-W5.5"
+    condition: "Release-relevant README, package, adapter, test, and test-asset cleanup remains in the working tree after source commit 945a11c9. Packaging those bytes with 945a11c9 would make the embedded sourceCommit claim false."
+    release: "Use a clean candidate commit that contains the intended current bytes, or create an isolated clean source revision under explicit maintainer authorization; then rebuild all W5.2-W5.5 evidence from that single revision."
+    status: "open"
+  - id: "B-W5-LINUX-CROSS-TOOLCHAIN-01"
+    scope: "W5.2"
+    condition: "The macOS host has no x86_64-linux-gnu-gcc, so cargo cannot produce the Linux native package locally."
+    release: "Use the required Ubuntu GitHub Actions native-package job; do not copy an older target binary into the replacement release."
+    status: "open"
   - id: "B-WIN-MCP-TEST-PATH-01"
     scope: "W5/W6"
     condition: "Run 32279712990 reaches Windows MCP protocol after the EOL repair and fails only contract_hardening::search_filters_hidden_ignored_globs_and_extensions because the test requires a POSIX suffix while fs_search returns an OS-native Windows path. Linux/macOS pass the same assertion."
@@ -472,12 +513,45 @@ blockers:
     condition: "Commit, push, tag, npm publish, and target promotion are external side effects not authorized by plan generation."
     release: "Obtain exact candidate commit/tag authorization after W5 completes."
 evidence:
+  - command: "pnpm exec vitest run packages/boot/app-boot/tests/profile.spec.ts apps/cli/tests/windows-shell.spec.ts (cwd /Volumes/project_home/github/deepseek-harness)"
+    result: "DSH profile and Windows-shell contracts passed 2 files / 20 tests at revision 99f6f02fecdb7dff40c3fbc9470f5907c29f74ca. Only the existing vite-tsconfig-paths deprecation warning was emitted; no .vite-temp permission failure occurred."
+    recorded_at: "2026-08-20T12:15:33+08:00"
+  - command: "npm --prefix npm test; npm --prefix npm run check; npm --prefix npm run check:docs; git diff --check; git diff --cached --check"
+    result: "Current checkout gates passed: npm contract suite 112/112, version and main-package checks passed at 0.2.4, check-docs passed for 54 Markdown files, and both staged/unstaged diff checks passed. npm emitted only the existing unknown user-config warnings."
+    recorded_at: "2026-08-20T12:18:39+08:00"
+  - command: "pnpm exec vitest run packages/boot/app-boot/tests/profile.spec.ts apps/cli/tests/windows-shell.spec.ts (cwd /Volumes/project_home/github/deepseek-harness)"
+    result: "Current DSH profile and Windows-shell contracts passed 2 files / 20 tests at revision 99f6f02fecdb7dff40c3fbc9470f5907c29f74ca; only the existing vite-tsconfig-paths deprecation warning was emitted."
+    recorded_at: "2026-08-20T12:26:37+08:00"
+  - command: "cargo build --locked --release --target aarch64-apple-darwin -p xuanling-mcp; npm/scripts/stage-main.mjs; npm/scripts/pack-package.mjs; npm/scripts/generate-third-party-licenses.mjs; npm/scripts/stage-platform.mjs; npm/scripts/verify-package.mjs; npm/scripts/pack-dsh-bundles.mjs; npm/scripts/verify-dsh-release-set.mjs (isolated root /private/tmp/xuanling-w52-local.1sMQcH)"
+    result: "Local exploratory packaging passed: darwin-arm64 release binary built in 25.13s; launcher and darwin-arm64 package verifiers passed; all four DSH tarballs packed and the DSH release-set verifier passed at 0.2.4. Artifacts are temporary and not release evidence because the checkout has release-relevant dirty bytes and the embedded sourceCommit is 945a11c9."
+    recorded_at: "2026-08-20T12:29:00+08:00"
   - command: "git push origin HEAD:main; npm view <each of the eight release package names>@0.2.4 version --json --registry https://registry.npmjs.org; node manifest version inventory"
     result: "Evidence commit 4dd7343bc3718a8336a9754c8d134e522db1e6cf is present on origin/main. All eight exact 0.2.4 registry lookups returned E404: the core launcher, three native variants, and four DSH bundles are all available for immutable release. Cargo workspace, npm release package, core package, and four DSH package manifests remain at 0.2.3 before W5.1 edits."
     recorded_at: "2026-08-20T02:18:00+08:00"
   - command: "XUANLING_VERSION=0.2.4 npm --prefix npm run check; node --test npm/test/zcode-plugin-contract.test.mjs npm/test/deepseek-harness-bundle.test.mjs npm/test/deepseek-harness-skills.test.mjs npm/test/release-distribution-contract.test.mjs npm/test/mcp-result-projection.test.mjs; npm --prefix npm run check:docs; git diff --check"
     result: "W5.1 version/package gate passed: Cargo/npm version and MIT license contract OK at 0.2.4; ZCode, DSH bundle/Skills, release-distribution, and result-projection tests passed 88/88; check-docs passed for 94 Markdown files; git diff --check passed. Historical 0.2.3 projection fixtures and third-party Cargo.lock versions remain unchanged by design."
     recorded_at: "2026-08-20T02:28:00+08:00"
+  - command: "candidate 945a11c9 npm/scripts/stage-main.mjs; npm/scripts/pack-package.mjs; npm/scripts/pack-dsh-bundles.mjs; npm/scripts/verify-release-set.mjs; npm/scripts/verify-dsh-release-set.mjs"
+    result: "W5.2 passed in an isolated detached worktree. The launcher and three native packages plus four DSH bundles were packed at 0.2.4, with exact package allowlists, SHA-1/SHA-512 manifests, package versions, MIT license bytes, and source commit 945a11c9c3a4b5904ef56b07f543ee3d1959cf00. Core manifest SHA-256 values (main, darwin-arm64, linux-x64-gnu, win32-x64-msvc) are bd79f120f72826339dc2d18e035dbfe04085c2d1a79e12ad70cac6b7ffdca574, c5ab6cc32ce597cb0c47c460dac718f3d0dd71c05fc246548687df111e7e7243, 6d299e028c64574953ccdd9a6dcf41dade23594c7148eaace4ff5e8800f4761c, and 400320aa222285cca5d20209072310c79e317ce7e6df3085c347d7c99915baa9; DSH manifest values (memory, skills, tools-replace, tools) are f19d1b642a91ed1a24dea71409b6c86eec004985cee075e5f821b06e4750bd06, fb2fe9babfa00c71958858939aaa298cdba17415f7d351901751abba72fcc77d, 76dbfcf30237d0ec5e0ddc10a98bc8dfd8e33f304f48af2240ca10461553ca74, and df78885c30ed672a99e90ec7c121c55c2134bdcd52144067de6ce0fc16af81."
+    recorded_at: "2026-08-20T02:47:14+08:00"
+  - command: "npm/scripts/stage-zcode-marketplace.mjs; npm/scripts/verify-zcode-marketplace.mjs (two independent output roots); cmp pack manifests and archives"
+    result: "W5.3 passed. Both projections report tree_sha256 55b72d5cf84067b52c846b7aaac9b76ce6a1ceaa117deff4998261f97735f28d and archive sha256 e2b13fb2d07de7997594a1ba6e34299f0b1d797445b9b1827f0c41321084666c; archive size is 17040366 bytes and both archive and pack manifest are byte-identical."
+    recorded_at: "2026-08-20T02:47:14+08:00"
+  - command: "gh run view 32287465007 --repo umbrella22/xuanling; gh run view 32287464990 --repo umbrella22/xuanling"
+    result: "W5.4 passed at candidate 945a11c9. xuanling-mcp-npm 32287465007 is success with launcher and darwin-arm64/linux-x64-gnu/win32-x64-msvc native jobs green. xuanling-portability 32287464990 is success with all three platform contract jobs, workspace full gate, and all three binary smoke/upload jobs green."
+    recorded_at: "2026-08-20T02:47:14+08:00"
+  - command: "gh workflow run npm-publish.yml --repo umbrella22/xuanling --ref main; gh run view 32288861153 --repo umbrella22/xuanling"
+    result: "W5.5 no-side-effect preflight passed. validate release source, npm ownership/prerequisites, and ZCode target identity/push permission were green. Build, assemble, publish, and direct-promotion jobs were all skipped because the event was workflow_dispatch; no tag, registry write, or target push occurred."
+    recorded_at: "2026-08-20T02:47:14+08:00"
+  - command: "npm view <each exact 0.2.4 release item> version --json --registry https://registry.npmjs.org"
+    result: "All eight exact release items returned E404 immediately before W6: the launcher, three native packages, and four DSH bundles remain unpublished."
+    recorded_at: "2026-08-20T02:47:14+08:00"
+  - command: "npm --prefix <detached candidate 945a11c9> run check; npm --prefix <detached candidate 945a11c9> test; npm --prefix <detached candidate 945a11c9> run check:docs; git diff --check"
+    result: "Candidate checkout passed the complete npm contract suite 149/149, version/package check, docs check (75 Markdown files in the clean candidate tree), and diff check. The run used no model credentials or host mutation."
+    recorded_at: "2026-08-20T02:47:14+08:00"
+  - command: "gh api repos/umbrella22/xuanling/git/ref/tags/xuanling-mcp-v0.2.4; gh api repos/umbrella22/xuanling-zcode-marketplace/git/ref/tags/xuanling-mcp-v0.2.4; gh api repos/umbrella22/xuanling-zcode-marketplace"
+    result: "W6.1 read-only absence/identity preflight: both exact tag references returned GitHub 404; target repository identity is umbrella22/xuanling-zcode-marketplace, default branch main, and authenticated push permission is true. No tag or target mutation was attempted."
+    recorded_at: "2026-08-20T02:47:14+08:00"
   - command: "gh run view 32284102425 --repo umbrella22/xuanling --json status,conclusion,name,headSha,jobs"
     result: "Portability run 32284102425 completed successfully at commit 039a1edf549b4570e9954a347faa451514fb8cec. Linux, macOS, and Windows base jobs passed; Windows executed toolkit 114/114, Memory 40/40, experimental Memory 43/43, MCP protocol 110/110, golden 21/21, and dependency island gates. Three-platform release binary smoke and workspace full gate also passed. B-WIN-01, B-WIN-EOL-01, and B-WIN-MCP-TEST-PATH-01 are resolved; W5.0 is complete."
     recorded_at: "2026-08-20T02:08:54+08:00"
@@ -717,15 +791,15 @@ evidence:
 ```text
 EXECUTION_STATUS: HANDOFF_REQUIRED
 PLAN_ID: host-result-projection-agent-efficiency-20260818
-CHECKOUT_FINGERPRINT: revision 039a1edf549b4570e9954a347faa451514fb8cec on origin/main; W5.0 completion evidence update unstaged; current DSH revision 99f6f02fecdb7dff40c3fbc9470f5907c29f74ca and status 39d1f6c6...; user staged set 27 paths, index manifest 49c37a61...
+CHECKOUT_FINGERPRINT: revision 945a11c9c3a4b5904ef56b07f543ee3d1959cf00 on origin/main; current pre-ledger status SHA 7a79dc2e78807c69bb2960d0d505a9b5cbb804415f7ab4a5cea9a29d22c9605c; current index 87 staged paths (name SHA 3703170e..., diff SHA 156ea2f5...), current unstaged diff SHA a8d8030c..., untracked name SHA dcb3683c...; historical protected subset 27 paths (index manifest 49c37a61...); current DSH revision 99f6f02fecdb7dff40c3fbc9470f5907c29f74ca and status 39d1f6c6...
 CURRENT_WAVE: W5
 CURRENT_WORK_PACKAGE: W5.2
 WAVE_STATE: implemented_unverified
-CONTRACTS_PROVEN: prior W0-W4 unchanged; W5.0 complete at commit 039a1ed with portability run 32284102425 fully green across three platforms, Windows protocol/dependency gates, binary smoke, and workspace aggregate; W5.1 version/package gates complete at 0.2.4 with eight registry E404 checks and 88/88 targeted tests
-EVIDENCE_ADDED: W5.1 eight-item registry absence, aligned Cargo/npm/DSH/ZCode manifests and README references, version/package/release projection tests 88/88, docs 94, diff check; protected staged set, default Memory DB, and DSH checkout unchanged
-FAILED_GATES: none current for W5.0/W5.1; source checkout full npm remains an attributed setup failure caused by the preserved user-owned self-referential skills symlink, with symlink-free copy previously 149/149
-NOT_RUN_GATES: candidate source commit containing current W5.1 bytes; W5.2 eight npm artifacts; W5.3 ZCode archive; W5.4 required release CI; W5.5 no-side-effect preflight; W6 tag/publish/promotion
-BLOCKERS: B-ZCODE-DEFAULT-SIDECAR-01 requires future isolated restart/no-residue evidence; B-RELEASE-01 blocks W6 external side effects
-NEXT_EXACT_ACTION: create and push the candidate source commit from the current worktree through an isolated index preserving protected user paths, then build and verify the eight W5.2 npm artifacts from that commit
+CONTRACTS_PROVEN: W0-W4 unchanged; W5.0 portability complete at 039a1ed/32284102425; W5.1 version freeze complete at 0.2.4; W5.2-W5.5 candidate evidence stale after the DSH README and test-asset cleanup
+EVIDENCE_ADDED: DSH profile tests 20/20; npm contract suite 112/112; npm version/main package check; docs 54; staged/unstaged diff checks; local darwin-arm64/launcher and four-DSH exploratory package verifiers; Linux cross-build failure recorded as a toolchain limitation
+FAILED_GATES: local Linux native build stopped before compilation because x86_64-linux-gnu-gcc is unavailable; no replacement Linux artifact was produced
+NOT_RUN_GATES: replacement W5.2 tarballs from a clean candidate, replacement W5.3 ZCode archive, replacement W5.4 candidate CI, replacement W5.5 preflight, W6.1 immutable tag, W6.2 Trusted npm publish, W6.3 ZCode promotion, W6.4 released-byte DSH/ZCode clean acceptance, W6.5 final reconciliation
+BLOCKERS: B-W5-CANDIDATE-DIRTY-01 prevents provenance-correct release packaging; B-W5-LINUX-CROSS-TOOLCHAIN-01 requires the Ubuntu native-package job; B-ZCODE-DEFAULT-SIDECAR-01 still requires future isolated current-host restart/no-residue evidence; B-RELEASE-01 requires exact authorization for tag, publish, promotion, and released-byte acceptance
+NEXT_EXACT_ACTION: create or receive a clean candidate commit containing the current release-relevant README and test cleanup, then rebuild W5.2 from that candidate; do not use dirty-tree exploratory tarballs or 945a11c9 as the replacement source
 LEDGER_PATH: docs/plans/host-result-projection-agent-efficiency-execution-ledger.md
 ```

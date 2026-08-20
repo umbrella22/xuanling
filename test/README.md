@@ -2,43 +2,37 @@
 
 English | [Simplified Chinese](README-ZH.md)
 
-This directory contains repository-only fixtures, probes, evaluation overlays,
-and acceptance reports. None of these files are required when installing an
-integration bundle or the `xuanling-mcp` npm package.
+This directory contains repository-only contract fixtures and release
+verification assets. Integration bundles and the `xuanling-mcp` npm package do
+not import this tree at runtime.
 
-## DeepSeek Harness
-
-`deepseek-harness` validates the host-specific bundles published from
-[`integrations/deepseek-harness`](../integrations/deepseek-harness/). Runtime
-bundles read their adapters, policies, and Skills only from `integrations`;
-they do not import this test tree.
+## Retained Suites
 
 | Path | Purpose |
 | --- | --- |
-| `deepseek-harness/scripts/verify-deepseek-bridge.mjs` | Live stdio contract checks against a XuanLing binary. |
-| `deepseek-harness/live-test` | Fail-closed workspace and Memory database isolation overlay. |
-| `deepseek-harness/evaluation/fixtures` | Hash-pinned filesystem workload and external oracle. |
-| `deepseek-harness/evaluation/overlays` | Frozen A/B/C tool-catalog variants and shared isolation policy. |
-| `deepseek-harness/evaluation/scripts` | Catalog inspection, direct probes, live runner, analyzer, and report verifiers. |
-| `deepseek-harness/evaluation/memory-retrieval` | Seeded retrieval workload, runner, transcript verifier, and SQLite oracle. |
-| `deepseek-harness/evaluation/*.md` | Historical acceptance reports tied to their recorded revisions and evidence roots. |
+| `deepseek-harness/scripts/verify-deepseek-bridge.mjs` | Verifies the stdio bridge, isolated workspace, isolated Memory database, and selected tool profile against a built XuanLing binary. |
+| `host-integration/fixtures/result-projection` | Frozen ZCode and DSH result-projection inputs. |
+| `host-integration/fixtures/result-cost` | Closed fixtures for wire, model-visible, structured, UI, and provider-usage accounting. |
+| `host-integration/fixtures/skill-routing` | Shared DSH and ZCode Skill-routing cases. |
+| `host-integration/verify-*.mjs` | Deterministic projection, cost, routing, and real-binary verifiers used by the current host-efficiency plan. |
+| `release` | Repository-promotion and immutable-release fixtures. |
 
-The filesystem fixture is an immutable test input. Its nested `README.md` is
-part of the workload and must remain byte-for-byte hash compatible with
-`manifest.json`.
+Historical filesystem A/B/C evaluation, the standalone Memory retrieval
+evaluation, host dogfooding workspaces, database snapshots, reports, and their
+live-only overlays were removed after their acceptance waves closed. Their
+conclusions remain in the corresponding ADR and execution ledgers; they are
+not current regression gates.
 
 ## Deterministic Gates
 
-The npm suite exercises the DSH bundle contracts, frozen fixtures, analyzers,
-dry-run gates, and Memory retrieval evaluation without starting a billable
-model session:
+Run the complete Node contract suite:
 
 ```sh
 npm --prefix npm test
 ```
 
-Verify the MCP bridge against a built binary with an isolated temporary
-workspace and Memory database:
+Verify the DSH bridge against a built binary. The verifier creates temporary
+workspace and database roots and removes them after the run:
 
 ```sh
 node test/deepseek-harness/scripts/verify-deepseek-bridge.mjs \
@@ -49,32 +43,5 @@ node test/deepseek-harness/scripts/verify-deepseek-bridge.mjs \
   --tool-profile memory
 ```
 
-## DeepSeek Harness Checkout Probes
-
-The TypeScript probes resolve Harness packages from the checkout supplied by
-`--dsh-root`; XuanLing does not vendor those dependencies.
-
-```sh
-XUANLING_DSH_CHECKOUT=/absolute/path/to/deepseek-harness
-XUANLING_MCP_BINARY=/absolute/path/to/xuanling-mcp
-
-TSX_TSCONFIG_PATH="$XUANLING_DSH_CHECKOUT/tsconfig.json" \
-  "$XUANLING_DSH_CHECKOUT/node_modules/.bin/tsx" \
-  test/deepseek-harness/evaluation/scripts/inspect-catalog.ts \
-  --dsh-root "$XUANLING_DSH_CHECKOUT" \
-  --binary "$XUANLING_MCP_BINARY" \
-  --arms A,B,C
-
-TSX_TSCONFIG_PATH="$XUANLING_DSH_CHECKOUT/tsconfig.json" \
-  "$XUANLING_DSH_CHECKOUT/node_modules/.bin/tsx" \
-  test/deepseek-harness/evaluation/scripts/probe-filesystem-tools.ts \
-  --dsh-root "$XUANLING_DSH_CHECKOUT" \
-  --binary "$XUANLING_MCP_BINARY"
-```
-
-The filesystem and Memory live runners refuse to start a model session unless
-`--allow-billable-live` is present. Their dry-run modes validate paths, frozen
-routes, trial counts, and isolation inputs without contacting the provider.
-Live runs require a unique run ID, an isolated workspace and database, and one
-explicit credential source.
-
+Host-integration verifiers are also exercised by the npm tests. Their fixtures
+remain static so a behavior change requires an explicit fixture review.

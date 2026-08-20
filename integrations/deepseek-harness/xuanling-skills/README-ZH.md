@@ -6,8 +6,11 @@
 它不注册 MCP server，也不依赖 `@xuanling-rs/xuanling-mcp`。
 
 ```sh
-dsh plugin --profile demo add @xuanling-rs/xuanling-dsh-skills@0.2.4
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-skills@0.2.4
 ```
+
+该命令会扩展 DSH 内置的 Web profile。内置 Headless profile 应使用 `--profile headless`。
+未知 profile 名称只包含 base bundle，本身不会提供可运行的 Web 或 Headless 应用。
 
 请与且仅与一个 XuanLing 工具 bundle 组合使用。只有 fs 工具族可见时，
 `xuanling-file-workflow` 才在 Harness 原生与 XuanLing 文件工具之间路由，并覆盖 CAS overwrite、

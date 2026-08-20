@@ -2,38 +2,33 @@
 
 [English](README.md) | 简体中文
 
-该目录保存仅供仓库验收使用的 fixture、probe、evaluation overlay 与报告。安装 integration
-bundle 或 `xuanling-mcp` npm package 时不需要这些文件。
+本目录只包含仓库内合同 fixture 与发布验证资产。Integration bundle 和
+`xuanling-mcp` npm package 在运行时不会导入本目录。
 
-## DeepSeek Harness
+## 保留的测试
 
-`deepseek-harness` 验证
-[`integrations/deepseek-harness`](../integrations/deepseek-harness/) 发布的 Host 专用 bundle。
-运行时 bundle 只从 `integrations` 读取 adapter、policy 与 Skill，不会导入该测试目录。
-
-| 路径 | 作用 |
+| 路径 | 用途 |
 | --- | --- |
-| `deepseek-harness/scripts/verify-deepseek-bridge.mjs` | 针对 XuanLing binary 的真实 stdio 合同检查。 |
-| `deepseek-harness/live-test` | 对 workspace 与 Memory database 执行 fail-closed 隔离的 overlay。 |
-| `deepseek-harness/evaluation/fixtures` | 固定 hash 的文件系统工作负载与外部 oracle。 |
-| `deepseek-harness/evaluation/overlays` | 冻结的 A/B/C 工具目录变体与共享隔离策略。 |
-| `deepseek-harness/evaluation/scripts` | Catalog 检查、直接 probe、live runner、analyzer 与报告 verifier。 |
-| `deepseek-harness/evaluation/memory-retrieval` | 预置数据的召回工作负载、runner、transcript verifier 与 SQLite oracle。 |
-| `deepseek-harness/evaluation/*.md` | 与记录 revision 和 evidence root 绑定的历史验收报告。 |
+| `deepseek-harness/scripts/verify-deepseek-bridge.mjs` | 使用已构建的 XuanLing binary 验证 stdio bridge、隔离 workspace、隔离 Memory database 和指定工具 profile。 |
+| `host-integration/fixtures/result-projection` | 固定的 ZCode 与 DSH 结果投影输入。 |
+| `host-integration/fixtures/result-cost` | wire、模型可见文本、structured、UI 与 provider usage 分层计量的封闭 fixture。 |
+| `host-integration/fixtures/skill-routing` | DSH 与 ZCode 共用的 Skill 路由用例。 |
+| `host-integration/verify-*.mjs` | 当前宿主效率计划使用的投影、成本、路由和真实 binary 确定性 verifier。 |
+| `release` | 仓库 promotion 与不可变发布 fixture。 |
 
-文件系统 fixture 是不可变测试输入。其中嵌套的 `README.md` 属于工作负载，必须与
-`manifest.json` 保持逐字节 hash 兼容。
+历史 filesystem A/B/C evaluation、独立 Memory retrieval evaluation、宿主 dogfooding workspace、
+database snapshot、报告及其 live-only overlay 已在对应验收 Wave 关闭后移除。其结论保留在相关
+ADR 与执行账本中，不再作为当前回归门禁。
 
 ## 确定性门禁
 
-npm 测试会验证 DSH bundle 合同、冻结 fixture、analyzer、dry-run gate 与 Memory 召回评估，
-不会启动计费模型会话：
+运行完整 Node 合同测试：
 
 ```sh
 npm --prefix npm test
 ```
 
-使用隔离的临时 workspace 与 Memory database，针对已构建 binary 验证 MCP bridge：
+使用已构建 binary 验证 DSH bridge。Verifier 会创建临时 workspace 与 database，并在结束后清理：
 
 ```sh
 node test/deepseek-harness/scripts/verify-deepseek-bridge.mjs \
@@ -44,30 +39,4 @@ node test/deepseek-harness/scripts/verify-deepseek-bridge.mjs \
   --tool-profile memory
 ```
 
-## DeepSeek Harness Checkout Probe
-
-TypeScript probe 从 `--dsh-root` 指定的 Harness checkout 解析 package；XuanLing 不 vendoring
-这些 dependency。
-
-```sh
-XUANLING_DSH_CHECKOUT=/absolute/path/to/deepseek-harness
-XUANLING_MCP_BINARY=/absolute/path/to/xuanling-mcp
-
-TSX_TSCONFIG_PATH="$XUANLING_DSH_CHECKOUT/tsconfig.json" \
-  "$XUANLING_DSH_CHECKOUT/node_modules/.bin/tsx" \
-  test/deepseek-harness/evaluation/scripts/inspect-catalog.ts \
-  --dsh-root "$XUANLING_DSH_CHECKOUT" \
-  --binary "$XUANLING_MCP_BINARY" \
-  --arms A,B,C
-
-TSX_TSCONFIG_PATH="$XUANLING_DSH_CHECKOUT/tsconfig.json" \
-  "$XUANLING_DSH_CHECKOUT/node_modules/.bin/tsx" \
-  test/deepseek-harness/evaluation/scripts/probe-filesystem-tools.ts \
-  --dsh-root "$XUANLING_DSH_CHECKOUT" \
-  --binary "$XUANLING_MCP_BINARY"
-```
-
-文件系统与 Memory live runner 在缺少 `--allow-billable-live` 时会拒绝启动模型会话。它们的
-dry-run 模式只验证路径、冻结 route、trial 数量与隔离输入，不联系 provider。真实运行还要求
-唯一 run ID、隔离 workspace 与 database，以及一个显式 credential source。
-
+npm tests 同时调用 host-integration verifier。其 fixture 保持静态，行为变化必须显式审核 fixture。
