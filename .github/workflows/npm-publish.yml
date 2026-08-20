@@ -2,6 +2,15 @@ name: publish-xuanling-mcp-to-npm
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "Run a no-publish release candidate build, or only the default preflight"
+        required: false
+        default: preflight
+        type: choice
+        options:
+          - preflight
+          - candidate
   push:
     tags:
       - "xuanling-mcp-v*"
@@ -150,7 +159,7 @@ jobs:
   build-main:
     name: build npm launcher tarball
     needs: [validate-release, npm-prerequisites, zcode-prerequisites]
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || inputs.mode == 'candidate'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -180,7 +189,7 @@ jobs:
   build-native:
     name: build npm native tarball (${{ matrix.target_id }})
     needs: [validate-release, npm-prerequisites, zcode-prerequisites]
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || inputs.mode == 'candidate'
     strategy:
       fail-fast: false
       matrix:
@@ -250,7 +259,7 @@ jobs:
   build-dsh:
     name: build four DSH bundle tarballs
     needs: [validate-release, npm-prerequisites, zcode-prerequisites]
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || inputs.mode == 'candidate'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -278,7 +287,7 @@ jobs:
   assemble-release:
     name: verify complete release set and build ZCode projection
     needs: [validate-release, build-main, build-native, build-dsh]
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || inputs.mode == 'candidate'
     runs-on: ubuntu-latest
     permissions:
       attestations: write
@@ -325,6 +334,7 @@ jobs:
             --commit "${{ needs.validate-release.outputs.commit }}" \
             --require-release-trust
       - name: Attest immutable ZCode marketplace archive
+        if: github.event_name == 'push'
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: npm/dist/zcode/xuanling-zcode-marketplace-${{ needs.validate-release.outputs.version }}.tar.gz

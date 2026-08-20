@@ -260,9 +260,13 @@ test("release workflow requires provenance and attestation without publisher cer
   assert.match(publisher, /"--provenance"/);
 });
 
-test("release workflow has a no-tag preflight for npm visibility and ZCode credentials", () => {
+test("release workflow separates default preflight from an explicit no-publish candidate build", () => {
   const source = workflow();
-  assert.match(source, /workflow_dispatch:/);
+  assert.match(
+    source,
+    /workflow_dispatch:\n\s+inputs:\n\s+mode:\n\s+description: [^\n]+\n\s+required: false\n\s+default: preflight\n\s+type: choice\n\s+options:\n\s+- preflight\n\s+- candidate/,
+    "manual runs must default to preflight and require an explicit candidate choice",
+  );
   assert.match(source, /environment: npmjs/);
   assert.match(source, /check-release-prerequisites\.mjs/);
   assert.doesNotMatch(source, /NPM_BOOTSTRAP_TOKEN|npm whoami|NPM_CONFIG_USERCONFIG/);
@@ -277,15 +281,28 @@ test("release workflow has a no-tag preflight for npm visibility and ZCode crede
     "build-native",
     "build-dsh",
     "assemble-release",
+  ]) {
+    assert.match(
+      workflowJob(source, job),
+      /if: github\.event_name == 'push' \|\| inputs\.mode == 'candidate'/,
+      `${job} must require an explicit candidate choice during workflow_dispatch`,
+    );
+  }
+  for (const job of [
     "publish",
     "promote",
   ]) {
     assert.match(
       workflowJob(source, job),
       /if: github\.event_name == 'push'/,
-      `${job} must stay disabled during a manual preflight`,
+      `${job} must stay disabled during every manual run`,
     );
   }
+  assert.match(
+    workflowJob(source, "assemble-release"),
+    /- name: Attest immutable ZCode marketplace archive\n\s+if: github\.event_name == 'push'/,
+    "candidate artifacts must not create a release provenance attestation",
+  );
 });
 
 test("release workflow publishes the complete ordered npm set", () => {
