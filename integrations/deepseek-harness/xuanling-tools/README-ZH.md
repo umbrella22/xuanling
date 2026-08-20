@@ -6,13 +6,13 @@
 原生工具，并以 `mcp__xuanling__` 前缀增加 XuanLing 工具。
 
 ```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-tools@0.2.4
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-tools@0.2.5
 ```
 
 该命令会扩展 DSH 内置的 Web profile。内置 Headless profile 应使用 `--profile headless`。
 未知 profile 名称只包含 base bundle，本身不会提供可运行的 Web 或 Headless 应用。
 
-精确版本的 `@xuanling-rs/xuanling-mcp@0.2.4` runtime 会安装在 profile 内，并通过带校验的 JS launcher
+精确版本的 `@xuanling-rs/xuanling-mcp@0.2.5` runtime 会安装在 profile 内，并通过带校验的 JS launcher
 启动；不需要也不会使用全局 npm package。只有文件系统 capability root 与 DSH 工作目录不同时，
 才需要设置 `XUANLING_WORKSPACE_ROOT`。
 

@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "scenario_id": "cancel-at-final-confirmation",
+  "source": {
+    "url": "https://github.com/umbrella22/xuanling",
+    "skill_path": ".agents/skills/xuanling-dsh-install/SKILL.md",
+    "status": "loaded"
+  },
+  "host": {
+    "dsh_version": "0.1.0-rc.7",
+    "isolated_home": true
+  },
+  "selection": {
+    "profile": "web",
+    "preset": "recommended",
+    "resolved_version": "0.2.4"
+  },
+  "events": [
+    { "seq": 1, "kind": "source_loaded" },
+    {
+      "seq": 2,
+      "kind": "question",
+      "question_id": "xuanling_target_profile",
+      "options": ["web", "headless"],
+      "recommended": "web",
+      "status": "answered",
+      "answer": "web"
+    },
+    {
+      "seq": 3,
+      "kind": "question",
+      "question_id": "xuanling_install_preset",
+      "options": ["recommended", "full-additive", "filesystem-replacement"],
+      "recommended": "recommended",
+      "status": "answered",
+      "answer": "recommended"
+    },
+    {
+      "seq": 4,
+      "kind": "registry_resolved",
+      "registry": "https://registry.npmjs.org",
+      "version": "0.2.4",
+      "packages": {
+        "@xuanling-rs/xuanling-mcp": "0.2.4",
+        "@xuanling-rs/xuanling-dsh-memory": "0.2.4",
+        "@xuanling-rs/xuanling-dsh-skills": "0.2.4"
+      }
+    },
+    {
+      "seq": 5,
+      "kind": "inventory",
+      "phase": "before",
+      "profile": "web",
+      "manifest_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "config_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "relevant_specs": {}
+    },
+    {
+      "seq": 6,
+      "kind": "question",
+      "question_id": "xuanling_install_confirm",
+      "options": ["proceed", "cancel"],
+      "recommended": "proceed",
+      "status": "cancelled",
+      "plan": {
+        "profile": "web",
+        "preset": "recommended",
+        "resolved_version": "0.2.4",
+        "changes_required": true,
+        "remove": [],
+        "add": [
+          "@xuanling-rs/xuanling-dsh-memory@0.2.4",
+          "@xuanling-rs/xuanling-dsh-skills@0.2.4"
+        ]
+      }
+    }
+  ],
+  "terminal": {
+    "status": "cancelled_before_side_effect",
+    "mutation_count": 0
+  },
+  "redaction": {
+    "contains_secret": false,
+    "default_memory_db_touched": false
+  }
+}

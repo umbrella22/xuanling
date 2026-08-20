@@ -13,8 +13,8 @@
 
 ```sh
 dsh plugin --profile web add \
-  @xuanling-rs/xuanling-dsh-memory@0.2.4 \
-  @xuanling-rs/xuanling-dsh-skills@0.2.4
+  @xuanling-rs/xuanling-dsh-memory@0.2.5 \
+  @xuanling-rs/xuanling-dsh-skills@0.2.5
 dsh --profile web --dump-config
 dsh web
 ```
@@ -23,7 +23,7 @@ dsh web
 等价替换：当前 DSH 对未知名称只初始化 `@deepseek-ai/dsh-base`，不会自动加入 Web 或
 Headless 应用 bundle。
 
-Memory bundle 会在 profile 内安装精确版本的 `@xuanling-rs/xuanling-mcp@0.2.4` launcher 和原生 optional
+Memory bundle 会在 profile 内安装精确版本的 `@xuanling-rs/xuanling-mcp@0.2.5` launcher 和原生 optional
 dependency；不需要全局 npm package、`npx` 或安装时下载 binary。
 
 推荐组合会增加完整的 Memory v2 九工具生命周期，保留全部 Harness 原生工具，并加载两个按需
@@ -52,7 +52,7 @@ Bundle 表达式在 DSH 启动时解析以下设置：
 
 | 设置 | 默认值 | 作用 |
 | --- | --- | --- |
-| MCP runtime | Profile 内的 `@xuanling-rs/xuanling-mcp@0.2.4` | 经过校验的 JS launcher 与原生 optional dependency |
+| MCP runtime | Profile 内的 `@xuanling-rs/xuanling-mcp@0.2.5` | 经过校验的 JS launcher 与原生 optional dependency |
 | `XUANLING_WORKSPACE_ROOT` | DSH 进程工作目录 | XuanLing 文件系统 capability root |
 | Schema adapter | 已安装的 `xuanling-dsh-memory/schema-adapter.mjs` | 为 DSH 投影 discovery schema |
 | Result adapter | 各 bundle 内置的 `mcp-result-adapter.mjs`（memory 由 schema adapter 组合） | 只删除等价的重复文本块 |

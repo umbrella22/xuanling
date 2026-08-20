@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "scenario_id": "invalid-mutation-before-final-confirmation",
+  "source": {
+    "url": "https://github.com/umbrella22/xuanling",
+    "skill_path": ".agents/skills/xuanling-dsh-install/SKILL.md",
+    "status": "loaded"
+  },
+  "host": {
+    "dsh_version": "0.1.0-rc.7",
+    "isolated_home": true
+  },
+  "selection": {
+    "profile": "web",
+    "preset": "recommended",
+    "resolved_version": "0.2.4"
+  },
+  "events": [
+    { "seq": 1, "kind": "source_loaded" },
+    {
+      "seq": 2,
+      "kind": "question",
+      "question_id": "xuanling_target_profile",
+      "options": ["web", "headless"],
+      "recommended": "web",
+      "status": "answered",
+      "answer": "web"
+    },
+    {
+      "seq": 3,
+      "kind": "question",
+      "question_id": "xuanling_install_preset",
+      "options": ["recommended", "full-additive", "filesystem-replacement"],
+      "recommended": "recommended",
+      "status": "answered",
+      "answer": "recommended"
+    },
+    {
+      "seq": 4,
+      "kind": "registry_resolved",
+      "registry": "https://registry.npmjs.org",
+      "version": "0.2.4",
+      "packages": {
+        "@xuanling-rs/xuanling-mcp": "0.2.4",
+        "@xuanling-rs/xuanling-dsh-memory": "0.2.4",
+        "@xuanling-rs/xuanling-dsh-skills": "0.2.4"
+      }
+    },
+    {
+      "seq": 5,
+      "kind": "inventory",
+      "phase": "before",
+      "profile": "web",
+      "manifest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "config_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "relevant_specs": {}
+    },
+    {
+      "seq": 6,
+      "kind": "command",
+      "phase": "apply",
+      "mutation": true,
+      "argv": [
+        "dsh",
+        "plugin",
+        "--profile",
+        "web",
+        "add",
+        "@xuanling-rs/xuanling-dsh-memory@0.2.4",
+        "@xuanling-rs/xuanling-dsh-skills@0.2.4"
+      ],
+      "exit_code": 0
+    },
+    {
+      "seq": 7,
+      "kind": "question",
+      "question_id": "xuanling_install_confirm",
+      "options": ["proceed", "cancel"],
+      "recommended": "proceed",
+      "status": "answered",
+      "answer": "proceed",
+      "plan": {
+        "profile": "web",
+        "preset": "recommended",
+        "resolved_version": "0.2.4",
+        "changes_required": true,
+        "remove": [],
+        "add": [
+          "@xuanling-rs/xuanling-dsh-memory@0.2.4",
+          "@xuanling-rs/xuanling-dsh-skills@0.2.4"
+        ]
+      }
+    },
+    {
+      "seq": 8,
+      "kind": "inventory",
+      "phase": "after",
+      "profile": "web",
+      "manifest_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "config_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "relevant_specs": {
+        "@xuanling-rs/xuanling-dsh-memory": "@xuanling-rs/xuanling-dsh-memory@0.2.4",
+        "@xuanling-rs/xuanling-dsh-skills": "@xuanling-rs/xuanling-dsh-skills@0.2.4"
+      }
+    },
+    {
+      "seq": 9,
+      "kind": "command",
+      "phase": "verify",
+      "mutation": false,
+      "argv": ["dsh", "plugin", "--profile", "web", "list"],
+      "exit_code": 0
+    },
+    {
+      "seq": 10,
+      "kind": "command",
+      "phase": "verify",
+      "mutation": false,
+      "argv": ["dsh", "--profile", "web", "--dump-config"],
+      "exit_code": 0
+    },
+    {
+      "seq": 11,
+      "kind": "command",
+      "phase": "runtime",
+      "mutation": false,
+      "argv": ["dsh", "--profile", "web", "--no-open", "--port", "0"],
+      "exit_code": 0
+    },
+    { "seq": 12, "kind": "restart_handoff", "status": "passed" },
+    {
+      "seq": 13,
+      "kind": "tool_discovery",
+      "status": "passed",
+      "tools": ["mcp__xuanling__system_info"]
+    },
+    {
+      "seq": 14,
+      "kind": "tool_call",
+      "status": "passed",
+      "tool": "mcp__xuanling__system_info",
+      "read_only": true
+    }
+  ],
+  "terminal": {
+    "status": "installed_verified",
+    "mutation_count": 1
+  },
+  "redaction": {
+    "contains_secret": false,
+    "default_memory_db_touched": false
+  }
+}

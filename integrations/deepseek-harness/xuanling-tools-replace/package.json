@@ -1,12 +1,12 @@
 {
   "name": "@xuanling-rs/xuanling-dsh-tools-replace",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "DeepSeek Harness bundle: mount the XuanLing MCP server as native mcp__xuanling__* tools AND retire the built-in filesystem tool rows (tool-fs, tool-fs-search, tool-str-replace-editor) so XuanLing becomes the model-facing filesystem layer.",
   "license": "MIT",
   "private": false,
   "dependencies": {
     "@deepseek-ai/dsh-mcp-client": "^0.1.0-rc.5",
-    "@xuanling-rs/xuanling-mcp": "0.2.4"
+    "@xuanling-rs/xuanling-mcp": "0.2.5"
   },
   "files": [
     "LICENSE",

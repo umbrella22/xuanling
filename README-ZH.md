@@ -27,7 +27,7 @@ XuanLing MCP 是面向编码 Agent 的跨平台本地 Model Context Protocol
 npm 启动器要求 Node.js 18.17 或更高版本，并为当前平台安装匹配的原生二进制包。
 
 ```sh
-npm install --global @xuanling-rs/xuanling-mcp@0.2.4
+npm install --global @xuanling-rs/xuanling-mcp@0.2.5
 xuanling-mcp --version
 ```
 
@@ -40,7 +40,7 @@ MCP Client 也可以通过 `npx` 固定同一版本，无需全局安装：
       "command": "npx",
       "args": [
         "-y",
-        "@xuanling-rs/xuanling-mcp@0.2.4",
+        "@xuanling-rs/xuanling-mcp@0.2.5",
         "--workspace-root",
         "/absolute/path/to/project",
         "--tool-profile",
@@ -151,6 +151,18 @@ xuanling-mcp --memory-db /path/to/memory.db memory rebuild-index
 单次事务写入；`rebuild-index` 永远不会修改 canonical row。
 
 ## DeepSeek Harness
+
+### 复制仓库链接，问答式安装
+
+<!-- xuanling-dsh-conversational-install:start -->
+把 `https://github.com/umbrella22/xuanling` 复制到 DeepSeek Harness（DSH）
+对话中，并让它安装 XuanLing DSH 集成。DSH 会读取仓库内的
+[安装 Skill](.agents/skills/xuanling-dsh-install/SKILL.md)，依次询问 profile 和 preset，
+展示冻结后的精确 npm 版本及 package 变更供最终确认，然后只通过 `dsh plugin` 安装并验证。
+
+这是模型编排流程：DSH 本身不会把任意 URL 直接安装，也不会执行仓库代码。交互式问答或
+仓库访问不可用时，仍可使用下方的手动集成指南。
+<!-- xuanling-dsh-conversational-install:end -->
 
 [`integrations/deepseek-harness`](integrations/deepseek-harness/) 提供 Host 专用 bundle，
 包括增量 Memory 工具、增量或替换式文件工具、schema projection、严格覆盖策略和两个按需加载的

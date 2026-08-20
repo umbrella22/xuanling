@@ -7,6 +7,7 @@ import path from "node:path";
 import { test } from "node:test";
 
 import { TARGETS } from "../packages/xuanling-mcp/lib/targets.js";
+import { readWorkspaceVersion } from "../scripts/shared.mjs";
 import { describeProjection } from "../scripts/zcode-promotion-lib.mjs";
 
 // ZCode plugin marketplace contract:
@@ -29,6 +30,7 @@ const routingFixture = path.join(
 const pluginRoot = path.join(repoRoot, "integrations", "zcode-plugin");
 const pluginPackageRoot = path.join(pluginRoot, "plugins", "xuanling-mcp");
 const skillPath = path.join(pluginPackageRoot, "skills", "xuanling-mcp-tools", "SKILL.md");
+const workspaceVersion = await readWorkspaceVersion();
 
 function readJson(relative) {
   return JSON.parse(readFileSync(path.join(repoRoot, relative), "utf8"));
@@ -76,8 +78,6 @@ test("plugin/npm/cargo/marketplace versions agree", () => {
   const plugin = readJson("integrations/zcode-plugin/plugins/xuanling-mcp/.zcode-plugin/plugin.json");
   const npmMain = readJson("npm/package.json");
   const npmPackage = readJson("npm/packages/xuanling-mcp/package.json");
-  const cargoText = readFileSync(path.join(repoRoot, "Cargo.toml"), "utf8");
-  const workspaceVersion = /^version = "([^"]+)"/m.exec(cargoText)?.[1];
   assert.equal(plugin.version, npmMain.version);
   assert.equal(plugin.version, npmPackage.version);
   assert.equal(plugin.version, workspaceVersion);
@@ -263,14 +263,14 @@ test("ZCode marketplace generation is deterministic and fails closed", async () 
         "npm/scripts/stage-zcode-marketplace.mjs",
         "--release-root", releaseRoot,
         "--out", root,
-        "--version", "0.2.4",
+        "--version", workspaceVersion,
         "--commit", commit,
         "--require-release-trust",
       ]);
       runNode([
         "npm/scripts/verify-zcode-marketplace.mjs",
         "--root", root,
-        "--version", "0.2.4",
+        "--version", workspaceVersion,
         "--commit", commit,
         "--require-release-trust",
       ]);
@@ -317,13 +317,13 @@ test("ZCode marketplace generation is deterministic and fails closed", async () 
       "npm/scripts/materialize-zcode-marketplace.mjs",
       "--artifact-root", transportedRoot,
       "--out", materializedRoot,
-      "--version", "0.2.4",
+      "--version", workspaceVersion,
       "--commit", commit,
     ]);
     runNode([
       "npm/scripts/verify-zcode-marketplace.mjs",
       "--root", materializedRoot,
-      "--version", "0.2.4",
+      "--version", workspaceVersion,
       "--commit", commit,
       "--require-release-trust",
     ]);
@@ -342,7 +342,7 @@ test("ZCode marketplace generation is deterministic and fails closed", async () 
       "npm/scripts/materialize-zcode-marketplace.mjs",
       "--artifact-root", tamperedTransport,
       "--out", path.join(tamperedTransport, "marketplace"),
-      "--version", "0.2.4",
+      "--version", workspaceVersion,
       "--commit", commit,
     ]), "a transported archive with a mismatched digest must be rejected before extraction");
     assert.equal(existsSync(path.join(tamperedTransport, "marketplace")), false);
@@ -357,7 +357,7 @@ test("ZCode marketplace generation is deterministic and fails closed", async () 
       "npm/scripts/materialize-zcode-marketplace.mjs",
       "--artifact-root", extraTransport,
       "--out", path.join(extraTransport, "marketplace"),
-      "--version", "0.2.4",
+      "--version", workspaceVersion,
       "--commit", commit,
     ]), "an extra transported artifact file must be rejected");
     assert.equal(existsSync(path.join(extraTransport, "marketplace")), false);
@@ -368,7 +368,7 @@ test("ZCode marketplace generation is deterministic and fails closed", async () 
     assert.throws(() => runNode([
       "npm/scripts/verify-zcode-marketplace.mjs",
       "--root", extraFileRoot,
-      "--version", "0.2.4",
+      "--version", workspaceVersion,
       "--commit", commit,
     ]), "an extra release file must be rejected");
 
@@ -381,7 +381,7 @@ test("ZCode marketplace generation is deterministic and fails closed", async () 
     assert.throws(() => runNode([
       "npm/scripts/verify-zcode-marketplace.mjs",
       "--root", mutableRefRoot,
-      "--version", "0.2.4",
+      "--version", workspaceVersion,
       "--commit", commit,
     ]), "a mutable marketplace source ref must be rejected");
   } finally {

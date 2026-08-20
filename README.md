@@ -32,7 +32,7 @@ The npm launcher requires Node.js 18.17 or newer and installs the matching
 native binary for the current platform.
 
 ```sh
-npm install --global @xuanling-rs/xuanling-mcp@0.2.4
+npm install --global @xuanling-rs/xuanling-mcp@0.2.5
 xuanling-mcp --version
 ```
 
@@ -45,7 +45,7 @@ An MCP client can pin the same version without a global installation:
       "command": "npx",
       "args": [
         "-y",
-        "@xuanling-rs/xuanling-mcp@0.2.4",
+        "@xuanling-rs/xuanling-mcp@0.2.5",
         "--workspace-root",
         "/absolute/path/to/project",
         "--tool-profile",
@@ -170,6 +170,21 @@ Import validates the complete stream before one transactional write, and
 `rebuild-index` never changes canonical rows.
 
 ## DeepSeek Harness
+
+### Conversational install from the repository URL
+
+<!-- xuanling-dsh-conversational-install:start -->
+Copy `https://github.com/umbrella22/xuanling` into a DeepSeek Harness (DSH)
+chat and ask it to install the XuanLing DSH integration. DSH will read the
+repository-owned
+[installer Skill](.agents/skills/xuanling-dsh-install/SKILL.md), ask which
+profile and preset to use, show the exact frozen npm version and package
+changes for confirmation, then install and verify them through `dsh plugin`.
+
+This is a model-orchestrated workflow: DSH itself does not install arbitrary
+URLs or execute repository code. The manual integration guide below remains
+the fallback when interactive questions or repository access are unavailable.
+<!-- xuanling-dsh-conversational-install:end -->
 
 [`integrations/deepseek-harness`](integrations/deepseek-harness/) contains
 host-specific bundles for additive Memory tools, additive or replacement

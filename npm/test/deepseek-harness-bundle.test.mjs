@@ -7,6 +7,8 @@ import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
 
+import { readWorkspaceVersion } from "../scripts/shared.mjs";
+
 // DeepSeek Harness bundle contract (integrations/deepseek-harness):
 //   - all bundles declare the dsh bundle manifest and pin the npm package
 //     version;
@@ -30,6 +32,7 @@ import { pathToFileURL } from "node:url";
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 const integrationRoot = path.join(repoRoot, "integrations", "deepseek-harness");
 const testRoot = path.join(repoRoot, "test", "deepseek-harness");
+const workspaceVersion = await readWorkspaceVersion();
 const bundles = ["xuanling-memory", "xuanling-tools", "xuanling-tools-replace"];
 const fullCatalogBundles = ["xuanling-tools", "xuanling-tools-replace"];
 const publicReadmes = [
@@ -433,8 +436,14 @@ test("README documents the mount and the legacy tool surface stays out", () => {
   const readme = readText("README.md");
   assert.ok(readme.includes("mcp__xuanling__"), "public name shape documented");
   assert.ok(readme.includes("dsh plugin --profile"), "profile install path documented");
-  assert.ok(readme.includes("@xuanling-rs/xuanling-dsh-memory@0.2.4"), "recommended memory bundle documented");
-  assert.ok(readme.includes("Profile-local `@xuanling-rs/xuanling-mcp@0.2.4`"), "local runtime documented");
+  assert.ok(
+    readme.includes(`@xuanling-rs/xuanling-dsh-memory@${workspaceVersion}`),
+    "recommended memory bundle documented",
+  );
+  assert.ok(
+    readme.includes(`Profile-local \`@xuanling-rs/xuanling-mcp@${workspaceVersion}\``),
+    "local runtime documented",
+  );
   assert.doesNotMatch(readme, /npm\s+(?:i|install)\s+(?:--global|-g)|XUANLING_MCP_BIN/);
   const legacyNames = [
     "memory_put",
