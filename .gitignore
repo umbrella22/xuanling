@@ -9,3 +9,4 @@ npm/node_modules/
 *.tmp
 *.orig
 .fastembed_cache/
+docs/*
