@@ -2,15 +2,14 @@
 
 > 本文件是
 > `host-result-projection-agent-efficiency-development-plan.md` 的 canonical handoff。
-> W0-W4 已完成，W5.0 portability 与 W5.1 版本冻结仍有效。2026-08-20 的测试资产清理与 DSH
-> 安装文档修正改变了发布包 README，因此基于 `945a11c9` 的 W5.2-W5.5 候选制品、CI 与
-> preflight 证据已标记 stale。当前从 W5.2 重新构建候选；在新候选完成全部 W5 门禁前不得进入
-> W6 tag、publish 或 promotion。
+> W0-W5 已完成。W5 的唯一 release candidate 是 `a1eca65a0d4dacfab85fc620e23ef0ab82966d11`；
+> npm/DSH artifacts、ZCode projection、三平台 portability 与 no-side-effect preflight 均已通过。
+> W6 的 immutable tag、publish、promotion 与 released-byte acceptance 仍等待独立授权。
 
 ```yaml
 schema_version: 1
 plan_id: "host-result-projection-agent-efficiency-20260818"
-updated_at: "2026-08-20T12:30:12+08:00"
+updated_at: "2026-08-20T14:33:24+08:00"
 plan_status: "executing"
 live_authorization:
   authorized_at: "2026-08-18T21:08:03+08:00"
@@ -197,7 +196,11 @@ w4_isolation:
 release_baseline:
   source_version: "0.2.3"
   next_candidate: "0.2.4"
-  next_candidate_registry_state: "All eight exact 0.2.4 items returned registry E404 during W0.2; W5 must refresh before version freeze."
+  next_candidate_registry_state: "All eight exact 0.2.4 items returned registry E404 immediately before W5 completion; the version remains unpublished."
+  candidate_commit: "a1eca65a0d4dacfab85fc620e23ef0ab82966d11"
+  candidate_origin_main: "a1eca65a0d4dacfab85fc620e23ef0ab82966d11"
+  candidate_version: "0.2.4"
+  candidate_artifact_root: "/private/tmp/xuanling-w54-artifacts.a1eca65"
   source_tag_commit: "eec429d009481e193295678b9aa244d44c5d52a2"
   source_tag_tree: "3b52bfe19cd3a962d75680995897e0d9ee5d78b2"
   zcode_target_commit: "20ffab546f470cf516a03a33d5b16be916c9390b"
@@ -240,15 +243,25 @@ ci_baseline:
   portability_final_run: 32284102425
   portability_final_conclusion: "success"
   portability_final_detail: "Commit 039a1ed: Linux/macOS/Windows base jobs, three-platform binary smoke, workspace full gate, Windows toolkit/Memory/experimental Memory/MCP protocol/golden, and dependency island all green."
+  portability_candidate_run: 32338581428
+  portability_candidate_conclusion: "success"
+  portability_candidate_detail: "Commit a1eca65: Linux/macOS/Windows base jobs, workspace full gate, and all three platform binary smoke jobs passed."
+  npm_candidate_run: 32337575449
+  npm_candidate_conclusion: "success"
+  npm_candidate_detail: "Commit a1eca65: launcher, darwin-arm64, linux-x64-gnu, win32-x64-msvc, and four DSH build/verification jobs passed; publish and direct promotion were skipped."
+  preflight_candidate_run: 32338599682
+  preflight_candidate_conclusion: "success"
+  preflight_candidate_detail: "Commit a1eca65: source, npm ownership, and ZCode permission checks passed; all build, publish, and promotion jobs were skipped."
 completed_waves:
   - "W0"
   - "W1"
   - "W2"
   - "W3"
   - "W4"
+  - "W5"
 current_wave: "W5"
-current_work_package: "W5.2"
-wave_state: "implemented_unverified"
+current_work_package: "W5.5"
+wave_state: "complete"
 clean_acceptance_count: 0
 work_package_states:
   W4.1: "complete"
@@ -258,11 +271,11 @@ work_package_states:
   W4.5: "complete"
   W5.0: "complete: commit 039a1ed and portability run 32284102425 are fully green across required three-platform, Windows protocol, dependency, smoke, and workspace gates"
   W5.1: "complete: all eight exact 0.2.4 registry checks are E404; source/release manifests and current README references are frozen at 0.2.4; version/package and 88-test release projection gates pass"
-  W5.2: "implemented_unverified: current focused gates pass, but replacement artifacts are blocked until a clean candidate source is available; Linux/Windows native packages cannot be fabricated on this macOS host"
-  W5.3: "stale: rebuild the ZCode archive from the same replacement candidate after W5.2"
-  W5.4: "stale: prior CI runs cover 945a11c9, not the corrected DSH package bytes"
-  W5.5: "stale: rerun no-side-effect preflight only after replacement candidate CI is green"
-  W6.1: "locked: W5 is no longer complete"
+  W5.2: "complete: eight 0.2.4 npm artifacts and four DSH bundles verified from candidate a1eca65"
+  W5.3: "complete: two independent ZCode projections and the downloaded CI projection are byte-identical"
+  W5.4: "complete: candidate npm and portability workflows passed all required jobs"
+  W5.5: "complete: no-side-effect preflight passed with publish and promotion skipped"
+  W6.1: "locked: awaiting explicit immutable-tag authorization"
 primary_evidence:
   W4_status: "complete"
   W4.2_zcode_projection: "complete: three isolated candidate trials, one model-visible projection per trial, accepted host 3.7.7"
@@ -277,13 +290,13 @@ primary_evidence:
   W4.4_acceptance_basis: "maintainer waiver plus current-revision primary-agent collector 12/12 and independent oracle 12/12"
   W4.5_layered_cost: "complete with exact schema tokenizer explicitly unavailable"
   W5.0_windows_portability_repair: "complete: commit 039a1ed and portability run 32284102425 passed all required jobs; Windows MCP path assertion now uses OS path components without changing fs_search output."
-  W5.2_release_artifacts: "stale historical evidence: hashes belong to source commit 945a11c9 before the DSH profile documentation correction"
+  W5.2_release_artifacts: "complete: candidate a1eca65 release root /private/tmp/xuanling-w54-artifacts.a1eca65 passed release-set and DSH-set verifiers; all manifests carry the candidate commit"
   W5.2_local_exploratory: "not release evidence: current dirty-tree launcher, darwin-arm64 native package, and four DSH bundles were packed under /private/tmp/xuanling-w52-local.1sMQcH; all local package verifiers passed, but sourceCommit remains 945a11c9 while release-relevant bytes are dirty"
-  W5.3_zcode_archive: "stale historical evidence: archive belongs to source commit 945a11c9"
-  W5.4_required_ci: "stale historical evidence: runs 32287465007 and 32287464990 do not cover the corrected package bytes"
-  W5.5_preflight: "stale historical evidence: run 32288861153 targeted the prior candidate"
-last_completed_action: "Removed closed live-evaluation assets, corrected DSH install examples to shipped runnable profiles, reran the current DSH/npm/docs gates, attempted the local Linux native build, and completed an isolated exploratory pack of the local launcher, darwin-arm64 package, and four DSH bundles."
-next_action: "Create or receive a clean candidate commit containing the current release-relevant README and test cleanup, then rebuild and verify W5.2 artifacts from that commit; do not label dirty-tree bytes as 945a11c9."
+  W5.3_zcode_archive: "complete: local stages A/B and the downloaded CI archive share archive SHA-256 1ff560be4626835dd8237d152bee46c22c8c063a169181131656570375c31014 and pack manifest SHA-256 0be6c8f48ba729e03e68353ea0c54a1936712f3f405deea8809746a857d3a210"
+  W5.4_required_ci: "complete: candidate runs 32337575449 and 32338581428 are successful at a1eca65"
+  W5.5_preflight: "complete: candidate run 32338599682 is successful and has no registry/tag/marketplace side effect"
+last_completed_action: "Verified the clean a1eca65 candidate, rebuilt the complete npm/DSH release set, fixed and tested platform-independent ZCode gzip metadata, compared both local projections with the CI projection, passed candidate CI and portability, refreshed all eight registry E404 checks, and passed no-side-effect preflight."
+next_action: "Obtain explicit W6.1 authorization for the immutable 0.2.4 tag; do not tag, publish, promote, or run released-byte clean acceptance before that authorization."
 required_gates:
   - "W0 checkout/release/host baseline and old-ledger reconciliation"
   - "W1 correct result/Skill/cost red oracles"
@@ -429,7 +442,7 @@ not_run_commands:
   - "No full Rust workspace gate was run during plan authoring; focused MCP protocol 110/110 and npm 108/108 passed."
   - "GLM did not run the DSH W4.4 protocol. The maintainer explicitly waived that executor-identity gate and accepted the current-revision primary-agent 12/12 evidence; no GLM-independent claim is made."
   - "W6 tag, npm publish, ZCode promotion, and clean-install acceptance were not run; they remain gated by exact release authorization."
-  - "Replacement W5.2 tarballs, W5.3 ZCode archive, W5.4 candidate CI, and W5.5 preflight were not run after the current README/test cleanup; the worktree changes are not provenance-bound to 945a11c9."
+  - "Historical at the pre-candidate handoff: replacement W5.2 tarballs, W5.3 ZCode archive, W5.4 candidate CI, and W5.5 preflight had not yet run after the current README/test cleanup. The current a1eca65 evidence below supersedes that not-run state."
   - "Run 32276727500 did not execute Windows experimental Memory, MCP protocol/golden, dependency, workspace, or smoke gates after the base Memory digest failure. This is retained as historical failure evidence; run 32284102425 later executed and passed those surfaces."
   - "Run 32279712990 did not execute Windows MCP golden, dependency, workspace, or smoke gates after the path-separator assertion failure. This is retained as historical failure evidence; the authorized test-only correction and run 32284102425 later resolved the gap."
 incidents:
@@ -463,17 +476,23 @@ incidents:
     evidence: "No process held either file. Pre-containment SHA-256 values were e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 for the database and d466d0c7ce18c3badd70d079d1666a6f27f21d88e929c1bfda813b654a306e86 for the journal."
     containment: "Moved both files without deletion or content change to /private/tmp/xuanling-host-result-w4-20260818-a1/repo-root-db-recurrence-20260819T1025; no repository-root .xuanling-w4-memory.db* residue remains."
     status: "contained; quarantine hashes match the pre-containment files"
+  - id: "I-W5-ZCODE-GZIP-OS-HEADER"
+    recorded_at: "2026-08-20T13:10:00+08:00"
+    trigger: "Independent ZCode staging on Linux and macOS produced identical tar contents but platform-dependent gzip header byte 9 (0x03 versus 0x13), making release archives differ despite the same source tree."
+    evidence: "The candidate reproduction was isolated to npm/scripts/stage-zcode-marketplace.mjs; the archive payload and tree digest were unchanged while only the gzip OS marker varied."
+    containment: "Canonicalized gzip header byte 9 to 0xff, added the contract assertion in npm/test/zcode-plugin-contract.test.mjs, rebuilt two local stages, and compared both against the downloaded CI archive. All three archive bytes and pack manifests are identical."
+    status: "resolved in candidate a1eca65a0d4dacfab85fc620e23ef0ab82966d11"
 blockers:
   - id: "B-W5-CANDIDATE-DIRTY-01"
     scope: "W5.2-W5.5"
     condition: "Release-relevant README, package, adapter, test, and test-asset cleanup remains in the working tree after source commit 945a11c9. Packaging those bytes with 945a11c9 would make the embedded sourceCommit claim false."
     release: "Use a clean candidate commit that contains the intended current bytes, or create an isolated clean source revision under explicit maintainer authorization; then rebuild all W5.2-W5.5 evidence from that single revision."
-    status: "open"
+    status: "resolved by candidate a1eca65; root dirty state remains user-owned and is not the release source"
   - id: "B-W5-LINUX-CROSS-TOOLCHAIN-01"
     scope: "W5.2"
     condition: "The macOS host has no x86_64-linux-gnu-gcc, so cargo cannot produce the Linux native package locally."
     release: "Use the required Ubuntu GitHub Actions native-package job; do not copy an older target binary into the replacement release."
-    status: "open"
+    status: "resolved by candidate npm CI run 32337575449 and portability run 32338581428"
   - id: "B-WIN-MCP-TEST-PATH-01"
     scope: "W5/W6"
     condition: "Run 32279712990 reaches Windows MCP protocol after the EOL repair and fails only contract_hardening::search_filters_hidden_ignored_globs_and_extensions because the test requires a POSIX suffix while fs_search returns an OS-native Windows path. Linux/macOS pass the same assertion."
@@ -786,6 +805,24 @@ evidence:
   - command: "cargo fmt --all -- --check; git diff --check"
     result: "both passed; no production source was changed by plan authoring"
     recorded_at: "2026-08-18T14:03:00+08:00"
+  - command: "node --test npm/test/zcode-plugin-contract.test.mjs; npm --prefix npm test; npm --prefix npm run check:docs; git diff --check (clean candidate a1eca65)"
+    result: "Gzip determinism contract passed; focused ZCode tests 23/23, full npm suite 112/112, docs check 52 Markdown files, and diff check all passed."
+    recorded_at: "2026-08-20T14:20:00+08:00"
+  - command: "node npm/scripts/verify-release-set.mjs --root /private/tmp/xuanling-w54-artifacts.a1eca65/release --version 0.2.4 --commit a1eca65a0d4dacfab85fc620e23ef0ab82966d11 --require-release-trust; node npm/scripts/verify-dsh-release-set.mjs --root /private/tmp/xuanling-w54-artifacts.a1eca65/dsh --version 0.2.4 --commit a1eca65a0d4dacfab85fc620e23ef0ab82966d11"
+    result: "Complete npm release set and complete four-bundle DSH release set both verified from the same candidate commit."
+    recorded_at: "2026-08-20T14:21:00+08:00"
+  - command: "diff -qr /private/tmp/xuanling-w54-zcode-a /private/tmp/xuanling-w54-zcode-b; cmp local stage A with /private/tmp/xuanling-w54-artifacts.a1eca65/ci-zcode archive and pack manifest"
+    result: "Two local ZCode staging outputs are recursively identical; archive and pack manifest are each byte-identical to the downloaded CI projection."
+    recorded_at: "2026-08-20T14:22:00+08:00"
+  - command: "gh run view 32337575449 --repo umbrella22/xuanling; gh run view 32338581428 --repo umbrella22/xuanling"
+    result: "Candidate npm release-build and three-platform portability workflows both concluded success at a1eca65; all required build, contract, workspace, and binary smoke jobs passed, while publish/promotion remained skipped in the npm workflow."
+    recorded_at: "2026-08-20T14:23:00+08:00"
+  - command: "npm view <each exact 0.2.4 release item> version --json --registry https://registry.npmjs.org"
+    result: "The core launcher, three native variants, and four DSH package versions all returned explicit E404; no 0.2.4 registry item exists."
+    recorded_at: "2026-08-20T14:24:00+08:00"
+  - command: "gh run view 32338599682 --repo umbrella22/xuanling"
+    result: "No-side-effect preflight concluded success: source, npm ownership, and ZCode permission checks passed; all build, publish, and direct-promotion jobs were skipped."
+    recorded_at: "2026-08-20T14:25:00+08:00"
 ```
 
 ```text
@@ -801,5 +838,95 @@ FAILED_GATES: local Linux native build stopped before compilation because x86_64
 NOT_RUN_GATES: replacement W5.2 tarballs from a clean candidate, replacement W5.3 ZCode archive, replacement W5.4 candidate CI, replacement W5.5 preflight, W6.1 immutable tag, W6.2 Trusted npm publish, W6.3 ZCode promotion, W6.4 released-byte DSH/ZCode clean acceptance, W6.5 final reconciliation
 BLOCKERS: B-W5-CANDIDATE-DIRTY-01 prevents provenance-correct release packaging; B-W5-LINUX-CROSS-TOOLCHAIN-01 requires the Ubuntu native-package job; B-ZCODE-DEFAULT-SIDECAR-01 still requires future isolated current-host restart/no-residue evidence; B-RELEASE-01 requires exact authorization for tag, publish, promotion, and released-byte acceptance
 NEXT_EXACT_ACTION: create or receive a clean candidate commit containing the current release-relevant README and test cleanup, then rebuild W5.2 from that candidate; do not use dirty-tree exploratory tarballs or 945a11c9 as the replacement source
+LEDGER_PATH: docs/plans/host-result-projection-agent-efficiency-execution-ledger.md
+```
+
+## 2026-08-20 W5.2 clean candidate rebuild
+
+- Candidate source: clean detached commit `cef4bd2992222d3c54832d8f6b1c12188cb5f6fd`, whose
+  parent is current `origin/main` `945a11c9c3a4b5904ef56b07f543ee3d1959cf00`.
+  No source, host, registry, tag, or marketplace mutation occurred during this rebuild.
+- macOS binary smoke passed from
+  `/private/tmp/xuanling-w52-candidate-target/aarch64-apple-darwin/release/xuanling-mcp`
+  with an explicit temporary Memory DB: `initialize` returned server version `0.2.4`,
+  `tools/list` returned 42 tools, and `system_info` returned `structuredContent`.
+- The staged launcher package and the real `darwin-arm64` binary package passed
+  `verify-package.mjs`, including their allowlists, MIT license bytes, provenance metadata,
+  binary SHA-256, and package integrity manifests. The launcher tarball has SHA-1
+  `2499732c1f31478c55112a7dfc832e4365183504`; the Darwin tarball has SHA-1
+  `5bc2310b6e210924406f9f17826bb319f9922a8b`.
+- `pack-dsh-bundles.mjs` and `verify-dsh-release-set.mjs` passed for the four bundles at
+  `0.2.4`, all carrying source commit `cef4bd2992222d3c54832d8f6b1c12188cb5f6fd`:
+  Memory `5fb4fef996215845763c697eaaa11a6ea194742a`, Skills
+  `8703143fb476c165b79d9f684498c173ac1b6071`, Tools
+  `b27f8e82d045ff3b93ff4f1d0d838a7bb85aec89`, and Tools Replace
+  `c4310f265c38d2ef726133b7f7719e40a29fa7ad`.
+- Artifact root: `/private/tmp/xuanling-w52-artifacts.4I3cqt`. It is local verification
+  evidence only, not a publish input. Linux and Windows native packages were deliberately
+  not synthesized locally; their exact-target artifacts remain required CI evidence.
+
+```text
+EXECUTION_STATUS: HANDOFF_REQUIRED
+PLAN_ID: host-result-projection-agent-efficiency-20260818
+CHECKOUT_FINGERPRINT: root revision 945a11c9c3a4b5904ef56b07f543ee3d1959cf00; release candidate a1eca65a0d4dacfab85fc620e23ef0ab82966d11 on origin/main; root pre-ledger status SHA 7a79dc2e78807c69bb2960d0d505a9b5cbb804415f7ab4a5cea9a29d22c9605c
+CURRENT_WAVE: W5
+CURRENT_WORK_PACKAGE: W5.5
+WAVE_STATE: complete
+CONTRACTS_PROVEN: W5.0 portability, W5.1 version freeze, W5.2 npm/DSH artifacts, W5.3 deterministic ZCode archive, W5.4 candidate CI, and W5.5 no-side-effect preflight
+EVIDENCE_ADDED: candidate a1eca65 release verifiers; local/CI ZCode byte equality; portability run 32338581428; npm candidate run 32337575449; preflight 32338599682; eight exact 0.2.4 E404 checks
+FAILED_GATES: none for candidate a1eca65; local macOS Linux cross-build limitation remains historical and was satisfied by required CI artifacts
+NOT_RUN_GATES: W6.1 immutable tag, W6.2 Trusted npm publish, W6.3 ZCode promotion, W6.4 released-byte DSH/ZCode clean acceptance, W6.5 final reconciliation
+BLOCKERS: B-ZCODE-DEFAULT-SIDECAR-01 requires isolated post-promotion host evidence; B-RELEASE-01 requires explicit W6 release authorization
+NEXT_EXACT_ACTION: obtain explicit W6.1 authorization for the immutable 0.2.4 tag; keep tag, publish, promotion, and released-byte acceptance unexecuted
+LEDGER_PATH: docs/plans/host-result-projection-agent-efficiency-execution-ledger.md
+```
+
+## 2026-08-20 W5 candidate rebuild and completion
+
+- Release candidate: clean commit `a1eca65a0d4dacfab85fc620e23ef0ab82966d11`, present on
+  `origin/main`. The live root checkout remains at `945a11c9c3a4b5904ef56b07f543ee3d1959cf00`
+  with its user-owned staged, unstaged, deleted, and untracked paths preserved; no root checkout
+  mutation was used as release input.
+- The gzip determinism incident is resolved in `npm/scripts/stage-zcode-marketplace.mjs`: the
+  platform-dependent gzip OS header byte is canonicalized to `0xff`. The regression contract is in
+  `npm/test/zcode-plugin-contract.test.mjs`; focused tests passed `23/23`, the full npm suite passed
+  `112/112`, the docs checker covered `52` Markdown files, and `git diff --check` passed in the clean
+  candidate.
+- `node npm/scripts/verify-release-set.mjs --root /private/tmp/xuanling-w54-artifacts.a1eca65/release
+  --version 0.2.4 --commit a1eca65a0d4dacfab85fc620e23ef0ab82966d11 --require-release-trust` passed.
+  `node npm/scripts/verify-dsh-release-set.mjs --root /private/tmp/xuanling-w54-artifacts.a1eca65/dsh
+  --version 0.2.4 --commit a1eca65a0d4dacfab85fc620e23ef0ab82966d11` passed. The root contains the
+  launcher, three exact-target native packages, and four DSH bundles; every manifest embeds the same
+  source commit.
+- Local ZCode stages `/private/tmp/xuanling-w54-zcode-a` and
+  `/private/tmp/xuanling-w54-zcode-b` are recursively identical. Their archive SHA-256 is
+  `1ff560be4626835dd8237d152bee46c22c8c063a169181131656570375c31014`; their pack manifest SHA-256
+  is `0be6c8f48ba729e03e68353ea0c54a1936712f3f405deea8809746a857d3a210`. The downloaded CI ZCode
+  archive and manifest under `/private/tmp/xuanling-w54-artifacts.a1eca65/ci-zcode` compare byte-for-byte
+  with stage A.
+- Candidate npm workflow `32337575449`, portability workflow `32338581428`, and no-side-effect
+  preflight `32338599682` all completed successfully at the candidate commit. Portability executed
+  Linux, macOS, and Windows contract/check/clippy jobs, workspace full gate, and all three binary
+  smoke jobs. The candidate npm workflow built the launcher, all three native packages, and all four
+  DSH bundles; publish and direct promotion were skipped. The preflight passed source, npm ownership,
+  and ZCode target permission checks, with all build/publish/promotion jobs skipped.
+- Exact registry checks for the following eight items all returned npm `E404` for `0.2.4`: core
+  launcher, `darwin-arm64`, `linux-x64-gnu`, `win32-x64-msvc`, `xuanling-dsh-memory`,
+  `xuanling-dsh-skills`, `xuanling-dsh-tools`, and `xuanling-dsh-tools-replace`. No tag, npm publish,
+  or ZCode promotion occurred.
+
+```text
+EXECUTION_STATUS: HANDOFF_REQUIRED
+PLAN_ID: host-result-projection-agent-efficiency-20260818
+CHECKOUT_FINGERPRINT: root 945a11c9c3a4b5904ef56b07f543ee3d1959cf00; candidate/origin-main a1eca65a0d4dacfab85fc620e23ef0ab82966d11; root status SHA before this ledger append 7a79dc2e78807c69bb2960d0d505a9b5cbb804415f7ab4a5cea9a29d22c9605c
+CURRENT_WAVE: W5
+CURRENT_WORK_PACKAGE: W5.5
+WAVE_STATE: complete
+CONTRACTS_PROVEN: W0-W5 required contracts; W5 candidate artifacts, portability, registry absence, and preflight are current
+EVIDENCE_ADDED: gzip fix and regression test; release/DSH verifiers; local/CI ZCode cmp; runs 32337575449, 32338581428, 32338599682; eight registry E404 results
+FAILED_GATES: none
+NOT_RUN_GATES: W6.1-W6.5 (explicitly gated)
+BLOCKERS: B-ZCODE-DEFAULT-SIDECAR-01; B-RELEASE-01
+NEXT_EXACT_ACTION: obtain explicit W6.1 authorization, then perform only the authorized immutable-tag preflight
 LEDGER_PATH: docs/plans/host-result-projection-agent-efficiency-execution-ledger.md
 ```
