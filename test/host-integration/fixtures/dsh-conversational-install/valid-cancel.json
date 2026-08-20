@@ -4,7 +4,18 @@
   "source": {
     "url": "https://github.com/umbrella22/xuanling",
     "skill_path": ".agents/skills/xuanling-dsh-install/SKILL.md",
-    "status": "loaded"
+    "status": "loaded",
+    "acquisition": {
+      "method": "temporary_git_checkout",
+      "repository": "https://github.com/umbrella22/xuanling.git",
+      "requested_ref": "main",
+      "resolved_commit": "3fc3e6304a4839de292bf7470f0dbf3f6a7ebe59",
+      "read_paths": ["README.md", ".agents/skills/xuanling-dsh-install/SKILL.md"],
+      "target_existed_before": false,
+      "repository_code_executed": false,
+      "checkout_used_as_package_source": false,
+      "cleanup_status": "removed"
+    }
   },
   "host": {
     "dsh_version": "0.1.0-rc.7",
@@ -77,7 +88,7 @@
   ],
   "terminal": {
     "status": "cancelled_before_side_effect",
-    "mutation_count": 0
+    "profile_mutation_count": 0
   },
   "redaction": {
     "contains_secret": false,

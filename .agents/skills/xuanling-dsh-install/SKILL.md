@@ -11,9 +11,11 @@ installer. The model reads this repository-owned Skill, asks the user for the
 required choices, and invokes the normal public DSH plugin CLI.
 
 The repository URL is an instruction source, never an executable package
-source. Do not clone the repository, run repository scripts, or install a Git,
-file, link, directory, or tarball spec. Every installed package must come from
-the public npm registry under the fixed `@xuanling-rs` names below.
+source. A temporary checkout may be used only to read the repository README and
+this Skill; it must never be executed or passed to a package manager. Do not
+run repository scripts or install a Git, file, link, directory, or tarball
+spec. Every installed package must come from the public npm registry under the
+fixed `@xuanling-rs` names below.
 
 ## Frozen contract
 
@@ -27,6 +29,18 @@ as normative data; the prose below explains how to execute it.
   "canonical_repository": "https://github.com/umbrella22/xuanling",
   "skill_path": ".agents/skills/xuanling-dsh-install/SKILL.md",
   "model_orchestrated": true,
+  "source_acquisition": {
+    "method": "temporary_git_checkout",
+    "repository": "https://github.com/umbrella22/xuanling.git",
+    "read_paths": [
+      "README.md",
+      ".agents/skills/xuanling-dsh-install/SKILL.md"
+    ],
+    "pin_immutable_ref": true,
+    "execute_repository_code": false,
+    "install_from_checkout": false,
+    "cleanup_before_questions": true
+  },
   "profiles": [
     {
       "id": "web",
@@ -120,11 +134,39 @@ as normative data; the prose below explains how to execute it.
 ```
 <!-- xuanling-dsh-installer-contract:end -->
 
+## Acquire the instruction source
+
+If the linked repository is not already the active workspace, DSH may obtain
+the fixed official repository into a new temporary directory. This checkout is
+an instruction cache, not an installation source or a profile mutation.
+
+Keep the source boundary narrow:
+
+- Accept only the canonical repository URL, optionally followed by a
+  lowercase 40-character commit under `/tree/` or `/commit/`. For an immutable
+  URL, check out that exact commit; for the canonical URL, record the resolved
+  commit from the default branch.
+- Use only `https://github.com/umbrella22/xuanling.git` as the Git remote. The
+  checkout destination must not exist before this run. Never overwrite, reuse,
+  or clean an existing directory.
+- Read only `README.md` and
+  `.agents/skills/xuanling-dsh-install/SKILL.md`. Do not run hooks, scripts,
+  binaries, package-manager commands, or code from the checkout.
+- After both documents are in model context, verify that the destination is
+  the exact directory created by this run, remove that directory, and confirm
+  it is absent before asking `xuanling_target_profile`. If checkout or cleanup
+  fails, stop as `installer_source_unavailable` without running any profile
+  command.
+- Record the requested ref, resolved commit, source-only status, and successful
+  cleanup in redacted evidence. A checkout must never appear in a `dsh plugin`
+  add command.
+
 ## Safety boundary
 
-Before doing anything, confirm that `dsh --version`, `node --version`,
-`npm --version`, and `pnpm --version` are available. A missing prerequisite is
-`host_prerequisite_missing`; report it and stop without changing a profile.
+Before asking installation questions or changing a profile, confirm that
+`dsh --version`, `node --version`, `npm --version`, and `pnpm --version` are
+available. A missing prerequisite is `host_prerequisite_missing`; report it
+and stop without changing a profile.
 
 Keep these invariants for the entire run:
 

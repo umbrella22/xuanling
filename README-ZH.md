@@ -160,8 +160,10 @@ xuanling-mcp --memory-db /path/to/memory.db memory rebuild-index
 [安装 Skill](.agents/skills/xuanling-dsh-install/SKILL.md)，依次询问 profile 和 preset，
 展示冻结后的精确 npm 版本及 package 变更供最终确认，然后只通过 `dsh plugin` 安装并验证。
 
-这是模型编排流程：DSH 本身不会把任意 URL 直接安装，也不会执行仓库代码。交互式问答或
-仓库访问不可用时，仍可使用下方的手动集成指南。
+这是模型编排流程：DSH 本身不会把任意 URL 直接安装。需要时，Agent 会把固定仓库 ref
+取得到一个新临时 checkout，只读取 README 和安装 Skill，并在第一个问题前删除该 checkout。
+它不会执行仓库代码或从 checkout 安装；profile package 仍只来自公开 npm registry。交互式
+问答或仓库访问不可用时，仍可使用下方的手动集成指南。
 <!-- xuanling-dsh-conversational-install:end -->
 
 [`integrations/deepseek-harness`](integrations/deepseek-harness/) 提供 Host 专用 bundle，

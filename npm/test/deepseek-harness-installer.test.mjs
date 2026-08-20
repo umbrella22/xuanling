@@ -38,6 +38,15 @@ const expectedSkillContract = {
   canonical_repository: INSTALLER_CONTRACT.canonicalRepository,
   skill_path: INSTALLER_CONTRACT.skillPath,
   model_orchestrated: true,
+  source_acquisition: {
+    method: INSTALLER_CONTRACT.sourceAcquisition.method,
+    repository: INSTALLER_CONTRACT.sourceAcquisition.repository,
+    read_paths: INSTALLER_CONTRACT.sourceAcquisition.readPaths,
+    pin_immutable_ref: true,
+    execute_repository_code: false,
+    install_from_checkout: false,
+    cleanup_before_questions: true,
+  },
   profiles: [
     { id: "web", recommended: true },
     { id: "headless", recommended: false },
@@ -152,6 +161,8 @@ test("root installer Skill exposes the structured conversational-install contrac
   assert.deepEqual(parseInstallerContract(skill), expectedSkillContract);
 
   assert.match(skill, /not (?:a )?native DSH URL|不是 DSH 原生 URL/i);
+  assert.match(skill, /temporary checkout/i);
+  assert.match(skill, /remove that directory.*before asking/is);
   assert.match(skill, /cancelled_before_side_effect/);
   assert.match(skill, /verified_noop/);
   assert.match(skill, /rolled_back/);
@@ -178,6 +189,7 @@ test("English and Chinese READMEs expose the same canonical lazy-install entry",
     assert.match(entry, /\.agents\/skills\/xuanling-dsh-install\/SKILL\.md/);
     assert.match(entry, /DeepSeek Harness|DSH/);
     assert.match(entry, /model-orchestrated|模型编排/i);
+    assert.match(entry, /temporary checkout|临时 checkout/i);
     assert.doesNotMatch(entry, /native URL installer|原生 URL 安装器/i);
   }
 });
@@ -220,6 +232,14 @@ test("transcript verifier rejects wrong ordering, floating specs, forbidden comm
   const listCommand = forbidden.events.find((event) => event.kind === "command" && event.argv?.[4] === "list");
   listCommand.argv = ["git", "clone", "https://github.com/umbrella22/xuanling"];
   expectCode(forbidden, "command_not_allowed");
+
+  const unsafeSource = clone(valid);
+  unsafeSource.source.acquisition.checkout_used_as_package_source = true;
+  expectCode(unsafeSource, "source_checkout_unsafe");
+
+  const lookalikeSource = clone(valid);
+  lookalikeSource.source.url = "https://github.com/umbrella22/xuanling-malicious";
+  expectCode(lookalikeSource, "installer_source_unavailable");
 
   const incompleteRuntime = clone(valid);
   incompleteRuntime.events = incompleteRuntime.events

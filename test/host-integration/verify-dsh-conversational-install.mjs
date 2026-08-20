@@ -7,6 +7,14 @@ import { pathToFileURL } from "node:url";
 export const INSTALLER_CONTRACT = Object.freeze({
   canonicalRepository: "https://github.com/umbrella22/xuanling",
   skillPath: ".agents/skills/xuanling-dsh-install/SKILL.md",
+  sourceAcquisition: Object.freeze({
+    method: "temporary_git_checkout",
+    repository: "https://github.com/umbrella22/xuanling.git",
+    readPaths: Object.freeze([
+      "README.md",
+      ".agents/skills/xuanling-dsh-install/SKILL.md",
+    ]),
+  }),
   questions: Object.freeze({
     profile: Object.freeze({
       id: "xuanling_target_profile",
@@ -67,6 +75,9 @@ export const INSTALLER_CONTRACT = Object.freeze({
 
 const stableSemver = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/;
 const sha256Pattern = /^[0-9a-f]{64}$/;
+const commitPattern = /^[0-9a-f]{40}$/;
+const canonicalSourcePattern = /^https:\/\/github\.com\/umbrella22\/xuanling\/?$/;
+const immutableSourcePattern = /^https:\/\/github\.com\/umbrella22\/xuanling\/(?:tree|commit)\/([0-9a-f]{40})\/?$/;
 const terminalStatuses = new Set([
   "cancelled_before_side_effect",
   "verified_noop",
@@ -131,6 +142,57 @@ function assertExactSpec(spec, packageName, version, code = "floating_package_sp
   if (spec !== exactSpec(packageName, version)) {
     reject(code, `expected exact package spec ${exactSpec(packageName, version)}, got ${spec}`);
   }
+}
+
+function validateSource(candidate) {
+  const source = requireRecord(candidate, "fixture.source");
+  const sourceUrl = requireString(source.url, "fixture.source.url");
+  const immutableMatch = immutableSourcePattern.exec(sourceUrl);
+  if (!canonicalSourcePattern.test(sourceUrl) && !immutableMatch) {
+    reject("installer_source_unavailable", "source URL must be the canonical repository or one immutable commit URL");
+  }
+  if (source.skill_path !== INSTALLER_CONTRACT.skillPath || source.status !== "loaded") {
+    reject("installer_source_unavailable", "installer Skill path and loaded status must match the contract");
+  }
+
+  const acquisition = requireRecord(source.acquisition, "fixture.source.acquisition");
+  if (
+    acquisition.method !== INSTALLER_CONTRACT.sourceAcquisition.method ||
+    acquisition.repository !== INSTALLER_CONTRACT.sourceAcquisition.repository
+  ) {
+    reject("source_checkout_unsafe", "source acquisition must use the fixed temporary Git checkout contract");
+  }
+  const requestedRef = requireString(acquisition.requested_ref, "fixture.source.acquisition.requested_ref");
+  const resolvedCommit = requireString(
+    acquisition.resolved_commit,
+    "fixture.source.acquisition.resolved_commit",
+  );
+  if (!commitPattern.test(resolvedCommit)) {
+    reject("installer_source_unavailable", "source acquisition must resolve one lowercase 40-character commit");
+  }
+  if (immutableMatch && (requestedRef !== immutableMatch[1] || resolvedCommit !== immutableMatch[1])) {
+    reject("installer_source_unavailable", "immutable source URL, requested ref, and resolved commit must match");
+  }
+  if (!immutableMatch && requestedRef !== "main") {
+    reject("installer_source_unavailable", "canonical source URL must record main as the requested ref");
+  }
+  const readPaths = requireStringArray(
+    acquisition.read_paths,
+    "fixture.source.acquisition.read_paths",
+  );
+  if (
+    readPaths.join("\0") !== INSTALLER_CONTRACT.sourceAcquisition.readPaths.join("\0") ||
+    acquisition.target_existed_before !== false ||
+    acquisition.repository_code_executed !== false ||
+    acquisition.checkout_used_as_package_source !== false ||
+    acquisition.cleanup_status !== "removed"
+  ) {
+    reject(
+      "source_checkout_unsafe",
+      "temporary source checkout must read only the contract paths, start absent, remain source-only, and be removed before questions",
+    );
+  }
+  return { source, acquisition };
 }
 
 function validateSnapshot(candidate, path, profile) {
@@ -307,14 +369,7 @@ export function verifyTranscript(candidate) {
     reject("invalid_transcript_schema", "fixture.schema_version must be 1");
   }
   const scenarioId = requireString(transcript.scenario_id, "fixture.scenario_id");
-  const source = requireRecord(transcript.source, "fixture.source");
-  const sourceUrl = requireString(source.url, "fixture.source.url");
-  if (!sourceUrl.startsWith(INSTALLER_CONTRACT.canonicalRepository) || source.skill_path !== INSTALLER_CONTRACT.skillPath) {
-    reject("installer_source_unavailable", "source URL or installer Skill path is not canonical");
-  }
-  if (source.status !== "loaded") {
-    reject("installer_source_unavailable", "installer source must be recorded as loaded");
-  }
+  const { acquisition } = validateSource(transcript.source);
 
   const host = requireRecord(transcript.host, "fixture.host");
   requireString(host.dsh_version, "fixture.host.dsh_version");
@@ -438,8 +493,8 @@ export function verifyTranscript(candidate) {
   if (!terminalStatuses.has(terminal.status)) {
     reject("terminal_status_invalid", `unsupported terminal status: ${terminal.status ?? "missing"}`);
   }
-  if (terminal.mutation_count !== mutationEvents.length) {
-    reject("mutation_count_mismatch", "terminal mutation_count does not match command evidence");
+  if (terminal.profile_mutation_count !== mutationEvents.length) {
+    reject("mutation_count_mismatch", "terminal profile_mutation_count does not match command evidence");
   }
 
   if (questions[2].status === "cancelled" || questions[2].answer === "cancel") {
@@ -509,7 +564,8 @@ export function verifyTranscript(candidate) {
     resolved_version: version,
     terminal_status: terminal.status,
     event_count: events.length,
-    mutation_count: mutationEvents.length,
+    profile_mutation_count: mutationEvents.length,
+    source_acquisition: acquisition.method,
     source_verified: true,
     redaction_verified: true,
   };

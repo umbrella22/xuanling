@@ -182,8 +182,12 @@ profile and preset to use, show the exact frozen npm version and package
 changes for confirmation, then install and verify them through `dsh plugin`.
 
 This is a model-orchestrated workflow: DSH itself does not install arbitrary
-URLs or execute repository code. The manual integration guide below remains
-the fallback when interactive questions or repository access are unavailable.
+URLs. When needed, the agent obtains the fixed repository ref in a new
+temporary checkout, reads only the README and installer Skill, and removes the
+checkout before asking the first question. It never executes repository code
+or installs from the checkout; profile packages still come only from the
+public npm registry. The manual integration guide below remains the fallback
+when interactive questions or repository access are unavailable.
 <!-- xuanling-dsh-conversational-install:end -->
 
 [`integrations/deepseek-harness`](integrations/deepseek-harness/) contains
