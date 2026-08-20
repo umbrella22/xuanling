@@ -161,10 +161,11 @@ xuanling-mcp --memory-db /path/to/memory.db memory rebuild-index
 展示冻结后的精确 npm 版本及 package 变更供最终确认，然后只通过 `dsh plugin` 安装并验证。
 
 这是模型编排流程：DSH 本身不会把任意 URL 直接安装。需要时，Agent 会把固定仓库 ref
-取得到一个新临时 checkout，只读取 README 和安装 Skill，并在第一个问题前删除该 checkout。
-它还可以查看目录元数据和 DSH 集成指南，但不能读取源码。它不会执行仓库代码或从 checkout
-安装；profile package 仍只来自公开 npm registry。交互式
-问答或仓库访问不可用时，仍可使用下方的手动集成指南。
+取得到一个新临时 checkout，并在第一个问题前删除该 checkout。路径发现可以列出 tracked path，
+或运行只把路径名输出给模型的 locator；源码和 manifest 正文不能进入模型上下文。可加载的内容
+仅限 allowlisted 根 README、安装 Skill，以及可选的 DSH 集成指南。Agent 不会执行仓库代码或从
+checkout 安装；profile package 仍只来自公开 npm registry。交互式问答或仓库访问不可用时，
+仍可使用下方的手动集成指南。
 <!-- xuanling-dsh-conversational-install:end -->
 
 [`integrations/deepseek-harness`](integrations/deepseek-harness/) 提供 Host 专用 bundle，

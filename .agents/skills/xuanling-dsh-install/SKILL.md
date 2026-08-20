@@ -11,11 +11,11 @@ installer. The model reads this repository-owned Skill, asks the user for the
 required choices, and invokes the normal public DSH plugin CLI.
 
 The repository URL is an instruction source, never an executable package
-source. A temporary checkout may be used only to read the repository README and
-this Skill; it must never be executed or passed to a package manager. Do not
-run repository scripts or install a Git, file, link, directory, or tarball
-spec. Every installed package must come from the public npm registry under the
-fixed `@xuanling-rs` names below.
+source. A temporary checkout may be used only to locate and load the bounded
+installation documents; it must never be executed or passed to a package
+manager. Do not run repository scripts or install a Git, file, link,
+directory, or tarball spec. Every installed package must come from the public
+npm registry under the fixed `@xuanling-rs` names below.
 
 ## Frozen contract
 
@@ -41,7 +41,14 @@ as normative data; the prose below explains how to execute it.
     ],
     "require_root_readme": true,
     "require_installer_skill": true,
-    "directory_metadata_allowed": true,
+    "path_discovery": {
+      "methods_allowed": [
+        "tracked_path_listing",
+        "path_only_content_locator"
+      ],
+      "model_visible_output": "relative_paths_only",
+      "non_document_content_exposure": false
+    },
     "pin_immutable_ref": true,
     "execute_repository_code": false,
     "install_from_checkout": false,
@@ -155,13 +162,17 @@ Keep the source boundary narrow:
 - Use only `https://github.com/umbrella22/xuanling.git` as the Git remote. The
   checkout destination must not exist before this run. Never overwrite, reuse,
   or clean an existing directory.
-- Directory listings and metadata may be inspected only to locate the
-  installation documents. Read content only from `README.md`, `README-ZH.md`,
+- Path discovery may list tracked paths or run a content locator only when the
+  locator emits relative path names and never matching lines or file bodies.
+  A locator process may inspect bytes to find candidate paths, but bytes from
+  non-document files must not be printed, summarized, parsed, or otherwise
+  exposed to the model.
+- Load model-visible content only from `README.md`, `README-ZH.md`,
   `.agents/skills/xuanling-dsh-install/SKILL.md`, and the English or Chinese
   `integrations/deepseek-harness/README` guide. At least one root README and
-  the installer Skill are required. Do not read source files or manifests, and
-  do not run hooks, scripts, binaries, package-manager commands, or code from
-  the checkout.
+  the installer Skill are required. Do not interpret source files or
+  manifests, and do not run hooks, scripts, binaries, package-manager
+  commands, or code from the checkout.
 - After both documents are in model context, verify that the destination is
   the exact directory created by this run, remove that directory, and confirm
   it is absent before asking `xuanling_target_profile`. If checkout or cleanup

@@ -183,13 +183,15 @@ changes for confirmation, then install and verify them through `dsh plugin`.
 
 This is a model-orchestrated workflow: DSH itself does not install arbitrary
 URLs. When needed, the agent obtains the fixed repository ref in a new
-temporary checkout, reads only the README and installer Skill, and removes the
-checkout before asking the first question. It may also inspect directory
-metadata and the DSH integration guide, but never source code. It never
-executes repository code or installs from the checkout; profile packages still
-come only from the public npm registry. The manual integration guide below
-remains the fallback when interactive questions or repository access are
-unavailable.
+temporary checkout, uses it only for bounded document discovery, and removes
+the checkout before asking the first question. Path discovery may list tracked
+paths or run a locator whose model-visible output is path names only; source
+and manifest bodies never enter model context. The only loaded content is an
+allowlisted root README, the installer Skill, and optionally the DSH
+integration guide. The agent never executes repository code or installs from
+the checkout; profile packages still come only from the public npm registry.
+The manual integration guide below remains the fallback when interactive
+questions or repository access are unavailable.
 <!-- xuanling-dsh-conversational-install:end -->
 
 [`integrations/deepseek-harness`](integrations/deepseek-harness/) contains

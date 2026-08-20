@@ -44,7 +44,11 @@ const expectedSkillContract = {
     allowed_document_paths: INSTALLER_CONTRACT.sourceAcquisition.allowedDocumentPaths,
     require_root_readme: true,
     require_installer_skill: true,
-    directory_metadata_allowed: true,
+    path_discovery: {
+      methods_allowed: INSTALLER_CONTRACT.sourceAcquisition.pathDiscovery.methodsAllowed,
+      model_visible_output: "relative_paths_only",
+      non_document_content_exposure: false,
+    },
     pin_immutable_ref: true,
     execute_repository_code: false,
     install_from_checkout: false,
@@ -241,8 +245,20 @@ test("transcript verifier rejects wrong ordering, floating specs, forbidden comm
   expectCode(unsafeSource, "source_checkout_unsafe");
 
   const sourceCodeRead = clone(valid);
-  sourceCodeRead.source.acquisition.read_paths.push("Cargo.toml");
+  sourceCodeRead.source.acquisition.model_visible_document_paths.push("Cargo.toml");
   expectCode(sourceCodeRead, "source_checkout_unsafe");
+
+  const sourceContentExposed = clone(valid);
+  sourceContentExposed.source.acquisition.non_document_content_exposed = true;
+  expectCode(sourceContentExposed, "source_checkout_unsafe");
+
+  const locatorLinesExposed = clone(valid);
+  locatorLinesExposed.source.acquisition.path_discovery_output = "matching_lines";
+  expectCode(locatorLinesExposed, "source_checkout_unsafe");
+
+  const unapprovedDiscovery = clone(valid);
+  unapprovedDiscovery.source.acquisition.path_discovery_methods.push("manifest_parse");
+  expectCode(unapprovedDiscovery, "source_checkout_unsafe");
 
   const lookalikeSource = clone(valid);
   lookalikeSource.source.url = "https://github.com/umbrella22/xuanling-malicious";

@@ -17,6 +17,13 @@ export const INSTALLER_CONTRACT = Object.freeze({
       "integrations/deepseek-harness/README.md",
       "integrations/deepseek-harness/README-ZH.md",
     ]),
+    pathDiscovery: Object.freeze({
+      methodsAllowed: Object.freeze([
+        "tracked_path_listing",
+        "path_only_content_locator",
+      ]),
+      modelVisibleOutput: "relative_paths_only",
+    }),
   }),
   questions: Object.freeze({
     profile: Object.freeze({
@@ -179,19 +186,31 @@ function validateSource(candidate) {
   if (!immutableMatch && requestedRef !== "main") {
     reject("installer_source_unavailable", "canonical source URL must record main as the requested ref");
   }
-  const readPaths = requireStringArray(
-    acquisition.read_paths,
-    "fixture.source.acquisition.read_paths",
+  const modelVisibleDocumentPaths = requireStringArray(
+    acquisition.model_visible_document_paths,
+    "fixture.source.acquisition.model_visible_document_paths",
   );
   const allowedDocumentPaths = new Set(INSTALLER_CONTRACT.sourceAcquisition.allowedDocumentPaths);
-  const hasRootReadme = readPaths.includes("README.md") || readPaths.includes("README-ZH.md");
-  const hasInstallerSkill = readPaths.includes(INSTALLER_CONTRACT.skillPath);
+  const hasRootReadme = modelVisibleDocumentPaths.includes("README.md") ||
+    modelVisibleDocumentPaths.includes("README-ZH.md");
+  const hasInstallerSkill = modelVisibleDocumentPaths.includes(INSTALLER_CONTRACT.skillPath);
+  const pathDiscoveryMethods = requireStringArray(
+    acquisition.path_discovery_methods,
+    "fixture.source.acquisition.path_discovery_methods",
+  );
+  const allowedDiscoveryMethods = new Set(
+    INSTALLER_CONTRACT.sourceAcquisition.pathDiscovery.methodsAllowed,
+  );
   if (
-    new Set(readPaths).size !== readPaths.length ||
-    readPaths.some((path) => !allowedDocumentPaths.has(path)) ||
+    new Set(modelVisibleDocumentPaths).size !== modelVisibleDocumentPaths.length ||
+    modelVisibleDocumentPaths.some((path) => !allowedDocumentPaths.has(path)) ||
     !hasRootReadme ||
     !hasInstallerSkill ||
-    acquisition.directory_metadata_only !== true ||
+    new Set(pathDiscoveryMethods).size !== pathDiscoveryMethods.length ||
+    pathDiscoveryMethods.some((method) => !allowedDiscoveryMethods.has(method)) ||
+    acquisition.path_discovery_output !==
+      INSTALLER_CONTRACT.sourceAcquisition.pathDiscovery.modelVisibleOutput ||
+    acquisition.non_document_content_exposed !== false ||
     acquisition.target_existed_before !== false ||
     acquisition.repository_code_executed !== false ||
     acquisition.checkout_used_as_package_source !== false ||
@@ -199,7 +218,7 @@ function validateSource(candidate) {
   ) {
     reject(
       "source_checkout_unsafe",
-      "temporary source checkout must read the required allowlisted documents, limit other inspection to directory metadata, start absent, remain source-only, and be removed before questions",
+      "temporary source checkout must expose only required allowlisted documents plus path-only discovery output, start absent, remain source-only, and be removed before questions",
     );
   }
   return { source, acquisition };
