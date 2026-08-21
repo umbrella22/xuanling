@@ -7,7 +7,7 @@ the strict whole-file overwrite policy. It registers no MCP server and has no
 dependency on `@xuanling-rs/xuanling-mcp`.
 
 ```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-skills@0.2.5
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-skills@0.2.6
 ```
 
 This command augments DSH's shipped Web profile. Use `--profile headless` for
