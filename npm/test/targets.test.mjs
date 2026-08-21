@@ -152,3 +152,116 @@ test("launcher removes signal handlers when spawning fails", async () => {
     assert.equal(runtime.listenerCount(signal), 0);
   }
 });
+
+function chmodRuntime(platform = "darwin") {
+  const runtime = new EventEmitter();
+  runtime.platform = platform;
+  runtime.pid = 123;
+  runtime.exit = (code) => {
+    runtime.exitCode = code;
+  };
+  return runtime;
+}
+
+test("launcher restores a missing executable bit before spawning", async () => {
+  const child = new EventEmitter();
+  child.killed = false;
+  child.kill = () => {};
+  const runtime = chmodRuntime();
+  let spawnCount = 0;
+  const spawn = (command) => {
+    spawnCount += 1;
+    assert.equal(command, "/fixture/xuanling-mcp");
+    queueMicrotask(() => child.emit("exit", 0, null));
+    return child;
+  };
+  const chmodCalls = [];
+  const stat = () => ({ mode: 0o100644 });
+
+  await launch({
+    binaryPath: "/fixture/xuanling-mcp",
+    chmod: (binaryPath, mode) => chmodCalls.push({ binaryPath, mode }),
+    runtime,
+    spawn,
+    stat,
+    target: TARGETS["darwin-arm64"],
+  });
+
+  assert.deepEqual(chmodCalls, [
+    { binaryPath: "/fixture/xuanling-mcp", mode: 0o100755 },
+  ]);
+  assert.equal(spawnCount, 1);
+});
+
+test("launcher leaves an executable binary and win32 payloads untouched", async () => {
+  const child = new EventEmitter();
+  child.killed = false;
+  child.kill = () => {};
+  const spawn = () => {
+    queueMicrotask(() => child.emit("exit", 0, null));
+    return child;
+  };
+  const chmod = () => assert.fail("chmod must not run when the bit is present or the platform is win32");
+
+  for (const { platform, mode } of [
+    { platform: "darwin", mode: 0o100755 },
+    { platform: "linux", mode: 0o100711 },
+    { platform: "win32", mode: 0o100644 },
+  ]) {
+    await launch({
+      binaryPath: "/fixture/xuanling-mcp",
+      chmod,
+      runtime: chmodRuntime(platform),
+      spawn,
+      stat: () => ({ mode }),
+      target: TARGETS["darwin-arm64"],
+    });
+  }
+});
+
+test("launcher surfaces a clear error when the executable bit cannot be restored", async () => {
+  const runtime = chmodRuntime();
+  const spawn = () => assert.fail("spawn must not run when chmod fails");
+  const chmod = () => Promise.reject(Object.assign(new Error("EACCES: permission denied"), {
+    code: "EACCES",
+  }));
+
+  await assert.rejects(
+    launch({
+      binaryPath: "/fixture/xuanling-mcp",
+      chmod,
+      runtime,
+      spawn,
+      stat: () => ({ mode: 0o100644 }),
+      target: TARGETS["darwin-arm64"],
+    }),
+    /is not executable and the permission could not be restored: EACCES/,
+  );
+});
+
+test("launcher falls through to spawn when the binary cannot be stat'ed", async () => {
+  const child = new EventEmitter();
+  child.killed = false;
+  child.kill = () => {};
+  const runtime = chmodRuntime();
+  let spawnCount = 0;
+  const spawn = () => {
+    spawnCount += 1;
+    queueMicrotask(() => child.emit("exit", 0, null));
+    return child;
+  };
+  const stat = () => {
+    throw new Error("ENOENT: no such file or directory");
+  };
+
+  await launch({
+    binaryPath: "/fixture/xuanling-mcp",
+    chmod: () => assert.fail("chmod must not run when stat fails"),
+    runtime,
+    spawn,
+    stat,
+    target: TARGETS["darwin-arm64"],
+  });
+
+  assert.equal(spawnCount, 1);
+});

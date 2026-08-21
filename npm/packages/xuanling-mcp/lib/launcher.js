@@ -1,6 +1,11 @@
 import { spawn as nodeSpawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync as nodeExistsSync, readFileSync as nodeReadFileSync } from "node:fs";
+import {
+  chmodSync as nodeChmodSync,
+  existsSync as nodeExistsSync,
+  readFileSync as nodeReadFileSync,
+  statSync as nodeStatSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import { constants as osConstants } from "node:os";
 import path from "node:path";
@@ -60,14 +65,41 @@ function exitCodeForSignal(signal) {
   return typeof number === "number" ? 128 + number : 1;
 }
 
+// Plugin-cache transports (ZCode marketplace sync, for example) can strip the
+// executable bit from the payload, which would turn every spawn into EACCES.
+async function ensureExecutable(binaryPath, { chmod, runtime, stat }) {
+  if (runtime.platform === "win32") return;
+  let info;
+  try {
+    info = stat(binaryPath);
+  } catch {
+    // A missing or unreadable binary fails in spawn with its own error.
+    return;
+  }
+  if ((info.mode & 0o111) !== 0) return;
+  const mode = info.mode | 0o111;
+  try {
+    await chmod(binaryPath, mode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Native binary at ${binaryPath} is not executable and the permission could not be restored: ${message}`,
+    );
+  }
+}
+
 export async function launch({
   argv = process.argv.slice(2),
   env = process.env,
   runtime = process,
   spawn = nodeSpawn,
+  stat = nodeStatSync,
+  chmod = nodeChmodSync,
   target = detectTarget(),
   binaryPath = resolveNativeBinary(target),
 } = {}) {
+  await ensureExecutable(binaryPath, { chmod, runtime, stat });
+
   const child = spawn(binaryPath, argv, {
     env,
     stdio: "inherit",
