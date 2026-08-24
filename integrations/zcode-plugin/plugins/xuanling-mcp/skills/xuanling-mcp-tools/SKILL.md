@@ -13,6 +13,9 @@ The server is contributed by the `xuanling-mcp` plugin. Tools appear as
 `mcp__plugin_xuanling-mcp_xuanling__<tool>` (e.g. `...__system_info`,
 `...__fs_search`). The filesystem capability boundary is the current project
 (`--workspace-root ${CLAUDE_PROJECT_DIR}`); relative paths resolve under it.
+The stable packaged Skill path is `skills/xuanling-mcp-tools/SKILL.md`; do not
+reference a versioned plugin-cache directory. Hosts may also expose the short
+routing policy through MCP `initialize.instructions` before loading this file.
 
 ## When to use these vs. shell
 

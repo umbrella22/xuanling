@@ -146,6 +146,16 @@ test("ZCode plugin READMEs contain installed-runtime guidance only", () => {
   }
 });
 
+test("ZCode Skill exposes a stable package-relative locator", () => {
+  assert.equal(
+    path.relative(pluginPackageRoot, skillPath).replaceAll(path.sep, "/"),
+    "skills/xuanling-mcp-tools/SKILL.md",
+  );
+  const skill = readFileSync(skillPath, "utf8");
+  assert.match(skill, /stable packaged Skill path.*skills\/xuanling-mcp-tools\/SKILL\.md/s);
+  assert.match(skill, /versioned plugin-cache directory/);
+});
+
 test("Skill has no legacy memory tool names", () => {
   const skill = readFileSync(skillPath, "utf8");
   for (const legacy of [

@@ -4143,6 +4143,16 @@ fn server_info_publishes_contract_version_and_identity() {
         json!("2"),
         "server must publish contract_version=2 in _meta (ADR 0027 §10): {resp}"
     );
+    let instructions = resp["result"]["instructions"]
+        .as_str()
+        .expect("server must publish routing instructions");
+    assert!(
+        instructions.contains("host-native tools")
+            && instructions.contains("hashes/CAS")
+            && instructions.contains("host L1")
+            && instructions.contains("explicit user approval"),
+        "initialize instructions must expose the short routing policy: {resp}"
+    );
     assert_eq!(
         resp["result"]["_meta"]["xuanling.filesystem_scope"],
         json!("unrestricted"),

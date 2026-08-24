@@ -23,6 +23,11 @@ use xuanling_toolkit::path::PathContext;
 use crate::handlers;
 use crate::profile::ToolProfileSelection;
 
+/// Short routing guidance delivered during MCP initialization. The complete
+/// workflow remains in the distributed Skills; this summary covers the
+/// decisions a host should surface before a Skill is loaded.
+const SERVER_INSTRUCTIONS: &str = "Routine reads and small edits prefer host-native tools. Use XuanLing for cross-OS structured results, bounded output and pagination, hashes/CAS, and atomic strict patches. Project-local must-see memory belongs only in host L1; cross-project memory searches L2 first and creates a pending candidate only when absent. Review a memory proposal only after explicit user approval.";
+
 /// The XuanLing MCP server state. Holds an optional memory store (opened in
 /// main from the CLI-supplied `--memory-db`), plus the CLI-supplied path
 /// resolution context (`--base-dir`) and default memory namespace
@@ -121,6 +126,7 @@ impl ServerHandler for XuanlingServer {
         // crate-provided constructor + builder instead of a struct literal.
         let mut info = ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("xuanling-mcp", env!("CARGO_PKG_VERSION")))
+            .with_instructions(SERVER_INSTRUCTIONS)
             // Pin the fallback protocol revision to rmcp's latest *legacy*
             // revision. `supported_protocol_versions` (below) excludes the
             // 2026-07-28 modern era, so negotiation can never agree to it; keep

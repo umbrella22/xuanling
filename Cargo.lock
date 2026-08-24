@@ -2195,7 +2195,7 @@ checksum = "1ffae5123b2d3fc086436f8834ae3ab053a283cfac8fe0a0b8eaae044768a4c4"
 
 [[package]]
 name = "xuanling-mcp"
-version = "0.2.7"
+version = "0.2.8"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -2218,7 +2218,7 @@ dependencies = [
 
 [[package]]
 name = "xuanling-memory"
-version = "0.2.7"
+version = "0.2.8"
 dependencies = [
  "schemars",
  "serde",
@@ -2234,7 +2234,7 @@ dependencies = [
 
 [[package]]
 name = "xuanling-toolkit"
-version = "0.2.7"
+version = "0.2.8"
 dependencies = [
  "base64 0.22.1",
  "globset",

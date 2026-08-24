@@ -276,6 +276,8 @@ test("the skills patch mounts one isolated provider and one installed policy mod
 
 test("xuanling-file-workflow routes between the native and XuanLing fs families", () => {
   const { body } = loadSkill("xuanling-file-workflow");
+  assert.match(body, /stable package-relative path.*skills\/xuanling-file-workflow\/SKILL\.md/s);
+  assert.match(body, /versioned DSH plugin\s+cache path/);
   assert.ok(body.includes("mcp__xuanling__fs_"), "references the XuanLing fs tool family");
   assert.match(body, /native file tools/i, "references the harness-native file tools");
   assert.match(body, /routine (small )?edits?/i, "native tools preferred for routine small edits");

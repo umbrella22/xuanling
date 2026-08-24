@@ -32,7 +32,7 @@ The npm launcher requires Node.js 18.17 or newer and installs the matching
 native binary for the current platform.
 
 ```sh
-npm install --global @xuanling-rs/xuanling-mcp@0.2.7
+npm install --global @xuanling-rs/xuanling-mcp@0.2.8
 xuanling-mcp --version
 ```
 
@@ -45,7 +45,7 @@ An MCP client can pin the same version without a global installation:
       "command": "npx",
       "args": [
         "-y",
-        "@xuanling-rs/xuanling-mcp@0.2.7",
+        "@xuanling-rs/xuanling-mcp@0.2.8",
         "--workspace-root",
         "/absolute/path/to/project",
         "--tool-profile",

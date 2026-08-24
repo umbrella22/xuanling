@@ -10,6 +10,10 @@ operation; both are first-class, and neither is a fallback for the other.
 Apply this workflow only when the named `mcp__xuanling__fs_*` tools are
 visible. A memory-only bundle does not provide file or process tools; keep
 using the native family there instead of inferring unavailable tools.
+The stable package-relative path is
+`skills/xuanling-file-workflow/SKILL.md`; do not cite a versioned DSH plugin
+cache path. The MCP server may also provide the short routing policy through
+`initialize.instructions` before this Skill is loaded.
 
 ## Families
 
