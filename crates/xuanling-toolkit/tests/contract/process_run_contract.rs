@@ -7,7 +7,9 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use xuanling_toolkit::invocation::{InvocationContext, ManualCancellation};
-use xuanling_toolkit::process::{ProcessRunRequest, ProcessStreamMode, process_run};
+use xuanling_toolkit::process::{
+    ProcessRunRequest, ProcessStreamMode, parse_pipeline_shlex, process_run,
+};
 // Pipeline/session APIs are used by Unix-only contracts and by the portable
 // process-tree fixture when that feature is enabled. Gate imports so a default
 // Windows build does not trip `-D warnings`.
@@ -242,6 +244,33 @@ async fn process_args_preserve_spaces_quotes_dollar_and_metacharacters() {
             "arg `{t}` must be preserved verbatim in stdout: {out}"
         );
     }
+}
+
+#[test]
+fn pipeline_shlex_parses_quotes_without_shell_expansion() {
+    let stages = parse_pipeline_shlex("printf '%s' '中文 | $HOME `whoami`' | wc -c")
+        .expect("restricted pipeline parser");
+    assert_eq!(stages.len(), 2);
+    assert_eq!(stages[0].program, "printf");
+    assert_eq!(
+        stages[0].args,
+        vec!["%s", "中文 | $HOME `whoami`"],
+        "quoted metacharacters must remain literal"
+    );
+    assert_eq!(stages[1].program, "wc");
+    assert_eq!(stages[1].args, vec!["-c"]);
+}
+
+#[test]
+fn pipeline_shlex_rejects_shell_operators_and_malformed_quotes() {
+    let operator_error = parse_pipeline_shlex("printf x ; rm file").expect_err("operator rejected");
+    assert_eq!(operator_error.code, ToolErrorCode::InvalidInput);
+    assert_eq!(operator_error.details["reason"], "pipeline_parse_failed");
+    assert!(operator_error.details["byte_offset"].is_number());
+
+    let quote_error = parse_pipeline_shlex("printf 'unterminated").expect_err("quote rejected");
+    assert_eq!(quote_error.code, ToolErrorCode::InvalidInput);
+    assert_eq!(quote_error.details["reason"], "pipeline_parse_failed");
 }
 
 #[cfg(unix)]

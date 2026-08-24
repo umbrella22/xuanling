@@ -5701,7 +5701,7 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Run an explicit argv pipeline (ADR 0027 §9.1): each stage is {program,args,env,remove_env,inherit_env,cwd}; a stage's stdout is piped to the next stage's stdin. NO shell is ever invoked; shell metacharacters in argv arrive verbatim. Environment construction matches process_run: seed, then env overrides, then remove_env deletion. Reports each stage's exit status; spawn failures carry details.stage_index. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output returns complete inline streams; an explicit bounded output spills overflow to per-invocation artifacts.",
+    "description": "Run a shell-free pipeline (ADR 0027 §9.1). Provide either explicit `stages` ({program,args,env,remove_env,inherit_env,cwd}) or `pipeline_shlex`, a restricted notation with whitespace, quotes, backslash escapes, and `|`; never provide both. The parser does not execute a shell: `$`, backticks, and quoted metacharacters remain literal, while redirection and control operators are rejected. Explicit stages remain the portable contract and allow per-stage env/cwd. A stage's stdout is piped to the next stage's stdin. Reports each stage's exit status; spawn failures carry details.stage_index. An optional timeout_hint_ms is an MCP soft deadline; without it there is no server-side timeout. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output returns complete inline streams; an explicit bounded output spills overflow to per-invocation artifacts.",
     "input_schema": {
       "$defs": {
         "OutputRequest": {
@@ -5837,11 +5837,22 @@
         "output": {
           "$ref": "#/$defs/OutputRequest"
         },
+        "pipeline_shlex": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "stages": {
+          "default": null,
           "items": {
             "$ref": "#/$defs/PipelineStage"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "stdin": {
           "default": null,
@@ -5853,11 +5864,18 @@
         "stdout": {
           "$ref": "#/$defs/ProcessStreamMode",
           "default": "inline"
+        },
+        "timeout_hint_ms": {
+          "default": null,
+          "description": "Optional MCP-only soft deadline; expiry uses normal cancellation cleanup.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
         }
       },
-      "required": [
-        "stages"
-      ],
       "type": "object"
     },
     "name": "process_pipeline",
@@ -6126,7 +6144,7 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Run a child process using direct argv (program + args[] + cwd + env). No shell, no server-side timeout; MCP cancellation terminates the complete descendant process tree. Before returning after direct-child exit, residual descendants in the containment unit are also terminated. stdout/stderr capture mode is caller-selected (inline/file/inherit/null; stdout=inherit is rejected in stdio MCP mode). A nonzero exit is a successful call with success=false, NOT an error. Does not split or translate shell command strings. inherit_env=false (default) seeds a minimal non-secret allowlist (PATH/HOME/TEMP/locale; SystemRoot/USERPROFILE on Windows): child tools read your user config (git/cargo/npm/ssh) but do NOT inherit tokens/keys; pass inherit_env=true to match your login shell or add vars via env/remove_env. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output returns complete inline streams; an explicit bounded output spills overflow to per-invocation artifacts.",
+    "description": "Run a child process using direct argv (program + args[] + cwd + env). No shell; an optional timeout_hint_ms is an MCP soft deadline that follows the normal cancellation and descendant cleanup path. Without the hint there is no server-side timeout. MCP cancellation terminates the complete descendant process tree. Before returning after direct-child exit, residual descendants in the containment unit are also terminated. stdout/stderr capture mode is caller-selected (inline/file/inherit/null; stdout=inherit is rejected in stdio MCP mode). A nonzero exit is a successful call with success=false, NOT an error. Does not split or translate shell command strings. inherit_env=false (default) seeds a minimal non-secret allowlist (PATH/HOME/TEMP/locale; SystemRoot/USERPROFILE on Windows): child tools read your user config (git/cargo/npm/ssh) but do NOT inherit tokens/keys; pass inherit_env=true to match your login shell or add vars via env/remove_env. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output returns complete inline streams; an explicit bounded output spills overflow to per-invocation artifacts.",
     "input_schema": {
       "$defs": {
         "OutputRequest": {
@@ -6267,6 +6285,16 @@
         "stdout": {
           "$ref": "#/$defs/ProcessStreamMode",
           "default": "inline"
+        },
+        "timeout_hint_ms": {
+          "default": null,
+          "description": "Optional MCP-only soft deadline. Expiry follows the normal cancellation\nand process-tree cleanup path; the toolkit request remains deadline-free.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
         }
       },
       "required": [
@@ -6771,7 +6799,7 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Run a resolved project command via process_run (composes the resolver + process lifecycle; no copied spawn logic). Same cancellation/argv/no-timeout/env semantics as process_run: inherit_env=false (default) seeds the minimal non-secret allowlist; pass inherit_env=true to match your login shell. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output returns complete inline streams; an explicit bounded output spills overflow to per-invocation artifacts.",
+    "description": "Run a resolved project command via process_run (composes the resolver + process lifecycle; no copied spawn logic). Same cancellation/argv/env semantics as process_run, including optional timeout_hint_ms soft deadline; without the hint there is no server-side timeout. inherit_env=false (default) seeds the minimal non-secret allowlist; pass inherit_env=true to match your login shell. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output returns complete inline streams; an explicit bounded output spills overflow to per-invocation artifacts.",
     "input_schema": {
       "$defs": {
         "OutputRequest": {
@@ -6911,6 +6939,16 @@
           "default": null,
           "type": [
             "string",
+            "null"
+          ]
+        },
+        "timeout_hint_ms": {
+          "default": null,
+          "description": "Optional MCP-only soft deadline; expiry uses normal cancellation cleanup.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
             "null"
           ]
         }
@@ -7199,7 +7237,7 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Run a foreground direct-argv command inside a session (the session's cwd/env apply; request env overrides). NO shell. Cancellation and session_close terminate the contained process tree; descendants left after the direct child exits are cleaned up before this call returns. The env policy follows session_open: a session opened with inherit_env=false uses the minimal non-secret allowlist plus explicit env. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output returns complete inline streams; an explicit bounded output spills overflow to per-invocation artifacts.",
+    "description": "Run a foreground direct-argv command inside a session (the session's cwd/env apply; request env overrides). NO shell. An optional timeout_hint_ms is an MCP soft deadline; without it there is no server-side timeout. Cancellation and session_close terminate the contained process tree; descendants left after the direct child exits are cleaned up before this call returns. The env policy follows session_open: a session opened with inherit_env=false uses the minimal non-secret allowlist plus explicit env. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output returns complete inline streams; an explicit bounded output spills overflow to per-invocation artifacts.",
     "input_schema": {
       "$defs": {
         "OutputRequest": {
@@ -7325,6 +7363,16 @@
         "stdout": {
           "$ref": "#/$defs/ProcessStreamMode",
           "default": "inline"
+        },
+        "timeout_hint_ms": {
+          "default": null,
+          "description": "Optional MCP-only soft deadline; expiry uses normal cancellation cleanup.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
         }
       },
       "required": [

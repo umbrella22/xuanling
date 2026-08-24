@@ -66,12 +66,17 @@ Schema gotchas learned from live use:
 ### Process / Project
 `process_which` `process_run` `project_detect` `project_command` `project_run` `process_pipeline`
 
-- **`process_run`**: `{ program, args[], cwd, env, stdin, stdout, stderr }`. Direct argv — **no
-  shell**. Nonzero exit is a *successful* call (`isError=false`, `success=false`), not an error.
-- **`process_pipeline`**: explicit argv stages (ADR 0027 §9.1); each stage `{ program, args, cwd }`.
-  Use it instead of shell pipes, e.g. dedupe + count:
-  `stages: [{program:"sort",args:["-u"]},{program:"wc",args:["-l"]}], stdin: "<input text>"`
-  — portable `sort -u` on macOS/BSD and Linux alike, with **no** shell metacharacter handling.
+- **`process_run`**: `{ program, args[], cwd, env, stdin, stdout, stderr, timeout_hint_ms }`.
+  Direct argv — **no shell**. `timeout_hint_ms` is an optional MCP soft deadline; it follows
+  the normal cancellation and descendant cleanup path, while omitting it preserves the
+  toolkit's no-default-deadline contract. Nonzero exit is a *successful* call
+  (`isError=false`, `success=false`), not an error.
+- **`process_pipeline`**: provide either explicit argv `stages` (ADR 0027 §9.1) or the
+  convenience `pipeline_shlex` string, never both. Each explicit stage is `{ program, args, cwd }`.
+  `pipeline_shlex` supports whitespace, quotes, backslash escapes, and `|`; it is parsed into
+  argv stages without a shell, so `$`, backticks, redirection, and control operators are not
+  executed. Use it for concise pipes, or explicit stages when per-stage env/cwd matters:
+  `pipeline_shlex: "sort -u | wc -l", stdin: "<input text>"`.
 - **`project_detect`**: **requires `path`** (e.g. `"."`). Returns `ecosystems`, `markers`,
   `toolchains`.
 - **`project_command`**: resolves a project action (`check`/`test`/`build`/`format_check`/
@@ -172,10 +177,12 @@ read the `expected one of ...` list it returns and resend with the correct field
 
 ## Long-running work
 
-`process_run` has **no server-side timeout** and no shell fallback. For long jobs (builds,
-installations, test suites), use the host's native background/job mechanism instead of a
-synchronous XuanLing process call. Do not fabricate timeouts, sleep loops, or `sh -c` wrappers,
-and do not claim a synchronous call can outlast the host's own deadline.
+`process_run` and its project/pipeline/session variants have no default server-side timeout, but
+accept an optional MCP-only `timeout_hint_ms`. A hint is a soft deadline, not a guarantee: expiry
+uses the normal cancellation path and returns typed `deadline_exceeded`; user cancellation remains
+`cancelled`. For long jobs (builds, installations, test suites), use the host's native
+background/job mechanism when the host owns the lifecycle. Do not fabricate timeout loops or
+`sh -c` wrappers, and do not claim a synchronous call can outlast the host's own deadline.
 
 ## Responsibility boundaries
 

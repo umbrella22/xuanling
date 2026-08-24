@@ -22,6 +22,7 @@ fn tool_error_code_round_trips_as_snake_case() {
         (ToolErrorCode::Unsupported, "unsupported"),
         (ToolErrorCode::Conflict, "conflict"),
         (ToolErrorCode::Cancelled, "cancelled"),
+        (ToolErrorCode::DeadlineExceeded, "deadline_exceeded"),
         (ToolErrorCode::SpawnFailed, "spawn_failed"),
         (ToolErrorCode::DatabaseBusy, "database_busy"),
         (ToolErrorCode::IoError, "io_error"),

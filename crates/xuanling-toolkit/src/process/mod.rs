@@ -25,7 +25,7 @@ pub use project::{
 };
 pub use run::{
     PipelineStage, PipelineStageResult, ProcessPipelineRequest, ProcessPipelineResult,
-    ProcessRunRequest, ProcessRunResult, process_pipeline, process_run,
+    ProcessRunRequest, ProcessRunResult, parse_pipeline_shlex, process_pipeline, process_run,
 };
 pub use session::{
     SessionCloseRequest, SessionCloseResult, SessionExecRequest, SessionExecResult,

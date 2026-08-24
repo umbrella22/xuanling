@@ -130,6 +130,7 @@ pub fn fs_write_text(
         PathAccess::Write,
         "fs.write_text",
     )?;
+    let _mutation_guard = super::mutation_lock();
     let existed = path.exists();
 
     // mode=create must fail if the file already exists.
@@ -285,6 +286,7 @@ pub fn fs_replace_text(
         PathAccess::Write,
         "fs.replace_text",
     )?;
+    let _mutation_guard = super::mutation_lock();
     let original =
         std::fs::read_to_string(&path).map_err(|e| map_io_error(&e, "fs.replace_text", &path))?;
     let before_sha256 = sha256_hex(original.as_bytes());
@@ -387,6 +389,7 @@ pub fn fs_patch(ctx: &InvocationContext, req: &FsPatchRequest) -> Result<FsPatch
         PathAccess::Write,
         "fs.patch",
     )?;
+    let _mutation_guard = super::mutation_lock();
     let original =
         std::fs::read_to_string(&path).map_err(|e| map_io_error(&e, "fs.patch", &path))?;
     let before_sha256 = sha256_hex(original.as_bytes());
@@ -668,6 +671,7 @@ pub fn fs_edit(ctx: &InvocationContext, req: &FsEditRequest) -> Result<FsEditRes
         PathAccess::Write
     };
     let path = resolve_path(ctx, &req.path, req.base_dir.as_deref(), access, "fs.edit")?;
+    let _mutation_guard = (!req.dry_run).then(super::mutation_lock);
     let original = std::fs::read(&path).map_err(|e| map_io_error(&e, "fs.edit", &path))?;
     let before_sha256 = sha256_hex(&original);
     let original_str = std::str::from_utf8(&original).map_err(|_| {

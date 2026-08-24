@@ -137,6 +137,7 @@ pub struct AppliedMultiChange {
 /// byte. A rollback never overwrites a concurrent external write; such a race
 /// and every recovery I/O failure are reported as an error rather than hidden.
 pub fn apply_multi(changes: Vec<MultiFileChange>) -> Result<AppliedMultiChange, ToolError> {
+    let _mutation_guard = super::mutation_lock();
     let mut prepared = Vec::with_capacity(changes.len());
     let mut unique_paths = std::collections::HashSet::with_capacity(changes.len());
 

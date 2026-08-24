@@ -49,10 +49,28 @@ pub use copy_move_remove::{
 };
 
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use crate::capability::PathAccess;
 use crate::error::{ToolError, ToolErrorCode};
 use crate::invocation::InvocationContext;
+
+/// Serialize guarded filesystem mutations inside one toolkit process.
+///
+/// `expected_sha256` is a preimage contract. Holding this lock from the
+/// preimage read through the atomic replacement makes that contract linear
+/// for concurrent MCP calls sharing the server. It does not coordinate with
+/// unrelated processes that write the same path outside this toolkit.
+fn mutation_lock_cell() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+pub(crate) fn mutation_lock() -> MutexGuard<'static, ()> {
+    mutation_lock_cell()
+        .lock()
+        .expect("filesystem mutation lock poisoned")
+}
 
 /// Resolve `req.path` (with optional per-request `base_dir`) against the
 /// invocation's [`crate::PathContext`], then validate the resolved locator for

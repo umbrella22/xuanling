@@ -45,6 +45,8 @@ pub enum ToolErrorCode {
     Conflict,
     /// Observed cancellation before completion.
     Cancelled,
+    /// An MCP soft deadline expired and cancellation cleaned up the operation.
+    DeadlineExceeded,
     /// Could not spawn the child process.
     SpawnFailed,
     /// SQLite busy/locked.
@@ -74,6 +76,7 @@ impl ToolErrorCode {
             Self::Unsupported => "unsupported",
             Self::Conflict => "conflict",
             Self::Cancelled => "cancelled",
+            Self::DeadlineExceeded => "deadline_exceeded",
             Self::SpawnFailed => "spawn_failed",
             Self::DatabaseBusy => "database_busy",
             Self::IoError => "io_error",

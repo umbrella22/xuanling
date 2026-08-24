@@ -1,6 +1,6 @@
 {
   "name": "xuanling-mcp-npm-release",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "private": true,
   "description": "Build, validate, and publish the XuanLing MCP npm distribution.",
   "type": "module",

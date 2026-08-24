@@ -1055,6 +1055,68 @@ fn cancellation_id_routes_to_only_the_matching_call() {
     );
 }
 
+#[test]
+fn timeout_hint_returns_typed_deadline_after_process_cleanup() {
+    if !cfg!(unix) {
+        return;
+    }
+    let mut peer = Peer::start();
+    peer.initialize();
+    let started = std::time::Instant::now();
+    let response = peer.call(
+        "process_run",
+        json!({
+            "program": "sleep",
+            "args": ["30"],
+            "stdout": "null",
+            "stderr": "null",
+            "timeout_hint_ms": 50
+        }),
+    );
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "soft timeout must not wait for the child: {response}"
+    );
+    assert_eq!(
+        response["result"]["isError"],
+        json!(true),
+        "response: {response}"
+    );
+    let error = &response["result"]["structuredContent"];
+    assert_eq!(
+        error["code"],
+        json!("deadline_exceeded"),
+        "response: {response}"
+    );
+    assert_eq!(
+        error["operation"],
+        json!("process.run"),
+        "response: {response}"
+    );
+    assert_eq!(error["details"]["reason"], json!("soft_timeout"));
+    assert_eq!(error["details"]["timeout_hint_ms"], json!(50));
+}
+
+#[test]
+fn timeout_hint_zero_is_a_typed_input_error() {
+    let mut peer = Peer::start();
+    peer.initialize();
+    let response = peer.call(
+        "process_run",
+        json!({"program": "echo", "args": ["unused"], "timeout_hint_ms": 0}),
+    );
+    assert_eq!(
+        response["result"]["isError"],
+        json!(true),
+        "response: {response}"
+    );
+    assert_eq!(
+        response["result"]["structuredContent"]["code"],
+        json!("invalid_input"),
+        "response: {response}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // ADR 0027 Wave 1 contract tests (plan §5.4)
 // ---------------------------------------------------------------------------
@@ -3611,6 +3673,49 @@ fn pipeline_passes_bytes_without_shell() {
     assert_eq!(stages.len(), 2);
     assert_eq!(stages[0]["exit_code"], json!(0));
     assert_eq!(stages[1]["exit_code"], json!(0));
+}
+
+#[test]
+fn pipeline_shlex_is_parsed_without_shell_execution() {
+    if !cfg!(unix) {
+        return;
+    }
+    let mut peer = Peer::start();
+    peer.initialize();
+    let resp = peer.call(
+        "process_pipeline",
+        json!({
+            "pipeline_shlex": "printf '%s' '中文 | $HOME `whoami`' | cat",
+            "stdout": "inline"
+        }),
+    );
+    assert_eq!(resp["result"]["isError"], json!(false), "{resp}");
+    assert_eq!(
+        resp["result"]["structuredContent"]["stdout"],
+        json!("中文 | $HOME `whoami`"),
+        "quoted metacharacters must remain literal: {resp}"
+    );
+}
+
+#[test]
+fn pipeline_shlex_rejects_shell_control_operators() {
+    let mut peer = Peer::start();
+    peer.initialize();
+    let resp = peer.call(
+        "process_pipeline",
+        json!({"pipeline_shlex": "printf x ; rm file", "stdout": "null"}),
+    );
+    assert_eq!(resp["result"]["isError"], json!(true), "{resp}");
+    assert_eq!(
+        resp["result"]["structuredContent"]["code"],
+        json!("invalid_input"),
+        "shell control operators must be rejected: {resp}"
+    );
+    assert_eq!(
+        resp["result"]["structuredContent"]["details"]["reason"],
+        json!("pipeline_parse_failed"),
+        "parse failures must remain typed: {resp}"
+    );
 }
 
 #[test]

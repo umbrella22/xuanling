@@ -17,6 +17,8 @@ use rmcp::service::RequestContext;
 use rmcp::{ErrorData as McpError, RoleServer};
 use serde_json::Value;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 use xuanling_memory as tk_memory;
 use xuanling_toolkit::FilesystemScope;
@@ -335,7 +337,7 @@ pub fn catalog() -> Vec<Tool> {
         ),
         tool::<ProcessRunCall, ProcessRunResult>(
             "process_run",
-            "Run a child process using direct argv (program + args[] + cwd + env). No shell, no server-side timeout; MCP cancellation terminates the complete descendant process tree. Before returning after direct-child exit, residual descendants in the containment unit are also terminated. stdout/stderr capture mode is caller-selected (inline/file/inherit/null; stdout=inherit is rejected in stdio MCP mode). A nonzero exit is a successful call with success=false, NOT an error. Does not split or translate shell command strings. inherit_env=false (default) seeds a minimal non-secret allowlist (PATH/HOME/TEMP/locale; SystemRoot/USERPROFILE on Windows): child tools read your user config (git/cargo/npm/ssh) but do NOT inherit tokens/keys; pass inherit_env=true to match your login shell or add vars via env/remove_env. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output returns complete inline streams; an explicit bounded output spills overflow to per-invocation artifacts.",
+            "Run a child process using direct argv (program + args[] + cwd + env). No shell; an optional timeout_hint_ms is an MCP soft deadline that follows the normal cancellation and descendant cleanup path. Without the hint there is no server-side timeout. MCP cancellation terminates the complete descendant process tree. Before returning after direct-child exit, residual descendants in the containment unit are also terminated. stdout/stderr capture mode is caller-selected (inline/file/inherit/null; stdout=inherit is rejected in stdio MCP mode). A nonzero exit is a successful call with success=false, NOT an error. Does not split or translate shell command strings. inherit_env=false (default) seeds a minimal non-secret allowlist (PATH/HOME/TEMP/locale; SystemRoot/USERPROFILE on Windows): child tools read your user config (git/cargo/npm/ssh) but do NOT inherit tokens/keys; pass inherit_env=true to match your login shell or add vars via env/remove_env. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output returns complete inline streams; an explicit bounded output spills overflow to per-invocation artifacts.",
             mutating_open_world(),
             ProcessRunCall {
                 program: String::new(),
@@ -345,6 +347,7 @@ pub fn catalog() -> Vec<Tool> {
                 remove_env: Vec::new(),
                 inherit_env: false,
                 deterministic: false,
+                timeout_hint_ms: None,
                 stdin: None,
                 stdout: ProcessStreamMode::Inline,
                 stderr: ProcessStreamMode::Inline,
@@ -374,7 +377,7 @@ pub fn catalog() -> Vec<Tool> {
         ),
         tool::<ProjectRunCall, ProcessRunResult>(
             "project_run",
-            "Run a resolved project command via process_run (composes the resolver + process lifecycle; no copied spawn logic). Same cancellation/argv/no-timeout/env semantics as process_run: inherit_env=false (default) seeds the minimal non-secret allowlist; pass inherit_env=true to match your login shell. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output returns complete inline streams; an explicit bounded output spills overflow to per-invocation artifacts.",
+            "Run a resolved project command via process_run (composes the resolver + process lifecycle; no copied spawn logic). Same cancellation/argv/env semantics as process_run, including optional timeout_hint_ms soft deadline; without the hint there is no server-side timeout. inherit_env=false (default) seeds the minimal non-secret allowlist; pass inherit_env=true to match your login shell. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output returns complete inline streams; an explicit bounded output spills overflow to per-invocation artifacts.",
             mutating_open_world(),
             ProjectRunCall {
                 project_path: String::new(),
@@ -384,6 +387,7 @@ pub fn catalog() -> Vec<Tool> {
                 base_dir: None,
                 inherit_env: true,
                 deterministic: false,
+                timeout_hint_ms: None,
                 stdout: ProcessStreamMode::Inline,
                 stderr: ProcessStreamMode::Inline,
                 output: None,
@@ -391,13 +395,15 @@ pub fn catalog() -> Vec<Tool> {
         ),
         tool::<ProcessPipelineCall, ProcessPipelineResult>(
             "process_pipeline",
-            "Run an explicit argv pipeline (ADR 0027 §9.1): each stage is {program,args,env,remove_env,inherit_env,cwd}; a stage's stdout is piped to the next stage's stdin. NO shell is ever invoked; shell metacharacters in argv arrive verbatim. Environment construction matches process_run: seed, then env overrides, then remove_env deletion. Reports each stage's exit status; spawn failures carry details.stage_index. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output returns complete inline streams; an explicit bounded output spills overflow to per-invocation artifacts.",
+            "Run a shell-free pipeline (ADR 0027 §9.1). Provide either explicit `stages` ({program,args,env,remove_env,inherit_env,cwd}) or `pipeline_shlex`, a restricted notation with whitespace, quotes, backslash escapes, and `|`; never provide both. The parser does not execute a shell: `$`, backticks, and quoted metacharacters remain literal, while redirection and control operators are rejected. Explicit stages remain the portable contract and allow per-stage env/cwd. A stage's stdout is piped to the next stage's stdin. Reports each stage's exit status; spawn failures carry details.stage_index. An optional timeout_hint_ms is an MCP soft deadline; without it there is no server-side timeout. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output returns complete inline streams; an explicit bounded output spills overflow to per-invocation artifacts.",
             mutating_open_world(),
             ProcessPipelineCall {
-                stages: Vec::new(),
+                stages: None,
+                pipeline_shlex: None,
                 stdin: None,
                 stdout: ProcessStreamMode::Inline,
                 deterministic: false,
+                timeout_hint_ms: None,
                 output: None,
             },
         ),
@@ -413,7 +419,7 @@ pub fn catalog() -> Vec<Tool> {
         ),
         tool::<SessionExecCall, ProcessRunResult>(
             "session_exec",
-            "Run a foreground direct-argv command inside a session (the session's cwd/env apply; request env overrides). NO shell. Cancellation and session_close terminate the contained process tree; descendants left after the direct child exits are cleaned up before this call returns. The env policy follows session_open: a session opened with inherit_env=false uses the minimal non-secret allowlist plus explicit env. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output returns complete inline streams; an explicit bounded output spills overflow to per-invocation artifacts.",
+            "Run a foreground direct-argv command inside a session (the session's cwd/env apply; request env overrides). NO shell. An optional timeout_hint_ms is an MCP soft deadline; without it there is no server-side timeout. Cancellation and session_close terminate the contained process tree; descendants left after the direct child exits are cleaned up before this call returns. The env policy follows session_open: a session opened with inherit_env=false uses the minimal non-secret allowlist plus explicit env. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output returns complete inline streams; an explicit bounded output spills overflow to per-invocation artifacts.",
             mutating_open_world(),
             SessionExecCall {
                 session_id: String::new(),
@@ -424,6 +430,7 @@ pub fn catalog() -> Vec<Tool> {
                 stderr: ProcessStreamMode::Inline,
                 env: std::collections::BTreeMap::new(),
                 deterministic: false,
+                timeout_hint_ms: None,
                 output: None,
             },
         ),
@@ -771,6 +778,10 @@ struct ProcessRunCall {
     inherit_env: bool,
     #[serde(default)]
     deterministic: bool,
+    /// Optional MCP-only soft deadline. Expiry follows the normal cancellation
+    /// and process-tree cleanup path; the toolkit request remains deadline-free.
+    #[serde(default)]
+    timeout_hint_ms: Option<u64>,
     #[serde(default)]
     stdin: Option<String>,
     #[serde(default)]
@@ -798,6 +809,9 @@ struct ProjectRunCall {
     inherit_env: bool,
     #[serde(default)]
     deterministic: bool,
+    /// Optional MCP-only soft deadline; expiry uses normal cancellation cleanup.
+    #[serde(default)]
+    timeout_hint_ms: Option<u64>,
     #[serde(default)]
     stdout: ProcessStreamMode,
     #[serde(default)]
@@ -826,13 +840,19 @@ struct ArtifactReadCall {
 #[derive(schemars::JsonSchema, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ProcessPipelineCall {
-    stages: Vec<tk_process::PipelineStage>,
+    #[serde(default)]
+    stages: Option<Vec<tk_process::PipelineStage>>,
+    #[serde(default)]
+    pipeline_shlex: Option<String>,
     #[serde(default)]
     stdin: Option<String>,
     #[serde(default)]
     stdout: ProcessStreamMode,
     #[serde(default)]
     deterministic: bool,
+    /// Optional MCP-only soft deadline; expiry uses normal cancellation cleanup.
+    #[serde(default)]
+    timeout_hint_ms: Option<u64>,
     #[serde(default)]
     #[schemars(with = "OutputRequest")]
     #[allow(dead_code)]
@@ -856,6 +876,9 @@ struct SessionExecCall {
     env: std::collections::BTreeMap<String, String>,
     #[serde(default)]
     deterministic: bool,
+    /// Optional MCP-only soft deadline; expiry uses normal cancellation cleanup.
+    #[serde(default)]
+    timeout_hint_ms: Option<u64>,
     #[serde(default)]
     #[schemars(with = "OutputRequest")]
     #[allow(dead_code)]
@@ -923,13 +946,141 @@ fn mutating_open_world() -> ToolAnnotations {
 /// `dispatch` dropped the `RequestContext` and built a `NoCancellation`
 /// context, so MCP `notifications/cancelled` never reached `process_run` /
 /// traversals and the direct child kept running (review P1).
-struct RmcpCancellation(CancellationToken);
+struct RmcpCancellation {
+    token: CancellationToken,
+    deadline_expired: Option<Arc<AtomicBool>>,
+}
 
 impl Cancellation for RmcpCancellation {
     #[inline]
     fn is_cancelled(&self) -> bool {
-        self.0.is_cancelled()
+        self.token.is_cancelled()
+            || self
+                .deadline_expired
+                .as_ref()
+                .is_some_and(|expired| expired.load(Ordering::Acquire))
     }
+}
+
+/// Per-dispatch cancellation scope. A timeout hint is deliberately an MCP
+/// concern: the toolkit remains free of server deadlines, while this scope
+/// cancels through the same token that user cancellation already uses.
+struct DispatchCancellation {
+    user_token: CancellationToken,
+    effective_token: CancellationToken,
+    deadline_expired: Option<Arc<AtomicBool>>,
+    timeout_hint_ms: Option<u64>,
+    timer: Option<tokio::task::JoinHandle<()>>,
+}
+
+impl DispatchCancellation {
+    fn new(user_token: CancellationToken, timeout_hint_ms: Option<u64>) -> Self {
+        let Some(timeout_hint_ms) = timeout_hint_ms else {
+            return Self {
+                effective_token: user_token.clone(),
+                user_token,
+                deadline_expired: None,
+                timeout_hint_ms: None,
+                timer: None,
+            };
+        };
+
+        let effective_token = user_token.child_token();
+        let deadline_expired = Arc::new(AtomicBool::new(false));
+        let timer_expired = Arc::clone(&deadline_expired);
+        let timer_token = effective_token.clone();
+        let timer = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(timeout_hint_ms)).await;
+            if !timer_token.is_cancelled() {
+                timer_expired.store(true, Ordering::Release);
+                timer_token.cancel();
+            }
+        });
+
+        Self {
+            user_token,
+            effective_token,
+            deadline_expired: Some(deadline_expired),
+            timeout_hint_ms: Some(timeout_hint_ms),
+            timer: Some(timer),
+        }
+    }
+
+    fn handle(&self) -> Arc<dyn Cancellation> {
+        Arc::new(RmcpCancellation {
+            token: self.effective_token.clone(),
+            deadline_expired: self.deadline_expired.clone(),
+        })
+    }
+
+    #[allow(clippy::result_large_err)]
+    fn map_result<T>(
+        &self,
+        result: Result<T, xuanling_toolkit::ToolError>,
+    ) -> Result<T, xuanling_toolkit::ToolError> {
+        let Err(mut error) = result else {
+            return result;
+        };
+        let deadline_triggered = self
+            .deadline_expired
+            .as_ref()
+            .is_some_and(|expired| expired.load(Ordering::Acquire));
+        if error.code == xuanling_toolkit::ToolErrorCode::Cancelled
+            && deadline_triggered
+            && !self.user_token.is_cancelled()
+        {
+            error.code = xuanling_toolkit::ToolErrorCode::DeadlineExceeded;
+            error.message = "soft timeout hint expired; operation cancelled".to_string();
+            error.details = serde_json::json!({
+                "reason": "soft_timeout",
+                "timeout_hint_ms": self.timeout_hint_ms,
+            });
+        }
+        Err(error)
+    }
+}
+
+impl Drop for DispatchCancellation {
+    fn drop(&mut self) {
+        if let Some(timer) = self.timer.take() {
+            timer.abort();
+        }
+    }
+}
+
+const TIMEOUT_HINT_TOOLS: &[&str] = &[
+    "process_run",
+    "project_run",
+    "process_pipeline",
+    "session_exec",
+];
+
+#[allow(clippy::result_large_err)]
+fn parse_timeout_hint(
+    name: &str,
+    arguments: &Value,
+) -> Result<Option<u64>, xuanling_toolkit::ToolError> {
+    if !TIMEOUT_HINT_TOOLS.contains(&name) {
+        return Ok(None);
+    }
+    let Some(value) = arguments.get("timeout_hint_ms") else {
+        return Ok(None);
+    };
+    let Some(timeout_hint_ms) = value.as_u64() else {
+        return Err(xuanling_toolkit::ToolError::new(
+            xuanling_toolkit::ToolErrorCode::InvalidInput,
+            "process.timeout_hint",
+            "timeout_hint_ms must be a positive unsigned integer",
+        ));
+    };
+    if timeout_hint_ms == 0 {
+        return Err(xuanling_toolkit::ToolError::new(
+            xuanling_toolkit::ToolErrorCode::InvalidInput,
+            "process.timeout_hint",
+            "timeout_hint_ms must be greater than zero",
+        ));
+    }
+    Ok(Some(timeout_hint_ms))
 }
 
 /// Dispatch a `tools/call` to the matching toolkit operation.
@@ -946,8 +1097,13 @@ pub async fn dispatch(
     filesystem_scope: &FilesystemScope,
     default_namespace: Option<&str>,
 ) -> Result<CallToolResult, McpError> {
+    let timeout_hint_ms = match parse_timeout_hint(name, arguments) {
+        Ok(value) => value,
+        Err(error) => return run::<Value>(Err(error)),
+    };
+    let cancellation = DispatchCancellation::new(rmcp_ctx.ct.clone(), timeout_hint_ms);
     let mut tk_ctx = InvocationContext::new(path_context.clone())
-        .with_cancellation(Arc::new(RmcpCancellation(rmcp_ctx.ct.clone())))
+        .with_cancellation(cancellation.handle())
         .with_filesystem_scope(filesystem_scope.clone());
     if let Some(ns) = default_namespace {
         tk_ctx = tk_ctx.with_default_namespace(ns);
@@ -1137,24 +1293,30 @@ pub async fn dispatch(
         }
         "change_rollback" => {
             let req = decode::<ChangeOpSchema>(arguments)?;
-            run_async(async move {
-                let state = tk_fs::changeset_rollback_with_context(&tk_ctx, &req.change_id)?;
-                Ok(ChangeOpResult {
-                    change_id: req.change_id,
-                    state: state.as_str().to_string(),
-                })
-            })
+            run_async(
+                async move {
+                    let state = tk_fs::changeset_rollback_with_context(&tk_ctx, &req.change_id)?;
+                    Ok(ChangeOpResult {
+                        change_id: req.change_id,
+                        state: state.as_str().to_string(),
+                    })
+                },
+                &cancellation,
+            )
             .await
         }
         "change_commit" => {
             let req = decode::<ChangeOpSchema>(arguments)?;
-            run_async(async move {
-                let state = tk_fs::changeset_commit_with_context(&tk_ctx, &req.change_id)?;
-                Ok(ChangeOpResult {
-                    change_id: req.change_id,
-                    state: state.as_str().to_string(),
-                })
-            })
+            run_async(
+                async move {
+                    let state = tk_fs::changeset_commit_with_context(&tk_ctx, &req.change_id)?;
+                    Ok(ChangeOpResult {
+                        change_id: req.change_id,
+                        state: state.as_str().to_string(),
+                    })
+                },
+                &cancellation,
+            )
             .await
         }
         "fs_copy" => run(tk_fs::fs_copy(
@@ -1177,6 +1339,7 @@ pub async fn dispatch(
             // ADR 0027 §7.1: translate `output` into a per-stream
             // `preview_max_bytes` (bounded -> tee preview + complete artifact).
             let call = decode::<ProcessRunCall>(arguments)?;
+            debug_assert_eq!(call.timeout_hint_ms, timeout_hint_ms);
             let req = ProcessRunRequest {
                 program: call.program,
                 args: call.args,
@@ -1190,7 +1353,7 @@ pub async fn dispatch(
                 stderr: call.stderr,
                 preview_max_bytes: output_mode.preview_max_bytes_for_process(),
             };
-            run_async(tk_process::process_run(&tk_ctx, &req)).await
+            run_async(tk_process::process_run(&tk_ctx, &req), &cancellation).await
         }
         "project_detect" => run(tk_process::project_detect(
             &tk_ctx,
@@ -1202,6 +1365,7 @@ pub async fn dispatch(
         )),
         "project_run" => {
             let call = decode::<ProjectRunCall>(arguments)?;
+            debug_assert_eq!(call.timeout_hint_ms, timeout_hint_ms);
             let req = ProjectRunRequest {
                 project_path: call.project_path,
                 action: call.action,
@@ -1214,20 +1378,42 @@ pub async fn dispatch(
                 stderr: call.stderr,
                 preview_max_bytes: output_mode.preview_max_bytes_for_process(),
             };
-            run_async(tk_process::project_run(&tk_ctx, &req)).await
+            run_async(tk_process::project_run(&tk_ctx, &req), &cancellation).await
         }
         "process_pipeline" => {
             let call = decode::<ProcessPipelineCall>(arguments)?;
-            run_async(tk_process::process_pipeline(
-                &tk_ctx,
-                &ProcessPipelineRequest {
-                    stages: call.stages,
-                    stdin: call.stdin,
-                    stdout: call.stdout,
-                    preview_max_bytes: output_mode.preview_max_bytes_for_process(),
-                    deterministic: call.deterministic,
-                },
-            ))
+            debug_assert_eq!(call.timeout_hint_ms, timeout_hint_ms);
+            let stages = match (call.stages, call.pipeline_shlex) {
+                (Some(stages), None) if !stages.is_empty() => Ok(stages),
+                (None, Some(notation)) => tk_process::parse_pipeline_shlex(&notation),
+                (Some(_), Some(_)) => Err(xuanling_toolkit::ToolError::new(
+                    xuanling_toolkit::ToolErrorCode::InvalidInput,
+                    "process.pipeline.parse",
+                    "provide exactly one of stages or pipeline_shlex",
+                )),
+                (Some(_), None) | (None, None) => Err(xuanling_toolkit::ToolError::new(
+                    xuanling_toolkit::ToolErrorCode::InvalidInput,
+                    "process.pipeline.parse",
+                    "provide a non-empty stages array or pipeline_shlex",
+                )),
+            };
+            let stages = match stages {
+                Ok(stages) => stages,
+                Err(error) => return run::<ProcessPipelineResult>(Err(error)),
+            };
+            run_async(
+                tk_process::process_pipeline(
+                    &tk_ctx,
+                    &ProcessPipelineRequest {
+                        stages,
+                        stdin: call.stdin,
+                        stdout: call.stdout,
+                        preview_max_bytes: output_mode.preview_max_bytes_for_process(),
+                        deterministic: call.deterministic,
+                    },
+                ),
+                &cancellation,
+            )
             .await
         }
         "session_open" => run(tk_process::session_open(
@@ -1236,20 +1422,24 @@ pub async fn dispatch(
         )),
         "session_exec" => {
             let call = decode::<SessionExecCall>(arguments)?;
-            run_async(tk_process::session_exec(
-                &tk_ctx,
-                &SessionExecRequest {
-                    session_id: call.session_id,
-                    program: call.program,
-                    args: call.args,
-                    stdin: call.stdin,
-                    stdout: call.stdout,
-                    stderr: call.stderr,
-                    env: call.env,
-                    deterministic: call.deterministic,
-                    preview_max_bytes: output_mode.preview_max_bytes_for_process(),
-                },
-            ))
+            debug_assert_eq!(call.timeout_hint_ms, timeout_hint_ms);
+            run_async(
+                tk_process::session_exec(
+                    &tk_ctx,
+                    &SessionExecRequest {
+                        session_id: call.session_id,
+                        program: call.program,
+                        args: call.args,
+                        stdin: call.stdin,
+                        stdout: call.stdout,
+                        stderr: call.stderr,
+                        env: call.env,
+                        deterministic: call.deterministic,
+                        preview_max_bytes: output_mode.preview_max_bytes_for_process(),
+                    },
+                ),
+                &cancellation,
+            )
             .await
         }
         "session_close" => run(tk_process::session_close(
@@ -1398,12 +1588,15 @@ fn run<T: serde::Serialize>(
 
 /// Async variant of [`run`] for toolkit operations that are themselves async
 /// (e.g. `process_run`, `project_run`).
-async fn run_async<T, F>(future: F) -> Result<CallToolResult, McpError>
+async fn run_async<T, F>(
+    future: F,
+    cancellation: &DispatchCancellation,
+) -> Result<CallToolResult, McpError>
 where
     T: serde::Serialize,
     F: std::future::Future<Output = Result<T, xuanling_toolkit::ToolError>>,
 {
-    run(future.await)
+    run(cancellation.map_result(future.await))
 }
 
 /// Return the call arguments with the CLI `--default-namespace` injected when
@@ -1576,4 +1769,41 @@ fn parse_output_mode(v: &Value) -> Result<OutputMode, McpError> {
 fn decode<T: serde::de::DeserializeOwned>(args: &Value) -> Result<T, McpError> {
     serde_json::from_value(args.clone())
         .map_err(|e| McpError::invalid_params(format!("invalid request arguments: {e}"), None))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use xuanling_toolkit::{ToolError, ToolErrorCode};
+
+    #[tokio::test]
+    async fn deadline_scope_maps_only_expired_cancellation() {
+        let user_token = CancellationToken::new();
+        let scope = DispatchCancellation::new(user_token, Some(1));
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        let error = scope
+            .map_result::<()>(Err(ToolError::new(
+                ToolErrorCode::Cancelled,
+                "process.run",
+                "operation cancelled",
+            )))
+            .expect_err("expired cancellation must remain an error");
+        assert_eq!(error.code, ToolErrorCode::DeadlineExceeded);
+        assert_eq!(error.details["reason"], serde_json::json!("soft_timeout"));
+    }
+
+    #[tokio::test]
+    async fn user_cancellation_is_not_relabelled_as_deadline() {
+        let user_token = CancellationToken::new();
+        let scope = DispatchCancellation::new(user_token.clone(), Some(10_000));
+        user_token.cancel();
+        let error = scope
+            .map_result::<()>(Err(ToolError::new(
+                ToolErrorCode::Cancelled,
+                "process.run",
+                "operation cancelled",
+            )))
+            .expect_err("user cancellation must remain an error");
+        assert_eq!(error.code, ToolErrorCode::Cancelled);
+    }
 }

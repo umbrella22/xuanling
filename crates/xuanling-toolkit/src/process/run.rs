@@ -739,6 +739,142 @@ pub struct PipelineStage {
     pub cwd: Option<String>,
 }
 
+/// Parse a restricted, shell-free pipeline notation into explicit argv stages.
+///
+/// The grammar supports whitespace-separated arguments, single/double quotes,
+/// backslash escapes, and `|` as the only stage separator. `$`, backticks, and
+/// other shell metacharacters remain literal argument bytes; shell expansion,
+/// redirection, backgrounding, and control operators are rejected.
+pub fn parse_pipeline_shlex(input: &str) -> Result<Vec<PipelineStage>, ToolError> {
+    let mut stages: Vec<Vec<String>> = vec![Vec::new()];
+    let mut current = String::new();
+    let mut token_started = false;
+    let mut quote: Option<char> = None;
+    let mut chars = input.char_indices().peekable();
+
+    while let Some((offset, ch)) = chars.next() {
+        if let Some(active_quote) = quote {
+            if ch == active_quote {
+                quote = None;
+            } else if active_quote == '"' && ch == '\\' {
+                let Some((_, escaped)) = chars.next() else {
+                    return Err(pipeline_parse_error(
+                        offset,
+                        "a trailing backslash needs an escaped character",
+                    ));
+                };
+                current.push(escaped);
+            } else {
+                current.push(ch);
+            }
+            token_started = true;
+            continue;
+        }
+
+        match ch {
+            '\'' | '"' => {
+                quote = Some(ch);
+                token_started = true;
+            }
+            '\\' => {
+                let Some((_, escaped)) = chars.next() else {
+                    return Err(pipeline_parse_error(
+                        offset,
+                        "a trailing backslash needs an escaped character",
+                    ));
+                };
+                current.push(escaped);
+                token_started = true;
+            }
+            '|' => {
+                flush_pipeline_token(&mut current, &mut token_started, &mut stages);
+                if stages.last().is_some_and(Vec::is_empty) {
+                    return Err(pipeline_parse_error(offset, "pipeline stage is empty"));
+                }
+                stages.push(Vec::new());
+            }
+            ';' | '&' | '<' | '>' => {
+                return Err(pipeline_parse_error(
+                    offset,
+                    "unsupported shell operator; use explicit argv stages",
+                ));
+            }
+            whitespace if whitespace.is_whitespace() => {
+                flush_pipeline_token(&mut current, &mut token_started, &mut stages);
+            }
+            _ => {
+                current.push(ch);
+                token_started = true;
+            }
+        }
+    }
+
+    if let Some(active_quote) = quote {
+        return Err(pipeline_parse_error(
+            input.len(),
+            &format!("unterminated {active_quote}-quoted argument"),
+        ));
+    }
+    flush_pipeline_token(&mut current, &mut token_started, &mut stages);
+
+    if stages.last().is_some_and(Vec::is_empty) {
+        return Err(pipeline_parse_error(input.len(), "pipeline stage is empty"));
+    }
+
+    stages
+        .into_iter()
+        .enumerate()
+        .map(|(index, argv)| {
+            let Some(program) = argv.first() else {
+                return Err(pipeline_parse_error(
+                    input.len(),
+                    &format!("pipeline stage {index} is empty"),
+                ));
+            };
+            if program.is_empty() {
+                return Err(pipeline_parse_error(
+                    input.len(),
+                    &format!("pipeline stage {index} has an empty program"),
+                ));
+            }
+            Ok(PipelineStage {
+                program: program.clone(),
+                args: argv.into_iter().skip(1).collect(),
+                env: BTreeMap::new(),
+                remove_env: Vec::new(),
+                inherit_env: false,
+                cwd: None,
+            })
+        })
+        .collect()
+}
+
+fn flush_pipeline_token(
+    current: &mut String,
+    token_started: &mut bool,
+    stages: &mut [Vec<String>],
+) {
+    if *token_started {
+        stages
+            .last_mut()
+            .expect("pipeline always has one stage")
+            .push(std::mem::take(current));
+        *token_started = false;
+    }
+}
+
+fn pipeline_parse_error(offset: usize, message: &str) -> ToolError {
+    ToolError::new(
+        ToolErrorCode::InvalidInput,
+        "process.pipeline.parse",
+        message,
+    )
+    .with_details(serde_json::json!({
+        "reason": "pipeline_parse_failed",
+        "byte_offset": offset,
+    }))
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ProcessPipelineRequest {

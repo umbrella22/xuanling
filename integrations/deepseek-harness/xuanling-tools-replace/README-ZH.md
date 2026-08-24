@@ -7,13 +7,13 @@
 编排集成。
 
 ```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-tools-replace@0.2.6
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-tools-replace@0.2.7
 ```
 
 该命令会扩展 DSH 内置的 Web profile。内置 Headless profile 应使用 `--profile headless`。
 未知 profile 名称只包含 base bundle，本身不会提供可运行的 Web 或 Headless 应用。
 
-精确版本的 `@xuanling-rs/xuanling-mcp@0.2.6` runtime 会安装在 profile 内，并通过带校验的 JS launcher
+精确版本的 `@xuanling-rs/xuanling-mcp@0.2.7` runtime 会安装在 profile 内，并通过带校验的 JS launcher
 启动；不会使用全局 npm package。
 
 该 bundle 的 result adapter 保留一个完整 Native 文本投影，只删除与 `structuredContent` 完全重复

@@ -8,7 +8,9 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::Barrier;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::thread;
 use xuanling_toolkit::fs::{
     self, FsEditRequest, FsReadBytesRequest, FsReadTextRequest, FsRemoveRequest,
     FsReplaceTextRequest, FsSearchRequest, FsWriteTextRequest, NewlineMode, WriteMode,
@@ -627,6 +629,60 @@ fn write_expected_hash_conflict_does_not_modify_file() {
     // File must NOT be modified.
     let after = std::fs::read(&path).unwrap();
     assert_eq!(after, before, "conflict must not modify the file");
+}
+
+#[test]
+#[allow(clippy::result_large_err)]
+fn concurrent_expected_hash_writes_allow_only_one_winner() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("concurrent-guarded.txt");
+    let original = "preimage\n".repeat(250_000);
+    std::fs::write(&path, &original).unwrap();
+    let expected_sha256 = fs::sha256_hex(original.as_bytes());
+    let barrier = Arc::new(Barrier::new(8));
+
+    let mut workers = Vec::new();
+    for index in 0..8 {
+        let barrier = Arc::clone(&barrier);
+        let path = path.clone();
+        let expected_sha256 = expected_sha256.clone();
+        workers.push(thread::spawn(move || {
+            barrier.wait();
+            fs::fs_write_text(
+                &ctx("."),
+                &FsWriteTextRequest {
+                    path: path.to_string_lossy().into_owned(),
+                    content: format!("winner-{index}\n"),
+                    base_dir: None,
+                    mode: WriteMode::Overwrite,
+                    create_parents: false,
+                    expected_sha256: Some(expected_sha256),
+                    newline_mode: NewlineMode::Raw,
+                },
+            )
+        }));
+    }
+
+    let results: Vec<_> = workers
+        .into_iter()
+        .map(|worker| worker.join().expect("worker must join"))
+        .collect();
+    assert_eq!(
+        results.iter().filter(|result| result.is_ok()).count(),
+        1,
+        "exactly one guarded writer may observe the preimage"
+    );
+    assert_eq!(
+        results
+            .iter()
+            .filter_map(|result| result.as_ref().err())
+            .filter(|error| error.code == ToolErrorCode::Conflict)
+            .count(),
+        7,
+        "all losing writers must report typed conflicts"
+    );
+    let final_content = std::fs::read_to_string(&path).unwrap();
+    assert!(final_content.starts_with("winner-"));
 }
 
 #[test]

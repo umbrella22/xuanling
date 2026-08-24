@@ -73,9 +73,12 @@ For repeated validation with the same argv through `mcp__xuanling__process_run`,
 `deterministic: true`. This omits volatile duration fields so results can be
 byte-stable; it does not cache or skip command execution.
 
-For a long build, test suite, or watch process that may exceed the MCP call
-deadline, use the Harness-native background/job mechanism. Do not fabricate
-timeouts, sleep loops, or shell wrappers around a synchronous XuanLing call.
+For a bounded synchronous validation, the process/project/pipeline/session tools
+accept an optional `timeout_hint_ms` soft deadline. Expiry follows process-tree
+cancellation and returns typed `deadline_exceeded`; user cancellation remains
+`cancelled`. For a long build, test suite, or watch process whose lifecycle should
+outlive one MCP call, use the Harness-native background/job mechanism. Do not
+fabricate timeout loops, sleep loops, or shell wrappers around a synchronous call.
 
 ## Failure handling
 
