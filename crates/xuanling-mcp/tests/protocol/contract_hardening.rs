@@ -1516,6 +1516,47 @@ fn search_page_stops_after_requested_limit() {
 }
 
 #[test]
+fn grouped_search_counts_lines_and_reports_occurrences() {
+    let mut peer = Peer::start();
+    peer.initialize();
+    let dir = tempfile::tempdir().expect("temp dir");
+    std::fs::write(
+        dir.path().join("plugin-api.ts"),
+        "review-5 review-6 review-7\nreview-8\n",
+    )
+    .expect("write");
+    let path = dir.path().to_string_lossy().into_owned();
+
+    let response = peer.call(
+        "fs_search",
+        json!({
+            "path": &path,
+            "pattern": "review-\\d+",
+            "group_by_line": true,
+            "limit": 1
+        }),
+    );
+    assert_eq!(response["result"]["isError"], json!(false), "{response}");
+    let matches = response["result"]["structuredContent"]["matches"]
+        .as_array()
+        .expect("grouped matches");
+    assert_eq!(matches.len(), 1, "limit counts lines in grouped mode");
+    assert_eq!(matches[0]["line"], json!(1));
+    assert_eq!(matches[0]["occurrences"].as_array().unwrap().len(), 3);
+    assert_eq!(matches[0]["occurrences"][1]["column"], json!(10));
+
+    let default_response = peer.call(
+        "fs_search",
+        json!({"path": &path, "pattern": "review-\\d+", "limit": 1}),
+    );
+    let default_match = &default_response["result"]["structuredContent"]["matches"][0];
+    assert!(
+        default_match.get("occurrences").is_none(),
+        "default occurrence mode must keep the compact legacy shape: {default_response}"
+    );
+}
+
+#[test]
 fn search_cursor_query_mismatch_is_invalid() {
     // ADR 0027 §3/§6.3: a cursor is bound to the query that produced it
     // (pattern/options/root). Resuming with a DIFFERENT pattern must return a

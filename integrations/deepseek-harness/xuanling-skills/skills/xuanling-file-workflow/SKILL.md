@@ -67,8 +67,18 @@ cache path. The MCP server may also provide the short routing policy through
   suffixes. Pass `d.ts` and `d.mts` directly (and simple values such as
   `java` or `.c`); never reduce a compound suffix to its last `ts` or `mts`
   segment, which would broaden the search.
+- `mcp__xuanling__fs_search` returns one item per occurrence by default. Pass
+  `group_by_line: true` for one item per source line; every occurrence then
+  appears in that item's `occurrences[]`, and both `limit` and the cursor count
+  matching lines. The grouping flag is query-bound and must stay unchanged when
+  paging.
 - The `output` selector of any window-capable tool is a tagged object such as
   `{"mode":"bounded","max_bytes":65536}` — never a number or a bare string.
+
+`mcp__xuanling__system_info` includes `xuanling_version` and
+`mcp_contract_version`; use them to detect a stale server/Skill pairing before
+relying on a newly documented field. The handshake `serverInfo.version` is the
+authoritative release identity.
 
 ## Verification
 
@@ -92,9 +102,17 @@ fabricate timeout loops, sleep loops, or shell wrappers around a synchronous cal
   `expected_sha256`. Do not switch to `mode: "create"` for an existing file.
 - Treat every typed tool error as information: a duplicate-match error means
   supply more context or an explicit replace-all decision; a conflict means
-  the file changed under you, so re-read and rebuild the edit.
+  the file changed under you, so re-read and rebuild the edit. When an edit has
+  multiple matches, the server returns their locations and performs zero writes;
+  never guess a location.
 - You must not silently fall back to the other family when a tool fails.
   Surface the error, correct the request, and retry within the same family;
   switching families because of a failure needs a stated reason.
 - The XuanLing server enforces a workspace root. Paths outside it are denied
   by design; fix the path instead of escalating.
+
+When a task is limited to dirty or untracked files, keep Git discovery separate
+from filesystem search: use direct-argv Git commands to collect unstaged,
+staged, and untracked repository-relative paths, deduplicate them, then pass
+those paths as `include_globs` to `mcp__xuanling__fs_search`. Do not construct a
+shell pipeline or change the search options while consuming its cursor.

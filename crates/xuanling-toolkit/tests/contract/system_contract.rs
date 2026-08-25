@@ -43,6 +43,11 @@ fn system_info_never_returns_environment_values() {
 fn system_info_returns_required_fields() {
     let info = system_info();
     // Plan §7.1 required fields.
+    assert!(
+        !info.xuanling_version.is_empty(),
+        "version must be populated"
+    );
+    assert_eq!(info.mcp_contract_version, "2");
     assert!(!info.family.is_empty(), "family must be populated");
     assert!(!info.os.is_empty(), "os must be populated");
     assert!(!info.arch.is_empty(), "arch must be populated");

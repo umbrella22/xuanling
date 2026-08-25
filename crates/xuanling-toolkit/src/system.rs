@@ -21,6 +21,11 @@ pub struct SystemInfoRequest {}
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SystemInfoResult {
+    /// XuanLing server/toolkit release version. This is the release identity,
+    /// not an OS or dependency version.
+    pub xuanling_version: String,
+    /// Public MCP contract generation used by this server.
+    pub mcp_contract_version: String,
     /// OS family for control-flow: `windows` | `unix` (macOS/Linux/BSD).
     pub family: String,
     /// Specific OS: `windows` | `macos` | `linux` | `freebsd` …
@@ -68,6 +73,8 @@ pub fn system_info() -> SystemInfoResult {
     let pointer_width = usize::BITS;
 
     SystemInfoResult {
+        xuanling_version: env!("CARGO_PKG_VERSION").to_string(),
+        mcp_contract_version: "2".to_string(),
         family: family.to_string(),
         os: os.to_string(),
         arch: arch.to_string(),

@@ -2,7 +2,7 @@
 
 [English](README.md) | 简体中文
 
-本目录维护 XuanLing MCP 0.2.8 的 npm 分发与发布自动化。完整发行版包含八个不可变 npm
+本目录维护 XuanLing MCP 0.2.9 的 npm 分发与发布自动化。完整发行版包含八个不可变 npm
 item：一个稳定的 Node.js 启动器、三个使用平台 prerelease 版本的原生变体，以及四个
 DeepSeek Harness bundle。同一组经过验证的 core artifact 还会生成 ZCode marketplace archive。
 
@@ -10,10 +10,10 @@ DeepSeek Harness bundle。同一组经过验证的 core artifact 还会生成 ZC
 
 | 安装别名 | 发布版本 | 平台 |
 | --- | --- | --- |
-| `@xuanling-rs/xuanling-mcp` | `0.2.8` | 稳定 Node.js 启动器 |
-| `@xuanling-rs/xuanling-mcp-darwin-arm64` | `0.2.8-darwin-arm64` | macOS Apple Silicon |
-| `@xuanling-rs/xuanling-mcp-linux-x64-gnu` | `0.2.8-linux-x64-gnu` | Linux x64，glibc 2.35 或更高版本 |
-| `@xuanling-rs/xuanling-mcp-win32-x64-msvc` | `0.2.8-win32-x64-msvc` | Windows x64 MSVC |
+| `@xuanling-rs/xuanling-mcp` | `0.2.9` | 稳定 Node.js 启动器 |
+| `@xuanling-rs/xuanling-mcp-darwin-arm64` | `0.2.9-darwin-arm64` | macOS Apple Silicon |
+| `@xuanling-rs/xuanling-mcp-linux-x64-gnu` | `0.2.9-linux-x64-gnu` | Linux x64，glibc 2.35 或更高版本 |
+| `@xuanling-rs/xuanling-mcp-win32-x64-msvc` | `0.2.9-win32-x64-msvc` | Windows x64 MSVC |
 
 启动器与原生变体都发布在 `@xuanling-rs` npm organization 下。稳定 package 通过 optional
 dependency 的 npm alias 引用原生变体，npm 根据 `os`、`cpu` 和 `libc` metadata 选择兼容版本。本发行版
@@ -23,10 +23,10 @@ DeepSeek Harness 会把以下公开 bundle 直接安装到指定 profile：
 
 | Package | 作用 |
 | --- | --- |
-| `@xuanling-rs/xuanling-dsh-memory@0.2.8` | 带 DSH schema projection 的完整 Memory v2 profile |
-| `@xuanling-rs/xuanling-dsh-skills@0.2.8` | 文件与 Memory 工作流 Skill 以及严格 overwrite policy |
-| `@xuanling-rs/xuanling-dsh-tools@0.2.8` | 增量挂载完整 XuanLing catalog |
-| `@xuanling-rs/xuanling-dsh-tools-replace@0.2.8` | 完整 catalog，并停用模型可见的原生文件系统工具行 |
+| `@xuanling-rs/xuanling-dsh-memory@0.2.9` | 带 DSH schema projection 的完整 Memory v2 profile |
+| `@xuanling-rs/xuanling-dsh-skills@0.2.9` | 文件与 Memory 工作流 Skill 以及严格 overwrite policy |
+| `@xuanling-rs/xuanling-dsh-tools@0.2.9` | 增量挂载完整 XuanLing catalog |
+| `@xuanling-rs/xuanling-dsh-tools-replace@0.2.9` | 完整 catalog，并停用模型可见的原生文件系统工具行 |
 
 三个工具 bundle 在同一 DSH profile 内精确依赖稳定版 `@xuanling-rs/xuanling-mcp`。Skills bundle 不包含
 MCP runtime。
@@ -34,7 +34,7 @@ MCP runtime。
 ## 安装
 
 ```sh
-npm install --global @xuanling-rs/xuanling-mcp@0.2.8
+npm install --global @xuanling-rs/xuanling-mcp@0.2.9
 xuanling-mcp --workspace-root /absolute/path/to/project
 ```
 
@@ -47,7 +47,7 @@ MCP Host 也可以通过 `npx` 固定同一发行版本：
       "command": "npx",
       "args": [
         "-y",
-        "@xuanling-rs/xuanling-mcp@0.2.8",
+        "@xuanling-rs/xuanling-mcp@0.2.9",
         "--workspace-root",
         "/absolute/path/to/project"
       ]
@@ -67,7 +67,7 @@ MCP Host 也可以通过 `npx` 固定同一发行版本：
 - 每个原生 package 都记录显式 release-trust 状态，发布时强制生成 npm provenance，并用
   source commit 与 binary SHA-256 绑定构建结果。ZCode marketplace archive 在 promotion 前还会
   生成 GitHub OIDC build-provenance attestation。
-- XuanLing 0.2.8 不声明 Developer ID 或 Authenticode 发布者签名。后续版本可以增加这些签名，
+- XuanLing 0.2.9 不声明 Developer ID 或 Authenticode 发布者签名。后续版本可以增加这些签名，
   但缺少平台发布者证书不改变 MCP 协议或 package 完整性合同。
 - 每个原生 package 都包含 XuanLing MIT 许可证和生成的第三方 notices。
 - 启动器 package 同时包含相互匹配的英文与简体中文 README。
@@ -86,7 +86,7 @@ node npm/scripts/pack-dsh-bundles.mjs \
   --commit "$(git rev-parse HEAD)"
 node npm/scripts/verify-dsh-release-set.mjs \
   --root npm/dist/dsh \
-  --version 0.2.8 \
+  --version 0.2.9 \
   --commit "$(git rev-parse HEAD)"
 
 node npm/scripts/generate-third-party-licenses.mjs \

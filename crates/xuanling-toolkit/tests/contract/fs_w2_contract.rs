@@ -13,7 +13,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use xuanling_toolkit::fs::{
     self, FsEditRequest, FsReadBytesRequest, FsReadTextRequest, FsRemoveRequest,
-    FsReplaceTextRequest, FsSearchRequest, FsWriteTextRequest, NewlineMode, WriteMode,
+    FsReplaceTextRequest, FsSearchOptions, FsSearchRequest, FsWriteTextRequest, NewlineMode,
+    WriteMode,
 };
 use xuanling_toolkit::invocation::{Cancellation, InvocationContext, ManualCancellation};
 use xuanling_toolkit::{PathContext, ToolErrorCode};
@@ -178,6 +179,64 @@ fn caller_limit_and_cursor_resume_without_duplicate_or_gap() {
     assert_eq!(all.len(), 30);
     let unique: std::collections::HashSet<&String> = all.iter().collect();
     assert_eq!(unique.len(), 30, "no duplicate or gap across pages");
+}
+
+#[test]
+fn grouped_search_returns_one_line_and_preserves_every_occurrence() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("review.ts");
+    std::fs::write(&path, "review-5 review-6\nno match\nreview-7\n").unwrap();
+    let root = dir.path().to_string_lossy().into_owned();
+
+    let result = fs::search_with_options(
+        &ctx(&root),
+        &FsSearchRequest {
+            path: root.clone(),
+            pattern: r"review-\d+".to_string(),
+            literal: false,
+            case_sensitive: true,
+            limit: Some(1),
+            cursor: None,
+            max_output_bytes: None,
+        },
+        &FsSearchOptions {
+            group_by_line: true,
+            ..FsSearchOptions::default()
+        },
+    )
+    .expect("grouped search");
+
+    assert_eq!(result.matches.len(), 1, "limit counts matching lines");
+    let first = &result.matches[0];
+    assert_eq!(first.line, 1);
+    assert_eq!(first.r#match, "review-5");
+    assert_eq!(first.occurrences.as_ref().unwrap().len(), 2);
+    assert_eq!(first.occurrences.as_ref().unwrap()[1].column, 10);
+    assert!(
+        result.next_cursor.is_some(),
+        "the second matching line remains"
+    );
+
+    let resumed = fs::search_with_options(
+        &ctx(&root),
+        &FsSearchRequest {
+            path: root,
+            pattern: r"review-\d+".to_string(),
+            literal: false,
+            case_sensitive: true,
+            limit: Some(1),
+            cursor: result.next_cursor,
+            max_output_bytes: None,
+        },
+        &FsSearchOptions {
+            group_by_line: true,
+            ..FsSearchOptions::default()
+        },
+    )
+    .expect("grouped search resume");
+    assert_eq!(resumed.matches.len(), 1);
+    assert_eq!(resumed.matches[0].line, 3);
+    assert_eq!(resumed.matches[0].occurrences.as_ref().unwrap().len(), 1);
 }
 
 struct CancelAfterChecks {

@@ -31,7 +31,7 @@ pub use read::{
 };
 pub use search::{
     FsGlobRequest, FsGlobResult, FsSearchOptions, FsSearchRequest, FsSearchResult, SearchMatch,
-    glob, search, search_with_options,
+    SearchOccurrence, glob, search, search_with_options,
 };
 pub use stat_list::{
     DirEntry, EntryKind, FsListRequest, FsListResult, FsStatRequest, FsStatResult, fs_list, fs_stat,

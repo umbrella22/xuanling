@@ -52,6 +52,10 @@ Schema gotchas learned from live use:
   is rejected with `expected a boolean`. Example:
   `{ path: "docs", pattern: "XuanLing", literal: true, limit: 5 }` searches file contents under
   `docs` and returns `line`/`column`/`match`/`line_text` plus `next_cursor` when `has_more`.
+  The default counts each regex occurrence. Set `group_by_line: true` when the agent needs one
+  result per source line; that result keeps the first occurrence fields for compatibility and adds
+  `occurrences[]` with every `{ column, match }` on the line. In grouped mode `limit` and the
+  cursor position count lines, and `group_by_line` is part of the cursor-bound query.
 - **`fs_search.file_extensions`**: values are exact simple or compound suffixes. Pass `d.ts` and
   `d.mts` directly (or simple values such as `java` and `.c`); never reduce a compound suffix to
   its last `ts` or `mts` segment, which would broaden the search.
@@ -63,8 +67,10 @@ Schema gotchas learned from live use:
   host's native Read.
 - **`fs_list`**: returns `entries[]` + `returned_item_bytes` + `has_more` + `next_cursor`.
 - `fs_edit` is precise old→new (ADR 0027 §8.2); `fs_patch` applies a strict unified diff
-  (ADR 0013 v2) with `expected_preimage_sha256`. Both support reversible ChangeSets →
-  `change_commit` / `change_rollback`.
+  (ADR 0013 v2) with `expected_preimage_sha256`. A non-unique `fs_edit`/`fs_patch` match is a
+  typed conflict: the server returns every line/column location and performs **zero writes**;
+  never guess a location or fall back to a broad replacement. Both support reversible ChangeSets
+  → `change_commit` / `change_rollback`.
 
 ### Process / Project
 `process_which` `process_run` `project_detect` `project_command` `project_run` `process_pipeline`
@@ -135,7 +141,23 @@ artifact by **`id`** + `read_capability` (issued when process output is truncate
 
 ### Change / System
 `change_commit` `change_rollback` (reversible ChangeSets from `fs_edit`/`fs_patch`) and
-`system_info` (deterministic OS/arch/family/pointer-width/cwd).
+`system_info` (deterministic OS/arch/family/pointer-width/cwd plus `xuanling_version` and
+`mcp_contract_version`). Use those two fields to verify that the running server matches the Skill
+generation; the MCP `initialize.serverInfo.version` remains the handshake authority.
+
+### Search only dirty or untracked files
+
+XuanLing's filesystem core does not invoke Git, but a host can compose the tools when a task is
+scoped to the current worktree delta:
+
+1. Use direct-argv `process_run` for `git diff --name-only`, `git diff --cached --name-only`, and
+   `git ls-files --others --exclude-standard`.
+2. Deduplicate the returned repository-relative paths. Preserve spaces and do not build a shell
+   command; use Git's `-z` form plus a NUL-aware host parser when arbitrary filenames, including
+   newlines, are in scope.
+3. Pass the resulting paths as `fs_search.include_globs` (and set `path` to the repository root).
+   Keep the search regex, extension filters, and `group_by_line` choice unchanged across pages so
+   the returned cursor remains valid.
 
 ## Using fs_read_text well (vs the host's native Read)
 

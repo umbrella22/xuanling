@@ -62,6 +62,17 @@ pub struct FsSearchOptions {
     /// ignored and comparisons are case-sensitive on every platform.
     #[serde(default)]
     pub file_extensions: Vec<String>,
+    /// Group all regex occurrences on one source line into one result item.
+    /// The default keeps the occurrence-oriented contract.
+    #[serde(default)]
+    pub group_by_line: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SearchOccurrence {
+    pub column: u64,
+    pub r#match: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
@@ -72,6 +83,10 @@ pub struct SearchMatch {
     pub column: u64,
     pub r#match: String,
     pub line_text: String,
+    /// Present only when `group_by_line=true`; each occurrence preserves its
+    /// 1-based column and matched text while path/line/line_text stay shared.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub occurrences: Option<Vec<SearchOccurrence>>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
@@ -138,6 +153,7 @@ pub fn search_with_options(
         "include_globs": &filters.include_patterns,
         "exclude_globs": &filters.exclude_patterns,
         "file_extensions": &filters.extension_suffixes,
+        "group_by_line": options.group_by_line,
         "root": root.to_string_lossy(),
     });
     let fingerprint_bytes = serde_json::to_vec(&fingerprint_input).map_err(|error| {
@@ -182,7 +198,55 @@ pub fn search_with_options(
                 Ok(l) => l,
                 Err(_) => continue, // skip non-utf8 lines
             };
-            for m in re.find_iter(&line) {
+            let line_matches: Vec<_> = re.find_iter(&line).collect();
+            if options.group_by_line {
+                if line_matches.is_empty() {
+                    continue;
+                }
+                if skipped < skip {
+                    skipped = skipped.saturating_add(1);
+                    continue;
+                }
+                if matches.len() as u64 >= item_limit {
+                    has_more = true;
+                    break 'files;
+                }
+                let first = line_matches[0];
+                let occurrences = line_matches
+                    .iter()
+                    .map(|m| SearchOccurrence {
+                        column: (m.start() + 1) as u64,
+                        r#match: m.as_str().to_string(),
+                    })
+                    .collect();
+                let item = SearchMatch {
+                    path: file.to_string_lossy().into_owned(),
+                    line: (line_no + 1) as u64,
+                    column: (first.start() + 1) as u64,
+                    r#match: first.as_str().to_string(),
+                    line_text: line.clone(),
+                    occurrences: Some(occurrences),
+                };
+                let item_bytes = serialized_match_bytes(&item)?;
+                if req
+                    .max_output_bytes
+                    .is_some_and(|budget| returned_item_bytes.saturating_add(item_bytes) > budget)
+                {
+                    if matches.is_empty() && req.max_output_bytes != Some(0) {
+                        return Err(output_window_too_small(
+                            "fs.search",
+                            req.max_output_bytes.unwrap_or_default(),
+                            item_bytes,
+                        ));
+                    }
+                    has_more = true;
+                    break 'files;
+                }
+                returned_item_bytes = returned_item_bytes.saturating_add(item_bytes);
+                matches.push(item);
+                continue;
+            }
+            for m in line_matches {
                 if skipped < skip {
                     skipped = skipped.saturating_add(1);
                     continue;
@@ -197,6 +261,7 @@ pub fn search_with_options(
                     column: (m.start() + 1) as u64,
                     r#match: m.as_str().to_string(),
                     line_text: line.clone(),
+                    occurrences: None,
                 };
                 let item_bytes = serialized_match_bytes(&item)?;
                 if req

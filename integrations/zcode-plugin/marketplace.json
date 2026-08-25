@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "xuanling-mcp",
-      "version": "0.2.8",
+      "version": "0.2.9",
       "description": "Cross-platform stdio MCP server with typed filesystem, process, project, artifact, session, and Memory tools.",
       "author": {
         "name": "umbrella22 and XuanLing contributors",
@@ -19,7 +19,7 @@
         "source": "github",
         "repo": "umbrella22/xuanling-zcode-marketplace",
         "path": "plugins/xuanling-mcp",
-        "ref": "xuanling-mcp-v0.2.8"
+        "ref": "xuanling-mcp-v0.2.9"
       },
       "category": "Developer Tools",
       "policy": {

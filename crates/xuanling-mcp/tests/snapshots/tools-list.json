@@ -1829,7 +1829,7 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Search file contents line-by-line with a regex (or literal) pattern. include_hidden, root-local respect_gitignore, include_globs, exclude_globs, and file_extensions filter candidate paths before scanning. file_extensions accepts simple (`ts`, `.ts`) or compound (`d.ts`, `.d.ts`) suffixes. Globs use `/`-separated paths relative to the search root; extension matching is case-sensitive on every platform. `limit` and an explicit canonical-JSON item byte budget are independent constraints. Omitted output returns every match when limit is absent. A query-bound cursor resumes when more matches remain. Uses Rust regex/ignore/globset APIs, never grep/findstr/Select-String.",
+    "description": "Search file contents line-by-line with a regex (or literal) pattern. include_hidden, root-local respect_gitignore, include_globs, exclude_globs, and file_extensions filter candidate paths before scanning. file_extensions accepts simple (`ts`, `.ts`) or compound (`d.ts`, `.d.ts`) suffixes. Globs use `/`-separated paths relative to the search root; extension matching is case-sensitive on every platform. `limit` and an explicit canonical-JSON item byte budget are independent constraints. Omitted output returns every match when limit is absent. A query-bound cursor resumes when more matches remain. Set `group_by_line=true` to return one item per matching source line with every occurrence in `occurrences[]`; the default remains one item per occurrence. Uses Rust regex/ignore/globset APIs, never grep/findstr/Select-String.",
     "input_schema": {
       "$defs": {
         "OutputRequest": {
@@ -1900,6 +1900,11 @@
           },
           "type": "array"
         },
+        "group_by_line": {
+          "default": false,
+          "description": "Return one item per matching source line and preserve every occurrence\nin the item's `occurrences` array. Defaults to occurrence-oriented rows.",
+          "type": "boolean"
+        },
         "include_globs": {
           "default": [],
           "description": "Optional `/`-separated path globs relative to the search root.",
@@ -1969,6 +1974,16 @@
             "match": {
               "type": "string"
             },
+            "occurrences": {
+              "description": "Present only when `group_by_line=true`; each occurrence preserves its\n1-based column and matched text while path/line/line_text stay shared.",
+              "items": {
+                "$ref": "#/$defs/SearchOccurrence"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
             "path": {
               "type": "string"
             }
@@ -1979,6 +1994,24 @@
             "column",
             "match",
             "line_text"
+          ],
+          "type": "object"
+        },
+        "SearchOccurrence": {
+          "additionalProperties": false,
+          "properties": {
+            "column": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "match": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "column",
+            "match"
           ],
           "type": "object"
         }
@@ -7698,6 +7731,10 @@
           "description": "OS family for control-flow: `windows` | `unix` (macOS/Linux/BSD).",
           "type": "string"
         },
+        "mcp_contract_version": {
+          "description": "Public MCP contract generation used by this server.",
+          "type": "string"
+        },
         "newline": {
           "description": "Native line separator: `\\r\\n` on Windows, `\\n` elsewhere.",
           "type": "string"
@@ -7715,9 +7752,15 @@
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
+        },
+        "xuanling_version": {
+          "description": "XuanLing server/toolkit release version. This is the release identity,\nnot an OS or dependency version.",
+          "type": "string"
         }
       },
       "required": [
+        "xuanling_version",
+        "mcp_contract_version",
         "family",
         "os",
         "arch",

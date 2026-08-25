@@ -1,6 +1,6 @@
 {
   "name": "@xuanling-rs/xuanling-mcp",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "description": "Cross-platform stdio MCP server for XuanLing typed filesystem, process, project, artifact, session, and memory tools.",
   "license": "MIT",
   "author": "umbrella22 and XuanLing contributors",
@@ -35,9 +35,9 @@
     "directory": "npm/packages/xuanling-mcp"
   },
   "optionalDependencies": {
-    "xuanling-mcp-darwin-arm64": "npm:@xuanling-rs/xuanling-mcp-darwin-arm64@0.2.8-darwin-arm64",
-    "xuanling-mcp-linux-x64-gnu": "npm:@xuanling-rs/xuanling-mcp-linux-x64-gnu@0.2.8-linux-x64-gnu",
-    "xuanling-mcp-win32-x64-msvc": "npm:@xuanling-rs/xuanling-mcp-win32-x64-msvc@0.2.8-win32-x64-msvc"
+    "xuanling-mcp-darwin-arm64": "npm:@xuanling-rs/xuanling-mcp-darwin-arm64@0.2.9-darwin-arm64",
+    "xuanling-mcp-linux-x64-gnu": "npm:@xuanling-rs/xuanling-mcp-linux-x64-gnu@0.2.9-linux-x64-gnu",
+    "xuanling-mcp-win32-x64-msvc": "npm:@xuanling-rs/xuanling-mcp-win32-x64-msvc@0.2.9-win32-x64-msvc"
   },
   "publishConfig": {
     "access": "public",

@@ -1196,6 +1196,7 @@ fn contained_search_does_not_read_an_external_symlinked_ignore_file() {
             include_globs: Vec::new(),
             exclude_globs: Vec::new(),
             file_extensions: Vec::new(),
+            group_by_line: false,
         },
     )
     .expect("search workspace");
