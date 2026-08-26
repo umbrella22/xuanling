@@ -123,6 +123,7 @@ const report = {
   initialize: "failed",
   contractVersion: null,
   memoryContractVersion: null,
+  catalogSha256: null,
   toolCount: null,
   boundedOutputObject: "failed",
   stdoutUnion: { stringModes: false, fileObject: false },
@@ -142,10 +143,23 @@ try {
   report.contractVersion = initialized.result?._meta?.["xuanling.contract_version"] ?? null;
   report.memoryContractVersion =
     initialized.result?._meta?.["xuanling.memory_contract_version"] ?? null;
+  report.catalogSha256 = initialized.result?._meta?.["xuanling.catalog_sha256"] ?? null;
   send({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
 
-  const toolsResponse = await request(2, "tools/list", {});
-  const tools = toolsResponse.result?.tools ?? [];
+  const tools = [];
+  const seenCursors = new Set();
+  let cursor;
+  let nextId = 2;
+  do {
+    const toolsResponse = await request(nextId++, "tools/list", cursor ? { cursor } : {});
+    if (toolsResponse.error || !Array.isArray(toolsResponse.result?.tools)) {
+      throw new Error(`tools/list failed: ${JSON.stringify(toolsResponse)}`);
+    }
+    tools.push(...toolsResponse.result.tools);
+    cursor = toolsResponse.result.nextCursor;
+    if (cursor && seenCursors.has(cursor)) throw new Error(`tools/list cursor loop: ${cursor}`);
+    if (cursor) seenCursors.add(cursor);
+  } while (cursor);
   report.toolCount = tools.length;
   const processRun = tools.find((tool) => tool.name === "process_run");
   const inputSchema = processRun?.inputSchema ?? {};
@@ -164,7 +178,7 @@ try {
   );
 
   // The host-shaped request: fs_read_text with a bounded output OBJECT.
-  const readResponse = await request(3, "tools/call", {
+  const readResponse = await request(nextId, "tools/call", {
     name: "fs_read_text",
     arguments: { path: fixture, output: { mode: "bounded", max_bytes: 64 } },
   });

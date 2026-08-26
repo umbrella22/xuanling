@@ -229,14 +229,20 @@ Use a second single-select `ask_user_question` with stable id
 `xuanling_install_preset`. Put these choices in this order:
 
 1. `Memory + Skills (Recommended)` -> normalized id `recommended`. It adds
-   proposal-first Memory tools plus the two routing Skills and keeps DSH's
-   native file tools.
+   the complete proposal-first Memory catalog behind DSH lazy projection plus
+   the two routing Skills, and keeps DSH's native file tools.
 2. `Full tools + Skills` -> normalized id `full-additive`. It adds the full
-   XuanLing catalog plus Skills while retaining DSH's native file tools.
+   XuanLing catalog behind DSH lazy projection plus Skills while retaining
+   DSH's native file tools.
 3. `Replace native filesystem tools + Skills` -> normalized id
-   `filesystem-replacement`. It adds the full catalog and Skills, and the
-   bundle disables DSH's three model-facing native filesystem rows to avoid a
-   duplicate file-tool surface.
+   `filesystem-replacement`. It adds the full catalog behind DSH lazy
+   projection and Skills, and the bundle disables DSH's three model-facing
+   native filesystem rows to avoid a duplicate file-tool surface.
+
+Every runtime bundle sets `toolExposure: lazy`. The bridge still fetches and
+caches every MCP `tools/list` page, but the initial model surface contains
+`mcp_catalog__xuanling` rather than all `mcp__xuanling__*` definitions. This is
+a Host projection policy, not a server profile or `list_changed` behavior.
 
 The three runtime packages all mount the same `xuanling-tools` bundle id and
 are mutually exclusive. The Skills package is a separate provider and is part
@@ -297,6 +303,8 @@ following in the text of one final single-select question:
 - each exact `package@resolved_version` that will be ensured;
 - whether this is an already-matched verification-only run;
 - for `filesystem-replacement`, the three native filesystem rows it disables;
+- that the runtime initially exposes `mcp_catalog__xuanling` and activates
+  exact XuanLing tools on demand;
 - that plugin changes require a DSH restart before new tools are visible.
 
 Use stable id `xuanling_install_confirm`, with `Proceed (Recommended)` first
@@ -373,11 +381,14 @@ For a converged or already-matched state:
    the old graph. Restart the selected profile explicitly, preserving its
    session when the host supports resume. Do not claim the tools are active
    before that restart.
-6. After restart, require discovery of the expected `mcp__xuanling__*` tools.
-   For the recommended preset, call `mcp__xuanling__memory_search` with a
-   narrow read-only query or another visible read-only Memory call. For either
-   full-tool preset, prefer `mcp__xuanling__system_info`. Never create or
-   review a Memory candidate as an installation smoke test.
+6. After restart, require discovery of `mcp_catalog__xuanling`. Use it to
+   search and activate exactly one harmless raw name. For the recommended
+   preset, activate `memory_search`, then call
+   `mcp__xuanling__memory_search` with a narrow read-only query. For either
+   full-tool preset, activate `system_info`, then call
+   `mcp__xuanling__system_info`. Require the activated definition to appear
+   before calling it. Never create or review a Memory candidate as an
+   installation smoke test.
 
 Use `installed_verified` only after package, config, cold/bounded start,
 restart, discovery, and harmless call evidence all pass. If the profile graph

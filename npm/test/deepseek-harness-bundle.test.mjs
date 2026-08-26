@@ -64,6 +64,7 @@ function readJson(relative) {
  *         name: '<pkg>'
  *         config:                    (indent 6 keys)
  *           serverName: xuanling
+ *           toolExposure: lazy
  *           transport: stdio
  *           command: !!js <expr>
  *           args:
@@ -324,6 +325,7 @@ test("all patches mount the bridge with the documented xuanling identity", () =>
     assert.equal(row.name, "@deepseek-ai/dsh-mcp-client", `${bundle}: bridge package`);
     const config = row.config ?? {};
     assert.equal(config.serverName, "xuanling", `${bundle}: serverName fixes the public names`);
+    assert.equal(config.toolExposure, "lazy", `${bundle}: host projects exact activations lazily`);
     assert.equal(config.transport, "stdio", `${bundle}: stdio transport`);
     assert.ok(!config.args.includes("--memory-db"), `${bundle}: production uses shared memory DB`);
     assert.equal(config.toolCallTimeoutMs, 120000, `${bundle}: per-call timeout`);

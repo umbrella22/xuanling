@@ -70,6 +70,11 @@ fn initialize_and_tools_list_handshake() {
         resp["result"]["capabilities"]["tools"],
         Value::Object(serde_json::Map::new())
     );
+    let digest = resp["result"]["_meta"]["xuanling.catalog_sha256"]
+        .as_str()
+        .expect("catalog digest");
+    assert_eq!(digest.len(), 64);
+    assert!(digest.bytes().all(|byte| byte.is_ascii_hexdigit()));
 
     drop(stdin);
     let _ = child.kill();
@@ -120,6 +125,54 @@ fn tools_list_uses_legacy_shape_without_modern_wire_fields() {
             "legacy tools/list result must not carry modern wire field {wire_field}"
         );
     }
+
+    drop(stdin);
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+#[test]
+fn tools_list_paginates_with_catalog_bound_cursors() {
+    let (mut child, mut stdin, mut stdout) = spawn();
+    let initialized = request(&mut stdin, &mut stdout, initialize("2025-11-25"));
+    let advertised = initialized["result"]["_meta"]["xuanling.tool_count"]
+        .as_u64()
+        .expect("tool count") as usize;
+
+    let first = request(
+        &mut stdin,
+        &mut stdout,
+        serde_json::json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}),
+    );
+    let first_tools = first["result"]["tools"].as_array().expect("first page");
+    assert_eq!(first_tools.len(), 8);
+    assert!(advertised > first_tools.len());
+    let cursor = first["result"]["nextCursor"]
+        .as_str()
+        .expect("continuation cursor");
+
+    let second = request(
+        &mut stdin,
+        &mut stdout,
+        serde_json::json!({
+            "jsonrpc": "2.0", "id": 3, "method": "tools/list",
+            "params": {"cursor": cursor}
+        }),
+    );
+    let second_tools = second["result"]["tools"].as_array().expect("second page");
+    assert!(!second_tools.is_empty());
+    assert_ne!(first_tools[0]["name"], second_tools[0]["name"]);
+
+    let invalid = request(
+        &mut stdin,
+        &mut stdout,
+        serde_json::json!({
+            "jsonrpc": "2.0", "id": 4, "method": "tools/list",
+            "params": {"cursor": "not-a-catalog-cursor"}
+        }),
+    );
+    assert_eq!(invalid["error"]["code"], -32602);
+    assert_eq!(invalid["error"]["data"]["reason"], "invalid_cursor");
 
     drop(stdin);
     let _ = child.kill();

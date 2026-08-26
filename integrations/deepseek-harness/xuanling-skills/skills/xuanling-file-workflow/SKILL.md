@@ -1,15 +1,19 @@
 ---
 name: xuanling-file-workflow
-description: Guides DeepSeek Harness agents in choosing between harness-native file tools and a visible XuanLing mcp__xuanling__fs_ family. Use when both families are available and file work needs sha256/CAS guards, strict patches, complete pagination, explicit byte budgets, compound-suffix search, or deterministic repeated validation.
+description: Guides DeepSeek Harness agents in activating and choosing between harness-native file tools and the XuanLing mcp__xuanling__fs_ family. Use when mcp_catalog__xuanling or XuanLing file tools are visible and file work needs sha256/CAS guards, strict patches, complete pagination, explicit byte budgets, compound-suffix search, or deterministic repeated validation.
 ---
 
 # XuanLing File Workflow
 
 This workspace exposes two file-tool families. Pick one deliberately for each
 operation; both are first-class, and neither is a fallback for the other.
-Apply this workflow only when the named `mcp__xuanling__fs_*` tools are
-visible. A memory-only bundle does not provide file or process tools; keep
-using the native family there instead of inferring unavailable tools.
+Apply this workflow when the named `mcp__xuanling__fs_*` tools or
+`mcp_catalog__xuanling` are visible. With the lazy DSH projection, search the
+catalog and pass only the exact raw names needed for the operation in
+`activate`; use the resulting `mcp__xuanling__*` definitions on the next model
+request. A memory-only bundle does not provide file or process tools. An empty
+catalog search is evidence to keep using the native family, not permission to
+infer unavailable tools.
 The stable package-relative path is
 `skills/xuanling-file-workflow/SKILL.md`; do not cite a versioned DSH plugin
 cache path. The MCP server may also provide the short routing policy through
@@ -28,10 +32,14 @@ cache path. The MCP server may also provide the short routing policy through
 
 ## Routing rules
 
-1. Prefer the native file tools for routine small edits and ordinary reads:
+1. If the selected XuanLing tool is not visible and
+   `mcp_catalog__xuanling` is, search by capability and activate the exact raw
+   name (for example `fs_search` or `fs_patch`). Do not activate a whole family
+   speculatively.
+2. Prefer the native file tools for routine small edits and ordinary reads:
    their observation policy and editor cards are part of the harness UX, and
    they avoid extra ceremony for one-line changes.
-2. Choose the XuanLing family when the operation needs what only it provides:
+3. Choose the XuanLing family when the operation needs what only it provides:
    - **Hash/CAS-protected writes**: verify the file is unchanged since your
      last read with `expected_sha256` / `expected_preimage_sha256` before
      replacing or patching it.
@@ -51,10 +59,10 @@ cache path. The MCP server may also provide the short routing policy through
      `mcp__xuanling__fs_read_text` (`include_sha256: true`) or
      `mcp__xuanling__fs_hash`, then pass both `mode: "overwrite"` and the
      returned `expected_sha256`. Never omit `mode` for a whole-file write.
-3. Do not use the shell tools (bash, pwsh, terminals) for any file operation
+4. Do not use the shell tools (bash, pwsh, terminals) for any file operation
    this skill covers; the two file families are sufficient, and shell output
    is not portable evidence.
-4. Read what you need, then act. Avoid re-reading a file you just verified by
+5. Read what you need, then act. Avoid re-reading a file you just verified by
    sha256; avoid issuing the same search twice without consuming the cursor.
 
 ## Schema gotchas that bite in practice

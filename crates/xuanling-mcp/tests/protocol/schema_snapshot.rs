@@ -58,22 +58,42 @@ fn fetch_tools() -> Vec<Value> {
     stdout.read_line(&mut line).expect("read init resp");
     assert!(line.contains("serverInfo"), "init failed: {line}");
 
-    // tools/list
-    let list = serde_json::json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}});
-    writeln!(stdin, "{}", serde_json::to_string(&list).unwrap()).unwrap();
-    stdin.flush().unwrap();
-    let mut line = String::new();
-    stdout.read_line(&mut line).expect("read tools/list resp");
+    // Drain standard tools/list pagination into one snapshot catalog.
+    let mut tools = Vec::new();
+    let mut cursor: Option<String> = None;
+    let mut id = 2;
+    loop {
+        let params = cursor.as_ref().map_or_else(
+            || serde_json::json!({}),
+            |value| serde_json::json!({"cursor": value}),
+        );
+        let list = serde_json::json!({
+            "jsonrpc": "2.0", "id": id, "method": "tools/list", "params": params
+        });
+        writeln!(stdin, "{}", serde_json::to_string(&list).unwrap()).unwrap();
+        stdin.flush().unwrap();
+        let mut line = String::new();
+        stdout.read_line(&mut line).expect("read tools/list resp");
+        let resp: Value = serde_json::from_str(&line).expect("json");
+        tools.extend(
+            resp["result"]["tools"]
+                .as_array()
+                .expect("tools array")
+                .iter()
+                .cloned(),
+        );
+        let Some(next) = resp["result"]["nextCursor"].as_str() else {
+            break;
+        };
+        cursor = Some(next.to_string());
+        id += 1;
+    }
 
     drop(stdin);
     let _ = child.kill();
     let _ = child.wait();
 
-    let resp: Value = serde_json::from_str(&line).expect("json");
-    resp["result"]["tools"]
-        .as_array()
-        .expect("tools array")
-        .clone()
+    tools
 }
 
 /// Stable ordering + shape for the snapshot: tool name + description + input

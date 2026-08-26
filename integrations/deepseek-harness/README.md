@@ -3,9 +3,11 @@
 English | [Simplified Chinese](README-ZH.md)
 
 This integration mounts `xuanling-mcp` through DeepSeek Harness's official
-`@deepseek-ai/dsh-mcp-client` bridge. XuanLing tools appear as native Harness
-tools named `mcp__xuanling__<tool>`, while host-specific schema projection,
-workflow Skills, and overwrite policy remain outside the Rust MCP contract.
+`@deepseek-ai/dsh-mcp-client` bridge. The bridge caches the complete XuanLing
+catalog but initially exposes only `mcp_catalog__xuanling`; exact activations
+then appear as native Harness tools named `mcp__xuanling__<tool>`. Host-specific
+lazy projection, schema projection, workflow Skills, and overwrite policy
+remain outside the Rust MCP contract.
 
 ## Recommended Setup
 
@@ -13,8 +15,8 @@ Install the Memory and Skills bundles into DSH's shipped `web` profile:
 
 ```sh
 dsh plugin --profile web add \
-  @xuanling-rs/xuanling-dsh-memory@0.2.9 \
-  @xuanling-rs/xuanling-dsh-skills@0.2.9
+  @xuanling-rs/xuanling-dsh-memory@0.2.10 \
+  @xuanling-rs/xuanling-dsh-skills@0.2.10
 dsh --profile web --dump-config
 dsh web
 ```
@@ -24,7 +26,7 @@ profile. A new arbitrary profile name is not a drop-in replacement: current
 DSH initializes unknown profiles with `@deepseek-ai/dsh-base` only, without a
 Web or Headless application bundle.
 
-The Memory bundle installs the exact `@xuanling-rs/xuanling-mcp@0.2.9` launcher and native
+The Memory bundle installs the exact `@xuanling-rs/xuanling-mcp@0.2.10` launcher and native
 optional dependency inside the profile. No global npm package, `npx`, or
 install-time binary download is used.
 
@@ -37,10 +39,10 @@ separate tools bundle makes the XuanLing fs family visible.
 
 | Bundle | Behavior | Use case |
 | --- | --- | --- |
-| `@xuanling-rs/xuanling-dsh-memory` | Adds the complete nine-tool Memory v2 profile with DSH schema projection; retains every native Harness tool | Recommended daily configuration |
+| `@xuanling-rs/xuanling-dsh-memory` | Caches the complete nine-tool Memory v2 profile with DSH schema projection and activates exact tools lazily; retains every native Harness tool | Recommended daily configuration |
 | `@xuanling-rs/xuanling-dsh-skills` | Adds isolated file and Memory workflow Skills plus strict overwrite policy; mounts no MCP tools | Combine with any XuanLing tool bundle |
-| `@xuanling-rs/xuanling-dsh-tools` | Adds the complete XuanLing catalog and retains native Harness tools | Access artifact, project, filesystem, process, and advanced tools |
-| `@xuanling-rs/xuanling-dsh-tools-replace` | Adds the complete catalog and disables the three model-facing native filesystem rows | Controlled full-catalog replacement |
+| `@xuanling-rs/xuanling-dsh-tools` | Caches the complete XuanLing catalog, projects exact activations, and retains native Harness tools | Access artifact, project, filesystem, process, and advanced tools |
+| `@xuanling-rs/xuanling-dsh-tools-replace` | Caches the complete catalog, projects exact activations, and disables the three model-facing native filesystem rows | Controlled full-catalog replacement |
 
 The Memory bundle deliberately exposes the complete lifecycle. Search, get,
 candidate creation/replacement/archive, review, and feedback form one contract;
@@ -59,11 +61,12 @@ Bundle expressions resolve these values when DSH starts:
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| MCP runtime | Profile-local `@xuanling-rs/xuanling-mcp@0.2.9` | Verified JS launcher and native optional dependency |
+| MCP runtime | Profile-local `@xuanling-rs/xuanling-mcp@0.2.10` | Verified JS launcher and native optional dependency |
 | `XUANLING_WORKSPACE_ROOT` | DSH process working directory | XuanLing filesystem capability root |
 | Schema adapter | Installed `xuanling-dsh-memory/schema-adapter.mjs` | Projects discovery schemas for DSH |
 | Result adapter | Installed bundle-local `mcp-result-adapter.mjs` (memory is composed into the schema adapter) | Removes only duplicate equivalent text blocks |
 | MCP tool profile | `memory` in the recommended bundle | Server-side discovery and dispatch selection |
+| DSH tool exposure | `lazy` | Complete Host cache with one initial `mcp_catalog__xuanling` search/activation tool |
 | Tool-call timeout | 120 seconds | Budget applied by the Harness MCP bridge |
 
 The server name is fixed to `xuanling`; changing it renames every model-facing
@@ -73,6 +76,22 @@ resolves Skill content and policy code from its installed package.
 The production Memory bundle uses XuanLing's shared default database at
 `~/.xuanling/memory.db`. Hosts that require a separate store can restate the
 bridge row with an explicit `--memory-db` path.
+
+## Lazy Tool Projection
+
+Every bundle drains standard MCP `tools/list` pagination into a complete Host
+cache. It does not stop at the first page and does not ask the server to mutate
+its static catalog. The model initially receives one compact
+`mcp_catalog__xuanling` schema. That Host-native control searches raw names and
+descriptions and activates up to 16 exact raw names as ordinary
+`mcp__xuanling__*` tools for later model requests.
+
+Activation is all-or-nothing per call. Reconnect and `tools/list_changed`
+refresh the complete cache and re-project activated names that still exist.
+The activation set belongs to the live DSH plugin instance: sessions sharing
+that instance share activations, while HMR, plugin disposal, or Host restart
+clears them. MCP pagination only bounds transport; DSH lazy projection is the
+layer that reduces initial model schema cost.
 
 ## Schema Projection
 
@@ -112,14 +131,16 @@ not exit.
 Skills:
 
 - `xuanling-file-workflow` applies only when XuanLing fs tools are visible. It
-  prefers Harness-native tools for ordinary reads and small edits, then selects
+  uses `mcp_catalog__xuanling` to activate an exact missing tool, prefers
+  Harness-native tools for ordinary reads and small edits, then selects
   XuanLing for hash/CAS protection, exact compound-suffix search, explicit byte
   budgets, complete pagination, and one atomic `fs_patch` for same-file
   multi-hunk edits. Repeated short validations with the same argv use
   `deterministic: true`; long jobs use the Harness background/job surface.
 - `xuanling-memory-workflow` uses a single-write L1/L2 split: project-local,
   every-session facts stay in host file memory; cross-project shared facts use
-  XuanLing. An explicit L1 pointer triggers one scoped pull at task start or a
+  XuanLing. It activates only the next required memory operation. An explicit
+  L1 pointer triggers one scoped pull at task start or a
   topic switch, not every turn. `memory_search` returns full active records,
   not a lightweight manifest. New candidates remain pending, and
   `memory_review` requires an explicit user decision for that proposal.

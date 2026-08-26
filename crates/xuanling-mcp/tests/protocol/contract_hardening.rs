@@ -218,13 +218,9 @@ fn every_catalog_tool_has_schema_and_handler() {
     // returns a domain/protocol error (never a transport crash).
     let mut peer = Peer::start();
     peer.initialize();
-    let list = json!({"jsonrpc": "2.0", "id": peer.next_id, "method": "tools/list", "params": {}});
-    peer.next_id += 1;
-    peer.send(&list);
-    let resp = peer.recv();
-    let tools = resp["result"]["tools"].as_array().expect("tools array");
+    let tools = list_tools(&mut peer);
     assert!(!tools.is_empty(), "catalog must not be empty");
-    for t in tools {
+    for t in &tools {
         let name = t["name"].as_str().expect("tool name");
         assert!(
             t.get("inputSchema").is_some(),
@@ -243,13 +239,7 @@ fn schema_snapshot_matches_public_dto() {
     // catalog exactly (no drift between snapshot and runtime).
     let mut peer = Peer::start();
     peer.initialize();
-    let list = json!({"jsonrpc": "2.0", "id": peer.next_id, "method": "tools/list", "params": {}});
-    peer.next_id += 1;
-    peer.send(&list);
-    let resp = peer.recv();
-    let live: Vec<String> = resp["result"]["tools"]
-        .as_array()
-        .unwrap()
+    let live: Vec<String> = list_tools(&mut peer)
         .iter()
         .map(|t| t["name"].as_str().unwrap().to_string())
         .collect();
@@ -4257,14 +4247,37 @@ fn memory_unavailable_keeps_main_tools_working_and_diagnosable() {
 
 /// Fetch the catalog `tools` array over an initialized peer.
 fn list_tools(peer: &mut Peer) -> Vec<Value> {
-    let list = json!({"jsonrpc": "2.0", "id": peer.next_id, "method": "tools/list", "params": {}});
-    peer.next_id += 1;
-    peer.send(&list);
-    let resp = peer.recv();
-    resp["result"]["tools"]
-        .as_array()
-        .expect("tools array")
-        .clone()
+    let mut tools = Vec::new();
+    let mut cursor: Option<String> = None;
+    let mut seen = std::collections::HashSet::new();
+    loop {
+        let params = cursor
+            .as_ref()
+            .map_or_else(|| json!({}), |cursor| json!({"cursor": cursor}));
+        let list = json!({
+            "jsonrpc": "2.0", "id": peer.next_id,
+            "method": "tools/list", "params": params
+        });
+        peer.next_id += 1;
+        peer.send(&list);
+        let resp = peer.recv();
+        tools.extend(
+            resp["result"]["tools"]
+                .as_array()
+                .unwrap_or_else(|| panic!("tools array missing: {resp}"))
+                .iter()
+                .cloned(),
+        );
+        let Some(next) = resp["result"]["nextCursor"].as_str() else {
+            break;
+        };
+        assert!(
+            seen.insert(next.to_string()),
+            "tools/list cursor loop: {resp}"
+        );
+        cursor = Some(next.to_string());
+    }
+    tools
 }
 
 #[test]

@@ -1,6 +1,6 @@
 {
   "name": "xuanling-mcp-npm-release",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "private": true,
   "description": "Build, validate, and publish the XuanLing MCP npm distribution.",
   "type": "module",
@@ -10,6 +10,7 @@
     "npm": ">=11.5.1"
   },
   "scripts": {
+    "benchmark:catalog": "node scripts/benchmark-mcp-catalog.mjs",
     "check": "node scripts/check-version.mjs && node scripts/verify-package.mjs --main packages/xuanling-mcp",
     "check:docs": "node scripts/check-docs.mjs",
     "test": "node --test test/*.test.mjs"

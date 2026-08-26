@@ -7,14 +7,18 @@
 编排集成。
 
 ```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-tools-replace@0.2.9
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-tools-replace@0.2.10
 ```
 
 该命令会扩展 DSH 内置的 Web profile。内置 Headless profile 应使用 `--profile headless`。
 未知 profile 名称只包含 base bundle，本身不会提供可运行的 Web 或 Headless 应用。
 
-精确版本的 `@xuanling-rs/xuanling-mcp@0.2.9` runtime 会安装在 profile 内，并通过带校验的 JS launcher
+精确版本的 `@xuanling-rs/xuanling-mcp@0.2.10` runtime 会安装在 profile 内，并通过带校验的 JS launcher
 启动；不会使用全局 npm package。
+
+Bridge 会缓存完整的分页 MCP 目录，但起初只暴露 `mcp_catalog__xuanling`。由于该变体会停用原生
+文件系统工具行，执行下一步操作前必须先激活所需的精确 XuanLing 文件系统 raw name；得到的工具
+使用常规 `mcp__xuanling__*` 名称。
 
 该 bundle 的 result adapter 保留一个完整 Native 文本投影，只删除与 `structuredContent` 完全重复
 的意外文本块；structured value 仍可供 Code Mode 与校验使用。

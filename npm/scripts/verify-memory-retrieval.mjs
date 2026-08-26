@@ -344,8 +344,20 @@ try {
   }
   send({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
 
-  const toolsResponse = await request("tools/list", {});
-  const toolNames = new Set((toolsResponse.result?.tools ?? []).map((tool) => tool.name));
+  const tools = [];
+  const seenCursors = new Set();
+  let cursor;
+  do {
+    const toolsResponse = await request("tools/list", cursor ? { cursor } : {});
+    if (toolsResponse.error || !Array.isArray(toolsResponse.result?.tools)) {
+      throw new Error(`tools/list failed: ${JSON.stringify(toolsResponse)}`);
+    }
+    tools.push(...toolsResponse.result.tools);
+    cursor = toolsResponse.result.nextCursor;
+    if (cursor && seenCursors.has(cursor)) throw new Error(`tools/list cursor loop: ${cursor}`);
+    if (cursor) seenCursors.add(cursor);
+  } while (cursor);
+  const toolNames = new Set(tools.map((tool) => tool.name));
   for (const name of [
     "memory_candidate_create",
     "memory_candidate_replace",

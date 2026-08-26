@@ -32,7 +32,7 @@ The npm launcher requires Node.js 18.17 or newer and installs the matching
 native binary for the current platform.
 
 ```sh
-npm install --global @xuanling-rs/xuanling-mcp@0.2.9
+npm install --global @xuanling-rs/xuanling-mcp@0.2.10
 xuanling-mcp --version
 ```
 
@@ -45,7 +45,7 @@ An MCP client can pin the same version without a global installation:
       "command": "npx",
       "args": [
         "-y",
-        "@xuanling-rs/xuanling-mcp@0.2.9",
+        "@xuanling-rs/xuanling-mcp@0.2.10",
         "--workspace-root",
         "/absolute/path/to/project",
         "--tool-profile",
@@ -79,7 +79,7 @@ SHA-256 before starting the server.
 
 ### Build from source
 
-Source builds require Rust 1.97.
+Source builds require Rust 1.98.
 
 ```sh
 cargo build --locked --release -p xuanling-mcp
@@ -102,6 +102,20 @@ smaller, stable groups:
 
 `all` takes precedence when combined with another profile. Discovery and
 dispatch use the same selection, so a hidden tool cannot be called by name.
+
+### Catalog transport
+
+`tools/list` returns the selected static catalog in pages of eight tools. Follow
+the opaque `nextCursor` until it is absent; a malformed, stale, or cross-catalog
+cursor fails with JSON-RPC `-32602` and `data.reason: "invalid_cursor"` instead
+of restarting from page one. Initialization metadata publishes
+`xuanling.tool_count` for the complete filtered catalog and
+`xuanling.catalog_sha256` as a stable digest of every model-visible definition.
+
+The catalog does not mutate during a server process, so XuanLing deliberately
+does not advertise `tools.listChanged`. Pagination bounds MCP transport frames;
+whether the complete catalog enters model context remains a Host projection
+decision.
 
 ## Filesystem Safety
 
@@ -201,6 +215,12 @@ on-demand workflow Skills. The integration remains outside the Rust tool
 contracts, allowing DeepSeek Harness-specific routing and policy to evolve
 without changing the MCP catalog for other hosts.
 
+The shipped DSH runtime bundles use Host-side lazy projection: they cache every
+MCP catalog page but initially expose only `mcp_catalog__xuanling`. The model
+searches that compact control and activates exact raw names before ordinary
+`mcp__xuanling__*` calls. This reduces initial schema cost without treating MCP
+pagination or `list_changed` as capability selection.
+
 See the
 [DeepSeek Harness integration guide](integrations/deepseek-harness/README.md)
 for bundle selection, installation, and runtime configuration.
@@ -224,7 +244,7 @@ workspace boundary are recorded in
 
 ## Development
 
-Repository development requires Rust 1.97, Node.js 22.14 or newer, and npm
+Repository development requires Rust 1.98, Node.js 22.14 or newer, and npm
 11.5.1 or newer.
 
 ```sh
@@ -240,6 +260,10 @@ cargo test -p xuanling-mcp --test golden
 npm --prefix npm run check
 npm --prefix npm run check:docs
 npm --prefix npm test
+
+# Non-gating, single-process benchmark for the complete paginated catalog.
+cargo build --locked --release -p xuanling-mcp
+npm --prefix npm run benchmark:catalog -- --binary target/release/xuanling-mcp
 ```
 
 The complete host contract and error mapping are documented in the

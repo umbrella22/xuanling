@@ -6,15 +6,20 @@
 评审、召回、归档和反馈 profile，同时保留全部 Harness 原生工具。
 
 ```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-memory@0.2.9
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-memory@0.2.10
 ```
 
 该命令会扩展 DSH 内置的 Web profile。内置 Headless profile 应使用 `--profile headless`。
 未知 profile 名称只包含 base bundle，本身不会提供可运行的 Web 或 Headless 应用。
 
-Bundle 会在所选 profile 内安装 `@xuanling-rs/xuanling-mcp@0.2.9`，并从该 profile 解析 schema adapter
+Bundle 会在所选 profile 内安装 `@xuanling-rs/xuanling-mcp@0.2.10`，并从该 profile 解析 schema adapter
 和 JS launcher。Launcher 会在启动前校验当前平台的原生 package；不需要全局 package，也
 不会在安装时下载 binary。
+
+Bridge 会遍历并缓存完整九工具 MCP profile，但起初只向模型显示
+`mcp_catalog__xuanling`。应先检索这个 Host 控制工具并激活下一步所需的精确 Memory raw name；
+随后它会作为常规 `mcp__xuanling__*` 工具出现。Lazy projection 会降低初始 schema 成本，但不会从
+server 合同中移除任何生命周期操作。
 
 Result adapter 还会执行 DSH projection 合同：只将与 `structuredContent` 完全重复的文本块收敛为
 一个完整文本块，同时保留 structured value 供 Code Mode 与输出校验使用。
@@ -22,7 +27,7 @@ Result adapter 还会执行 DSH projection 合同：只将与 `structuredContent
 Schema adapter 会校验子进程 JSONL frame 与 request 结算。malformed frame 或子进程正常退出时仍有未结算的
 `tools/list`/`tools/call` 会以非零状态结束；子进程忽略 Host 终止信号时，500 ms grace 后会被强制终止。
 
-可以同时安装 `@xuanling-rs/xuanling-dsh-skills@0.2.9`，获得 proposal-first Memory 工作流和严格整文件
+可以同时安装 `@xuanling-rs/xuanling-dsh-skills@0.2.10`，获得 proposal-first Memory 工作流和严格整文件
 覆盖 policy。不要在同一 profile 中组合多个 XuanLing 工具 bundle，因为它们都会注册
 `xuanling-tools` 行。
 

@@ -181,7 +181,9 @@ scoped to the current worktree delta:
 
 - `fs_list`/`fs_search`/`fs_glob` return entries in a stable sort order and embed no timestamps:
   re-running the same request on an unchanged tree yields byte-identical JSON, which is friendly
-  to host prompt caching (the `tools/list` catalog is likewise static).
+  to host prompt caching. The `tools/list` catalog is likewise static but is transported in
+  eight-tool pages; hosts must drain its opaque `nextCursor`. Initialize metadata exposes the
+  complete filtered `xuanling.tool_count` and `xuanling.catalog_sha256` definition digest.
 - Process results are the exception: by default `process_run`/`project_run`/`session_exec`/
   `process_pipeline` include `duration_ms`, and truncated results embed artifact ids — both vary
   per call. Pass `deterministic: true` to omit `duration_ms` so identical invocations return

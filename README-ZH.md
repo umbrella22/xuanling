@@ -27,7 +27,7 @@ XuanLing MCP 是面向编码 Agent 的跨平台本地 Model Context Protocol
 npm 启动器要求 Node.js 18.17 或更高版本，并为当前平台安装匹配的原生二进制包。
 
 ```sh
-npm install --global @xuanling-rs/xuanling-mcp@0.2.9
+npm install --global @xuanling-rs/xuanling-mcp@0.2.10
 xuanling-mcp --version
 ```
 
@@ -40,7 +40,7 @@ MCP Client 也可以通过 `npx` 固定同一版本，无需全局安装：
       "command": "npx",
       "args": [
         "-y",
-        "@xuanling-rs/xuanling-mcp@0.2.9",
+        "@xuanling-rs/xuanling-mcp@0.2.10",
         "--workspace-root",
         "/absolute/path/to/project",
         "--tool-profile",
@@ -71,7 +71,7 @@ MCP Client 也可以通过 `npx` 固定同一版本，无需全局安装：
 
 ### 从源码构建
 
-源码构建要求 Rust 1.97。
+源码构建要求 Rust 1.98。
 
 ```sh
 cargo build --locked --release -p xuanling-mcp
@@ -94,6 +94,18 @@ cargo build --locked --release -p xuanling-mcp
 
 `all` 与其他 profile 同时出现时优先生效。工具发现和调用分发使用同一份选择，因此被隐藏的
 工具无法通过名称绕过 profile 调用。
+
+### 目录传输
+
+`tools/list` 会把选定的静态目录按每页八个工具返回。应持续使用 opaque `nextCursor`，直到该字段
+消失；格式错误、过期或属于另一目录的 cursor 会返回 JSON-RPC `-32602` 与
+`data.reason: "invalid_cursor"`，不会从第一页静默重启。初始化 metadata 通过
+`xuanling.tool_count` 公布过滤后完整目录的数量，并通过 `xuanling.catalog_sha256` 公布覆盖全部
+模型可见定义的稳定摘要。
+
+工具目录在 server process 生命周期中不会变化，因此 XuanLing 不会错误声明
+`tools.listChanged`。分页只限制 MCP transport frame；完整目录是否进入模型上下文仍由 Host 的
+projection policy 决定。
 
 ## 文件系统安全
 
@@ -173,6 +185,11 @@ checkout 安装；profile package 仍只来自公开 npm registry。交互式问
 工作流 Skill。该集成位于 Rust 工具合同之外，因此 DeepSeek Harness 专用路由和策略可以独立
 演进，不会改变其他 Host 使用的 MCP catalog。
 
+内置 DSH runtime bundle 使用 Host 侧 lazy projection：它会缓存 MCP 目录的全部分页，但起初只
+暴露 `mcp_catalog__xuanling`。模型先通过这个紧凑控制工具检索并激活精确 raw name，再调用常规
+`mcp__xuanling__*` 工具。这样可以降低初始 schema 成本，且不会把 MCP 分页或 `list_changed`
+误当成 capability selection。
+
 Bundle 选择、安装和运行配置见
 [DeepSeek Harness 集成指南](integrations/deepseek-harness/README-ZH.md)。
 
@@ -193,7 +210,7 @@ Bundle 选择、安装和运行配置见
 
 ## 开发
 
-仓库开发环境要求 Rust 1.97、Node.js 22.14 或更高版本，以及 npm 11.5.1 或更高版本。
+仓库开发环境要求 Rust 1.98、Node.js 22.14 或更高版本，以及 npm 11.5.1 或更高版本。
 
 ```sh
 cargo fmt -p xuanling-toolkit -p xuanling-memory -p xuanling-mcp -- --check
@@ -208,6 +225,10 @@ cargo test -p xuanling-mcp --test golden
 npm --prefix npm run check
 npm --prefix npm run check:docs
 npm --prefix npm test
+
+# 非门禁：在单一 server process 内测试完整分页目录。
+cargo build --locked --release -p xuanling-mcp
+npm --prefix npm run benchmark:catalog -- --binary target/release/xuanling-mcp
 ```
 
 完整 Host 合同和错误映射见

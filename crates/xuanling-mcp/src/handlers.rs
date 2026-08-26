@@ -16,8 +16,8 @@ use rmcp::model::{CallToolResult, ContentBlock, JsonObject, Tool, ToolAnnotation
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData as McpError, RoleServer};
 use serde_json::Value;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 use xuanling_memory as tk_memory;
@@ -46,9 +46,21 @@ use xuanling_toolkit::process::{
 };
 use xuanling_toolkit::system::{self as tk_system, SystemInfoRequest, SystemInfoResult};
 
-/// Build the static tool catalog (plan §6, §7). Tool names are ASCII
+/// Process-lifetime tool catalog. Schema generation is relatively expensive,
+/// while these definitions are immutable, so materialize them exactly once.
+static CATALOG: LazyLock<Vec<Tool>> = LazyLock::new(build_catalog);
+
+/// Return the static tool catalog (plan §6, §7). Tool names are ASCII
 /// snake_case; the catalog is the same on all platforms.
 pub fn catalog() -> Vec<Tool> {
+    shared_catalog().to_vec()
+}
+
+pub(crate) fn shared_catalog() -> &'static [Tool] {
+    CATALOG.as_slice()
+}
+
+fn build_catalog() -> Vec<Tool> {
     // `Tool::with_input_schema::<T>()` generates the JSON Schema from the DTO's
     // `JsonSchema` impl.
     vec![

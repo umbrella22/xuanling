@@ -121,15 +121,28 @@ try {
   }
   send({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
 
-  const tools = await request(2, "tools/list", {});
-  const toolCount = tools.result?.tools?.length;
+  const catalog = [];
+  const seenCursors = new Set();
+  let cursor;
+  let nextId = 2;
+  do {
+    const page = await request(nextId++, "tools/list", cursor ? { cursor } : {});
+    if (page.error || !Array.isArray(page.result?.tools)) {
+      throw new Error(`tools/list failed: ${JSON.stringify(page)}`);
+    }
+    catalog.push(...page.result.tools);
+    cursor = page.result.nextCursor;
+    if (cursor && seenCursors.has(cursor)) throw new Error(`tools/list cursor loop: ${cursor}`);
+    if (cursor) seenCursors.add(cursor);
+  } while (cursor);
+  const toolCount = catalog.length;
   // The count follows the source catalog and is never hardcoded here (plan
   // W7.4, C-12): the verifier script checks the full contract; the smoke only
   // pins that the catalog is non-empty and consistent with the server's own
   // `_meta` tool count.
   const metaToolCount = initialized.result?._meta?.["xuanling.tool_count"];
-  if (tools.error || !Number.isInteger(toolCount) || toolCount <= 0) {
-    throw new Error(`tools/list returned no tools: ${JSON.stringify(tools)}`);
+  if (!Number.isInteger(toolCount) || toolCount <= 0) {
+    throw new Error("tools/list returned no tools");
   }
   if (metaToolCount !== toolCount) {
     throw new Error(
@@ -137,7 +150,7 @@ try {
     );
   }
 
-  const systemInfo = await request(3, "tools/call", {
+  const systemInfo = await request(nextId, "tools/call", {
     arguments: {},
     name: "system_info",
   });

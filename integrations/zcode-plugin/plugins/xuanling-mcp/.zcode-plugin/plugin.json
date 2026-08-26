@@ -1,6 +1,6 @@
 {
   "name": "xuanling-mcp",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "description": "Cross-platform stdio MCP server: typed filesystem/process/project/memory/session tools for XuanLing. workspace-root follows the current project.",
   "author": {
     "name": "umbrella22 and XuanLing contributors",

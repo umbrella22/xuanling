@@ -20,6 +20,7 @@ clap.workspace = true
 schemars = "1"
 serde = { workspace = true }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 tokio = { workspace = true }
 # MCP SDK (plan §3.1). Locked features:
 #   server          -> ServerHandler trait, tool system, serve loop

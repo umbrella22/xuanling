@@ -49,7 +49,7 @@ fn object_typed_params() -> &'static HashMap<String, HashSet<String>> {
     static TABLE: OnceLock<HashMap<String, HashSet<String>>> = OnceLock::new();
     TABLE.get_or_init(|| {
         let mut table = HashMap::new();
-        for tool in crate::handlers::catalog() {
+        for tool in crate::handlers::shared_catalog() {
             let schema = serde_json::to_value(&tool.input_schema).unwrap_or(Value::Null);
             let mut params = HashSet::new();
             if let Some(properties) = schema.get("properties").and_then(Value::as_object) {

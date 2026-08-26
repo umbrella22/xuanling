@@ -1,9 +1,9 @@
 # XuanLing tools for DeepSeek Harness — additive variant.
 #
 # Mounts the xuanling-mcp binary through the local result adapter and the
-# official @deepseek-ai/dsh-mcp-client bridge. Every XuanLing tool becomes a native
-# harness tool named mcp__xuanling__<raw> (for example mcp__xuanling__fs_read_text);
-# the bridge owns reconnect, re-sync, and generation rollback. Built-in tools
+# official @deepseek-ai/dsh-mcp-client bridge. The bridge caches every XuanLing
+# definition and exposes mcp_catalog__xuanling first; exact activations become
+# native mcp__xuanling__<raw> tools. It owns reconnect, re-sync, and generation rollback. Built-in tools
 # (read/write/edit/glob/grep/bash/…) stay registered — this variant only ADDS.
 #
 # The bundle resolves its exact result adapter and xuanling-mcp dependency from
@@ -21,6 +21,7 @@
       name: '@deepseek-ai/dsh-mcp-client'
       config:
         serverName: xuanling
+        toolExposure: lazy
         transport: stdio
         command: !!js process.execPath
         args:

@@ -8,15 +8,21 @@ the filesystem layer while retaining shell, web, LSP, approval, PTY, jobs, and
 orchestration integrations.
 
 ```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-tools-replace@0.2.9
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-tools-replace@0.2.10
 ```
 
 This command augments DSH's shipped Web profile. Use `--profile headless` for
 the shipped Headless profile. Unknown profile names start with the base bundle
 only and do not provide a runnable Web or Headless application by themselves.
 
-The exact `@xuanling-rs/xuanling-mcp@0.2.9` runtime is installed in the profile and started
+The exact `@xuanling-rs/xuanling-mcp@0.2.10` runtime is installed in the profile and started
 through its verified JS launcher. No global npm package is used.
+
+The bridge caches the complete paginated MCP catalog but initially exposes
+only `mcp_catalog__xuanling`. Because this variant disables the native
+filesystem rows, activate the exact XuanLing filesystem raw names required for
+the next operation before attempting it; the resulting tools use the normal
+`mcp__xuanling__*` names.
 
 Its result adapter keeps one complete Native text projection and removes only
 accidental duplicate blocks that exactly repeat `structuredContent`; the

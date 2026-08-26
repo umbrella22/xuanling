@@ -2,7 +2,7 @@
 #
 # Same mount as xuanling-dsh-tools (see that bundle's patch for the adapter,
 # binary resolution, and capability notes), plus retirement of the built-in model-facing
-# filesystem tool rows so XuanLing becomes the filesystem layer the model sees:
+# filesystem tool rows so lazy XuanLing activation becomes the filesystem layer the model sees:
 #
 #   read / write / edit / read_image   (tool-fs)            -> mcp__xuanling__fs_*
 #   glob / grep                        (tool-fs-search)     -> mcp__xuanling__fs_glob / fs_search
@@ -39,6 +39,7 @@
       name: '@deepseek-ai/dsh-mcp-client'
       config:
         serverName: xuanling
+        toolExposure: lazy
         transport: stdio
         command: !!js process.execPath
         args:

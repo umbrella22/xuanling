@@ -1,12 +1,18 @@
 ---
 name: xuanling-memory-workflow
-description: Guides DeepSeek Harness agents in routing host file memory (L1) and XuanLing shared lexical memory (L2). Use when recalling an explicit memory pointer, retaining a cross-project fact, preparing a pending candidate, or handling an explicit user review decision. Enforces single-write storage and separate proposal/review turns.
+description: Guides DeepSeek Harness agents in activating and routing host file memory (L1) and XuanLing shared lexical memory (L2). Use when mcp_catalog__xuanling or XuanLing memory tools are visible and the task recalls an explicit memory pointer, retains a cross-project fact, prepares a pending candidate, or handles an explicit user review decision. Enforces single-write storage and separate proposal/review turns.
 ---
 
 # XuanLing Memory Workflow
 
 XuanLing memory is proposal-first: nothing you write becomes a canonical
 record until a human decides on the proposal. Two separate turns, always.
+
+When DSH exposes `mcp_catalog__xuanling` instead of individual memory tools,
+search the catalog and activate only the exact raw names needed for the next
+step, such as `memory_search` and then `memory_get`. Activation changes the next
+model request's tool surface; it is not a memory review and never authorizes a
+candidate write. Do not activate the complete nine-tool lifecycle preemptively.
 
 ## Choose one memory layer
 

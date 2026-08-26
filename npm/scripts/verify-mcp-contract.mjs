@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -13,12 +14,13 @@ import { parseArgs, requiredArg } from "./shared.mjs";
 // checks every layer of the public host contract:
 //   1. initialize `_meta` publishes xuanling.contract_version=2 and
 //      xuanling.memory_contract_version=2;
-//   2. the catalog count is DERIVED from tools/list (no literal total) and
+//   2. all tools/list pages reproduce `_meta.catalog_sha256`;
+//   3. the catalog count is DERIVED from tools/list (no literal total) and
 //      matches `_meta.tool_count`;
-//   3. the required core tool names are present;
-//   4. forbidden names are absent (removed v1 memory tools, any semantic/
+//   4. the required core tool names are present;
+//   5. forbidden names are absent (removed v1 memory tools, any semantic/
 //      embedding surface);
-//   5. the process_run stdout/stderr schema keeps the full tagged union
+//   6. the process_run stdout/stderr schema keeps the full tagged union
 //      (string modes plus {file:{path}}).
 // Any drift exits non-zero with a per-check report.
 
@@ -194,14 +196,36 @@ try {
     meta["xuanling.memory_contract_version"] === "2",
     String(meta["xuanling.memory_contract_version"]),
   );
+  check(
+    "catalog_sha256 is stable identity metadata",
+    /^[0-9a-f]{64}$/.test(meta["xuanling.catalog_sha256"] ?? ""),
+    String(meta["xuanling.catalog_sha256"]),
+  );
   send({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
 
-  const toolsResponse = await request(2, "tools/list", {});
-  if (toolsResponse.error) {
-    throw new Error(`tools/list failed: ${JSON.stringify(toolsResponse)}`);
-  }
-  const tools = toolsResponse.result?.tools ?? [];
+  const tools = [];
+  const seenCursors = new Set();
+  let cursor;
+  let nextId = 2;
+  do {
+    const toolsResponse = await request(nextId++, "tools/list", cursor ? { cursor } : {});
+    if (toolsResponse.error || !Array.isArray(toolsResponse.result?.tools)) {
+      throw new Error(`tools/list failed: ${JSON.stringify(toolsResponse)}`);
+    }
+    tools.push(...toolsResponse.result.tools);
+    cursor = toolsResponse.result.nextCursor;
+    if (cursor && seenCursors.has(cursor)) throw new Error(`tools/list cursor loop: ${cursor}`);
+    if (cursor) seenCursors.add(cursor);
+  } while (cursor);
   const names = new Set(tools.map((tool) => tool.name));
+  const derivedCatalogSha256 = createHash("sha256")
+    .update(JSON.stringify(tools))
+    .digest("hex");
+  check(
+    "catalog_sha256 matches the complete paginated catalog",
+    meta["xuanling.catalog_sha256"] === derivedCatalogSha256,
+    `meta=${meta["xuanling.catalog_sha256"]} vs derived=${derivedCatalogSha256}`,
+  );
 
   // The count is derived, never hardcoded (plan W7.4, C-12).
   const derivedCount = names.size;
