@@ -246,7 +246,7 @@ test("release workflow requires provenance and attestation without publisher cer
     assert.notEqual(position, -1, `release workflow is missing ${name}`);
   }
   assert.ok(build < stage, "native bytes are hashed and staged after the locked build");
-  assert.match(source, /actions\/attest-build-provenance@v2/);
+  assert.match(source, /actions\/attest-build-provenance@v4/);
   assert.match(source, /attestations: write/);
   assert.match(source, /id-token: write/);
   assert.doesNotMatch(source, /environment: release-signing/);

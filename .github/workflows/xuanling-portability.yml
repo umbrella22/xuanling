@@ -33,7 +33,7 @@ jobs:
         rust: ["1.98"]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Rust ${{ matrix.rust }}
         uses: dtolnay/rust-toolchain@master
         with:
@@ -87,7 +87,7 @@ jobs:
             archive: xuanling-mcp-windows-x86_64.zip
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Rust 1.98
         uses: dtolnay/rust-toolchain@master
         with:
@@ -130,7 +130,7 @@ jobs:
           cd ./target/${{ matrix.target }}/release
           7z a ../../../${{ matrix.archive }} xuanling-mcp.exe
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.archive }}
           path: ${{ matrix.archive }}
@@ -141,7 +141,7 @@ jobs:
     needs: gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Rust 1.98
         uses: dtolnay/rust-toolchain@master
         with:

@@ -33,10 +33,10 @@ jobs:
       commit: ${{ steps.version.outputs.commit }}
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
       - name: Install supported npm CLI
@@ -100,8 +100,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: npmjs
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
@@ -162,8 +162,8 @@ jobs:
     if: github.event_name == 'push' || inputs.mode == 'candidate'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
       - name: Install supported npm CLI
@@ -179,7 +179,7 @@ jobs:
             --out npm/dist/main/pack \
             --label main \
             --kind main
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: npm-main
           path: npm/dist/main/pack
@@ -208,12 +208,12 @@ jobs:
             binary: xuanling-mcp.exe
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.98"
           targets: ${{ matrix.rust_target }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
       - name: Install supported npm CLI
@@ -249,7 +249,7 @@ jobs:
             --out "npm/dist/${{ matrix.target_id }}/pack" \
             --label "${{ matrix.target_id }}" \
             --kind platform
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: npm-${{ matrix.target_id }}
           path: npm/dist/${{ matrix.target_id }}/pack
@@ -262,8 +262,8 @@ jobs:
     if: github.event_name == 'push' || inputs.mode == 'candidate'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
       - name: Install supported npm CLI
@@ -277,7 +277,7 @@ jobs:
             --root npm/dist/dsh \
             --version "${{ needs.validate-release.outputs.version }}" \
             --commit "${{ needs.validate-release.outputs.commit }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dsh-bundles
           path: npm/dist/dsh
@@ -294,18 +294,18 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
       - name: Install supported npm CLI
         run: npm install --global npm@11.6.2
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: npm-*
           path: npm/release
           merge-multiple: false
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dsh-bundles
           path: npm/dsh-release
@@ -335,10 +335,10 @@ jobs:
             --require-release-trust
       - name: Attest immutable ZCode marketplace archive
         if: github.event_name == 'push'
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: npm/dist/zcode/xuanling-zcode-marketplace-${{ needs.validate-release.outputs.version }}.tar.gz
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: zcode-marketplace
           path: |
@@ -357,8 +357,8 @@ jobs:
       id-token: write
     environment: npmjs
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
@@ -376,16 +376,16 @@ jobs:
             echo "npm Trusted Publishing requires ACTIONS_ID_TOKEN_REQUEST_TOKEN" >&2
             exit 1
           }
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: npm-*
           path: npm/release
           merge-multiple: false
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dsh-bundles
           path: npm/dsh-release
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: zcode-marketplace
           path: npm/zcode-release
@@ -449,8 +449,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: zcode-packer
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
       - name: Install supported npm CLI
@@ -468,7 +468,7 @@ jobs:
           test "$(jq -r .full_name <<<"$REPOSITORY")" = "$TARGET_REPOSITORY"
           test "$(jq -r .default_branch <<<"$REPOSITORY")" = "main"
           test "$(jq -r '.permissions.push // false' <<<"$REPOSITORY")" = "true"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: ${{ vars.ZCODE_REPOSITORY }}
           ref: main
@@ -476,16 +476,16 @@ jobs:
           path: target
           token: ${{ secrets.XL_PUBLISH_TOKEN }}
           persist-credentials: true
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: npm-*
           path: npm/release
           merge-multiple: false
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dsh-bundles
           path: npm/dsh-release
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: zcode-marketplace
           path: npm/zcode-release
