@@ -337,7 +337,7 @@ fn resolve_node(
         let mut args = vec!["run".to_string(), script.to_string()];
         args.extend_from_slice(extra_args);
         return Ok((
-            pm.to_string(),
+            node_package_manager_executable(pm),
             args,
             format!("selected {pm} {source} `{script}`"),
         ));
@@ -357,7 +357,7 @@ fn resolve_node(
         .collect();
         args.extend_from_slice(extra_args);
         return Ok((
-            pm.to_string(),
+            node_package_manager_executable(pm),
             args,
             format!("selected {pm} TypeScript convention `tsc --noEmit`"),
         ));
@@ -368,6 +368,17 @@ fn resolve_node(
         action,
         "no exact package script or proven nonmutating convention",
     ))
+}
+
+fn node_package_manager_executable(package_manager: &str) -> String {
+    if cfg!(target_os = "windows") {
+        match package_manager {
+            "bun" => "bun.exe".to_string(),
+            _ => format!("{package_manager}.cmd"),
+        }
+    } else {
+        package_manager.to_string()
+    }
 }
 
 fn action_name(action: &ProjectAction) -> &'static str {

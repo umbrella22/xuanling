@@ -26,6 +26,17 @@ fn write_node_manifest(path: &std::path::Path, scripts: serde_json::Value) {
     .unwrap();
 }
 
+fn expected_node_package_manager(package_manager: &str) -> String {
+    if cfg!(target_os = "windows") {
+        match package_manager {
+            "bun" => "bun.exe".to_string(),
+            _ => format!("{package_manager}.cmd"),
+        }
+    } else {
+        package_manager.to_string()
+    }
+}
+
 fn source_tree_sha256(root: &Path) -> String {
     let mut files: Vec<PathBuf> = walkdir::WalkDir::new(root)
         .into_iter()
@@ -81,7 +92,7 @@ fn node_exact_action_script_wins_over_build() {
     )
     .expect("a literal scripts.check entry must resolve");
 
-    assert_eq!(resolved.program, "pnpm");
+    assert_eq!(resolved.program, expected_node_package_manager("pnpm"));
     assert_eq!(resolved.args, ["run", "check"]);
     assert!(
         resolved.reason.contains("exact") && resolved.reason.contains("check"),
@@ -174,7 +185,7 @@ fn node_typescript_convention_uses_no_emit_when_exact_check_is_absent() {
     )
     .expect("local TypeScript plus tsconfig is a proven check convention");
 
-    assert_eq!(resolved.program, "npm");
+    assert_eq!(resolved.program, expected_node_package_manager("npm"));
     assert_eq!(resolved.args, ["exec", "--", "tsc", "--noEmit"]);
     assert!(!resolved.args.iter().any(|arg| arg == "build"));
 }
@@ -534,9 +545,47 @@ fn node_lockfile_selects_one_package_manager_deterministically() {
     )
     .expect("resolve node command");
     assert_eq!(
-        res.program, "pnpm",
+        res.program,
+        expected_node_package_manager("pnpm"),
         "pnpm-lock.yaml should win deterministically"
     );
+}
+
+#[test]
+fn node_package_managers_use_platform_executable_names() {
+    for (lockfile, package_manager) in [
+        (None, "npm"),
+        (Some("pnpm-lock.yaml"), "pnpm"),
+        (Some("yarn.lock"), "yarn"),
+        (Some("bun.lock"), "bun"),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        write_node_manifest(
+            dir.path(),
+            serde_json::json!({"check": "node --check index.js"}),
+        );
+        if let Some(lockfile) = lockfile {
+            std::fs::write(dir.path().join(lockfile), "").unwrap();
+        }
+
+        let resolved = project_command(
+            &ctx(),
+            &ProjectCommandRequest {
+                project_path: dir.path().to_string_lossy().into_owned(),
+                action: ProjectAction::Check,
+                target: None,
+                extra_args: vec![],
+                base_dir: None,
+            },
+        )
+        .expect("exact Node check script must resolve");
+
+        assert_eq!(
+            resolved.program,
+            expected_node_package_manager(package_manager),
+            "{package_manager} must resolve to a directly spawnable platform executable"
+        );
+    }
 }
 
 #[test]
@@ -620,7 +669,8 @@ fn project_command_resolves_relative_path_against_base_dir() {
     )
     .expect("resolve via relative path + base_dir");
     assert_eq!(
-        res.program, "pnpm",
+        res.program,
+        expected_node_package_manager("pnpm"),
         "lockfile must be read from the resolved project path, not the CWD"
     );
     assert!(
