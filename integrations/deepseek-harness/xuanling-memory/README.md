@@ -7,17 +7,21 @@ nine-tool proposal, review, recall, archival, and feedback profile while
 retaining every Harness-native tool.
 
 ```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-memory@0.3.1
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-memory@0.3.2
 ```
 
 This command augments DSH's shipped Web profile. Use `--profile headless` for
 the shipped Headless profile. Unknown profile names start with the base bundle
 only and do not provide a runnable Web or Headless application by themselves.
 
-The bundle installs `@xuanling-rs/xuanling-mcp@0.3.1` inside the selected profile. Its
+The bundle installs `@xuanling-rs/xuanling-mcp@0.3.2` inside the selected profile. Its
 schema adapter and JS launcher are resolved from that profile, and the launcher
 verifies the selected native package before startup. No global package or
 install-time binary download is required.
+
+The server opens `~/.xuanling/memory.db` lazily on the first valid Memory call;
+startup, catalog discovery, and malformed Memory input do not create or migrate
+the database.
 
 The bundle-owned lazy wrapper lets the official bridge drain and cache the
 complete nine-tool MCP profile but initially shows the model only
@@ -36,7 +40,7 @@ malformed frame or an unresolved `tools/list`/`tools/call` at clean child exit
 returns a nonzero status; a child ignoring host termination is force-terminated
 after a 500 ms grace.
 
-Use `@xuanling-rs/xuanling-dsh-skills@0.3.1` alongside this bundle for the proposal-first
+Use `@xuanling-rs/xuanling-dsh-skills@0.3.2` alongside this bundle for the proposal-first
 Memory workflow and strict whole-file overwrite policy. Do not combine this
 bundle with another XuanLing tool bundle in the same profile because both
 register the `xuanling-tools` row.

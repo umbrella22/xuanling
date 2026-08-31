@@ -12,7 +12,7 @@ profiles can update this package in place to recover the native tool surface,
 then migrate to the additive package through the conversational installer.
 Do not combine two XuanLing runtime bundles in one profile.
 
-The exact `@xuanling-rs/xuanling-mcp@0.3.1` runtime is installed in the profile
+The exact `@xuanling-rs/xuanling-mcp@0.3.2` runtime is installed in the profile
 and started through its verified JS launcher. No global npm package is used.
 Set `XUANLING_WORKSPACE_ROOT` to the confirmed absolute workspace before
 starting DSH; missing configuration fails startup.

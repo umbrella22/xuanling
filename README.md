@@ -32,7 +32,7 @@ The npm launcher requires Node.js 18.17 or newer and installs the matching
 native binary for the current platform.
 
 ```sh
-npm install --global @xuanling-rs/xuanling-mcp@0.3.1
+npm install --global @xuanling-rs/xuanling-mcp@0.3.2
 xuanling-mcp --version
 ```
 
@@ -45,7 +45,7 @@ An MCP client can pin the same version without a global installation:
       "command": "npx",
       "args": [
         "-y",
-        "@xuanling-rs/xuanling-mcp@0.3.1",
+        "@xuanling-rs/xuanling-mcp@0.3.2",
         "--workspace-root",
         "/absolute/path/to/project",
         "--tool-profile",
@@ -165,8 +165,11 @@ not perform network access for recall.
 
 The default database is `~/.xuanling/memory.db`. Override it with
 `--memory-db <PATH>` and optionally provide `--default-namespace <VALUE>`.
-Memory initialization failure does not disable non-memory tools; memory calls
-return a structured unavailable error instead.
+The stdio server resolves and opens that database only when the first valid
+Memory tool is called; initialize, discovery, non-memory tools, and malformed
+Memory requests do not create or migrate it. Memory initialization failure does
+not disable non-memory tools; memory calls return a structured unavailable
+error instead.
 
 ### Maintenance
 

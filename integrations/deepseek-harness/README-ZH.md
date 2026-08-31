@@ -14,8 +14,8 @@ projection、工作流 Skill 和 overwrite policy 保持在 Rust MCP 合同之�
 
 ```sh
 dsh plugin --profile web add \
-  @xuanling-rs/xuanling-dsh-memory@0.3.1 \
-  @xuanling-rs/xuanling-dsh-skills@0.3.1
+  @xuanling-rs/xuanling-dsh-memory@0.3.2 \
+  @xuanling-rs/xuanling-dsh-skills@0.3.2
 dsh --profile web --dump-config
 dsh web
 ```
@@ -24,7 +24,7 @@ dsh web
 等价替换：当前 DSH 对未知名称只初始化 `@deepseek-ai/dsh-base`，不会自动加入 Web 或
 Headless 应用 bundle。
 
-Memory bundle 会在 profile 内安装精确版本的 `@xuanling-rs/xuanling-mcp@0.3.1` launcher 和原生 optional
+Memory bundle 会在 profile 内安装精确版本的 `@xuanling-rs/xuanling-mcp@0.3.2` launcher 和原生 optional
 dependency；不需要全局 npm package、`npx` 或安装时下载 binary。
 
 推荐组合会增加完整的 Memory v2 九工具生命周期，保留全部 Harness 原生工具，并加载两个按需
@@ -53,7 +53,7 @@ Bundle 表达式在 DSH 启动时解析以下设置：
 
 | 设置 | 默认值 | 作用 |
 | --- | --- | --- |
-| MCP runtime | Profile 内的 `@xuanling-rs/xuanling-mcp@0.3.1` | 经过校验的 JS launcher 与原生 optional dependency |
+| MCP runtime | Profile 内的 `@xuanling-rs/xuanling-mcp@0.3.2` | 经过校验的 JS launcher 与原生 optional dependency |
 | `XUANLING_WORKSPACE_ROOT` | full-tools bundle 必填；Memory-only 不使用 | 显式 XuanLing 文件系统 capability root |
 | Schema adapter | 已安装的 `xuanling-dsh-memory/schema-adapter.mjs` | 为 DSH 投影 discovery schema |
 | Result adapter | 各 bundle 内置的 `mcp-result-adapter.mjs`（memory 由 schema adapter 组合） | 只删除等价的重复文本块 |
@@ -64,8 +64,9 @@ Bundle 表达式在 DSH 启动时解析以下设置：
 Server name 固定为 `xuanling`；修改它会重命名全部模型可见工具。Skills bundle 不需要 binary、
 workspace 或 database 配置，它会从已安装 package 解析 Skill 内容与 policy 代码。
 
-生产 Memory bundle 使用 XuanLing 共享默认数据库 `~/.xuanling/memory.db`。需要隔离存储的 Host
-可以重述 bridge row，并提供显式 `--memory-db` 路径。
+生产 Memory bundle 使用 XuanLing 共享默认数据库 `~/.xuanling/memory.db`。stdio server 只在
+第一次有效 Memory 工具调用时打开它，因此 DSH 启动、catalog 发现和非 Memory 工具不会创建或
+checkpoint 数据库。需要隔离存储的 Host 可以重述 bridge row，并提供显式 `--memory-db` 路径。
 
 ## Lazy 工具投影
 

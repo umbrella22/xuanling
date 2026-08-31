@@ -4722,6 +4722,93 @@ fn memory_unavailable_keeps_main_tools_working_and_diagnosable() {
     );
 }
 
+#[test]
+fn memory_database_opens_only_on_first_memory_call() {
+    // Starting the stdio server must not create, migrate, or checkpoint the
+    // configured database. The first memory operation is the explicit lazy
+    // boundary; unrelated discovery and system tools remain side-effect free.
+    let db_dir = tempfile::tempdir().expect("memory db dir");
+    let db_parent = db_dir.path().join("nested");
+    let db_path = db_parent.join("lazy.db");
+    let mut cmd = Command::new(binary());
+    cmd.stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .arg("--memory-db")
+        .arg(&db_path);
+    let mut peer = Peer::spawn(cmd, Some(db_dir));
+
+    assert!(
+        !db_path.exists(),
+        "fixture must start without a database file"
+    );
+    assert!(!db_parent.exists(), "fixture parent must start absent");
+    let init = peer.initialize();
+    assert_eq!(
+        init["result"]["serverInfo"]["name"],
+        json!("xuanling-mcp"),
+        "initialize must succeed before memory is opened: {init}"
+    );
+    assert!(
+        !db_path.exists(),
+        "initialize/tools discovery must not create --memory-db"
+    );
+    assert!(
+        !db_parent.exists(),
+        "initialize must not create the DB parent"
+    );
+    let _catalog = list_tools(&mut peer);
+    assert!(!db_path.exists(), "tools/list must not create --memory-db");
+    assert!(
+        !db_parent.exists(),
+        "tools/list must not create the DB parent"
+    );
+
+    let system = peer.call("system_info", json!({}));
+    assert_eq!(
+        system["result"]["isError"],
+        json!(false),
+        "non-memory tools must work without opening memory: {system}"
+    );
+    assert!(
+        !db_path.exists(),
+        "non-memory calls must not create --memory-db"
+    );
+    assert!(
+        !db_parent.exists(),
+        "non-memory calls must not create the DB parent"
+    );
+
+    let invalid_memory = peer.call("memory_candidate_list", json!({"namespace": "lazy"}));
+    assert_eq!(
+        invalid_memory["error"]["code"],
+        json!(-32602),
+        "malformed memory input must be rejected before opening the store: {invalid_memory}"
+    );
+    assert!(
+        !db_path.exists(),
+        "malformed memory input must not create --memory-db"
+    );
+    assert!(
+        !db_parent.exists(),
+        "malformed memory input must not create the DB parent"
+    );
+
+    let memory = peer.call(
+        "memory_candidate_list",
+        json!({"namespace": "lazy", "scope": {"type": "global"}}),
+    );
+    assert_eq!(
+        memory["result"]["isError"],
+        json!(false),
+        "the first memory call should open a valid empty store: {memory}"
+    );
+    assert!(
+        db_path.exists(),
+        "the first memory call must create/open --memory-db"
+    );
+}
+
 /// Fetch the catalog `tools` array over an initialized peer.
 fn list_tools(peer: &mut Peer) -> Vec<Value> {
     let mut tools = Vec::new();

@@ -9,6 +9,7 @@
 //! content, file content, stdin/stdout captures or the full environment.
 
 use std::borrow::Cow;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use rmcp::model::{
@@ -18,7 +19,8 @@ use rmcp::model::{
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData as McpError, RoleServer, ServerHandler};
 use sha2::{Digest, Sha256};
-use xuanling_memory::MemoryStore;
+use tokio::sync::OnceCell;
+use xuanling_memory::{MemoryStore, ToolError, ToolErrorCode};
 use xuanling_toolkit::FilesystemScope;
 use xuanling_toolkit::path::PathContext;
 
@@ -37,6 +39,76 @@ const TOOL_CATALOG_PAGE_SIZE: usize = 8;
 /// Cursor prefix bytes taken from the catalog digest. Ninety-six bits keeps
 /// the token compact without treating it as an authorization boundary.
 const TOOL_CURSOR_DIGEST_BYTES: usize = 12;
+
+/// Memory tools are the only operations allowed to cross the lazy-open
+/// boundary. Keeping this list explicit prevents an unknown or unrelated tool
+/// from opening the user's database as a side effect of dispatch.
+/// A process-local, shared lazy memory capability. The `OnceCell` caches both
+/// a successful store and a typed open failure, so concurrent first calls do
+/// not race migrations or repeatedly retry a known-bad database.
+pub(crate) struct LazyMemory {
+    path: Option<PathBuf>,
+    busy_timeout_ms: u32,
+    cell: OnceCell<Result<MemoryStore, ToolError>>,
+}
+
+#[derive(Clone)]
+pub(crate) enum MemoryHandle {
+    None,
+    Ready(MemoryStore),
+    Lazy(Arc<LazyMemory>),
+}
+
+impl MemoryHandle {
+    fn none() -> Self {
+        Self::None
+    }
+
+    fn ready(memory: Option<MemoryStore>) -> Self {
+        memory.map_or(Self::None, Self::Ready)
+    }
+
+    fn lazy(path: Option<PathBuf>, busy_timeout_ms: u32) -> Self {
+        Self::Lazy(Arc::new(LazyMemory {
+            path,
+            busy_timeout_ms,
+            cell: OnceCell::const_new(),
+        }))
+    }
+
+    pub(crate) fn eager(&self) -> Option<&MemoryStore> {
+        match self {
+            Self::Ready(memory) => Some(memory),
+            Self::None | Self::Lazy(_) => None,
+        }
+    }
+
+    #[allow(clippy::result_large_err)]
+    pub(crate) async fn resolve(&self) -> Result<Option<MemoryStore>, ToolError> {
+        match self {
+            Self::None => Ok(None),
+            Self::Ready(memory) => Ok(Some(memory.clone())),
+            Self::Lazy(lazy) => {
+                let path = lazy.path.clone().or_else(xuanling_memory::default_db_path);
+                let busy_timeout_ms = lazy.busy_timeout_ms;
+                let result = lazy
+                    .cell
+                    .get_or_init(|| async move {
+                        let Some(path) = path else {
+                            return Err(ToolError::new(
+                                ToolErrorCode::Unsupported,
+                                "memory.open",
+                                "cannot resolve the default memory DB path (HOME/USERPROFILE); pass an explicit --memory-db",
+                            ));
+                        };
+                        MemoryStore::open(&path, busy_timeout_ms).await
+                    })
+                    .await;
+                result.clone().map(Some)
+            }
+        }
+    }
+}
 
 struct CatalogState {
     tools: Arc<[rmcp::model::Tool]>,
@@ -116,15 +188,14 @@ fn invalid_tool_cursor(reason: &str) -> McpError {
     )
 }
 
-/// The XuanLing MCP server state. Holds an optional memory store (opened in
-/// main from the CLI-supplied `--memory-db`), plus the CLI-supplied path
-/// resolution context (`--base-dir`) and default memory namespace
-/// (`--default-namespace`) that are threaded into every tool invocation.
-/// Tools that don't need memory work with or without it; memory tools return
-/// `unsupported` if absent.
+/// The XuanLing MCP server state. Memory is either an explicitly supplied
+/// eager store (used by embedding callers/tests), unavailable, or a shared
+/// lazy capability configured by the CLI. The stdio entrypoint uses the lazy
+/// form so initialize, discovery, and non-memory calls never open/migrate the
+/// user's database. The remaining fields are threaded into every invocation.
 #[derive(Clone)]
 pub struct XuanlingServer {
-    memory: Option<MemoryStore>,
+    memory: MemoryHandle,
     path_context: PathContext,
     filesystem_scope: FilesystemScope,
     default_namespace: Option<String>,
@@ -140,7 +211,7 @@ impl Default for XuanlingServer {
         let tool_profiles = ToolProfileSelection::default();
         let catalog = CatalogState::for_profiles(&tool_profiles);
         Self {
-            memory: None,
+            memory: MemoryHandle::none(),
             path_context: PathContext::default(),
             filesystem_scope: FilesystemScope::Unrestricted,
             default_namespace: None,
@@ -158,9 +229,29 @@ impl XuanlingServer {
 
     pub fn with_memory(memory: MemoryStore) -> Self {
         Self {
-            memory: Some(memory),
+            memory: MemoryHandle::Ready(memory),
             ..Self::default()
         }
+    }
+
+    /// Build a server whose memory database is opened on the first memory
+    /// tool call. `memory_db=None` defers default-path resolution as well, so
+    /// a missing HOME/USERPROFILE only affects memory calls, not startup.
+    pub fn with_lazy_memory(
+        memory_db: Option<PathBuf>,
+        busy_timeout_ms: u32,
+        path_context: PathContext,
+        filesystem_scope: FilesystemScope,
+        default_namespace: Option<String>,
+        tool_profiles: ToolProfileSelection,
+    ) -> Self {
+        Self::with_memory_handle(
+            MemoryHandle::lazy(memory_db, busy_timeout_ms),
+            path_context,
+            filesystem_scope,
+            default_namespace,
+            tool_profiles,
+        )
     }
 
     /// Build the server with memory plus CLI-supplied path resolution context
@@ -201,6 +292,22 @@ impl XuanlingServer {
         default_namespace: Option<String>,
         tool_profiles: ToolProfileSelection,
     ) -> Self {
+        Self::with_memory_handle(
+            MemoryHandle::ready(memory),
+            path_context,
+            filesystem_scope,
+            default_namespace,
+            tool_profiles,
+        )
+    }
+
+    fn with_memory_handle(
+        memory: MemoryHandle,
+        path_context: PathContext,
+        filesystem_scope: FilesystemScope,
+        default_namespace: Option<String>,
+        tool_profiles: ToolProfileSelection,
+    ) -> Self {
         let catalog = CatalogState::for_profiles(&tool_profiles);
         Self {
             memory,
@@ -222,7 +329,7 @@ impl XuanlingServer {
     }
 
     pub fn memory(&self) -> Option<&MemoryStore> {
-        self.memory.as_ref()
+        self.memory.eager()
     }
 }
 
@@ -341,7 +448,7 @@ impl ServerHandler for XuanlingServer {
             .arguments
             .map(serde_json::Value::Object)
             .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
-        let memory = self.memory.clone();
+        let memory_handle = self.memory.clone();
         let path_context = self.path_context.clone();
         let filesystem_scope = self.filesystem_scope.clone();
         let default_namespace = self.default_namespace.clone();
@@ -368,7 +475,7 @@ impl ServerHandler for XuanlingServer {
                 &name,
                 &arguments,
                 &context,
-                memory.as_ref(),
+                &memory_handle,
                 &path_context,
                 &filesystem_scope,
                 default_namespace.as_deref(),

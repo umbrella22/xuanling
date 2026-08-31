@@ -12,7 +12,7 @@ SQLite memory.
 The launcher requires Node.js 18.17 or newer.
 
 ```sh
-npm install --global @xuanling-rs/xuanling-mcp@0.3.1
+npm install --global @xuanling-rs/xuanling-mcp@0.3.2
 xuanling-mcp --version
 ```
 
@@ -25,7 +25,7 @@ MCP clients can also pin the version with `npx`:
       "command": "npx",
       "args": [
         "-y",
-        "@xuanling-rs/xuanling-mcp@0.3.1",
+        "@xuanling-rs/xuanling-mcp@0.3.2",
         "--workspace-root",
         "/absolute/path/to/project",
         "--tool-profile",

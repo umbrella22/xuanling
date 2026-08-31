@@ -16,8 +16,8 @@ Install the Memory and Skills bundles into DSH's shipped `web` profile:
 
 ```sh
 dsh plugin --profile web add \
-  @xuanling-rs/xuanling-dsh-memory@0.3.1 \
-  @xuanling-rs/xuanling-dsh-skills@0.3.1
+  @xuanling-rs/xuanling-dsh-memory@0.3.2 \
+  @xuanling-rs/xuanling-dsh-skills@0.3.2
 dsh --profile web --dump-config
 dsh web
 ```
@@ -27,7 +27,7 @@ profile. A new arbitrary profile name is not a drop-in replacement: current
 DSH initializes unknown profiles with `@deepseek-ai/dsh-base` only, without a
 Web or Headless application bundle.
 
-The Memory bundle installs the exact `@xuanling-rs/xuanling-mcp@0.3.1` launcher and native
+The Memory bundle installs the exact `@xuanling-rs/xuanling-mcp@0.3.2` launcher and native
 optional dependency inside the profile. No global npm package, `npx`, or
 install-time binary download is used.
 
@@ -62,7 +62,7 @@ Bundle expressions resolve these values when DSH starts:
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| MCP runtime | Profile-local `@xuanling-rs/xuanling-mcp@0.3.1` | Verified JS launcher and native optional dependency |
+| MCP runtime | Profile-local `@xuanling-rs/xuanling-mcp@0.3.2` | Verified JS launcher and native optional dependency |
 | `XUANLING_WORKSPACE_ROOT` | Required for full-tools bundles; unused by Memory-only | Explicit XuanLing filesystem capability root |
 | Schema adapter | Installed `xuanling-dsh-memory/schema-adapter.mjs` | Projects discovery schemas for DSH |
 | Result adapter | Installed bundle-local `mcp-result-adapter.mjs` (memory is composed into the schema adapter) | Removes only duplicate equivalent text blocks |
@@ -75,8 +75,10 @@ tool. The Skills bundle has no binary, workspace, or database setting. It
 resolves Skill content and policy code from its installed package.
 
 The production Memory bundle uses XuanLing's shared default database at
-`~/.xuanling/memory.db`. Hosts that require a separate store can restate the
-bridge row with an explicit `--memory-db` path.
+`~/.xuanling/memory.db`. The stdio server opens it only on the first valid
+Memory tool call, so DSH startup, catalog discovery, and non-memory tools do
+not create or checkpoint the database. Hosts that require a separate store can
+restate the bridge row with an explicit `--memory-db` path.
 
 ## Lazy Tool Projection
 

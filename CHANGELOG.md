@@ -4,6 +4,30 @@ All notable release changes are recorded here. XuanLing uses immutable release
 tags and publishes the launcher, native packages, DeepSeek Harness bundles, and
 ZCode projection from the same source commit.
 
+## 0.3.2 - 2026-08-31
+
+This patch release hardens Memory startup after the `0.3.1` live-host
+acceptance. The generic MCP contract remains `3`, the persisted Memory
+contract remains `2`, and no database migration is required.
+
+### Fixed
+
+- The stdio server now defers default Memory database path resolution and
+  SQLite opening until the first valid Memory tool call. `initialize`,
+  `tools/list`, filesystem/process tools, and malformed Memory requests do not
+  create, migrate, or checkpoint the user's database.
+- Concurrent first Memory calls share one lazy open attempt. Successful stores
+  and typed open failures are cached for the server lifetime, preserving
+  deterministic diagnostics without repeated migrations or retries.
+
+### Upgrade Notes
+
+- `0.3.1` remains immutable. Install the exact `0.3.2` launcher and matching
+  DSH/Skills packages together, then restart the selected host profile.
+- Maintenance commands (`memory export`, `memory import`, and
+  `memory rebuild-index`) remain explicitly eager because opening their target
+  database is the requested operation.
+
 ## 0.3.1 - 2026-08-31
 
 This patch release repairs the DeepSeek Harness integration shipped in `0.3.0`.

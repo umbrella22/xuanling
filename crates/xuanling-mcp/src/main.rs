@@ -8,7 +8,6 @@ use std::path::{Path, PathBuf};
 use clap::Parser;
 use rmcp::ServiceExt;
 use xuanling_mcp::{ToolProfile, ToolProfileSelection, XuanlingServer};
-use xuanling_memory::MemoryStore;
 use xuanling_toolkit::FilesystemScope;
 
 #[derive(Debug, Parser)]
@@ -111,19 +110,23 @@ async fn main() -> anyhow::Result<()> {
         .try_init()
         .ok();
 
-    let memory_db = cli
-        .memory_db
-        .or_else(xuanling_memory::default_db_path)
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "unavailable: cannot resolve the default memory DB path (HOME/USERPROFILE); \
-                 pass an explicit --memory-db"
-            )
-        })?;
+    // Keep the CLI-supplied path unresolved for the stdio server. Opening (and
+    // even creating the parent of) the default database is deferred until a
+    // memory tool is actually called. Maintenance commands remain explicitly
+    // eager because opening their target is the command's requested effect.
+    let memory_db_arg = cli.memory_db;
 
     // Maintenance subcommands complete and exit; without one, the stdio
     // MCP server runs (below).
     if let Some(CliCommand::Memory { command }) = cli.command {
+        let memory_db = memory_db_arg
+            .or_else(xuanling_memory::default_db_path)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "unavailable: cannot resolve the default memory DB path (HOME/USERPROFILE); \
+                     pass an explicit --memory-db"
+                )
+            })?;
         return run_memory_command(command, &memory_db, cli.sqlite_busy_timeout_ms).await;
     }
     let default_namespace = cli.default_namespace;
@@ -158,33 +161,18 @@ async fn main() -> anyhow::Result<()> {
             .map_err(|error| anyhow::anyhow!("--base-dir is outside --workspace-root: {error}"))?;
     }
 
-    // Open the shared memory store. If it fails, the server still starts
-    // (memory tools return a structured "not configured" error) so that fs/
-    // process/project tools remain usable.
-    let server = match MemoryStore::open(&memory_db, cli.sqlite_busy_timeout_ms).await {
-        Ok(store) => {
-            tracing::info!(path = %memory_db.display(), "opened memory store");
-            XuanlingServer::with_capabilities_and_profiles(
-                Some(store),
-                path_context,
-                filesystem_scope,
-                default_namespace,
-                tool_profiles,
-            )
-            .with_compat_lenient_object_params(cli.compat_lenient_object_params)
-        }
-        Err(e) => {
-            tracing::warn!(error = %e, "failed to open memory store; memory tools will be unavailable");
-            XuanlingServer::with_capabilities_and_profiles(
-                None,
-                path_context,
-                filesystem_scope,
-                default_namespace,
-                tool_profiles,
-            )
-            .with_compat_lenient_object_params(cli.compat_lenient_object_params)
-        }
-    };
+    // The stdio server owns a lazy memory capability. A bad or unavailable
+    // database is reported when a memory tool is requested; unrelated tools
+    // remain usable and startup has no durable memory side effect.
+    let server = XuanlingServer::with_lazy_memory(
+        memory_db_arg,
+        cli.sqlite_busy_timeout_ms,
+        path_context,
+        filesystem_scope,
+        default_namespace,
+        tool_profiles,
+    )
+    .with_compat_lenient_object_params(cli.compat_lenient_object_params);
 
     let service = server.serve(rmcp::transport::stdio()).await?;
     let _ = service.waiting().await;

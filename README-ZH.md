@@ -27,7 +27,7 @@ XuanLing MCP 是面向编码 Agent 的跨平台本地 Model Context Protocol
 npm 启动器要求 Node.js 18.17 或更高版本，并为当前平台安装匹配的原生二进制包。
 
 ```sh
-npm install --global @xuanling-rs/xuanling-mcp@0.3.1
+npm install --global @xuanling-rs/xuanling-mcp@0.3.2
 xuanling-mcp --version
 ```
 
@@ -40,7 +40,7 @@ MCP Client 也可以通过 `npx` 固定同一版本，无需全局安装：
       "command": "npx",
       "args": [
         "-y",
-        "@xuanling-rs/xuanling-mcp@0.3.1",
+        "@xuanling-rs/xuanling-mcp@0.3.2",
         "--workspace-root",
         "/absolute/path/to/project",
         "--tool-profile",
@@ -146,8 +146,9 @@ Scope 使用严格 tagged value 表示 `global`、`project` 和 `workspace`。�
 可见性过滤和稳定重排。默认发行版不要求或下载 embedding 模型，召回过程也不会访问网络。
 
 默认数据库路径为 `~/.xuanling/memory.db`。使用 `--memory-db <PATH>` 可以覆盖该路径，
-`--default-namespace <VALUE>` 可以设置默认 namespace。Memory 初始化失败不会禁用其他工具；
-Memory 调用会返回结构化 unavailable 错误。
+`--default-namespace <VALUE>` 可以设置默认 namespace。stdio server 只在第一次有效 Memory 工具
+调用时解析并打开数据库；initialize、发现、非 Memory 工具和格式错误的 Memory 请求不会创建或
+迁移数据库。Memory 初始化失败不会禁用其他工具；Memory 调用会返回结构化 unavailable 错误。
 
 ### 维护命令
 

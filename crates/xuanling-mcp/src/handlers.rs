@@ -12,6 +12,7 @@
 //!   (`is_error=true`, caller-visible structured payload).
 //! - protocol failure (unknown tool, malformed args) -> `Err(McpError)`.
 
+use crate::server::MemoryHandle;
 use rmcp::model::{CallToolResult, ContentBlock, JsonObject, Tool, ToolAnnotations};
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData as McpError, RoleServer};
@@ -1120,11 +1121,11 @@ fn parse_timeout_hint(
 /// The cancellation token on `rmcp_ctx.ct` is threaded into the toolkit
 /// `InvocationContext` so long-running tools (`process_run`, `project_run`,
 /// recursive fs traversals) observe MCP `notifications/cancelled`.
-pub async fn dispatch(
+pub(crate) async fn dispatch(
     name: &str,
     arguments: &Value,
     rmcp_ctx: &RequestContext<RoleServer>,
-    memory: Option<&xuanling_memory::MemoryStore>,
+    memory: &MemoryHandle,
     path_context: &PathContext,
     filesystem_scope: &FilesystemScope,
     default_namespace: Option<&str>,
@@ -1485,48 +1486,48 @@ pub async fn dispatch(
         )),
         // --- memory v2 (proposal/review; errors serialize directly, C-08) ---
         "memory_candidate_create" => {
-            let store = require_memory(memory)?;
             let req = decode(&ns_args)?;
+            let store = require_memory(memory).await?;
             run_memory_async(async { store.candidate_create(&req).await }).await
         }
         "memory_candidate_replace" => {
-            let store = require_memory(memory)?;
             let req = decode(&ns_args)?;
+            let store = require_memory(memory).await?;
             run_memory_async(async { store.candidate_replace(&req).await }).await
         }
         "memory_candidate_archive" => {
-            let store = require_memory(memory)?;
             let req = decode(&ns_args)?;
+            let store = require_memory(memory).await?;
             run_memory_async(async { store.candidate_archive(&req).await }).await
         }
         "memory_candidate_get" => {
-            let store = require_memory(memory)?;
             let req = decode(&ns_args)?;
+            let store = require_memory(memory).await?;
             run_memory_async(async { store.candidate_get(&req).await }).await
         }
         "memory_candidate_list" => {
-            let store = require_memory(memory)?;
             let req = decode(&ns_args)?;
+            let store = require_memory(memory).await?;
             run_memory_async(async { store.candidate_list(&req).await }).await
         }
         "memory_review" => {
-            let store = require_memory(memory)?;
             let req = decode(&ns_args)?;
+            let store = require_memory(memory).await?;
             run_memory_async(async { store.review(&req).await }).await
         }
         "memory_get" => {
-            let store = require_memory(memory)?;
             let req = decode(&ns_args)?;
+            let store = require_memory(memory).await?;
             run_memory_async(async { store.record_get(&req).await }).await
         }
         "memory_search" => {
-            let store = require_memory(memory)?;
             let req = decode(&ns_args)?;
+            let store = require_memory(memory).await?;
             run_memory_async(async { store.search_v2(&req).await }).await
         }
         "memory_feedback" => {
-            let store = require_memory(memory)?;
             let req = decode(arguments)?;
+            let store = require_memory(memory).await?;
             run_memory_async(async { store.feedback_event(&req).await }).await
         }
         other => Err(McpError::invalid_params(
@@ -1584,15 +1585,21 @@ where
 }
 
 /// Return the memory store, or a tool-level error if none was configured.
-fn require_memory(
-    memory: Option<&xuanling_memory::MemoryStore>,
-) -> Result<&xuanling_memory::MemoryStore, McpError> {
-    memory.ok_or_else(|| {
-        McpError::internal_error(
+async fn require_memory(memory: &MemoryHandle) -> Result<tk_memory::MemoryStore, McpError> {
+    match memory.resolve().await {
+        Ok(Some(store)) => Ok(store),
+        Ok(None) => Err(McpError::internal_error(
             "memory store not configured (start with --memory-db)".to_string(),
             None,
-        )
-    })
+        )),
+        Err(error) => {
+            let payload = serde_json::to_value(&error).unwrap_or(Value::Null);
+            Err(McpError::internal_error(
+                format!("memory store unavailable: {error}"),
+                Some(payload),
+            ))
+        }
+    }
 }
 
 /// Run a toolkit operation and map its result to a structured `CallToolResult`.

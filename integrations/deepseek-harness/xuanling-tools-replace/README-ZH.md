@@ -9,7 +9,7 @@ XuanLing catalog 以 `mcp__xuanling__*` 名称按需增加。
 新安装应使用 `@xuanling-rs/xuanling-dsh-tools`。现有 profile 可以原地更新本包以恢复原生工具面，
 再通过问答式安装器迁移到 additive package。一个 profile 内不得组合两个 XuanLing runtime bundle。
 
-精确版本的 `@xuanling-rs/xuanling-mcp@0.3.1` runtime 会安装在 profile 内，并通过带校验的 JS
+精确版本的 `@xuanling-rs/xuanling-mcp@0.3.2` runtime 会安装在 profile 内，并通过带校验的 JS
 launcher 启动；不会使用全局 npm package。启动 DSH 前必须把 `XUANLING_WORKSPACE_ROOT` 设置为
 已确认的绝对 workspace，缺失时启动失败。
 
