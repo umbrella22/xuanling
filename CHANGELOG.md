@@ -4,6 +4,34 @@ All notable release changes are recorded here. XuanLing uses immutable release
 tags and publishes the launcher, native packages, DeepSeek Harness bundles, and
 ZCode projection from the same source commit.
 
+## 0.3.1 - 2026-08-31
+
+This patch release repairs the DeepSeek Harness integration shipped in `0.3.0`.
+The generic MCP contract remains `3`, the persisted Memory contract remains `2`,
+and no database migration is required.
+
+### Fixed
+
+- All three DSH runtime bundles now mount a bundle-owned lazy projection around
+  the official MCP bridge. A fresh model turn initially sees only
+  `mcp_catalog__xuanling`; an exact catalog activation then registers one
+  `mcp__xuanling__<raw>` tool without dropping DSH-native tools.
+- Lazy activations survive official-bridge generation replacement, preserve
+  every frozen XuanLing tool name without normalization or truncation, and are
+  explicitly removed during bundle teardown.
+- The SQLite FTS5/trigram capability probe now uses the connection-local
+  `temp` schema. Opening an existing Memory v2 database for a read-only runtime
+  smoke no longer creates and drops a table in the durable main database.
+
+### Upgrade Notes
+
+- `0.3.0` remains immutable but did not satisfy the required DSH lazy-runtime
+  acceptance. DSH users should install the exact `0.3.1` runtime and Skills
+  packages together, restart the selected profile, then discover and activate
+  the required XuanLing tool through `mcp_catalog__xuanling`.
+- ZCode and direct MCP users should upgrade the launcher and matching native
+  package together so every host resolves the same repaired source commit.
+
 ## 0.3.0 - 2026-08-31
 
 This is a breaking generic MCP contract upgrade. The generic contract version

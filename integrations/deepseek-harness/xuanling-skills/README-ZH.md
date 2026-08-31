@@ -6,7 +6,7 @@
 它不注册 MCP server，也不依赖 `@xuanling-rs/xuanling-mcp`。
 
 ```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-skills@0.3.0
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-skills@0.3.1
 ```
 
 该命令会扩展 DSH 内置的 Web profile。内置 Headless profile 应使用 `--profile headless`。

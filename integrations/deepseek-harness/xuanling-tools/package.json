@@ -1,18 +1,19 @@
 {
   "name": "@xuanling-rs/xuanling-dsh-tools",
-  "version": "0.3.0",
-  "description": "DeepSeek Harness bundle: mount the XuanLing MCP server (xuanling-mcp binary) as native mcp__xuanling__* tools through the official @deepseek-ai/dsh-mcp-client bridge. Additive variant: built-in tools stay enabled.",
+  "version": "0.3.1",
+  "description": "DeepSeek Harness bundle: lazily mount XuanLing through a bundle-owned wrapper around the official MCP bridge. Additive variant: built-in tools stay enabled.",
   "license": "MIT",
   "private": false,
   "dependencies": {
     "@deepseek-ai/dsh-mcp-client": "^0.1.0-rc.5",
-    "@xuanling-rs/xuanling-mcp": "0.3.0"
+    "@xuanling-rs/xuanling-mcp": "0.3.1"
   },
   "files": [
     "LICENSE",
     "README.md",
     "README-ZH.md",
     "cordis.patch.yml",
+    "lazy-mcp-client.mjs",
     "mcp-result-adapter.mjs"
   ],
   "dsh": {

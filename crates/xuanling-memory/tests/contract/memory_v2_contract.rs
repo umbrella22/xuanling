@@ -550,6 +550,25 @@ async fn legacy_v1_database_is_refused_without_modification() {
 }
 
 #[tokio::test]
+async fn reopening_existing_v2_database_does_not_modify_main_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("existing-v2.db");
+
+    let store = MemoryStore::open(&db, 5000).await.unwrap();
+    store.pool().close().await;
+    let before = std::fs::read(&db).unwrap();
+
+    let reopened = MemoryStore::open(&db, 5000).await.unwrap();
+    reopened.pool().close().await;
+    let after = std::fs::read(&db).unwrap();
+
+    assert!(
+        before == after,
+        "opening an existing v2 database for read-only tools must not rewrite durable bytes"
+    );
+}
+
+#[tokio::test]
 async fn one_and_two_character_cjk_are_recalled() {
     let store = MemoryStore::open_in_memory().await.unwrap();
     store

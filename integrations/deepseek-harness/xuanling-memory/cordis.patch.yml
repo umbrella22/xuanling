@@ -2,7 +2,9 @@
 #
 # DSH already has deeply integrated filesystem, shell, web, LSP, and
 # orchestration tools. This additive mount exposes only XuanLing's canonical
-# Memory v2 workflow while DSH lazy projection starts from one catalog control.
+# Memory v2 workflow while the bundle-owned lazy projection starts from one
+# catalog control. The official bridge still owns transport, result projection,
+# reconnect, and generation rollback; this wrapper owns model visibility.
 # The complete cached memory profile is intentional: proposals, review,
 # replacement, archival, feedback, and read/search remain one coherent API.
 #
@@ -13,10 +15,9 @@
 
 - insert:
     - id: xuanling-memory
-      name: '@deepseek-ai/dsh-mcp-client'
+      name: '@xuanling-rs/xuanling-dsh-memory/lazy-mcp-client.mjs'
       config:
         serverName: xuanling
-        toolExposure: lazy
         transport: stdio
         command: !!js process.execPath
         args:

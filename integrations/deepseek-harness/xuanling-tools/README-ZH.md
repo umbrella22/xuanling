@@ -6,19 +6,19 @@
 原生工具，并以 `mcp__xuanling__` 前缀增加 XuanLing 工具。
 
 ```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-tools@0.3.0
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-tools@0.3.1
 ```
 
 该命令会扩展 DSH 内置的 Web profile。内置 Headless profile 应使用 `--profile headless`。
 未知 profile 名称只包含 base bundle，本身不会提供可运行的 Web 或 Headless 应用。
 
-精确版本的 `@xuanling-rs/xuanling-mcp@0.3.0` runtime 会安装在 profile 内，并通过带校验的 JS launcher
+精确版本的 `@xuanling-rs/xuanling-mcp@0.3.1` runtime 会安装在 profile 内，并通过带校验的 JS launcher
 启动；不需要也不会使用全局 npm package。启动 DSH 前必须把 `XUANLING_WORKSPACE_ROOT` 设置为
 已确认的绝对 workspace；缺失时 bundle 会启动失败，DSH 进程工作目录不会被当成用户授权。
 
-Bridge 会缓存 MCP 分页中的全部定义，但起初只暴露 `mcp_catalog__xuanling`。应按名称或描述检索并
-激活精确 raw name；选中的定义会在下一次模型请求中作为 `mcp__xuanling__*` 工具出现。不要预先
-激活完整目录。
+Bundle 自带的 lazy wrapper 会让官方 bridge 缓存 MCP 分页中的全部定义，但起初只暴露
+`mcp_catalog__xuanling`。应按名称或描述检索，并在每次调用中激活一个精确 raw name；选中的定义
+会在下一次模型请求中作为 `mcp__xuanling__*` 工具出现。不要预先激活完整目录。
 
 该 bundle 的 result adapter 会保留完整 Native 文本投影，只删除与 `structuredContent` 完全重复的
 意外文本块。

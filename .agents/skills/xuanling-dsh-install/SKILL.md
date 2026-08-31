@@ -239,10 +239,14 @@ Use a second single-select `ask_user_question` with stable id
    historical package, but now preserves all DSH-native filesystem rows. For a
    new full-catalog install, recommend `full-additive` instead.
 
-Every runtime bundle sets `toolExposure: lazy`. The bridge still fetches and
-caches every MCP `tools/list` page, but the initial model surface contains
-`mcp_catalog__xuanling` rather than all `mcp__xuanling__*` definitions. This is
-a Host projection policy, not a server profile or `list_changed` behavior.
+Every runtime bundle mounts its own `lazy-mcp-client.mjs` wrapper around the
+official bridge. The official bridge still fetches and caches every MCP
+`tools/list` page, while the wrapper initially registers only
+`mcp_catalog__xuanling` and registers one exact `mcp__xuanling__*` definition
+after each activation. Do not replace this with an unverified
+`toolExposure: lazy` option: released DSH bridge schemas do not own that field.
+This is a bundle-owned Host projection policy, not a server profile or
+`list_changed` behavior.
 
 The three runtime packages use distinct row ids (`xuanling-memory`,
 `xuanling-tools`, and `xuanling-tools-replace`) so inventory can report an

@@ -12,8 +12,9 @@ import { readWorkspaceVersion } from "../scripts/shared.mjs";
 // DeepSeek Harness bundle contract (integrations/deepseek-harness):
 //   - all bundles declare the dsh bundle manifest and pin the npm package
 //     version;
-//   - the patch layers mount @deepseek-ai/dsh-mcp-client with the xuanling
-//     server identity and the documented binary/capability resolution;
+//   - the patch layers mount the bundle-owned lazy wrapper around
+//     @deepseek-ai/dsh-mcp-client with the xuanling server identity and the
+//     documented binary/capability resolution;
 //   - the recommended memory bundle exposes the complete canonical memory
 //     profile without replacing any built-in harness tool;
 //   - the replace bundle disables exactly the three built-in filesystem tool
@@ -64,7 +65,6 @@ function readJson(relative) {
  *         name: '<pkg>'
  *         config:                    (indent 6 keys)
  *           serverName: xuanling
- *           toolExposure: lazy
  *           transport: stdio
  *           command: !!js <expr>
  *           args:
@@ -232,11 +232,19 @@ test("bundle manifests declare the dsh bundle and pin the npm version", () => {
           "README.md",
           "README-ZH.md",
           "cordis.patch.yml",
+          "lazy-mcp-client.mjs",
           "mcp-result-adapter.mjs",
           "schema-adapter.mjs",
           "schema-projection.mjs",
         ]
-      : ["LICENSE", "README.md", "README-ZH.md", "cordis.patch.yml", "mcp-result-adapter.mjs"];
+      : [
+          "LICENSE",
+          "README.md",
+          "README-ZH.md",
+          "cordis.patch.yml",
+          "lazy-mcp-client.mjs",
+          "mcp-result-adapter.mjs",
+        ];
     assert.deepEqual(manifest.files, expectedFiles, `${bundle}: ships the declared runtime files`);
   }
   const additive = readJson(path.join("xuanling-tools", "package.json"));
@@ -318,7 +326,7 @@ test("profile-local launcher resolution works with no global command on PATH", (
   }
 });
 
-test("runtime patches use unique row ids with one documented server identity", () => {
+test("runtime patches use unique row ids with one bundle-owned lazy bridge", () => {
   const expectedIds = new Map([
     ["xuanling-memory", "xuanling-memory"],
     ["xuanling-tools", "xuanling-tools"],
@@ -327,17 +335,190 @@ test("runtime patches use unique row ids with one documented server identity", (
   const seenIds = new Set();
   for (const bundle of bundles) {
     const row = mountRow(readText(path.join(bundle, "cordis.patch.yml")));
+    const manifest = readJson(path.join(bundle, "package.json"));
     assert.equal(row.id, expectedIds.get(bundle), `${bundle}: stable package-specific row id`);
     assert.ok(!seenIds.has(row.id), `${bundle}: row id must be unique`);
     seenIds.add(row.id);
-    assert.equal(row.name, "@deepseek-ai/dsh-mcp-client", `${bundle}: bridge package`);
+    assert.equal(
+      row.name,
+      `${manifest.name}/lazy-mcp-client.mjs`,
+      `${bundle}: bundle-owned wrapper provides the lazy host projection`,
+    );
     const config = row.config ?? {};
     assert.equal(config.serverName, "xuanling", `${bundle}: serverName fixes the public names`);
-    assert.equal(config.toolExposure, "lazy", `${bundle}: host projects exact activations lazily`);
+    assert.equal(config.toolExposure, undefined, `${bundle}: no unsupported host option is emitted`);
     assert.equal(config.transport, "stdio", `${bundle}: stdio transport`);
     assert.ok(!config.args.includes("--memory-db"), `${bundle}: production uses shared memory DB`);
     assert.equal(config.toolCallTimeoutMs, 120000, `${bundle}: per-call timeout`);
   }
+});
+
+test("the frozen XuanLing catalog is lossless through DSH public tool naming", () => {
+  const catalog = JSON.parse(readFileSync(
+    path.join(repoRoot, "crates", "xuanling-mcp", "tests", "snapshots", "tools-list.json"),
+    "utf8",
+  ));
+  assert.equal(catalog.length, 42, "the frozen contract owns the complete catalog");
+  for (const tool of catalog) {
+    assert.match(tool.name, /^[A-Za-z0-9_-]+$/, `${tool.name}: no bridge normalization`);
+    assert.ok(
+      `mcp__xuanling__${tool.name}`.length <= 64,
+      `${tool.name}: no bridge truncation or identity hash`,
+    );
+  }
+});
+
+test("bundle-owned lazy bridge registers only catalog until exact activation", async () => {
+  const lazySources = bundles.map((bundle) =>
+    readText(path.join(bundle, "lazy-mcp-client.mjs"))
+  );
+  assert.ok(
+    lazySources.every((source) => source === lazySources[0]),
+    "all runtime bundles ship the same reviewed lazy bridge",
+  );
+  assert.doesNotMatch(lazySources[0], /toolExposure/);
+
+  const bridge = await import(
+    `${pathToFileURL(path.join(integrationRoot, "xuanling-tools", "lazy-mcp-client.mjs")).href}?contract`
+  );
+  const registered = new Map();
+  const effects = [];
+  const ctx = {
+    root: {},
+    logger: {
+      error() {},
+      info() {},
+      warn() {},
+    },
+    tools: {
+      register(definition) {
+        assert.equal(typeof definition?.name, "string");
+        assert.ok(!registered.has(definition.name), `duplicate real registration: ${definition.name}`);
+        registered.set(definition.name, definition);
+        let disposed = false;
+        return () => {
+          if (disposed) return;
+          disposed = true;
+          if (registered.get(definition.name) === definition) registered.delete(definition.name);
+        };
+      },
+    },
+    effect(setup, name) {
+      const dispose = setup();
+      if (typeof dispose === "function") effects.push({ name, dispose });
+      return dispose;
+    },
+  };
+  const definitions = [
+    {
+      name: "mcp__xuanling__system_info",
+      description: "Return deterministic runtime and contract identity.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+      output: { schema: {}, render: () => [] },
+      async execute() {
+        return { xuanling_version: "contract-test" };
+      },
+    },
+    {
+      name: "mcp__xuanling__fs_read_text",
+      description: "Read text from the explicit workspace root.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+      output: { schema: {}, render: () => [] },
+      async execute() {
+        return { content: "unused" };
+      },
+    },
+  ];
+  let replaceBridgeGeneration;
+  const applyOfficialBridge = async (projectedCtx, config) => {
+    assert.equal(config.serverName, "xuanling");
+    assert.equal(config.failOnStartupError, true, "lazy wrapper fails closed on startup discovery");
+    projectedCtx.effect(() => {
+      let disposers = [];
+      replaceBridgeGeneration = (nextDefinitions) => {
+        for (const dispose of disposers.reverse()) dispose();
+        disposers = nextDefinitions.map((definition) => projectedCtx.tools.register(definition));
+      };
+      replaceBridgeGeneration(definitions);
+      return () => {
+        for (const dispose of disposers.reverse()) dispose();
+      };
+    }, "fake.official-bridge-generation");
+  };
+
+  await bridge.applyWithOfficialBridge(
+    ctx,
+    { serverName: "xuanling", transport: "stdio", command: "unused", args: [] },
+    applyOfficialBridge,
+  );
+  assert.deepEqual([...registered.keys()], ["mcp_catalog__xuanling"]);
+
+  const catalog = registered.get("mcp_catalog__xuanling");
+  const search = await catalog.execute({ query: "SYSTEM" });
+  assert.equal(search.total_tools, 2);
+  assert.equal(search.matched_tools, 1);
+  assert.deepEqual(search.active_tools, []);
+  assert.equal(search.matches[0].raw_name, "system_info");
+  assert.equal(search.matches[0].active, false);
+
+  const activation = await catalog.execute({ query: "system", activate: "system_info" });
+  assert.equal(activation.activated, "system_info");
+  assert.deepEqual(activation.active_tools, ["system_info"]);
+  assert.deepEqual(
+    [...registered.keys()].sort(),
+    ["mcp__xuanling__system_info", "mcp_catalog__xuanling"],
+  );
+  assert.deepEqual(
+    await registered.get("mcp__xuanling__system_info").execute({}),
+    { xuanling_version: "contract-test" },
+  );
+
+  await catalog.execute({ query: "system", activate: "system_info" });
+  assert.equal(registered.size, 2, "repeated activation is idempotent");
+  await assert.rejects(
+    catalog.execute({ query: "system", activate: " system_info" }),
+    /\[XUANLING_CATALOG_UNKNOWN_TOOL\]/,
+    "raw tool identity is exact and is never trimmed or sanitized",
+  );
+  await assert.rejects(
+    catalog.execute({ query: "system", activate: "SYSTEM_INFO" }),
+    /\[XUANLING_CATALOG_UNKNOWN_TOOL\]/,
+    "raw tool identity remains case-sensitive",
+  );
+
+  replaceBridgeGeneration([
+    {
+      ...definitions[0],
+      async execute() {
+        return { xuanling_version: "contract-test-resynced" };
+      },
+    },
+  ]);
+  assert.deepEqual(
+    [...registered.keys()].sort(),
+    ["mcp__xuanling__system_info", "mcp_catalog__xuanling"],
+    "an exact activation survives the official bridge generation swap",
+  );
+  assert.deepEqual(
+    await registered.get("mcp__xuanling__system_info").execute({}),
+    { xuanling_version: "contract-test-resynced" },
+    "the active registration points at the new generation",
+  );
+  const postResyncSearch = await catalog.execute({ query: "system" });
+  assert.equal(postResyncSearch.total_tools, 1);
+  assert.equal(postResyncSearch.matches[0].active, true);
+
+  const activeCleanup = effects.find(({ name }) => name === "xuanling.lazy-mcp-active-tools");
+  assert.ok(activeCleanup, "wrapper owns an active-tool lifecycle effect");
+  activeCleanup.dispose();
+  assert.deepEqual(
+    [...registered.keys()],
+    ["mcp_catalog__xuanling"],
+    "wrapper cleanup does not depend on official bridge teardown ordering",
+  );
+
+  for (const { dispose } of effects.reverse()) await dispose();
+  assert.equal(registered.size, 0, "plugin disposal removes catalog and activated definitions");
 });
 
 test("full-tool bundles require an explicit workspace root and memory has no fs root argv", () => {

@@ -3,8 +3,10 @@
 # Releases before this boundary remediation disabled the complete native
 # tool-fs row, which also removed read_image and the host observation/editor
 # integration. The package now preserves every native row and mounts the same
-# lazy XuanLing full catalog as the additive bundle. Existing profiles therefore
-# recover native filesystem behavior on update without a destructive migration.
+# lazy XuanLing full catalog as the additive bundle. A bundle-owned wrapper
+# captures the official bridge generation and controls exact activation.
+# Existing profiles recover native filesystem behavior without a destructive
+# migration.
 #
 # New installs should use @xuanling-rs/xuanling-dsh-tools. This row keeps a
 # package-specific id so inventory can detect two XuanLing runtimes explicitly;
@@ -12,10 +14,9 @@
 
 - insert:
     - id: xuanling-tools-replace
-      name: '@deepseek-ai/dsh-mcp-client'
+      name: '@xuanling-rs/xuanling-dsh-tools-replace/lazy-mcp-client.mjs'
       config:
         serverName: xuanling
-        toolExposure: lazy
         transport: stdio
         command: !!js process.execPath
         args:

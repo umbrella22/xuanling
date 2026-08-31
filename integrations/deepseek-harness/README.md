@@ -2,12 +2,13 @@
 
 English | [Simplified Chinese](README-ZH.md)
 
-This integration mounts `xuanling-mcp` through DeepSeek Harness's official
-`@deepseek-ai/dsh-mcp-client` bridge. The bridge caches the complete XuanLing
-catalog but initially exposes only `mcp_catalog__xuanling`; exact activations
-then appear as native Harness tools named `mcp__xuanling__<tool>`. Host-specific
-lazy projection, schema projection, workflow Skills, and overwrite policy
-remain outside the Rust MCP contract.
+This integration mounts `xuanling-mcp` through a bundle-owned lazy wrapper
+around DeepSeek Harness's official `@deepseek-ai/dsh-mcp-client` bridge. The
+official bridge caches the complete XuanLing catalog, while the wrapper
+initially registers only `mcp_catalog__xuanling`; exact activations then appear
+as native Harness tools named `mcp__xuanling__<tool>`. Host-specific lazy
+projection, schema projection, workflow Skills, and overwrite policy remain
+outside the Rust MCP contract.
 
 ## Recommended Setup
 
@@ -15,8 +16,8 @@ Install the Memory and Skills bundles into DSH's shipped `web` profile:
 
 ```sh
 dsh plugin --profile web add \
-  @xuanling-rs/xuanling-dsh-memory@0.3.0 \
-  @xuanling-rs/xuanling-dsh-skills@0.3.0
+  @xuanling-rs/xuanling-dsh-memory@0.3.1 \
+  @xuanling-rs/xuanling-dsh-skills@0.3.1
 dsh --profile web --dump-config
 dsh web
 ```
@@ -26,7 +27,7 @@ profile. A new arbitrary profile name is not a drop-in replacement: current
 DSH initializes unknown profiles with `@deepseek-ai/dsh-base` only, without a
 Web or Headless application bundle.
 
-The Memory bundle installs the exact `@xuanling-rs/xuanling-mcp@0.3.0` launcher and native
+The Memory bundle installs the exact `@xuanling-rs/xuanling-mcp@0.3.1` launcher and native
 optional dependency inside the profile. No global npm package, `npx`, or
 install-time binary download is used.
 
@@ -61,12 +62,12 @@ Bundle expressions resolve these values when DSH starts:
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| MCP runtime | Profile-local `@xuanling-rs/xuanling-mcp@0.3.0` | Verified JS launcher and native optional dependency |
+| MCP runtime | Profile-local `@xuanling-rs/xuanling-mcp@0.3.1` | Verified JS launcher and native optional dependency |
 | `XUANLING_WORKSPACE_ROOT` | Required for full-tools bundles; unused by Memory-only | Explicit XuanLing filesystem capability root |
 | Schema adapter | Installed `xuanling-dsh-memory/schema-adapter.mjs` | Projects discovery schemas for DSH |
 | Result adapter | Installed bundle-local `mcp-result-adapter.mjs` (memory is composed into the schema adapter) | Removes only duplicate equivalent text blocks |
 | MCP tool profile | `memory` in the recommended bundle | Server-side discovery and dispatch selection |
-| DSH tool exposure | `lazy` | Complete Host cache with one initial `mcp_catalog__xuanling` search/activation tool |
+| DSH tool exposure | Bundle-owned lazy wrapper | Complete Host cache with one initial `mcp_catalog__xuanling` search/activation tool |
 | Tool-call timeout | 120 seconds | Budget applied by the Harness MCP bridge |
 
 The server name is fixed to `xuanling`; changing it renames every model-facing
@@ -82,12 +83,13 @@ bridge row with an explicit `--memory-db` path.
 Every bundle drains standard MCP `tools/list` pagination into a complete Host
 cache. It does not stop at the first page and does not ask the server to mutate
 its static catalog. The model initially receives one compact
-`mcp_catalog__xuanling` schema. That Host-native control searches raw names and
-descriptions and activates up to 16 exact raw names as ordinary
-`mcp__xuanling__*` tools for later model requests.
+`mcp_catalog__xuanling` schema. That bundle-owned Host control searches raw
+names and descriptions and optionally activates one exact raw name per call as
+an ordinary `mcp__xuanling__*` tool for later model requests.
 
-Activation is all-or-nothing per call. Reconnect and `tools/list_changed`
-refresh the complete cache and re-project activated names that still exist.
+Exact identity matching is case-sensitive and never trims or rewrites the raw
+name. Reconnect and `tools/list_changed` refresh the complete cache and
+re-project activated names that still exist.
 The activation set belongs to the live DSH plugin instance: sessions sharing
 that instance share activations, while HMR, plugin disposal, or Host restart
 clears them. MCP pagination only bounds transport; DSH lazy projection is the
@@ -97,7 +99,8 @@ layer that reduces initial model schema cost.
 
 DeepSeek Harness supports a narrower JSON Schema vocabulary than the canonical
 MCP catalog. The recommended Memory bundle places `schema-adapter.mjs` between
-the official bridge and `xuanling-mcp`:
+the official bridge and `xuanling-mcp`; the lazy wrapper captures only the
+already-projected definitions:
 
 1. Only `tools/list` input schemas are projected.
 2. Local `$ref` values are resolved and `$defs` are inlined.

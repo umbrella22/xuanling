@@ -2,11 +2,11 @@
 
 [English](README.md) | 简体中文
 
-该集成通过 DeepSeek Harness 官方 `@deepseek-ai/dsh-mcp-client` bridge 挂载
-`xuanling-mcp`。Bridge 会缓存完整 XuanLing 目录，但起初只暴露
-`mcp_catalog__xuanling`；精确激活随后会以 `mcp__xuanling__<tool>` 命名的 Harness 原生工具
-出现。Host 专用 lazy projection、schema projection、工作流 Skill 和 overwrite policy 保持在
-Rust MCP 合同之外。
+该集成通过 bundle 自带的 lazy wrapper 包装 DeepSeek Harness 官方
+`@deepseek-ai/dsh-mcp-client` bridge 后挂载 `xuanling-mcp`。官方 bridge 缓存完整 XuanLing
+目录，wrapper 起初只注册 `mcp_catalog__xuanling`；精确激活随后会以
+`mcp__xuanling__<tool>` 命名的 Harness 原生工具出现。Host 专用 lazy projection、schema
+projection、工作流 Skill 和 overwrite policy 保持在 Rust MCP 合同之外。
 
 ## 推荐配置
 
@@ -14,8 +14,8 @@ Rust MCP 合同之外。
 
 ```sh
 dsh plugin --profile web add \
-  @xuanling-rs/xuanling-dsh-memory@0.3.0 \
-  @xuanling-rs/xuanling-dsh-skills@0.3.0
+  @xuanling-rs/xuanling-dsh-memory@0.3.1 \
+  @xuanling-rs/xuanling-dsh-skills@0.3.1
 dsh --profile web --dump-config
 dsh web
 ```
@@ -24,7 +24,7 @@ dsh web
 等价替换：当前 DSH 对未知名称只初始化 `@deepseek-ai/dsh-base`，不会自动加入 Web 或
 Headless 应用 bundle。
 
-Memory bundle 会在 profile 内安装精确版本的 `@xuanling-rs/xuanling-mcp@0.3.0` launcher 和原生 optional
+Memory bundle 会在 profile 内安装精确版本的 `@xuanling-rs/xuanling-mcp@0.3.1` launcher 和原生 optional
 dependency；不需要全局 npm package、`npx` 或安装时下载 binary。
 
 推荐组合会增加完整的 Memory v2 九工具生命周期，保留全部 Harness 原生工具，并加载两个按需
@@ -53,12 +53,12 @@ Bundle 表达式在 DSH 启动时解析以下设置：
 
 | 设置 | 默认值 | 作用 |
 | --- | --- | --- |
-| MCP runtime | Profile 内的 `@xuanling-rs/xuanling-mcp@0.3.0` | 经过校验的 JS launcher 与原生 optional dependency |
+| MCP runtime | Profile 内的 `@xuanling-rs/xuanling-mcp@0.3.1` | 经过校验的 JS launcher 与原生 optional dependency |
 | `XUANLING_WORKSPACE_ROOT` | full-tools bundle 必填；Memory-only 不使用 | 显式 XuanLing 文件系统 capability root |
 | Schema adapter | 已安装的 `xuanling-dsh-memory/schema-adapter.mjs` | 为 DSH 投影 discovery schema |
 | Result adapter | 各 bundle 内置的 `mcp-result-adapter.mjs`（memory 由 schema adapter 组合） | 只删除等价的重复文本块 |
 | MCP tool profile | 推荐 bundle 固定为 `memory` | 服务端工具发现与调用分发选择 |
-| DSH tool exposure | `lazy` | 完整 Host cache，并只初始暴露一个 `mcp_catalog__xuanling` 检索／激活工具 |
+| DSH tool exposure | bundle 自带 lazy wrapper | 完整 Host cache，并只初始暴露一个 `mcp_catalog__xuanling` 检索／激活工具 |
 | Tool-call timeout | 120 秒 | Harness MCP bridge 的调用预算 |
 
 Server name 固定为 `xuanling`；修改它会重命名全部模型可见工具。Skills bundle 不需要 binary、
@@ -70,19 +70,21 @@ workspace 或 database 配置，它会从已安装 package 解析 Skill 内容�
 ## Lazy 工具投影
 
 每个 bundle 都会遍历标准 MCP `tools/list` 分页并形成完整 Host cache。它不会停在第一页，也不会
-要求服务器改变静态目录。模型起初只接收一个紧凑的 `mcp_catalog__xuanling` schema。这个 Host
-原生控制工具会检索 raw name 与描述，并且单次最多把 16 个精确 raw name 激活为后续模型请求中的
-常规 `mcp__xuanling__*` 工具。
+要求服务器改变静态目录。模型起初只接收一个紧凑的 `mcp_catalog__xuanling` schema。这个 bundle
+自带的 Host 控制工具会检索 raw name 与描述，并可在每次调用中把一个精确 raw name 激活为后续
+模型请求中的常规 `mcp__xuanling__*` 工具。
 
-每次激活均为 all-or-nothing。重连与 `tools/list_changed` 会刷新完整 cache，并重新投影仍然存在的
-已激活名称。激活集合属于存活 DSH 插件实例：共享该实例的会话会共享激活结果，HMR、插件 dispose
+raw name 身份匹配区分大小写，不会 trim、改写或猜测。重连与 `tools/list_changed` 会刷新完整
+cache，并重新投影仍然存在的已激活名称。激活集合属于存活 DSH 插件实例：共享该实例的会话会
+共享激活结果，HMR、插件 dispose
 或 Host 重启会清空激活集合。MCP 分页只限制 transport；真正降低模型初始 schema 成本的是 DSH
 lazy projection。
 
 ## Schema Projection
 
 DeepSeek Harness 支持的 JSON Schema 词汇比 canonical MCP catalog 更窄。推荐 Memory bundle
-将 `schema-adapter.mjs` 放在官方 bridge 与 `xuanling-mcp` 之间：
+将 `schema-adapter.mjs` 放在官方 bridge 与 `xuanling-mcp` 之间；lazy wrapper 只捕获已经完成
+schema projection 的定义：
 
 1. 只投影 `tools/list` 的 input schema。
 2. 解析本地 `$ref` 并内联 `$defs`。

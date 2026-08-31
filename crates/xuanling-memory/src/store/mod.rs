@@ -131,10 +131,14 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), ToolError> {
 /// return `unsupported` with a diagnostic; callers must stop rather than
 /// silently degrade to unicode61-only recall.
 async fn probe_trigram(pool: &SqlitePool) -> Result<(), ToolError> {
+    let mut connection = pool
+        .acquire()
+        .await
+        .map_err(|e| map_sqlx(&e, "memory.open"))?;
     let res: Result<(i64,), _> = sqlx::query_as(
         "SELECT 1 FROM pragma_compile_options() WHERE compile_options = 'ENABLE_FTS5'",
     )
-    .fetch_one(pool)
+    .fetch_one(&mut *connection)
     .await;
     if res.is_err() {
         return Err(ToolError::new(
@@ -143,15 +147,15 @@ async fn probe_trigram(pool: &SqlitePool) -> Result<(), ToolError> {
             "bundled SQLite lacks FTS5; cannot create recall indexes",
         ));
     }
-    // Try creating+dropping a throwaway trigram FTS table to confirm the
-    // tokenizer is available at runtime.
+    // Keep the runtime capability probe in one connection's temp schema so
+    // opening an existing Memory database never rewrites durable user bytes.
     let probe = sqlx::query(
-        "CREATE VIRTUAL TABLE IF NOT EXISTS __trigram_probe USING fts5(x, tokenize='trigram')",
+        "CREATE VIRTUAL TABLE IF NOT EXISTS temp.__trigram_probe USING fts5(x, tokenize='trigram')",
     )
-    .execute(pool)
+    .execute(&mut *connection)
     .await;
-    let _ = sqlx::query("DROP TABLE IF EXISTS __trigram_probe")
-        .execute(pool)
+    let _ = sqlx::query("DROP TABLE IF EXISTS temp.__trigram_probe")
+        .execute(&mut *connection)
         .await;
     if probe.is_err() {
         return Err(ToolError::new(
