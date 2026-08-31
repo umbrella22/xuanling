@@ -7,17 +7,18 @@ keeps all Harness-native tools enabled and adds XuanLing tools under the
 `mcp__xuanling__` prefix.
 
 ```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-tools@0.2.10
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-tools@0.3.0
 ```
 
 This command augments DSH's shipped Web profile. Use `--profile headless` for
 the shipped Headless profile. Unknown profile names start with the base bundle
 only and do not provide a runnable Web or Headless application by themselves.
 
-The exact `@xuanling-rs/xuanling-mcp@0.2.10` runtime is installed in the profile and started
+The exact `@xuanling-rs/xuanling-mcp@0.3.0` runtime is installed in the profile and started
 through its verified JS launcher. A global npm package is neither required nor
-used. Set `XUANLING_WORKSPACE_ROOT` only when the filesystem capability root
-must differ from the DSH working directory.
+used. Set `XUANLING_WORKSPACE_ROOT` to the confirmed absolute workspace before
+starting DSH; the bundle fails startup when it is absent and never treats the
+DSH process working directory as user authorization.
 
 The bridge caches every paginated MCP definition but initially exposes only
 `mcp_catalog__xuanling`. Search by name or description and activate exact raw

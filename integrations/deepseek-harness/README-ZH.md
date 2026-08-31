@@ -14,8 +14,8 @@ Rust MCP 合同之外。
 
 ```sh
 dsh plugin --profile web add \
-  @xuanling-rs/xuanling-dsh-memory@0.2.10 \
-  @xuanling-rs/xuanling-dsh-skills@0.2.10
+  @xuanling-rs/xuanling-dsh-memory@0.3.0 \
+  @xuanling-rs/xuanling-dsh-skills@0.3.0
 dsh --profile web --dump-config
 dsh web
 ```
@@ -24,7 +24,7 @@ dsh web
 等价替换：当前 DSH 对未知名称只初始化 `@deepseek-ai/dsh-base`，不会自动加入 Web 或
 Headless 应用 bundle。
 
-Memory bundle 会在 profile 内安装精确版本的 `@xuanling-rs/xuanling-mcp@0.2.10` launcher 和原生 optional
+Memory bundle 会在 profile 内安装精确版本的 `@xuanling-rs/xuanling-mcp@0.3.0` launcher 和原生 optional
 dependency；不需要全局 npm package、`npx` 或安装时下载 binary。
 
 推荐组合会增加完整的 Memory v2 九工具生命周期，保留全部 Harness 原生工具，并加载两个按需
@@ -38,14 +38,14 @@ dependency；不需要全局 npm package、`npx` 或安装时下载 binary。
 | `@xuanling-rs/xuanling-dsh-memory` | 缓存带 DSH schema projection 的完整 Memory v2 九工具 profile，并按精确名称 lazy 激活；保留全部 Harness 原生工具 | 推荐日常配置 |
 | `@xuanling-rs/xuanling-dsh-skills` | 增加隔离的文件与 Memory 工作流 Skill 以及严格 overwrite policy；不挂载 MCP 工具 | 与任意 XuanLing 工具 bundle 组合 |
 | `@xuanling-rs/xuanling-dsh-tools` | 缓存完整 XuanLing catalog，按精确名称投影，并保留 Harness 原生工具 | 使用 Artifact、Project、Filesystem、Process 与 Advanced 工具 |
-| `@xuanling-rs/xuanling-dsh-tools-replace` | 缓存完整 catalog，按精确名称投影，并停用三个模型可见的原生文件系统工具行 | 受控完整目录替换 |
+| `@xuanling-rs/xuanling-dsh-tools-replace` | 恢复原生工具行并按需增加完整 catalog 的兼容 alias | 将历史 replacement profile 迁移到 additive bundle |
 
 Memory bundle 会暴露完整生命周期。Search、get、candidate create/replace/archive、review 与
 feedback 共同构成一个合同；只暴露两个只读工具会向模型隐藏必要的状态转换。
 
-Replace bundle 仍保留 shell、web、LSP、审批、后台任务、PTY 与编排集成。替换 Harness 原生
-文件工具后，其 read-before-edit observation guard 和专用 UI card 会消失；XuanLing 提供
-SHA-256 前置条件和严格 patch，但 Host 体验并不相同。
+历史 Replace bundle 现在会保留全部 Harness 原生工具行，包括 `read_image`、read-before-edit
+observation guard 和专用 UI card；它只作为迁移兼容 alias，新安装完整 catalog 使用 additive
+bundle。shell、web、LSP、审批、后台任务、PTY 与编排仍是独立 Host 能力。
 
 ## 运行配置
 
@@ -53,8 +53,8 @@ Bundle 表达式在 DSH 启动时解析以下设置：
 
 | 设置 | 默认值 | 作用 |
 | --- | --- | --- |
-| MCP runtime | Profile 内的 `@xuanling-rs/xuanling-mcp@0.2.10` | 经过校验的 JS launcher 与原生 optional dependency |
-| `XUANLING_WORKSPACE_ROOT` | DSH 进程工作目录 | XuanLing 文件系统 capability root |
+| MCP runtime | Profile 内的 `@xuanling-rs/xuanling-mcp@0.3.0` | 经过校验的 JS launcher 与原生 optional dependency |
+| `XUANLING_WORKSPACE_ROOT` | full-tools bundle 必填；Memory-only 不使用 | 显式 XuanLing 文件系统 capability root |
 | Schema adapter | 已安装的 `xuanling-dsh-memory/schema-adapter.mjs` | 为 DSH 投影 discovery schema |
 | Result adapter | 各 bundle 内置的 `mcp-result-adapter.mjs`（memory 由 schema adapter 组合） | 只删除等价的重复文本块 |
 | MCP tool profile | 推荐 bundle 固定为 `memory` | 服务端工具发现与调用分发选择 |
@@ -115,6 +115,12 @@ Adapter 只接受子进程 stdout 中的 JSON object。malformed stdout、非 ob
   Memory；跨项目共享事实进入 XuanLing。显式 L1 指针只在任务开始或主题切换时触发一次 scoped
   pull，而非每轮检索。`memory_search` 返回完整 active record，不是轻量 manifest。所有新
   candidate 保持 pending，只有用户显式指定 proposal 后才调用 `memory_review`。
+
+对于通用 MCP v3 合同，文件工作流把省略 `output` 解释为 65,536 byte 有界请求，使用绝对行号
+读取和 `known_sha256` 条件重读；在 DSH 原生 XuanLing diff 投影得到独立验证前始终保留
+`include_diff: true`。SHA 只证明并发版本和完整性，不能替代 diff 的编辑语义验证。
+`project_run(check)` 会采用项目中精确同名脚本，绝不替换成 build；进程仍默认使用最小环境，
+启动失败会给出不泄露环境值的 `inherit_env: true` 修复提示。
 
 严格 overwrite policy 会拒绝缺少非空 `expected_sha256` 的
 `mcp__xuanling__fs_write_text` overwrite 请求。Create mode 与携带 hash 的 overwrite 会原样

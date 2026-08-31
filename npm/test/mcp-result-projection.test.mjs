@@ -765,6 +765,40 @@ test("ZCode adapter changes only tools/call results on the JSONL boundary", asyn
   });
 });
 
+test("ZCode adapter forwards v3 request selectors without synthesizing host policy", async () => {
+  const fixture = `import readline from "node:readline";
+const lines = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+for await (const line of lines) {
+  const frame = JSON.parse(line);
+  process.stdout.write(JSON.stringify({
+    jsonrpc: "2.0",
+    id: frame.id,
+    result: {
+      content: [{ type: "text", text: "captured" }],
+      structuredContent: { received_arguments: frame.params.arguments },
+    },
+  }) + "\\n");
+}
+`;
+  const argumentsValue = {
+    path: "src/example.ts",
+    old: "before",
+    new: "after",
+    include_diff: true,
+  };
+  const run = await runAdapterFixture(zcodeAdapter, fixture, [{
+    jsonrpc: "2.0",
+    id: 73,
+    method: "tools/call",
+    params: { name: "fs_edit", arguments: argumentsValue },
+  }]);
+  assert.deepEqual(run.exit, { code: 0, signal: null });
+  assert.equal(run.stderr, "");
+  const response = JSON.parse(run.stdout.trim());
+  assert.deepEqual(response.result.structuredContent.received_arguments, argumentsValue);
+  assert.equal(Object.hasOwn(response.result.structuredContent.received_arguments, "output"), false);
+});
+
 test("DSH adapter keeps one complete model projection and structured value", async () => {
   const responses = await runAdapter(dshAdapter, [
     { type: "text", text: structuredText },

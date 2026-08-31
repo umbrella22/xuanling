@@ -629,6 +629,14 @@ pub struct FsEditRequest {
     /// Register a reversible ChangeSet so the apply can be rolled back (§8.1).
     #[serde(default)]
     pub reversible: bool,
+    /// Include the unified-diff response projection. Defaults on until a host
+    /// proves an equivalent native diff surface.
+    #[serde(default = "default_include_diff")]
+    pub include_diff: bool,
+}
+
+fn default_include_diff() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
@@ -737,10 +745,12 @@ pub fn fs_edit(ctx: &InvocationContext, req: &FsEditRequest) -> Result<FsEditRes
     };
     let updated_bytes = updated.into_bytes();
     let after_sha256 = sha256_hex(&updated_bytes);
-    let diff = Some(make_unified_diff(
-        original_str,
-        std::str::from_utf8(&updated_bytes).unwrap_or(""),
-    ));
+    let diff = req.include_diff.then(|| {
+        make_unified_diff(
+            original_str,
+            std::str::from_utf8(&updated_bytes).unwrap_or(""),
+        )
+    });
 
     if req.dry_run {
         // NO write.

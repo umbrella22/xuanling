@@ -12,7 +12,7 @@
 # structured value.
 
 - insert:
-    - id: xuanling-tools
+    - id: xuanling-memory
       name: '@deepseek-ai/dsh-mcp-client'
       config:
         serverName: xuanling
@@ -25,8 +25,6 @@
           - !!js process.execPath
           - '--'
           - !!js process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@xuanling-rs/xuanling-mcp/bin/xuanling-mcp.js')
-          - '--workspace-root'
-          - !!js process.env.XUANLING_WORKSPACE_ROOT ?? process.cwd()
           - '--tool-profile'
           - 'memory'
         toolCallTimeoutMs: 120000

@@ -23,6 +23,334 @@ fn ctx(base: &str) -> InvocationContext {
     InvocationContext::new(PathContext::new(PathBuf::from(base)))
 }
 
+fn strip_numbered_projection(display: &str) -> String {
+    display
+        .split_inclusive('\n')
+        .map(|segment| {
+            segment
+                .split_once('\t')
+                .unwrap_or_else(|| panic!("numbered segment lacks a tab prefix: {segment:?}"))
+                .1
+        })
+        .collect()
+}
+
+#[test]
+fn read_text_numbered_matches_cat_n_with_absolute_lines() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("numbered.txt");
+    std::fs::write(&path, "alpha\n你好\nomega").unwrap();
+    let request: FsReadTextRequest = serde_json::from_value(serde_json::json!({
+        "path": path,
+        "format": "numbered"
+    }))
+    .expect("v3 accepts the numbered format selector");
+
+    let result = fs::read_text(&ctx("."), &request).expect("numbered read");
+    let value = serde_json::to_value(result).unwrap();
+    assert_eq!(
+        value["content"],
+        serde_json::json!("     1\talpha\n     2\t你好\n     3\tomega")
+    );
+    assert_eq!(value["total_lines"], serde_json::json!(3));
+}
+
+#[test]
+fn numbered_resume_offsets_stay_in_raw_source_byte_space() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("numbered-window.txt");
+    let body = "alpha\n你好世界 and a long continuation\nomega\n";
+    std::fs::write(&path, body).unwrap();
+    let budget = 18_u64;
+    let mut resume = serde_json::Value::Null;
+    let mut reassembled = String::new();
+
+    for guard in 0..100 {
+        let mut request = serde_json::json!({
+            "path": path,
+            "format": "numbered",
+            "max_bytes": budget
+        });
+        if !resume.is_null() {
+            request["resume"] = resume.clone();
+        }
+        let request: FsReadTextRequest =
+            serde_json::from_value(request).expect("v3 numbered bounded request must decode");
+        let result = fs::read_text(&ctx("."), &request).expect("numbered bounded read");
+        let value = serde_json::to_value(result).unwrap();
+        let display = value["content"].as_str().expect("numbered content");
+        assert!(
+            display.len() as u64 <= budget,
+            "rendered bytes must obey the model-visible budget: {display:?}"
+        );
+        let raw = strip_numbered_projection(display);
+        assert_eq!(
+            value["returned_source_bytes"],
+            serde_json::json!(raw.len() as u64)
+        );
+        reassembled.push_str(&raw);
+
+        if value["truncated"] == serde_json::json!(false) {
+            assert_eq!(reassembled, body);
+            return;
+        }
+        resume = value["next_resume"].clone();
+        assert_eq!(
+            resume["offset_bytes"],
+            serde_json::json!(reassembled.len() as u64),
+            "resume offset is raw source bytes, not rendered bytes"
+        );
+        assert!(guard < 99, "resume chain did not terminate");
+    }
+    unreachable!("loop returns after the terminal window")
+}
+
+#[test]
+fn numbered_line_range_resume_uses_absolute_source_offsets_and_lines() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("numbered-range.txt");
+    let body = "zero\nalpha\n你好世界\nomega\n";
+    let selected = "alpha\n你好世界\n";
+    std::fs::write(&path, body).unwrap();
+    let range_start = "zero\n".len() as u64;
+    let range_end = range_start + selected.len() as u64;
+    let mut resume = serde_json::Value::Null;
+    let mut reassembled = String::new();
+    let mut displayed_lines = Vec::new();
+
+    for guard in 0..100 {
+        let mut request = serde_json::json!({
+            "path": path,
+            "start_line": 2,
+            "end_line": 3,
+            "format": "numbered",
+            "max_bytes": 15
+        });
+        if !resume.is_null() {
+            request["resume"] = resume.clone();
+        }
+        let request: FsReadTextRequest =
+            serde_json::from_value(request).expect("numbered line-range request must decode");
+        let value = serde_json::to_value(
+            fs::read_text(&ctx("."), &request).expect("numbered line-range read"),
+        )
+        .unwrap();
+        let display = value["content"].as_str().expect("numbered content");
+        displayed_lines.push(display[..6].trim().parse::<u64>().unwrap());
+        let raw = strip_numbered_projection(display);
+        reassembled.push_str(&raw);
+
+        assert_eq!(value["range_start_bytes"], serde_json::json!(range_start));
+        assert_eq!(value["range_end_bytes"], serde_json::json!(range_end));
+        assert_eq!(value["start_line"], serde_json::json!(2));
+        assert_eq!(value["end_line"], serde_json::json!(3));
+
+        if value["truncated"] == serde_json::json!(false) {
+            assert_eq!(reassembled, selected);
+            assert_eq!(displayed_lines.first(), Some(&2));
+            assert!(displayed_lines.contains(&3));
+            return;
+        }
+        resume = value["next_resume"].clone();
+        assert_eq!(
+            resume["offset_bytes"],
+            serde_json::json!(range_start + reassembled.len() as u64),
+            "line-range resume offset must stay absolute in the whole-file byte space"
+        );
+        assert_eq!(resume["line_range"]["start_line"], serde_json::json!(2));
+        assert_eq!(resume["line_range"]["end_line"], serde_json::json!(3));
+        assert!(guard < 99, "line-range resume chain did not terminate");
+    }
+    unreachable!("loop returns after the terminal window")
+}
+
+#[test]
+fn conditional_text_read_returns_metadata_without_content() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("conditional.txt");
+    let body = "first\nsecond\n";
+    std::fs::write(&path, body).unwrap();
+    let sha256 = fs::sha256_hex(body.as_bytes());
+    let request: FsReadTextRequest = serde_json::from_value(serde_json::json!({
+        "path": path,
+        "known_sha256": sha256
+    }))
+    .expect("v3 accepts known_sha256 for text");
+
+    let value = serde_json::to_value(fs::read_text(&ctx("."), &request).unwrap()).unwrap();
+    assert_eq!(value["not_modified"], serde_json::json!(true));
+    assert_eq!(value["sha256"], serde_json::json!(sha256));
+    assert_eq!(value["total_lines"], serde_json::json!(2));
+    assert!(
+        value.get("content").is_none(),
+        "an unchanged conditional read must not repeat content: {value}"
+    );
+}
+
+#[test]
+fn conditional_byte_read_returns_metadata_without_base64() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("conditional.bin");
+    let body = b"\x00\x01\x02xuanling\xff";
+    std::fs::write(&path, body).unwrap();
+    let sha256 = fs::sha256_hex(body);
+    let request: FsReadBytesRequest = serde_json::from_value(serde_json::json!({
+        "path": path,
+        "known_sha256": sha256
+    }))
+    .expect("v3 accepts known_sha256 for bytes");
+
+    let value = serde_json::to_value(fs::read_bytes(&ctx("."), &request).unwrap()).unwrap();
+    assert_eq!(value["not_modified"], serde_json::json!(true));
+    assert_eq!(value["sha256"], serde_json::json!(sha256));
+    assert_eq!(value["total_bytes"], serde_json::json!(body.len()));
+    assert!(
+        value.get("base64").is_none(),
+        "an unchanged conditional read must not repeat base64: {value}"
+    );
+}
+
+#[test]
+fn conditional_hash_miss_returns_new_body_and_hash() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("changed.txt");
+    let old_sha = fs::sha256_hex(b"old\n");
+    std::fs::write(&path, "new\n").unwrap();
+    let request: FsReadTextRequest = serde_json::from_value(serde_json::json!({
+        "path": path,
+        "known_sha256": old_sha
+    }))
+    .expect("v3 accepts known_sha256");
+
+    let value = serde_json::to_value(fs::read_text(&ctx("."), &request).unwrap()).unwrap();
+    assert_eq!(value["not_modified"], serde_json::json!(false));
+    assert_eq!(value["content"], serde_json::json!("new\n"));
+    assert_eq!(value["sha256"], serde_json::json!(fs::sha256_hex(b"new\n")));
+}
+
+#[test]
+fn conditional_byte_hash_miss_returns_new_body_and_hash() {
+    use base64::Engine;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("changed.bin");
+    let old_sha = fs::sha256_hex(b"old");
+    let new_body = b"new\0bytes";
+    std::fs::write(&path, new_body).unwrap();
+    let request: FsReadBytesRequest = serde_json::from_value(serde_json::json!({
+        "path": path,
+        "known_sha256": old_sha
+    }))
+    .expect("v3 accepts known_sha256 for bytes");
+
+    let value = serde_json::to_value(fs::read_bytes(&ctx("."), &request).unwrap()).unwrap();
+    assert_eq!(value["not_modified"], serde_json::json!(false));
+    assert_eq!(value["sha256"], serde_json::json!(fs::sha256_hex(new_body)));
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(value["base64"].as_str().expect("changed byte body"))
+        .unwrap();
+    assert_eq!(decoded, new_body);
+}
+
+#[test]
+fn conditional_reads_validate_sha_and_report_empty_file_metadata() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("empty");
+    std::fs::write(&path, []).unwrap();
+
+    for read_bytes in [false, true] {
+        let invalid = if read_bytes {
+            let request: FsReadBytesRequest = serde_json::from_value(serde_json::json!({
+                "path": path,
+                "known_sha256": "not-a-sha"
+            }))
+            .unwrap();
+            fs::read_bytes(&ctx("."), &request).unwrap_err()
+        } else {
+            let request: FsReadTextRequest = serde_json::from_value(serde_json::json!({
+                "path": path,
+                "known_sha256": "not-a-sha"
+            }))
+            .unwrap();
+            fs::read_text(&ctx("."), &request).unwrap_err()
+        };
+        assert_eq!(invalid.code, ToolErrorCode::InvalidInput);
+        assert_eq!(
+            invalid.details["reason"].as_str(),
+            Some("known_sha256_invalid")
+        );
+    }
+
+    let empty_sha = fs::sha256_hex(&[]);
+    let text_request: FsReadTextRequest = serde_json::from_value(serde_json::json!({
+        "path": path,
+        "known_sha256": empty_sha
+    }))
+    .unwrap();
+    let text = serde_json::to_value(fs::read_text(&ctx("."), &text_request).unwrap()).unwrap();
+    assert_eq!(text["not_modified"], serde_json::json!(true));
+    assert_eq!(text["total_lines"], serde_json::json!(0));
+    assert_eq!(text["total_bytes"], serde_json::json!(0));
+    assert!(text.get("content").is_none());
+
+    let bytes_request: FsReadBytesRequest = serde_json::from_value(serde_json::json!({
+        "path": path,
+        "known_sha256": empty_sha
+    }))
+    .unwrap();
+    let bytes = serde_json::to_value(fs::read_bytes(&ctx("."), &bytes_request).unwrap()).unwrap();
+    assert_eq!(bytes["not_modified"], serde_json::json!(true));
+    assert_eq!(bytes["total_bytes"], serde_json::json!(0));
+    assert!(bytes.get("base64").is_none());
+}
+
+#[test]
+fn edit_can_omit_diff_without_losing_integrity_facts() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("edit-no-diff.txt");
+    std::fs::write(&path, "before\n").unwrap();
+    let request: FsEditRequest = serde_json::from_value(serde_json::json!({
+        "path": path,
+        "old": "before",
+        "new": "after",
+        "include_diff": false
+    }))
+    .expect("v3 accepts include_diff");
+
+    let value = serde_json::to_value(fs::fs_edit(&ctx("."), &request).unwrap()).unwrap();
+    assert!(
+        value.get("diff").is_none(),
+        "diff=false must omit wire diff"
+    );
+    assert_eq!(value["replacements"], serde_json::json!(1));
+    assert!(value["before_sha256"].as_str().is_some());
+    assert!(value["after_sha256"].as_str().is_some());
+    assert_eq!(std::fs::read_to_string(path).unwrap(), "after\n");
+}
+
+#[test]
+fn edit_diff_projection_defaults_to_present() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("edit-default-diff.txt");
+    std::fs::write(&path, "before\n").unwrap();
+    let request: FsEditRequest = serde_json::from_value(serde_json::json!({
+        "path": path,
+        "old": "before",
+        "new": "after",
+        "dry_run": true
+    }))
+    .expect("omitted include_diff must decode to the compatibility default");
+
+    let result = fs::fs_edit(&ctx("."), &request).unwrap();
+    assert!(
+        result
+            .diff
+            .as_deref()
+            .is_some_and(|diff| diff.contains("+after"))
+    );
+    assert_eq!(std::fs::read_to_string(path).unwrap(), "before\n");
+}
+
 fn ctx_cancel(base: &str, cancel: ManualCancellation) -> InvocationContext {
     InvocationContext::new(PathContext::new(PathBuf::from(base)))
         .with_cancellation(Arc::new(cancel))
@@ -40,12 +368,15 @@ fn read_text_large_fixture_is_not_silently_truncated() {
         start_line: None,
         end_line: None,
         include_sha256: false,
+        known_sha256: None,
+        format: fs::TextReadFormat::Raw,
         max_bytes: None,
         resume: None,
     };
     let res = fs::read_text(&ctx("."), &req).expect("read_text");
     assert_eq!(
-        res.content, body,
+        res.content,
+        Some(body),
         "full content must be returned, no truncation"
     );
     assert_eq!(res.total_lines, 10_000);
@@ -64,12 +395,13 @@ fn read_bytes_large_fixture_is_not_silently_truncated() {
         offset: None,
         length: None,
         include_sha256: false,
+        known_sha256: None,
         resume: None,
     };
     let res = fs::read_bytes(&ctx("."), &req).expect("read_bytes");
     use base64::Engine;
     let decoded = base64::engine::general_purpose::STANDARD
-        .decode(&res.base64)
+        .decode(res.base64.as_deref().expect("byte body"))
         .unwrap();
     assert_eq!(decoded, body, "full bytes must be returned, no truncation");
     assert_eq!(res.total_bytes, 5000);
@@ -390,6 +722,8 @@ fn crlf_and_lf_report_stable_newline_style() {
             start_line: None,
             end_line: None,
             include_sha256: false,
+            known_sha256: None,
+            format: fs::TextReadFormat::Raw,
             max_bytes: None,
             resume: None,
         },
@@ -404,6 +738,8 @@ fn crlf_and_lf_report_stable_newline_style() {
             start_line: None,
             end_line: None,
             include_sha256: false,
+            known_sha256: None,
+            format: fs::TextReadFormat::Raw,
             max_bytes: None,
             resume: None,
         },
@@ -425,6 +761,8 @@ fn text_budget_smaller_than_next_utf8_scalar_is_typed_error() {
             start_line: None,
             end_line: None,
             include_sha256: false,
+            known_sha256: None,
+            format: fs::TextReadFormat::Raw,
             max_bytes: Some(1),
             resume: None,
         },
@@ -461,6 +799,8 @@ fn text_resume_offset_inside_utf8_scalar_is_invalid_input() {
             start_line: None,
             end_line: None,
             include_sha256: false,
+            known_sha256: None,
+            format: fs::TextReadFormat::Raw,
             max_bytes: Some(4),
             resume: Some(fs::TextResume {
                 offset_bytes: 2,
@@ -499,6 +839,8 @@ fn stale_text_resume_conflict_precedes_new_file_utf8_errors() {
             start_line: None,
             end_line: None,
             include_sha256: false,
+            known_sha256: None,
+            format: fs::TextReadFormat::Raw,
             max_bytes: Some(2),
             resume: Some(fs::TextResume {
                 offset_bytes: 1,
@@ -529,12 +871,14 @@ fn zero_byte_text_and_binary_windows_are_metadata_only() {
             start_line: None,
             end_line: None,
             include_sha256: false,
+            known_sha256: None,
+            format: fs::TextReadFormat::Raw,
             max_bytes: Some(0),
             resume: None,
         },
     )
     .expect("text metadata");
-    assert_eq!(text.content, "");
+    assert_eq!(text.content.as_deref(), Some(""));
     assert_eq!(text.returned_bytes, Some(0));
     assert!(!text.truncated);
     assert!(text.next_resume.is_none());
@@ -547,11 +891,12 @@ fn zero_byte_text_and_binary_windows_are_metadata_only() {
             offset: None,
             length: Some(0),
             include_sha256: false,
+            known_sha256: None,
             resume: None,
         },
     )
     .expect("byte metadata");
-    assert_eq!(bytes.base64, "");
+    assert_eq!(bytes.base64.as_deref(), Some(""));
     assert_eq!(bytes.length, 0);
     assert!(!bytes.truncated);
     assert!(bytes.next_resume.is_none());
@@ -576,6 +921,8 @@ fn crlf_line_range_windows_reassemble_exact_selected_bytes() {
                 start_line: Some(2),
                 end_line: Some(3),
                 include_sha256: false,
+                known_sha256: None,
+                format: fs::TextReadFormat::Raw,
                 max_bytes: Some(5),
                 resume: resume.clone(),
             },
@@ -584,7 +931,7 @@ fn crlf_line_range_windows_reassemble_exact_selected_bytes() {
         assert_eq!(result.newline_style, "crlf");
         assert_eq!(result.start_line, Some(2));
         assert_eq!(result.end_line, Some(3));
-        reassembled.push_str(&result.content);
+        reassembled.push_str(result.content.as_deref().expect("line-range content"));
         if result.truncated {
             let next = result.next_resume.expect("truncated range has resume");
             assert_eq!(
@@ -622,12 +969,14 @@ fn empty_and_past_eof_line_ranges_return_empty_without_panicking() {
                 start_line: Some(start),
                 end_line: None,
                 include_sha256: false,
+                known_sha256: None,
+                format: fs::TextReadFormat::Raw,
                 max_bytes: Some(8),
                 resume: None,
             },
         )
         .expect("empty range");
-        assert_eq!(result.content, "");
+        assert_eq!(result.content.as_deref(), Some(""));
         assert_eq!(result.start_line, Some(start));
         assert_eq!(result.end_line, Some(expected_end));
         assert_eq!(result.range_start_bytes, Some(expected_offset));
@@ -1129,6 +1478,7 @@ fn read_bytes_offset_plus_length_does_not_overflow() {
             offset: Some(1),
             length: Some(u64::MAX),
             include_sha256: false,
+            known_sha256: None,
             resume: None,
         },
     )
@@ -1138,7 +1488,7 @@ fn read_bytes_offset_plus_length_does_not_overflow() {
     assert_eq!(res.offset, 1);
     use base64::Engine;
     let decoded = base64::engine::general_purpose::STANDARD
-        .decode(&res.base64)
+        .decode(res.base64.as_deref().expect("byte body"))
         .unwrap();
     assert_eq!(decoded, b"ello");
 }
@@ -1388,6 +1738,7 @@ fn single_line_edit_emits_replayable_local_hunk() {
             expected_sha256: None,
             dry_run: true,
             reversible: false,
+            include_diff: true,
         },
     )
     .expect("dry-run edit preview");
@@ -1851,6 +2202,7 @@ fn rollback_terminal_states_reject_a_second_rollback() {
             expected_sha256: None,
             dry_run: false,
             reversible: true,
+            include_diff: true,
         },
     )
     .expect("reversible edit");
@@ -1880,6 +2232,7 @@ fn rollback_terminal_states_reject_a_second_rollback() {
             expected_sha256: None,
             dry_run: false,
             reversible: true,
+            include_diff: true,
         },
     )
     .expect("reversible edit");
@@ -1921,6 +2274,7 @@ fn rollback_restore_io_failure_keeps_change_retryable() {
             expected_sha256: None,
             dry_run: false,
             reversible: true,
+            include_diff: true,
         },
     )
     .expect("reversible edit");

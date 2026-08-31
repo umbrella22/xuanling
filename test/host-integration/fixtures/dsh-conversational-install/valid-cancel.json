@@ -80,6 +80,10 @@
         "profile": "web",
         "preset": "recommended",
         "resolved_version": "0.2.4",
+        "mode": "install",
+        "from_version": null,
+        "to_version": "0.2.4",
+        "release_notes": "CHANGELOG.md#024",
         "changes_required": true,
         "remove": [],
         "add": [

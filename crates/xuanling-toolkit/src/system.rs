@@ -74,7 +74,7 @@ pub fn system_info() -> SystemInfoResult {
 
     SystemInfoResult {
         xuanling_version: env!("CARGO_PKG_VERSION").to_string(),
-        mcp_contract_version: "2".to_string(),
+        mcp_contract_version: "3".to_string(),
         family: family.to_string(),
         os: os.to_string(),
         arch: arch.to_string(),

@@ -41,8 +41,8 @@ use xuanling_toolkit::process::{
     ArtifactReadResult, ProcessPipelineRequest, ProcessPipelineResult, ProcessRunRequest,
     ProcessRunResult, ProcessStreamMode, ProcessWhichRequest, ProcessWhichResult, ProjectAction,
     ProjectCommandRequest, ProjectCommandResult, ProjectDetectRequest, ProjectDetectResult,
-    ProjectRunRequest, SessionCloseRequest, SessionCloseResult, SessionExecRequest,
-    SessionOpenRequest, SessionOpenResult,
+    ProjectRunRequest, ProjectRunResult, SessionCloseRequest, SessionCloseResult,
+    SessionExecRequest, SessionOpenRequest, SessionOpenResult,
 };
 use xuanling_toolkit::system::{self as tk_system, SystemInfoRequest, SystemInfoResult};
 
@@ -102,7 +102,7 @@ fn build_catalog() -> Vec<Tool> {
         ),
         tool::<FsListCall, FsListResult>(
             "fs_list",
-            "List directory entries. When recursive, descends up to optional max_depth. follow_symlinks=false (default) returns symlink entries without descending; true follows contained targets, while workspace mode omits links whose targets are outside the capability. `limit` and an explicit output byte budget are independent constraints; the stricter one wins. Omitted `output` returns every entry. `next_cursor` resumes a stable snapshot when more entries remain. In workspace mode, respect_gitignore reads only .ignore/.gitignore files at the list root and traversed descendants; it does not use ancestor, global, or .git/info/exclude rules. include_hidden controls dotfile filtering. Uses Rust APIs, never grep/find/dir or Git. Use `output`: {\"mode\":\"bounded\",\"max_bytes\":65536} only when the caller wants a byte budget.",
+            "List directory entries. When recursive, descends up to optional max_depth. follow_symlinks=false (default) returns symlink entries without descending; true follows contained targets, while workspace mode omits links whose targets are outside the capability. `limit` and an explicit output byte budget are independent constraints; the stricter one wins. Omitted `output` uses the 65,536-byte safe default; explicit complete removes that budget. `next_cursor` resumes a stable snapshot when more entries remain. In workspace mode, respect_gitignore reads only .ignore/.gitignore files at the list root and traversed descendants; it does not use ancestor, global, or .git/info/exclude rules. include_hidden controls dotfile filtering. Uses Rust APIs, never grep/find/dir or Git. Use `output`: {\"mode\":\"bounded\",\"max_bytes\":65536} only when the caller wants a byte budget.",
             read_only(),
             FsListCall {
                 path: String::new(),
@@ -119,7 +119,7 @@ fn build_catalog() -> Vec<Tool> {
         ),
         tool::<FsReadTextCall, FsReadTextResult>(
             "fs_read_text",
-            "Read a UTF-8 text file. Omitted `output` returns the complete selected file or line range. Explicit bounded windows preserve UTF-8 boundaries and return a preimage-bound resume token. Invalid UTF-8 is a typed `invalid_utf8` error. Reports line and newline metadata plus sha256 when required for continuation. Use `output`: {\"mode\":\"bounded\",\"max_bytes\":65536} only when the caller wants a byte budget.",
+            "Read a UTF-8 text file. Omitted `output` uses the 65,536-byte safe default; explicit complete removes that budget. `format=raw` preserves source text, while `format=numbered` prefixes each line with an absolute right-aligned line number and tab (cat -n style). Bounded windows preserve UTF-8 boundaries and return a preimage-bound resume token whose offset always remains in raw source-byte space. `known_sha256` performs a stateless conditional read: a match returns `not_modified=true`, sha256, total_lines, and no content body. Invalid UTF-8 or an invalid SHA is a typed input error.",
             read_only(),
             FsReadTextCall {
                 path: String::new(),
@@ -127,13 +127,15 @@ fn build_catalog() -> Vec<Tool> {
                 start_line: None,
                 end_line: None,
                 include_sha256: false,
+                known_sha256: None,
+                format: tk_fs::TextReadFormat::Raw,
                 resume: None,
                 output: None,
             },
         ),
         tool::<ArtifactReadCall, ArtifactReadResult>(
             "artifact_read",
-            "Read bytes from a server-owned process-output artifact. The caller must present the opaque artifact id and read_capability returned by the producing invocation; owner is audit metadata, not authorization. Filesystem paths are never accepted. Omitted `output` and `length` return the complete artifact; an explicit length or bounded output selects a byte window.",
+            "Read bytes from a server-owned process-output artifact. The caller must present the opaque artifact id and read_capability returned by the producing invocation; owner is audit metadata, not authorization. Filesystem paths are never accepted. Omitted `output` uses the 65,536-byte safe default; explicit complete removes that budget. An explicit length and output budget are independent constraints; the stricter one wins.",
             read_only(),
             ArtifactReadCall {
                 id: String::new(),
@@ -157,7 +159,7 @@ fn build_catalog() -> Vec<Tool> {
         ),
         tool::<FsReadBytesCall, FsReadBytesResult>(
             "fs_read_bytes",
-            "Read a file as base64 bytes. Explicit `length` and an explicit output byte budget are independent constraints; the stricter one wins. Omitted `output` reads through EOF when length is absent. Bounded results carry a preimage-bound byte resume. No binary inference. Use `output`: {\"mode\":\"bounded\",\"max_bytes\":65536} only when the caller wants a byte budget.",
+            "Read a file as base64 bytes. Omitted `output` uses the 65,536-byte safe default; explicit complete removes that budget. Explicit `length` and an output byte budget are independent constraints; the stricter one wins. Bounded results carry a preimage-bound byte resume. `known_sha256` performs a stateless conditional read: a match returns `not_modified=true`, sha256, total_bytes, and no base64 body. No binary inference.",
             read_only(),
             FsReadBytesCall {
                 path: String::new(),
@@ -165,13 +167,14 @@ fn build_catalog() -> Vec<Tool> {
                 offset: None,
                 length: None,
                 include_sha256: false,
+                known_sha256: None,
                 resume: None,
                 output: None,
             },
         ),
         tool::<FsSearchCall, FsSearchResult>(
             "fs_search",
-            "Search file contents line-by-line with a regex (or literal) pattern. include_hidden, root-local respect_gitignore, include_globs, exclude_globs, and file_extensions filter candidate paths before scanning. file_extensions accepts simple (`ts`, `.ts`) or compound (`d.ts`, `.d.ts`) suffixes. Globs use `/`-separated paths relative to the search root; extension matching is case-sensitive on every platform. `limit` and an explicit canonical-JSON item byte budget are independent constraints. Omitted output returns every match when limit is absent. A query-bound cursor resumes when more matches remain. Set `group_by_line=true` to return one item per matching source line with every occurrence in `occurrences[]`; the default remains one item per occurrence. Uses Rust regex/ignore/globset APIs, never grep/findstr/Select-String.",
+            "Search file contents line-by-line with a regex (or literal) pattern. include_hidden, root-local respect_gitignore, include_globs, exclude_globs, and file_extensions filter candidate paths before scanning. file_extensions accepts simple (`ts`, `.ts`) or compound (`d.ts`, `.d.ts`) suffixes. Globs use `/`-separated paths relative to the search root; extension matching is case-sensitive on every platform. `limit` and a canonical-JSON item byte budget are independent constraints. Omitted `output` uses the 65,536-byte safe default; explicit complete removes that budget. A query-bound cursor resumes when more matches remain. Set `group_by_line=true` to return one item per matching source line with every occurrence in `occurrences[]`; the default remains one item per occurrence. Uses Rust regex/ignore/globset APIs, never grep/findstr/Select-String.",
             read_only(),
             FsSearchCall {
                 path: String::new(),
@@ -191,7 +194,7 @@ fn build_catalog() -> Vec<Tool> {
         ),
         tool::<FsGlobCall, FsGlobResult>(
             "fs_glob",
-            "Match paths under `path` against one or more glob patterns (`/` as separator). include_files/include_dirs control which kinds are returned. `limit` and an explicit canonical-JSON item byte budget are independent constraints; omitted `output` removes the byte budget. A query-bound cursor resumes when more matches remain. Uses Rust `globset`, never find/Get-ChildItem. Use `output`: {\"mode\":\"bounded\",\"max_bytes\":65536} only when the caller wants a byte budget.",
+            "Match paths under `path` against one or more glob patterns (`/` as separator). include_files/include_dirs control which kinds are returned. `limit` and an explicit canonical-JSON item byte budget are independent constraints; omitted `output` uses the 65,536-byte safe default and explicit complete removes it. A query-bound cursor resumes when more matches remain. Uses Rust `globset`, never find/Get-ChildItem. Use `output`: {\"mode\":\"bounded\",\"max_bytes\":65536} only when the caller wants a byte budget.",
             read_only(),
             FsGlobCall {
                 path: String::new(),
@@ -263,7 +266,7 @@ fn build_catalog() -> Vec<Tool> {
         ),
         tool::<FsEditPreviewCall, FsEditResult>(
             "fs_edit_preview",
-            "Preview a precise old->new text replacement without writing. By default the match must be UNIQUE; multiple matches return line/column locations. expected_sha256 detects a stale preimage. Returns a unified diff when the replacement is applicable.",
+            "Preview a precise old->new text replacement without writing. By default the match must be UNIQUE; multiple matches return line/column locations. expected_sha256 detects a stale preimage. include_diff defaults to true; false omits only the unified-diff response projection and preserves hashes and replacement facts.",
             read_only(),
             FsEditPreviewCall {
                 path: String::new(),
@@ -272,11 +275,12 @@ fn build_catalog() -> Vec<Tool> {
                 replace_all: false,
                 base_dir: None,
                 expected_sha256: None,
+                include_diff: true,
             },
         ),
         tool::<FsEditApplyCall, FsEditResult>(
             "fs_edit",
-            "Apply a precise old->new text replacement (ADR 0027 §8.2). By default the match must be UNIQUE; multiple matches return their line/column locations WITHOUT writing (conflict). expected_sha256 guards against stale content. reversible=true registers a ChangeSet so the apply can be rolled back via change_rollback. Use fs_edit_preview before approval when a diff is needed.",
+            "Apply a precise old->new text replacement (ADR 0027 §8.2). By default the match must be UNIQUE; multiple matches return their line/column locations WITHOUT writing (conflict). expected_sha256 guards against stale content. reversible=true registers a ChangeSet so the apply can be rolled back via change_rollback. include_diff defaults to true; false omits only the unified-diff response projection and does not change matching, hashes, writes, or rollback state.",
             mutating_destructive(),
             FsEditApplyCall {
                 path: String::new(),
@@ -286,6 +290,7 @@ fn build_catalog() -> Vec<Tool> {
                 base_dir: None,
                 expected_sha256: None,
                 reversible: false,
+                include_diff: true,
             },
         ),
         tool::<ChangeOpSchema, ChangeOpResult>(
@@ -350,7 +355,7 @@ fn build_catalog() -> Vec<Tool> {
         ),
         tool::<ProcessRunCall, ProcessRunResult>(
             "process_run",
-            "Run a child process using direct argv (program + args[] + cwd + env). No shell; an optional timeout_hint_ms is an MCP soft deadline that follows the normal cancellation and descendant cleanup path. Without the hint there is no server-side timeout. MCP cancellation terminates the complete descendant process tree. Before returning after direct-child exit, residual descendants in the containment unit are also terminated. stdout/stderr capture mode is caller-selected (inline/file/inherit/null; stdout=inherit is rejected in stdio MCP mode). A nonzero exit is a successful call with success=false, NOT an error. Does not split or translate shell command strings. inherit_env=false (default) seeds a minimal non-secret allowlist (PATH/HOME/TEMP/locale; SystemRoot/USERPROFILE on Windows): child tools read your user config (git/cargo/npm/ssh) but do NOT inherit tokens/keys; pass inherit_env=true to match your login shell or add vars via env/remove_env. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output returns complete inline streams; an explicit bounded output spills overflow to per-invocation artifacts.",
+            "Run a child process using direct argv (program + args[] + cwd + env). No shell; an optional timeout_hint_ms is an MCP soft deadline that follows the normal cancellation and descendant cleanup path. Without the hint there is no server-side timeout. MCP cancellation terminates the complete descendant process tree. Before returning after direct-child exit, residual descendants in the containment unit are also terminated. stdout/stderr capture mode is caller-selected (inline/file/inherit/null; stdout=inherit is rejected in stdio MCP mode). A nonzero exit is a successful call with success=false, NOT an error. Does not split or translate shell command strings. inherit_env=false (default) seeds a minimal non-secret allowlist (PATH/HOME/TEMP/locale; SystemRoot/USERPROFILE on Windows): child tools read your user config (git/cargo/npm/ssh) but do NOT inherit tokens/keys; pass inherit_env=true to match your login shell or add vars via env/remove_env. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output uses a 65,536-byte per-stream preview and spills overflow to per-invocation artifacts; explicit complete opts into full inline streams.",
             mutating_open_world(),
             ProcessRunCall {
                 program: String::new(),
@@ -378,7 +383,7 @@ fn build_catalog() -> Vec<Tool> {
         ),
         tool::<ProjectCommandRequest, ProjectCommandResult>(
             "project_command",
-            "Resolve a project action (check/test/build/format_check/format_apply/lint/run) into a deterministic program + args + cwd WITHOUT executing. Package manager / toolchain is selected deterministically by lockfile (no PATH-order guess). Returns conflict candidates when the ecosystem cannot be uniquely determined.",
+            "Resolve a project action (check/test/build/format_check/format_apply/lint/run) into deterministic program, args, cwd, reason, and ecosystem WITHOUT executing. Resolution prefers an explicit target, then an exact same-name user script, then a proven non-mutating ecosystem convention; otherwise it returns typed unsupported. `check` never falls back to `build`, and format_check never selects a formatting command that writes source files. Package manager/toolchain selection is deterministic by lockfile, with no PATH-order guess.",
             read_only(),
             ProjectCommandRequest {
                 project_path: String::new(),
@@ -388,9 +393,9 @@ fn build_catalog() -> Vec<Tool> {
                 base_dir: None,
             },
         ),
-        tool::<ProjectRunCall, ProcessRunResult>(
+        tool::<ProjectRunCall, ProjectRunResult>(
             "project_run",
-            "Run a resolved project command via process_run (composes the resolver + process lifecycle; no copied spawn logic). Same cancellation/argv/env semantics as process_run, including optional timeout_hint_ms soft deadline; without the hint there is no server-side timeout. inherit_env=false (default) seeds the minimal non-secret allowlist; pass inherit_env=true to match your login shell. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output returns complete inline streams; an explicit bounded output spills overflow to per-invocation artifacts.",
+            "Resolve and run a project action via process_run (one resolver and one process lifecycle). Exact same-name user scripts take priority over ecosystem conventions; `check` never falls back to `build`, and unsupported mappings spawn nothing. The result reports program, args, cwd, reason, ecosystem, and action alongside process terminal facts. Same cancellation and direct-argv semantics as process_run, including optional timeout_hint_ms. inherit_env=false (default) uses the minimal non-secret environment; spawn errors report that policy and suggest explicit inherit_env=true without exposing environment values. Omitted output uses a 65,536-byte per-stream preview and spills overflow to per-invocation artifacts; explicit complete opts into full inline streams.",
             mutating_open_world(),
             ProjectRunCall {
                 project_path: String::new(),
@@ -398,7 +403,7 @@ fn build_catalog() -> Vec<Tool> {
                 target: None,
                 extra_args: Vec::new(),
                 base_dir: None,
-                inherit_env: true,
+                inherit_env: false,
                 deterministic: false,
                 timeout_hint_ms: None,
                 stdout: ProcessStreamMode::Inline,
@@ -408,7 +413,7 @@ fn build_catalog() -> Vec<Tool> {
         ),
         tool::<ProcessPipelineCall, ProcessPipelineResult>(
             "process_pipeline",
-            "Run a shell-free pipeline (ADR 0027 §9.1). Provide either explicit `stages` ({program,args,env,remove_env,inherit_env,cwd}) or `pipeline_shlex`, a restricted notation with whitespace, quotes, backslash escapes, and `|`; never provide both. The parser does not execute a shell: `$`, backticks, and quoted metacharacters remain literal, while redirection and control operators are rejected. Explicit stages remain the portable contract and allow per-stage env/cwd. A stage's stdout is piped to the next stage's stdin. Reports each stage's exit status; spawn failures carry details.stage_index. An optional timeout_hint_ms is an MCP soft deadline; without it there is no server-side timeout. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output returns complete inline streams; an explicit bounded output spills overflow to per-invocation artifacts.",
+            "Run a shell-free pipeline (ADR 0027 §9.1). Provide either explicit `stages` ({program,args,env,remove_env,inherit_env,cwd}) or `pipeline_shlex`, a restricted notation with whitespace, quotes, backslash escapes, and `|`; never provide both. The parser does not execute a shell: `$`, backticks, and quoted metacharacters remain literal, while redirection and control operators are rejected. Explicit stages remain the portable contract and allow per-stage env/cwd. A stage's stdout is piped to the next stage's stdin. Reports each stage's exit status; spawn failures carry details.stage_index. An optional timeout_hint_ms is an MCP soft deadline; without it there is no server-side timeout. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output uses a 65,536-byte per-stream preview and spills overflow to per-invocation artifacts; explicit complete opts into full inline streams.",
             mutating_open_world(),
             ProcessPipelineCall {
                 stages: None,
@@ -432,7 +437,7 @@ fn build_catalog() -> Vec<Tool> {
         ),
         tool::<SessionExecCall, ProcessRunResult>(
             "session_exec",
-            "Run a foreground direct-argv command inside a session (the session's cwd/env apply; request env overrides). NO shell. An optional timeout_hint_ms is an MCP soft deadline; without it there is no server-side timeout. Cancellation and session_close terminate the contained process tree; descendants left after the direct child exits are cleaned up before this call returns. The env policy follows session_open: a session opened with inherit_env=false uses the minimal non-secret allowlist plus explicit env. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output returns complete inline streams; an explicit bounded output spills overflow to per-invocation artifacts.",
+            "Run a foreground direct-argv command inside a session (the session's cwd/env apply; request env overrides). NO shell. An optional timeout_hint_ms is an MCP soft deadline; without it there is no server-side timeout. Cancellation and session_close terminate the contained process tree; descendants left after the direct child exits are cleaned up before this call returns. The env policy follows session_open: a session opened with inherit_env=false uses the minimal non-secret allowlist plus explicit env. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output uses a 65,536-byte per-stream preview and spills overflow to per-invocation artifacts; explicit complete opts into full inline streams.",
             mutating_open_world(),
             SessionExecCall {
                 session_id: String::new(),
@@ -638,6 +643,8 @@ struct FsEditPreviewCall {
     base_dir: Option<String>,
     #[serde(default)]
     expected_sha256: Option<String>,
+    #[serde(default = "default_true")]
+    include_diff: bool,
 }
 
 #[derive(schemars::JsonSchema, serde::Deserialize)]
@@ -654,6 +661,8 @@ struct FsEditApplyCall {
     expected_sha256: Option<String>,
     #[serde(default)]
     reversible: bool,
+    #[serde(default = "default_true")]
+    include_diff: bool,
 }
 
 #[derive(schemars::JsonSchema, serde::Deserialize)]
@@ -695,6 +704,10 @@ struct FsReadTextCall {
     #[serde(default)]
     include_sha256: bool,
     #[serde(default)]
+    known_sha256: Option<String>,
+    #[serde(default)]
+    format: tk_fs::TextReadFormat,
+    #[serde(default)]
     resume: Option<tk_fs::TextResume>,
     #[serde(default)]
     #[schemars(with = "OutputRequest")]
@@ -714,6 +727,8 @@ struct FsReadBytesCall {
     length: Option<u64>,
     #[serde(default)]
     include_sha256: bool,
+    #[serde(default)]
+    known_sha256: Option<String>,
     #[serde(default)]
     resume: Option<tk_fs::ByteResume>,
     #[serde(default)]
@@ -1178,6 +1193,8 @@ pub async fn dispatch(
                     start_line: call.start_line,
                     end_line: call.end_line,
                     include_sha256: call.include_sha256,
+                    known_sha256: call.known_sha256,
+                    format: call.format,
                     max_bytes: output_mode.max_bytes_for_text(),
                     resume: call.resume,
                 },
@@ -1216,14 +1233,14 @@ pub async fn dispatch(
                     offset: call.offset,
                     length,
                     include_sha256: call.include_sha256,
+                    known_sha256: call.known_sha256,
                     resume: call.resume,
                 },
             ))
         }
         "fs_search" => {
-            // A caller can combine an item limit with an explicit byte budget.
-            // Omission preserves complete output so the host owns its context
-            // budget instead of inheriting a hidden server-side cap.
+            // A caller can combine an item limit with the public byte budget;
+            // the stricter constraint wins. Omission uses the v3 safe default.
             let call = decode::<FsSearchCall>(arguments)?;
             let req = FsSearchRequest {
                 path: call.path,
@@ -1290,6 +1307,7 @@ pub async fn dispatch(
                     expected_sha256: call.expected_sha256,
                     dry_run: true,
                     reversible: false,
+                    include_diff: call.include_diff,
                 },
             ))
         }
@@ -1306,6 +1324,7 @@ pub async fn dispatch(
                     expected_sha256: call.expected_sha256,
                     dry_run: false,
                     reversible: call.reversible,
+                    include_diff: call.include_diff,
                 },
             ))
         }
@@ -1655,12 +1674,14 @@ const OUTPUT_CAPABLE: &[&str] = &[
     "session_exec",
 ];
 
+const DEFAULT_OUTPUT_MAX_BYTES: u64 = 65_536;
+
 /// Parsed ADR 0027 §2 `output` request field.
 #[derive(Clone, Copy, Debug)]
 enum OutputMode {
     /// Explicit bounded window.
     Bounded { max_bytes: u64 },
-    /// Complete (full) return. This is also the omitted-field default.
+    /// Explicit complete (full) return.
     Complete,
 }
 
@@ -1689,9 +1710,8 @@ impl OutputMode {
     }
 
     /// Resolve to a per-stream `preview_max_bytes` for `process_run`/
-    /// `project_run` (ADR 0027 §7.1). Omitted output preserves the toolkit's
-    /// full-inline behavior; only an explicit bounded selector creates a
-    /// preview and overflow artifact.
+    /// `project_run` (ADR 0027 §7.1). The MCP parser maps omitted output to the
+    /// v3 safe budget; explicit complete alone preserves full-inline behavior.
     fn preview_max_bytes_for_process(self) -> Option<u64> {
         self.max_bytes()
     }
@@ -1712,7 +1732,7 @@ impl OutputMode {
 /// DTO exposes this field in its schema; the toolkit remains independent of
 /// MCP-specific output selection.
 /// Semantics:
-/// - field omitted -> `OutputMode::Complete`;
+/// - field omitted -> conservative 64 KiB bounded output;
 /// - explicit `null` -> `invalid_input` (no magic-null; ADR 0027 §2);
 /// - `{"mode":"complete"}` -> `OutputMode::Complete`;
 /// - `{"mode":"bounded","max_bytes":N}` -> `OutputMode::Bounded`.
@@ -1721,17 +1741,21 @@ fn parse_output_for_call(name: &str, args: &Value) -> Result<OutputMode, McpErro
         return Ok(OutputMode::Complete);
     }
     let Some(map) = args.as_object() else {
-        return Ok(OutputMode::Complete);
+        return Ok(OutputMode::Bounded {
+            max_bytes: DEFAULT_OUTPUT_MAX_BYTES,
+        });
     };
     if !map.contains_key("output") {
-        return Ok(OutputMode::Complete);
+        return Ok(OutputMode::Bounded {
+            max_bytes: DEFAULT_OUTPUT_MAX_BYTES,
+        });
     }
     let output = &map["output"];
     if output.is_null() {
         return Err(McpError::invalid_params(
             "invalid request arguments: `output` must not be null. \
              Use {\"mode\":\"bounded\",\"max_bytes\":N} or {\"mode\":\"complete\"}, \
-             or omit `output` for complete output (ADR 0027 §2)."
+             or omit `output` for the 64 KiB bounded default (contract v3)."
                 .to_string(),
             None,
         ));

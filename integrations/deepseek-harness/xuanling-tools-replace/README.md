@@ -2,40 +2,29 @@
 
 English | [Simplified Chinese](README-ZH.md)
 
-Replacement DeepSeek Harness bundle for the complete XuanLing catalog. It
-disables the three model-facing native filesystem rows and exposes XuanLing as
-the filesystem layer while retaining shell, web, LSP, approval, PTY, jobs, and
-orchestration integrations.
+Compatibility DeepSeek Harness bundle for profiles that previously selected
+the filesystem-replacement preset. It now preserves every Harness-native tool,
+including `read_image`, filesystem observation guards, and editor cards, while
+adding the complete XuanLing catalog lazily under `mcp__xuanling__*`.
 
-```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-tools-replace@0.2.10
-```
+New installations should use `@xuanling-rs/xuanling-dsh-tools`. Existing
+profiles can update this package in place to recover the native tool surface,
+then migrate to the additive package through the conversational installer.
+Do not combine two XuanLing runtime bundles in one profile.
 
-This command augments DSH's shipped Web profile. Use `--profile headless` for
-the shipped Headless profile. Unknown profile names start with the base bundle
-only and do not provide a runnable Web or Headless application by themselves.
+The exact `@xuanling-rs/xuanling-mcp@0.3.0` runtime is installed in the profile
+and started through its verified JS launcher. No global npm package is used.
+Set `XUANLING_WORKSPACE_ROOT` to the confirmed absolute workspace before
+starting DSH; missing configuration fails startup.
 
-The exact `@xuanling-rs/xuanling-mcp@0.2.10` runtime is installed in the profile and started
-through its verified JS launcher. No global npm package is used.
+The bridge caches the complete paginated MCP catalog but initially exposes only
+`mcp_catalog__xuanling`. Search by capability and activate only the exact raw
+names needed for the next operation. Ordinary reads, small edits, image reads,
+and editor UX remain on the Harness-native surface.
 
-The bridge caches the complete paginated MCP catalog but initially exposes
-only `mcp_catalog__xuanling`. Because this variant disables the native
-filesystem rows, activate the exact XuanLing filesystem raw names required for
-the next operation before attempting it; the resulting tools use the normal
-`mcp__xuanling__*` names.
-
-Its result adapter keeps one complete Native text projection and removes only
+The result adapter keeps one complete Native text projection and removes only
 accidental duplicate blocks that exactly repeat `structuredContent`; the
-structured value remains available to Code Mode and validation.
-
-The adapter accepts only JSON object frames from the child. Malformed output or
-an unresolved request at clean child exit returns a nonzero status; host
-termination is forwarded and force-terminated after a 500 ms grace when needed.
-
-This variant removes native `read_image`, read-before-edit observation guards,
-and editor cards from the model-facing filesystem surface. XuanLing SHA-256
-preconditions and strict patch contracts apply instead. Use this package only
-when that tradeoff is intentional, and do not combine it with another
-XuanLing tool bundle in the same profile.
+structured value remains available to Code Mode and validation. Malformed
+child output or an unresolved request at clean child exit returns nonzero.
 
 Node.js 22.14 or newer is required. Licensed under the MIT License.

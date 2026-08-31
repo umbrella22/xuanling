@@ -13,6 +13,7 @@ import path from "node:path";
 import { detectTarget } from "./targets.js";
 
 const require = createRequire(import.meta.url);
+const launcherPackage = require("../package.json");
 
 export function resolveNativeBinary(
   target,
@@ -20,6 +21,7 @@ export function resolveNativeBinary(
     existsSync = nodeExistsSync,
     readFileSync = nodeReadFileSync,
     resolvePackageJson = (specifier) => require.resolve(specifier),
+    launcherVersion = launcherPackage.version,
   } = {},
 ) {
   let packageJsonPath;
@@ -32,6 +34,12 @@ export function resolveNativeBinary(
   }
 
   const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+  const expectedNativeVersion = `${launcherVersion}-${target.id ?? target.rustTarget}`;
+  if (packageJson.version !== expectedNativeVersion) {
+    throw new Error(
+      `Native package version mismatch: launcher ${launcherVersion} requires ${expectedNativeVersion}, found ${packageJson.version ?? "unknown"}`,
+    );
+  }
   const metadata = packageJson.xuanlingBinary;
   if (
     metadata?.target !== target.rustTarget ||

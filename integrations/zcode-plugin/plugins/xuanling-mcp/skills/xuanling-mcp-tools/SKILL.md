@@ -20,9 +20,10 @@ routing policy through MCP `initialize.instructions` before loading this file.
 ## When to use these vs. shell
 
 - **Cross-OS identical results** — `fs_search` returns the same JSON everywhere; no shell retry.
-- **Explicit bounds** — pass `output: {"mode":"bounded","max_bytes":N}` to cap a result; truncated
-  results carry a typed `next_cursor` / resume token, never a silent cut. Omitted `output` means
-  **complete** (no byte budget) — bounded is opt-in, not the default.
+- **Safe bounds** — omitting `output` applies a 65,536-byte bounded default; truncated results
+  carry a typed `next_cursor` / resume token, never a silent cut. Pass
+  `output: {"mode":"bounded","max_bytes":N}` for a different cap or explicitly request
+  `{"mode":"complete"}` only when the full result is necessary.
 - **Direct argv, no shell** — `process_run` passes exact args; there is no shell layer, no command
   string splitting, no metacharacter translation.
 - **Shared lexical memory** — SQLite-backed FTS recall (unicode61 + trigram, RRF-merged) works
@@ -38,9 +39,12 @@ Prefer the host's native Read/Edit tools for routine small edits and ordinary re
 read-before-edit observation and UI remain active. Choose XuanLing for cross-OS structured
 results, complete pagination, explicit output budgets, or hash/CAS-protected writes.
 
-To replace an existing file, obtain its hash with `fs_read_text` or `fs_hash`, then call
-`fs_write_text` with `mode: "overwrite"` and `expected_sha256`. Use `mode: "create"` only for a
-new path; never turn an overwrite conflict into a create call.
+For a whole-file replacement derived from the current body, read that content with
+`fs_read_text` and construct the replacement from the observed version. When the complete
+replacement comes from an independently authoritative source, `fs_hash` may instead provide a
+fingerprint-only CAS precondition; it does not mean the body was read or understood. Then call
+`fs_write_text` with both `mode: "overwrite"` and `expected_sha256`. Use `mode: "create"` only for
+a new path and never turn an overwrite conflict into a create call.
 
 For multiple hunks in the same file, use `fs_patch` in a single atomic call with
 `expected_preimage_sha256`. Do not split the operation into independently committed edits or
@@ -62,9 +66,9 @@ Schema gotchas learned from live use:
 - **`fs_glob`**: uses `patterns` (**array, plural**), not `pattern`. Options `include_files` /
   `include_dirs` are booleans. `*.mjs` matches top level only; use `**/*.mjs` to recurse.
 - **`fs_read_text`**: returns `sha256`, `total_bytes`, `total_lines`, `newline_style`, `truncated`.
-  Omit `start_line`/`end_line` to read whole (complete by default); `start_line`/`end_line` are
-  1-based and inclusive. See **Using fs_read_text well** below for when to prefer it over the
-  host's native Read.
+  Omit `start_line`/`end_line` to address the whole file; the v3 output default is still bounded.
+  `start_line`/`end_line` are 1-based and inclusive. See **Using fs_read_text well** below for when
+  to prefer it over the host's native Read.
 - **`fs_list`**: returns `entries[]` + `returned_item_bytes` + `has_more` + `next_cursor`.
 - `fs_edit` is precise old→new (ADR 0027 §8.2); `fs_patch` applies a strict unified diff
   (ADR 0013 v2) with `expected_preimage_sha256`. A non-unique `fs_edit`/`fs_patch` match is a
@@ -75,7 +79,7 @@ Schema gotchas learned from live use:
 ### Process / Project
 `process_which` `process_run` `project_detect` `project_command` `project_run` `process_pipeline`
 
-- **`process_run`**: `{ program, args[], cwd, env, stdin, stdout, stderr, timeout_hint_ms }`.
+- **`process_run`**: `{ program, args[], cwd, env, inherit_env, stdin, stdout, stderr, timeout_hint_ms }`.
   Direct argv — **no shell**. `timeout_hint_ms` is an optional MCP soft deadline; it follows
   the normal cancellation and descendant cleanup path, while omitting it preserves the
   toolkit's no-default-deadline contract. Nonzero exit is a *successful* call
@@ -89,7 +93,8 @@ Schema gotchas learned from live use:
 - **`project_detect`**: **requires `path`** (e.g. `"."`). Returns `ecosystems`, `markers`,
   `toolchains`.
 - **`project_command`**: resolves a project action (`check`/`test`/`build`/`format_check`/
-  `format_apply`/`lint`/...) for the detected ecosystem into an argv; `project_run` executes it.
+  `format_apply`/`lint`/...) for the detected ecosystem into an argv; `project_run` executes the
+  same resolution and reports its program, args, ecosystem, action, and reason.
 
 ### Session
 `session_open` `session_exec` `session_close` — a server-owned process session bound to a cwd/env
@@ -164,18 +169,50 @@ scoped to the current worktree delta:
 - Quick look at a small file you have not read yet: prefer the host's native Read (line numbers,
   per-session read dedup). `fs_read_text` is stateless and re-reads on every call.
 - Prefer `fs_read_text` when:
-  - you want to bound the result: pass `output: {"mode":"bounded","max_bytes":N}` and page
-    through with the returned resume token, or use `start_line`/`end_line` for 1-based ranges.
-  - you must verify the file did not change between reads: every result carries `sha256` — if
-    the hash equals your previous read, skip the re-read (hash-based verification survives host
-    restarts, unlike per-session dedup).
+  - you want stable citations: pass `format: "numbered"` for absolute 1-based line numbers, then
+    page through the safe default budget or use `start_line`/`end_line` ranges.
+  - you want a custom bound: pass `output: {"mode":"bounded","max_bytes":N}` and page through
+    with the returned resume token.
+  - you must verify the file did not change between reads: pass the previous `sha256` back as
+    `known_sha256`; an unchanged result returns metadata without replaying content.
   - the file is not UTF-8: a typed `invalid_utf8` error tells you to switch to `fs_read_bytes`
     instead of guessing.
   - you need exact byte/line counts and the newline style before writing
     (`fs_write_text` `newline_mode`).
 - The `output` selector of any window-capable tool is a tagged union OBJECT:
-  `{"mode":"bounded","max_bytes":N}` or `{"mode":"complete"}`; omitted -> complete.
+  `{"mode":"bounded","max_bytes":N}` or `{"mode":"complete"}`; omitted -> bounded at 65,536 bytes.
   It is not a number and not a bare string — a malformed `output` is the most common `-32602`.
+
+## MCP v3 cross-host request policy
+
+Omitting `output` applies a 65,536-byte bounded default and preserves typed continuation data.
+Full output is an explicit opt-in with `{"mode":"complete"}`; never assume omission means complete.
+
+For source inspection, call `fs_read_text` with `format: "numbered"` to obtain absolute 1-based
+line numbers. A `TextResume` offset always remains in raw-file byte space even though numbered
+display prefixes consume the output budget; never derive resume offsets from rendered text.
+
+For repeated reads, send the prior `known_sha256` to both `fs_read_text` and `fs_read_bytes`.
+An unchanged response has `not_modified: true`, keeps `sha256`, and returns `total_lines` for text
+or `total_bytes` for bytes without replaying the body; changed files return new content normally.
+
+Until a ZCode native diff card for XuanLing edits is independently verified, keep
+`include_diff: true` and do not pass `include_diff: false`. The current packaged adapter has no
+verified request-policy hook, so this is explicit advisory guidance and the server tool diff
+remains the model-visible semantic review channel.
+
+A SHA precondition proves integrity and concurrent-version identity, not edit semantic
+correctness. A unique-match edit can still uniquely hit the wrong location, so inspect the
+returned diff before accepting it; never treat before/after hashes as a replacement for review.
+
+For `project_run`, resolver priority is the exact same-name user script, then a proven
+non-mutating ecosystem convention, then typed `unsupported`. A `check` action never falls back to
+`build`; on a pre-v3 runtime, invoke the literal package script through direct-argv `process_run`.
+
+`process_run` and `project_run` retain the minimal environment with `inherit_env: false` by
+default. If a program is unavailable, follow the non-secret remediation and retry with
+`inherit_env: true` only when explicitly acceptable; diagnostics must not reveal secret or
+environment values.
 
 ## Determinism & model cache
 
@@ -188,7 +225,7 @@ scoped to the current worktree delta:
   `process_pipeline` include `duration_ms`, and truncated results embed artifact ids — both vary
   per call. Pass `deterministic: true` to omit `duration_ms` so identical invocations return
   byte-identical results (truncated results still embed per-invocation artifact refs).
-- Prefer re-verification by `sha256` (cheap, deterministic) over re-reading unchanged content.
+- Prefer a conditional re-read with `known_sha256` over replaying unchanged content.
 
 ## Result mapping
 

@@ -209,6 +209,13 @@ test("current DSH Skills satisfy the frozen routing contract", () => {
     "shared_l2_pull_then_pending",
     "explicit_pointer_recall",
     "no_match_or_unavailable_continues",
+    "v3_omitted_output_bounded",
+    "v3_numbered_read_raw_resume",
+    "v3_conditional_reread",
+    "v3_diff_visibility_dependency",
+    "v3_sha_not_semantic_validation",
+    "v3_project_check_resolution",
+    "v3_minimal_env_diagnostic",
   ]);
   assert.deepEqual(report.missing_case_ids, []);
   assert.equal(result.stderr, "");

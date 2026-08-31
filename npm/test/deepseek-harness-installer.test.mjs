@@ -218,6 +218,22 @@ test("transcript verifier accepts install, cancel, no-op, migration, and rollbac
   }
 });
 
+test("transcript verifier classifies same-preset update and downgrade deltas", () => {
+  for (const [mode, fromVersion] of [["update", "0.2.3"], ["downgrade", "0.2.5"]]) {
+    const candidate = clone(readFixture("valid.json"));
+    const before = candidate.events.find((event) => event.kind === "inventory" && event.phase === "before");
+    before.relevant_specs = {
+      "@xuanling-rs/xuanling-dsh-memory": `@xuanling-rs/xuanling-dsh-memory@${fromVersion}`,
+      "@xuanling-rs/xuanling-dsh-skills": `@xuanling-rs/xuanling-dsh-skills@${fromVersion}`,
+    };
+    const plan = candidate.events.find((event) => event.question_id === "xuanling_install_confirm").plan;
+    plan.mode = mode;
+    plan.from_version = fromVersion;
+    const report = verifyTranscript(candidate);
+    assert.equal(report.operation_mode, mode);
+  }
+});
+
 test("transcript verifier rejects pre-confirmation side effects with a typed failure", () => {
   expectCode(readFixture("invalid-side-effect-before-confirmation.json"), "side_effect_before_confirmation");
 });
@@ -274,6 +290,39 @@ test("transcript verifier rejects wrong ordering, floating specs, forbidden comm
   rollbackMismatch.events.find((event) => event.kind === "inventory" && event.phase === "rollback")
     .config_sha256 = "f".repeat(64);
   expectCode(rollbackMismatch, "rollback_state_mismatch");
+});
+
+test("transcript verifier rejects an incorrect install mode and stale native runtime identity", () => {
+  const wrongMode = clone(readFixture("valid.json"));
+  wrongMode.events.find((event) => event.question_id === "xuanling_install_confirm").plan.mode = "repair";
+  expectCode(wrongMode, "confirmation_plan_mismatch");
+
+  const staleLock = clone(readFixture("valid.json"));
+  staleLock.events.find((event) => event.kind === "tool_call")
+    .runtime_identity.lockfile_launcher_version = "0.2.3";
+  expectCode(staleLock, "runtime_version_incoherent");
+
+  const wrongTarget = clone(readFixture("valid.json"));
+  wrongTarget.events.find((event) => event.kind === "tool_call")
+    .runtime_identity.native_package_version = "0.2.4-malicious";
+  expectCode(wrongTarget, "runtime_version_incoherent");
+
+  const wrongPath = clone(readFixture("valid.json"));
+  wrongPath.events.find((event) => event.kind === "tool_call")
+    .runtime_identity.resolved_native_path = "/tmp/unrelated/xuanling-mcp";
+  expectCode(wrongPath, "runtime_version_incoherent");
+
+  const staleNative = clone(readFixture("valid.json"));
+  staleNative.events.find((event) => event.kind === "tool_call").runtime_identity = {
+    native_target_id: "darwin-arm64",
+    lockfile_launcher_version: "0.2.4",
+    launcher_version: "0.2.4",
+    native_package_version: "0.2.3-darwin-arm64",
+    resolved_native_path: "/isolated/profile/node_modules/xuanling-mcp-darwin-arm64/bin/xuanling-mcp",
+    system_info_version: "0.2.3",
+    mcp_contract_version: "2",
+  };
+  expectCode(staleNative, "runtime_version_incoherent");
 });
 
 test("verifier CLI emits a bounded report without replaying raw commands", () => {

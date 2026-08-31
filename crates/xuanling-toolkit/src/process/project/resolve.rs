@@ -80,7 +80,19 @@ pub struct ProjectRunRequest {
     pub deterministic: bool,
 }
 
-pub type ProjectRunResult = super::super::run::ProcessRunResult;
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+pub struct ProjectRunResult {
+    pub program: String,
+    pub args: Vec<String>,
+    pub cwd: String,
+    pub reason: String,
+    pub ecosystem: ProjectEcosystem,
+    pub action: ProjectAction,
+    /// Process terminal facts remain top-level on the wire for compatibility;
+    /// resolver facts above and execution facts below come from one decision.
+    #[serde(flatten)]
+    pub process: super::super::run::ProcessRunResult,
+}
 
 /// Resolve a project command to `program + args + cwd + reason` without
 /// executing. Returns `conflict` when the ecosystem/package-manager cannot be
@@ -180,9 +192,9 @@ pub async fn project_run(
     )?;
 
     let run_req = ProcessRunRequest {
-        program: resolved.program,
-        args: resolved.args,
-        cwd: Some(resolved.cwd),
+        program: resolved.program.clone(),
+        args: resolved.args.clone(),
+        cwd: Some(resolved.cwd.clone()),
         env: BTreeMap::new(),
         remove_env: Vec::new(),
         inherit_env: req.inherit_env,
@@ -192,7 +204,16 @@ pub async fn project_run(
         preview_max_bytes: req.preview_max_bytes,
         deterministic: req.deterministic,
     };
-    process_run(ctx, &run_req).await
+    let process = process_run(ctx, &run_req).await?;
+    Ok(ProjectRunResult {
+        program: resolved.program,
+        args: resolved.args,
+        cwd: resolved.cwd,
+        reason: resolved.reason,
+        ecosystem: resolved.ecosystem,
+        action: req.action.clone(),
+        process,
+    })
 }
 
 /// Deterministic per-ecosystem resolution. Produces program+args that contain
@@ -229,14 +250,20 @@ fn resolve_rust(
         ProjectAction::Check => vec!["check".to_string()],
         ProjectAction::Test => vec!["test".to_string()],
         ProjectAction::Build => vec!["build".to_string()],
-        ProjectAction::FormatCheck => vec!["fmt".to_string(), "--check".to_string()],
+        ProjectAction::FormatCheck => {
+            vec!["fmt".to_string(), "--".to_string(), "--check".to_string()]
+        }
         ProjectAction::FormatApply => vec!["fmt".to_string()],
         ProjectAction::Lint => vec!["clippy".to_string()],
         ProjectAction::Run => vec!["run".to_string()],
     };
     if let Some(t) = target {
-        args.push("-p".to_string());
-        args.push(t.to_string());
+        let target_args = ["-p".to_string(), t.to_string()];
+        if matches!(action, ProjectAction::FormatCheck) {
+            args.splice(1..1, target_args);
+        } else {
+            args.extend(target_args);
+        }
     }
     args.extend_from_slice(extra_args);
     Ok((
@@ -252,6 +279,33 @@ fn resolve_node(
     target: Option<&str>,
     extra_args: &[String],
 ) -> Result<(String, Vec<String>, String), ToolError> {
+    let manifest_path = project_root.join("package.json");
+    let manifest_bytes = std::fs::read(&manifest_path).map_err(|error| {
+        ToolError::new(
+            match error.kind() {
+                std::io::ErrorKind::NotFound => ToolErrorCode::NotFound,
+                std::io::ErrorKind::PermissionDenied => ToolErrorCode::PermissionDenied,
+                _ => ToolErrorCode::IoError,
+            },
+            "project.command",
+            format!("failed to read package.json: {error}"),
+        )
+        .with_path(manifest_path.to_string_lossy())
+        .with_raw_os_error(error.raw_os_error())
+    })?;
+    let manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes).map_err(|error| {
+        ToolError::new(
+            ToolErrorCode::InvalidInput,
+            "project.command",
+            format!("package.json is not valid JSON: {error}"),
+        )
+        .with_path(manifest_path.to_string_lossy())
+        .with_details(serde_json::json!({"reason": "invalid_package_json"}))
+    })?;
+    let scripts = manifest
+        .get("scripts")
+        .and_then(serde_json::Value::as_object);
+
     // Deterministic PM selection by lockfile (pnpm > yarn > bun > npm).
     let entries = std::fs::read_dir(project_root)
         .map(|d| {
@@ -269,40 +323,144 @@ fn resolve_node(
     } else {
         "npm"
     };
-    let script = match action {
-        ProjectAction::Check => "run".to_string(),
-        ProjectAction::Test => "test".to_string(),
-        ProjectAction::Build => "run".to_string(),
-        ProjectAction::FormatCheck => "run".to_string(),
-        ProjectAction::FormatApply => "run".to_string(),
-        ProjectAction::Lint => "run".to_string(),
-        ProjectAction::Run => "run".to_string(),
+    let exact_name = action_name(action);
+    let selected_script = if let Some(target) = target {
+        require_node_script(scripts, target, action)?;
+        Some((target, "explicit target script"))
+    } else if has_node_script(scripts, exact_name) {
+        Some((exact_name, "exact action script"))
+    } else {
+        node_conventional_script(scripts, action)
     };
-    let mut args = vec![script];
-    // Map action to a conventional npm-script name as the target.
-    let script_target = match action {
-        ProjectAction::Check | ProjectAction::Build => "build",
-        ProjectAction::FormatCheck | ProjectAction::FormatApply => "format",
-        ProjectAction::Lint => "lint",
-        ProjectAction::Run => "start",
-        ProjectAction::Test => "",
-    };
-    if !script_target.is_empty() {
-        args.push(script_target.to_string());
+
+    if let Some((script, source)) = selected_script {
+        let mut args = vec!["run".to_string(), script.to_string()];
+        args.extend_from_slice(extra_args);
+        return Ok((
+            pm.to_string(),
+            args,
+            format!("selected {pm} {source} `{script}`"),
+        ));
     }
-    // An explicit target overrides the script name.
-    if let Some(t) = target {
-        if args.len() > 1 {
-            args.pop();
+
+    if matches!(action, ProjectAction::Check)
+        && has_typescript_dependency(&manifest)
+        && project_root.join("tsconfig.json").is_file()
+    {
+        let mut args: Vec<String> = match pm {
+            "npm" => vec!["exec", "--", "tsc", "--noEmit"],
+            "bun" => vec!["x", "tsc", "--noEmit"],
+            _ => vec!["exec", "tsc", "--noEmit"],
         }
-        args.push(t.to_string());
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+        args.extend_from_slice(extra_args);
+        return Ok((
+            pm.to_string(),
+            args,
+            format!("selected {pm} TypeScript convention `tsc --noEmit`"),
+        ));
     }
-    args.extend_from_slice(extra_args);
-    Ok((
-        pm.to_string(),
-        args,
-        format!("selected {pm} by lockfile presence"),
+
+    Err(unsupported_action(
+        ProjectEcosystem::Node,
+        action,
+        "no exact package script or proven nonmutating convention",
     ))
+}
+
+fn action_name(action: &ProjectAction) -> &'static str {
+    match action {
+        ProjectAction::Check => "check",
+        ProjectAction::Test => "test",
+        ProjectAction::Build => "build",
+        ProjectAction::FormatCheck => "format_check",
+        ProjectAction::FormatApply => "format_apply",
+        ProjectAction::Lint => "lint",
+        ProjectAction::Run => "run",
+    }
+}
+
+fn has_node_script(
+    scripts: Option<&serde_json::Map<String, serde_json::Value>>,
+    name: &str,
+) -> bool {
+    scripts
+        .and_then(|scripts| scripts.get(name))
+        .is_some_and(serde_json::Value::is_string)
+}
+
+fn require_node_script(
+    scripts: Option<&serde_json::Map<String, serde_json::Value>>,
+    target: &str,
+    action: &ProjectAction,
+) -> Result<(), ToolError> {
+    if has_node_script(scripts, target) {
+        return Ok(());
+    }
+    Err(unsupported_action(
+        ProjectEcosystem::Node,
+        action,
+        &format!("explicit target script `{target}` is not defined"),
+    ))
+}
+
+fn node_conventional_script(
+    scripts: Option<&serde_json::Map<String, serde_json::Value>>,
+    action: &ProjectAction,
+) -> Option<(&'static str, &'static str)> {
+    let candidates: &[&str] = match action {
+        ProjectAction::FormatCheck => &["format:check", "fmt:check"],
+        ProjectAction::FormatApply => &["format", "fmt"],
+        ProjectAction::Run => &["start"],
+        _ => &[],
+    };
+    candidates
+        .iter()
+        .copied()
+        .find(|candidate| has_node_script(scripts, candidate))
+        .map(|candidate| (candidate, "conventional script"))
+}
+
+fn has_typescript_dependency(manifest: &serde_json::Value) -> bool {
+    ["devDependencies", "dependencies", "peerDependencies"]
+        .iter()
+        .filter_map(|section| manifest.get(section).and_then(serde_json::Value::as_object))
+        .any(|dependencies| dependencies.contains_key("typescript"))
+}
+
+fn unsupported_action(
+    ecosystem: ProjectEcosystem,
+    action: &ProjectAction,
+    reason: &str,
+) -> ToolError {
+    ToolError::new(
+        ToolErrorCode::Unsupported,
+        "project.command",
+        format!(
+            "cannot resolve `{}` for {}: {reason}",
+            action_name(action),
+            ecosystem_name(&ecosystem)
+        ),
+    )
+    .with_details(serde_json::json!({
+        "reason": "unsupported_project_action",
+        "ecosystem": ecosystem_name(&ecosystem),
+        "action": action_name(action),
+    }))
+}
+
+fn ecosystem_name(ecosystem: &ProjectEcosystem) -> &'static str {
+    match ecosystem {
+        ProjectEcosystem::Rust => "rust",
+        ProjectEcosystem::Node => "node",
+        ProjectEcosystem::Flutter => "flutter",
+        ProjectEcosystem::Gradle => "gradle",
+        ProjectEcosystem::Go => "go",
+        ProjectEcosystem::Python => "python",
+        ProjectEcosystem::Unknown => "unknown",
+    }
 }
 
 fn resolve_flutter(
@@ -310,28 +468,42 @@ fn resolve_flutter(
     target: Option<&str>,
     extra_args: &[String],
 ) -> Result<(String, Vec<String>, String), ToolError> {
-    let mut args: Vec<String> = match action {
-        ProjectAction::Check => vec!["analyze".to_string()],
-        ProjectAction::Test => vec!["test".to_string()],
-        ProjectAction::Build => vec!["build".to_string()],
-        ProjectAction::FormatCheck => vec![
-            "format".to_string(),
-            "--output=none".to_string(),
-            "--set-exit-if-changed".to_string(),
-        ],
-        ProjectAction::FormatApply => vec!["format".to_string()],
-        ProjectAction::Lint => vec!["analyze".to_string()],
-        ProjectAction::Run => vec!["run".to_string()],
+    let (program, mut args): (&str, Vec<String>) = match action {
+        ProjectAction::Check | ProjectAction::Lint => (
+            "flutter",
+            vec!["analyze".to_string(), "--no-pub".to_string()],
+        ),
+        ProjectAction::Test => ("flutter", vec!["test".to_string(), "--no-pub".to_string()]),
+        ProjectAction::Build => ("flutter", vec!["build".to_string()]),
+        ProjectAction::FormatCheck => (
+            "dart",
+            vec![
+                "format".to_string(),
+                "--output=none".to_string(),
+                "--set-exit-if-changed".to_string(),
+                ".".to_string(),
+            ],
+        ),
+        ProjectAction::FormatApply => ("dart", vec!["format".to_string(), ".".to_string()]),
+        ProjectAction::Run => ("flutter", vec!["run".to_string()]),
     };
     if let Some(t) = target {
-        args.push("--target".to_string());
-        args.push(t.to_string());
+        if matches!(
+            action,
+            ProjectAction::FormatCheck | ProjectAction::FormatApply
+        ) {
+            args.pop();
+            args.push(t.to_string());
+        } else {
+            args.push("--target".to_string());
+            args.push(t.to_string());
+        }
     }
     args.extend_from_slice(extra_args);
     Ok((
-        "flutter".to_string(),
+        program.to_string(),
         args,
-        "flutter is the Dart/Flutter toolchain".to_string(),
+        format!("{program} is the Dart/Flutter toolchain"),
     ))
 }
 
@@ -392,11 +564,18 @@ fn resolve_go(
     target: Option<&str>,
     extra_args: &[String],
 ) -> Result<(String, Vec<String>, String), ToolError> {
+    if matches!(action, ProjectAction::FormatCheck) {
+        return Err(unsupported_action(
+            ProjectEcosystem::Go,
+            action,
+            "the Go toolchain has no recursive nonmutating format-check action",
+        ));
+    }
     let mut args: Vec<String> = match action {
         ProjectAction::Check => vec!["vet".to_string()],
         ProjectAction::Test => vec!["test".to_string()],
         ProjectAction::Build => vec!["build".to_string()],
-        ProjectAction::FormatCheck => vec!["fmt".to_string()],
+        ProjectAction::FormatCheck => unreachable!("handled above"),
         ProjectAction::FormatApply => vec!["fmt".to_string()],
         ProjectAction::Lint => vec!["vet".to_string()],
         ProjectAction::Run => vec!["run".to_string()],
@@ -429,18 +608,18 @@ fn resolve_python(
     } else {
         "python"
     };
-    let mut args: Vec<String> = match action {
-        ProjectAction::Check => vec!["check".to_string()],
-        ProjectAction::Test => vec!["test".to_string()],
-        ProjectAction::Build => vec!["build".to_string()],
-        ProjectAction::FormatCheck => vec!["fmt".to_string(), "--check".to_string()],
-        ProjectAction::FormatApply => vec!["fmt".to_string()],
-        ProjectAction::Lint => vec!["lint".to_string()],
-        ProjectAction::Run => vec!["run".to_string()],
+    let Some(target) = target else {
+        return Err(unsupported_action(
+            ProjectEcosystem::Python,
+            action,
+            "pyproject.toml does not define a standard action-script table; provide an explicit target",
+        ));
     };
-    if let Some(t) = target {
-        args.push(t.to_string());
-    }
+    let mut args: Vec<String> = if pm == "python" {
+        vec![target.to_string()]
+    } else {
+        vec!["run".to_string(), target.to_string()]
+    };
     args.extend_from_slice(extra_args);
     Ok((
         pm.to_string(),

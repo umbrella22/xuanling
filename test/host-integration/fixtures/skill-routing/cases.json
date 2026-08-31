@@ -12,8 +12,8 @@
         {
           "id": "existing_overwrite_cas",
           "skill": "integrations/deepseek-harness/xuanling-skills/skills/xuanling-file-workflow/SKILL.md",
-          "all": ["existing file|replace an existing file", "hash", "mode:\\s*[`\"]?overwrite", "expected_sha256"],
-          "ordered": ["obtain.*hash|read.*hash", "mode:\\s*[`\"]?overwrite", "expected_sha256"]
+          "all": ["whole-file.*replacement|replacement derived", "SHA|hash", "mode:\\s*[`\"]?overwrite", "expected_sha256", "fingerprint-only"],
+          "ordered": ["replacement derived", "fingerprint-only", "mode:\\s*[`\"]?overwrite", "expected_sha256"]
         },
         {
           "id": "same_file_multi_hunk_patch",
@@ -48,6 +48,45 @@
           "id": "no_match_or_unavailable_continues",
           "skill": "integrations/deepseek-harness/xuanling-skills/skills/xuanling-memory-workflow/SKILL.md",
           "all": ["no match|unavailable", "continue.*(?:task|work)|main task.*continue", "zero canonical write|no canonical write|do not.*write"]
+        },
+        {
+          "id": "v3_omitted_output_bounded",
+          "skill": "integrations/deepseek-harness/xuanling-skills/skills/xuanling-file-workflow/SKILL.md",
+          "all": ["omitt(?:ed|ing)[^.]{0,80}output", "65,?536|64 KiB", "bounded", "mode.{0,20}complete"],
+          "ordered": ["omitt(?:ed|ing)[^.]{0,80}output", "65,?536|64 KiB", "mode.{0,20}complete"]
+        },
+        {
+          "id": "v3_numbered_read_raw_resume",
+          "skill": "integrations/deepseek-harness/xuanling-skills/skills/xuanling-file-workflow/SKILL.md",
+          "all": ["format.{0,20}numbered", "absolute", "1-based", "resume|TextResume", "raw(?:-file)? byte"],
+          "ordered": ["format.{0,20}numbered", "absolute", "raw(?:-file)? byte"]
+        },
+        {
+          "id": "v3_conditional_reread",
+          "skill": "integrations/deepseek-harness/xuanling-skills/skills/xuanling-file-workflow/SKILL.md",
+          "all": ["fs_read_text", "fs_read_bytes", "known_sha256", "not_modified", "total_lines", "total_bytes"]
+        },
+        {
+          "id": "v3_diff_visibility_dependency",
+          "skill": "integrations/deepseek-harness/xuanling-skills/skills/xuanling-file-workflow/SKILL.md",
+          "all": ["include_diff", "true", "native.*diff", "verif(?:ied|y)|proven", "do not.*false|never.*false"]
+        },
+        {
+          "id": "v3_sha_not_semantic_validation",
+          "skill": "integrations/deepseek-harness/xuanling-skills/skills/xuanling-file-workflow/SKILL.md",
+          "all": ["SHA", "integrity|concurr", "semantic", "diff", "unique.*wrong|wrong.*unique"]
+        },
+        {
+          "id": "v3_project_check_resolution",
+          "skill": "integrations/deepseek-harness/xuanling-skills/skills/xuanling-file-workflow/SKILL.md",
+          "all": ["project_run", "exact.*script", "check", "build", "unsupported"],
+          "ordered": ["exact[^.]{0,120}script", "convention", "unsupported"],
+          "forbidden": ["fall(?:s|ing)? back to build is (?:allowed|acceptable)"]
+        },
+        {
+          "id": "v3_minimal_env_diagnostic",
+          "skill": "integrations/deepseek-harness/xuanling-skills/skills/xuanling-file-workflow/SKILL.md",
+          "all": ["inherit_env", "false", "minimal", "remediation|retry", "true", "secret|environment values"]
         }
       ]
     },
@@ -61,8 +100,8 @@
         {
           "id": "existing_overwrite_cas",
           "skill": "integrations/zcode-plugin/plugins/xuanling-mcp/skills/xuanling-mcp-tools/SKILL.md",
-          "all": ["existing file|replace an existing file", "hash", "mode:\\s*[`\"]?overwrite", "expected_sha256"],
-          "ordered": ["obtain.*hash|read.*hash", "mode:\\s*[`\"]?overwrite", "expected_sha256"]
+          "all": ["whole-file.*replacement|replacement derived", "SHA|hash", "mode:\\s*[`\"]?overwrite", "expected_sha256", "fingerprint-only"],
+          "ordered": ["replacement derived", "fingerprint-only", "mode:\\s*[`\"]?overwrite", "expected_sha256"]
         },
         {
           "id": "same_file_multi_hunk_patch",
@@ -97,6 +136,45 @@
           "id": "no_match_or_unavailable_continues",
           "skill": "integrations/zcode-plugin/plugins/xuanling-mcp/skills/xuanling-mcp-tools/SKILL.md",
           "all": ["no match|unavailable", "continue.*(?:task|work)|main task.*continue", "zero canonical write|no canonical write|do not.*write"]
+        },
+        {
+          "id": "v3_omitted_output_bounded",
+          "skill": "integrations/zcode-plugin/plugins/xuanling-mcp/skills/xuanling-mcp-tools/SKILL.md",
+          "all": ["omitt(?:ed|ing)[^.]{0,80}output", "65,?536|64 KiB", "bounded", "mode.{0,20}complete"],
+          "ordered": ["omitt(?:ed|ing)[^.]{0,80}output", "65,?536|64 KiB", "mode.{0,20}complete"]
+        },
+        {
+          "id": "v3_numbered_read_raw_resume",
+          "skill": "integrations/zcode-plugin/plugins/xuanling-mcp/skills/xuanling-mcp-tools/SKILL.md",
+          "all": ["format.{0,20}numbered", "absolute", "1-based", "resume|TextResume", "raw(?:-file)? byte"],
+          "ordered": ["format.{0,20}numbered", "absolute", "raw(?:-file)? byte"]
+        },
+        {
+          "id": "v3_conditional_reread",
+          "skill": "integrations/zcode-plugin/plugins/xuanling-mcp/skills/xuanling-mcp-tools/SKILL.md",
+          "all": ["fs_read_text", "fs_read_bytes", "known_sha256", "not_modified", "total_lines", "total_bytes"]
+        },
+        {
+          "id": "v3_diff_visibility_dependency",
+          "skill": "integrations/zcode-plugin/plugins/xuanling-mcp/skills/xuanling-mcp-tools/SKILL.md",
+          "all": ["include_diff", "true", "native.*diff", "verif(?:ied|y)|proven", "do not.*false|never.*false"]
+        },
+        {
+          "id": "v3_sha_not_semantic_validation",
+          "skill": "integrations/zcode-plugin/plugins/xuanling-mcp/skills/xuanling-mcp-tools/SKILL.md",
+          "all": ["SHA", "integrity|concurr", "semantic", "diff", "unique.*wrong|wrong.*unique"]
+        },
+        {
+          "id": "v3_project_check_resolution",
+          "skill": "integrations/zcode-plugin/plugins/xuanling-mcp/skills/xuanling-mcp-tools/SKILL.md",
+          "all": ["project_run", "exact.*script", "check", "build", "unsupported"],
+          "ordered": ["exact[^.]{0,120}script", "convention", "unsupported"],
+          "forbidden": ["fall(?:s|ing)? back to build is (?:allowed|acceptable)"]
+        },
+        {
+          "id": "v3_minimal_env_diagnostic",
+          "skill": "integrations/zcode-plugin/plugins/xuanling-mcp/skills/xuanling-mcp-tools/SKILL.md",
+          "all": ["inherit_env", "false", "minimal", "remediation|retry", "true", "secret|environment values"]
         }
       ]
     }

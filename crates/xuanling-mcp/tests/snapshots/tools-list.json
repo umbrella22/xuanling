@@ -90,7 +90,7 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Read bytes from a server-owned process-output artifact. The caller must present the opaque artifact id and read_capability returned by the producing invocation; owner is audit metadata, not authorization. Filesystem paths are never accepted. Omitted `output` and `length` return the complete artifact; an explicit length or bounded output selects a byte window.",
+    "description": "Read bytes from a server-owned process-output artifact. The caller must present the opaque artifact id and read_capability returned by the producing invocation; owner is audit metadata, not authorization. Filesystem paths are never accepted. Omitted `output` uses the 65,536-byte safe default; explicit complete removes that budget. An explicit length and output budget are independent constraints; the stricter one wins.",
     "input_schema": {
       "$defs": {
         "OutputRequest": {
@@ -369,7 +369,7 @@
       "openWorldHint": false,
       "readOnlyHint": false
     },
-    "description": "Apply a precise old->new text replacement (ADR 0027 §8.2). By default the match must be UNIQUE; multiple matches return their line/column locations WITHOUT writing (conflict). expected_sha256 guards against stale content. reversible=true registers a ChangeSet so the apply can be rolled back via change_rollback. Use fs_edit_preview before approval when a diff is needed.",
+    "description": "Apply a precise old->new text replacement (ADR 0027 §8.2). By default the match must be UNIQUE; multiple matches return their line/column locations WITHOUT writing (conflict). expected_sha256 guards against stale content. reversible=true registers a ChangeSet so the apply can be rolled back via change_rollback. include_diff defaults to true; false omits only the unified-diff response projection and does not change matching, hashes, writes, or rollback state.",
     "input_schema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -387,6 +387,10 @@
             "string",
             "null"
           ]
+        },
+        "include_diff": {
+          "default": true,
+          "type": "boolean"
         },
         "new": {
           "type": "string"
@@ -496,7 +500,7 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Preview a precise old->new text replacement without writing. By default the match must be UNIQUE; multiple matches return line/column locations. expected_sha256 detects a stale preimage. Returns a unified diff when the replacement is applicable.",
+    "description": "Preview a precise old->new text replacement without writing. By default the match must be UNIQUE; multiple matches return line/column locations. expected_sha256 detects a stale preimage. include_diff defaults to true; false omits only the unified-diff response projection and preserves hashes and replacement facts.",
     "input_schema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -514,6 +518,10 @@
             "string",
             "null"
           ]
+        },
+        "include_diff": {
+          "default": true,
+          "type": "boolean"
         },
         "new": {
           "type": "string"
@@ -619,7 +627,7 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Match paths under `path` against one or more glob patterns (`/` as separator). include_files/include_dirs control which kinds are returned. `limit` and an explicit canonical-JSON item byte budget are independent constraints; omitted `output` removes the byte budget. A query-bound cursor resumes when more matches remain. Uses Rust `globset`, never find/Get-ChildItem. Use `output`: {\"mode\":\"bounded\",\"max_bytes\":65536} only when the caller wants a byte budget.",
+    "description": "Match paths under `path` against one or more glob patterns (`/` as separator). include_files/include_dirs control which kinds are returned. `limit` and an explicit canonical-JSON item byte budget are independent constraints; omitted `output` uses the 65,536-byte safe default and explicit complete removes it. A query-bound cursor resumes when more matches remain. Uses Rust `globset`, never find/Get-ChildItem. Use `output`: {\"mode\":\"bounded\",\"max_bytes\":65536} only when the caller wants a byte budget.",
     "input_schema": {
       "$defs": {
         "OutputRequest": {
@@ -831,7 +839,7 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "List directory entries. When recursive, descends up to optional max_depth. follow_symlinks=false (default) returns symlink entries without descending; true follows contained targets, while workspace mode omits links whose targets are outside the capability. `limit` and an explicit output byte budget are independent constraints; the stricter one wins. Omitted `output` returns every entry. `next_cursor` resumes a stable snapshot when more entries remain. In workspace mode, respect_gitignore reads only .ignore/.gitignore files at the list root and traversed descendants; it does not use ancestor, global, or .git/info/exclude rules. include_hidden controls dotfile filtering. Uses Rust APIs, never grep/find/dir or Git. Use `output`: {\"mode\":\"bounded\",\"max_bytes\":65536} only when the caller wants a byte budget.",
+    "description": "List directory entries. When recursive, descends up to optional max_depth. follow_symlinks=false (default) returns symlink entries without descending; true follows contained targets, while workspace mode omits links whose targets are outside the capability. `limit` and an explicit output byte budget are independent constraints; the stricter one wins. Omitted `output` uses the 65,536-byte safe default; explicit complete removes that budget. `next_cursor` resumes a stable snapshot when more entries remain. In workspace mode, respect_gitignore reads only .ignore/.gitignore files at the list root and traversed descendants; it does not use ancestor, global, or .git/info/exclude rules. include_hidden controls dotfile filtering. Uses Rust APIs, never grep/find/dir or Git. Use `output`: {\"mode\":\"bounded\",\"max_bytes\":65536} only when the caller wants a byte budget.",
     "input_schema": {
       "$defs": {
         "OutputRequest": {
@@ -1190,7 +1198,7 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Read a file as base64 bytes. Explicit `length` and an explicit output byte budget are independent constraints; the stricter one wins. Omitted `output` reads through EOF when length is absent. Bounded results carry a preimage-bound byte resume. No binary inference. Use `output`: {\"mode\":\"bounded\",\"max_bytes\":65536} only when the caller wants a byte budget.",
+    "description": "Read a file as base64 bytes. Omitted `output` uses the 65,536-byte safe default; explicit complete removes that budget. Explicit `length` and an output byte budget are independent constraints; the stricter one wins. Bounded results carry a preimage-bound byte resume. `known_sha256` performs a stateless conditional read: a match returns `not_modified=true`, sha256, total_bytes, and no base64 body. No binary inference.",
     "input_schema": {
       "$defs": {
         "ByteResume": {
@@ -1264,6 +1272,13 @@
         "include_sha256": {
           "default": false,
           "type": "boolean"
+        },
+        "known_sha256": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "length": {
           "default": null,
@@ -1335,7 +1350,10 @@
       "properties": {
         "base64": {
           "description": "base64-encoded bytes.",
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "length": {
           "format": "uint64",
@@ -1352,6 +1370,10 @@
             }
           ],
           "description": "Resume token for the next window (present iff `truncated`)."
+        },
+        "not_modified": {
+          "default": false,
+          "type": "boolean"
         },
         "offset": {
           "format": "uint64",
@@ -1376,7 +1398,6 @@
         }
       },
       "required": [
-        "base64",
         "offset",
         "length",
         "total_bytes"
@@ -1391,7 +1412,7 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Read a UTF-8 text file. Omitted `output` returns the complete selected file or line range. Explicit bounded windows preserve UTF-8 boundaries and return a preimage-bound resume token. Invalid UTF-8 is a typed `invalid_utf8` error. Reports line and newline metadata plus sha256 when required for continuation. Use `output`: {\"mode\":\"bounded\",\"max_bytes\":65536} only when the caller wants a byte budget.",
+    "description": "Read a UTF-8 text file. Omitted `output` uses the 65,536-byte safe default; explicit complete removes that budget. `format=raw` preserves source text, while `format=numbered` prefixes each line with an absolute right-aligned line number and tab (cat -n style). Bounded windows preserve UTF-8 boundaries and return a preimage-bound resume token whose offset always remains in raw source-byte space. `known_sha256` performs a stateless conditional read: a match returns `not_modified=true`, sha256, total_lines, and no content body. Invalid UTF-8 or an invalid SHA is a typed input error.",
     "input_schema": {
       "$defs": {
         "OutputRequest": {
@@ -1450,6 +1471,13 @@
           ],
           "type": "object"
         },
+        "TextReadFormat": {
+          "enum": [
+            "raw",
+            "numbered"
+          ],
+          "type": "string"
+        },
         "TextResume": {
           "description": "Typed resume token for `fs_read_text` byte-window reads (ADR 0027 §5.2). It\nis bound to `fs_read_text` only; a cursor/resume from another tool is\nrejected at the MCP layer. On resume the toolkit re-hashes the file and\ncompares to `preimage_sha256`; a mismatch (concurrent modification) returns\n`conflict` instead of splicing inconsistent fragments (ADR 0027 §6.1).",
           "properties": {
@@ -1501,9 +1529,20 @@
             "null"
           ]
         },
+        "format": {
+          "$ref": "#/$defs/TextReadFormat",
+          "default": "raw"
+        },
         "include_sha256": {
           "default": false,
           "type": "boolean"
+        },
+        "known_sha256": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "output": {
           "$ref": "#/$defs/OutputRequest"
@@ -1595,7 +1634,10 @@
       "additionalProperties": false,
       "properties": {
         "content": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "end_line": {
           "format": "uint32",
@@ -1618,6 +1660,10 @@
             }
           ],
           "description": "Resume token for the next window (present iff `truncated`)."
+        },
+        "not_modified": {
+          "default": false,
+          "type": "boolean"
         },
         "range_end_bytes": {
           "format": "uint64",
@@ -1647,6 +1693,15 @@
         },
         "returned_chars": {
           "description": "Chars in `content` (bounded window only).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "returned_source_bytes": {
+          "description": "Raw source bytes represented by this window. In raw mode this equals\n`returned_bytes`; numbered display prefixes never count toward it.",
           "format": "uint64",
           "minimum": 0,
           "type": [
@@ -1689,7 +1744,6 @@
         }
       },
       "required": [
-        "content",
         "total_lines",
         "newline_style"
       ],
@@ -1829,7 +1883,7 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Search file contents line-by-line with a regex (or literal) pattern. include_hidden, root-local respect_gitignore, include_globs, exclude_globs, and file_extensions filter candidate paths before scanning. file_extensions accepts simple (`ts`, `.ts`) or compound (`d.ts`, `.d.ts`) suffixes. Globs use `/`-separated paths relative to the search root; extension matching is case-sensitive on every platform. `limit` and an explicit canonical-JSON item byte budget are independent constraints. Omitted output returns every match when limit is absent. A query-bound cursor resumes when more matches remain. Set `group_by_line=true` to return one item per matching source line with every occurrence in `occurrences[]`; the default remains one item per occurrence. Uses Rust regex/ignore/globset APIs, never grep/findstr/Select-String.",
+    "description": "Search file contents line-by-line with a regex (or literal) pattern. include_hidden, root-local respect_gitignore, include_globs, exclude_globs, and file_extensions filter candidate paths before scanning. file_extensions accepts simple (`ts`, `.ts`) or compound (`d.ts`, `.d.ts`) suffixes. Globs use `/`-separated paths relative to the search root; extension matching is case-sensitive on every platform. `limit` and a canonical-JSON item byte budget are independent constraints. Omitted `output` uses the 65,536-byte safe default; explicit complete removes that budget. A query-bound cursor resumes when more matches remain. Set `group_by_line=true` to return one item per matching source line with every occurrence in `occurrences[]`; the default remains one item per occurrence. Uses Rust regex/ignore/globset APIs, never grep/findstr/Select-String.",
     "input_schema": {
       "$defs": {
         "OutputRequest": {
@@ -5734,7 +5788,7 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Run a shell-free pipeline (ADR 0027 §9.1). Provide either explicit `stages` ({program,args,env,remove_env,inherit_env,cwd}) or `pipeline_shlex`, a restricted notation with whitespace, quotes, backslash escapes, and `|`; never provide both. The parser does not execute a shell: `$`, backticks, and quoted metacharacters remain literal, while redirection and control operators are rejected. Explicit stages remain the portable contract and allow per-stage env/cwd. A stage's stdout is piped to the next stage's stdin. Reports each stage's exit status; spawn failures carry details.stage_index. An optional timeout_hint_ms is an MCP soft deadline; without it there is no server-side timeout. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output returns complete inline streams; an explicit bounded output spills overflow to per-invocation artifacts.",
+    "description": "Run a shell-free pipeline (ADR 0027 §9.1). Provide either explicit `stages` ({program,args,env,remove_env,inherit_env,cwd}) or `pipeline_shlex`, a restricted notation with whitespace, quotes, backslash escapes, and `|`; never provide both. The parser does not execute a shell: `$`, backticks, and quoted metacharacters remain literal, while redirection and control operators are rejected. Explicit stages remain the portable contract and allow per-stage env/cwd. A stage's stdout is piped to the next stage's stdin. Reports each stage's exit status; spawn failures carry details.stage_index. An optional timeout_hint_ms is an MCP soft deadline; without it there is no server-side timeout. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output uses a 65,536-byte per-stream preview and spills overflow to per-invocation artifacts; explicit complete opts into full inline streams.",
     "input_schema": {
       "$defs": {
         "OutputRequest": {
@@ -6177,7 +6231,7 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Run a child process using direct argv (program + args[] + cwd + env). No shell; an optional timeout_hint_ms is an MCP soft deadline that follows the normal cancellation and descendant cleanup path. Without the hint there is no server-side timeout. MCP cancellation terminates the complete descendant process tree. Before returning after direct-child exit, residual descendants in the containment unit are also terminated. stdout/stderr capture mode is caller-selected (inline/file/inherit/null; stdout=inherit is rejected in stdio MCP mode). A nonzero exit is a successful call with success=false, NOT an error. Does not split or translate shell command strings. inherit_env=false (default) seeds a minimal non-secret allowlist (PATH/HOME/TEMP/locale; SystemRoot/USERPROFILE on Windows): child tools read your user config (git/cargo/npm/ssh) but do NOT inherit tokens/keys; pass inherit_env=true to match your login shell or add vars via env/remove_env. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output returns complete inline streams; an explicit bounded output spills overflow to per-invocation artifacts.",
+    "description": "Run a child process using direct argv (program + args[] + cwd + env). No shell; an optional timeout_hint_ms is an MCP soft deadline that follows the normal cancellation and descendant cleanup path. Without the hint there is no server-side timeout. MCP cancellation terminates the complete descendant process tree. Before returning after direct-child exit, residual descendants in the containment unit are also terminated. stdout/stderr capture mode is caller-selected (inline/file/inherit/null; stdout=inherit is rejected in stdio MCP mode). A nonzero exit is a successful call with success=false, NOT an error. Does not split or translate shell command strings. inherit_env=false (default) seeds a minimal non-secret allowlist (PATH/HOME/TEMP/locale; SystemRoot/USERPROFILE on Windows): child tools read your user config (git/cargo/npm/ssh) but do NOT inherit tokens/keys; pass inherit_env=true to match your login shell or add vars via env/remove_env. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output uses a 65,536-byte per-stream preview and spills overflow to per-invocation artifacts; explicit complete opts into full inline streams.",
     "input_schema": {
       "$defs": {
         "OutputRequest": {
@@ -6649,7 +6703,7 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Resolve a project action (check/test/build/format_check/format_apply/lint/run) into a deterministic program + args + cwd WITHOUT executing. Package manager / toolchain is selected deterministically by lockfile (no PATH-order guess). Returns conflict candidates when the ecosystem cannot be uniquely determined.",
+    "description": "Resolve a project action (check/test/build/format_check/format_apply/lint/run) into deterministic program, args, cwd, reason, and ecosystem WITHOUT executing. Resolution prefers an explicit target, then an exact same-name user script, then a proven non-mutating ecosystem convention; otherwise it returns typed unsupported. `check` never falls back to `build`, and format_check never selects a formatting command that writes source files. Package manager/toolchain selection is deterministic by lockfile, with no PATH-order guess.",
     "input_schema": {
       "$defs": {
         "ProjectAction": {
@@ -6832,7 +6886,7 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Run a resolved project command via process_run (composes the resolver + process lifecycle; no copied spawn logic). Same cancellation/argv/env semantics as process_run, including optional timeout_hint_ms soft deadline; without the hint there is no server-side timeout. inherit_env=false (default) seeds the minimal non-secret allowlist; pass inherit_env=true to match your login shell. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output returns complete inline streams; an explicit bounded output spills overflow to per-invocation artifacts.",
+    "description": "Resolve and run a project action via process_run (one resolver and one process lifecycle). Exact same-name user scripts take priority over ecosystem conventions; `check` never falls back to `build`, and unsupported mappings spawn nothing. The result reports program, args, cwd, reason, ecosystem, and action alongside process terminal facts. Same cancellation and direct-argv semantics as process_run, including optional timeout_hint_ms. inherit_env=false (default) uses the minimal non-secret environment; spawn errors report that policy and suggest explicit inherit_env=true without exposing environment values. Omitted output uses a 65,536-byte per-stream preview and spills overflow to per-invocation artifacts; explicit complete opts into full inline streams.",
     "input_schema": {
       "$defs": {
         "OutputRequest": {
@@ -7073,10 +7127,46 @@
             "cleanup_state"
           ],
           "type": "object"
+        },
+        "ProjectAction": {
+          "enum": [
+            "check",
+            "test",
+            "build",
+            "format_check",
+            "format_apply",
+            "lint",
+            "run"
+          ],
+          "type": "string"
+        },
+        "ProjectEcosystem": {
+          "enum": [
+            "rust",
+            "node",
+            "flutter",
+            "gradle",
+            "go",
+            "python",
+            "unknown"
+          ],
+          "type": "string"
         }
       },
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "properties": {
+        "action": {
+          "$ref": "#/$defs/ProjectAction"
+        },
+        "args": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "cwd": {
+          "type": "string"
+        },
         "duration_ms": {
           "description": "Wall-clock duration of the invocation. Omitted when `deterministic=true`\n(ADR 0027 修订 2) because it varies on every call and breaks exact\nprompt-cache prefixes.",
           "format": "uint64",
@@ -7086,12 +7176,21 @@
             "null"
           ]
         },
+        "ecosystem": {
+          "$ref": "#/$defs/ProjectEcosystem"
+        },
         "exit_code": {
           "format": "int32",
           "type": [
             "integer",
             "null"
           ]
+        },
+        "program": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
         },
         "signal": {
           "type": [
@@ -7218,6 +7317,12 @@
         }
       },
       "required": [
+        "program",
+        "args",
+        "cwd",
+        "reason",
+        "ecosystem",
+        "action",
         "success"
       ],
       "type": "object"
@@ -7270,7 +7375,7 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Run a foreground direct-argv command inside a session (the session's cwd/env apply; request env overrides). NO shell. An optional timeout_hint_ms is an MCP soft deadline; without it there is no server-side timeout. Cancellation and session_close terminate the contained process tree; descendants left after the direct child exits are cleaned up before this call returns. The env policy follows session_open: a session opened with inherit_env=false uses the minimal non-secret allowlist plus explicit env. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output returns complete inline streams; an explicit bounded output spills overflow to per-invocation artifacts.",
+    "description": "Run a foreground direct-argv command inside a session (the session's cwd/env apply; request env overrides). NO shell. An optional timeout_hint_ms is an MCP soft deadline; without it there is no server-side timeout. Cancellation and session_close terminate the contained process tree; descendants left after the direct child exits are cleaned up before this call returns. The env policy follows session_open: a session opened with inherit_env=false uses the minimal non-secret allowlist plus explicit env. deterministic=true omits duration_ms so identical invocations return byte-identical results. Omitted output uses a 65,536-byte per-stream preview and spills overflow to per-invocation artifacts; explicit complete opts into full inline streams.",
     "input_schema": {
       "$defs": {
         "OutputRequest": {

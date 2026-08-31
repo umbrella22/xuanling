@@ -4,7 +4,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Seek, SeekFrom};
 
-use super::{map_io_error, resolve_path, sha256_hex, sha256_open_file};
+use super::{hex_lower, map_io_error, resolve_path, sha256_hex, sha256_open_file};
 use crate::PathAccess;
 use crate::error::{ToolError, ToolErrorCode};
 use crate::invocation::InvocationContext;
@@ -36,6 +36,15 @@ pub struct TextLineRange {
     pub end_line: u32,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+#[schemars(rename_all = "snake_case")]
+pub enum TextReadFormat {
+    #[default]
+    Raw,
+    Numbered,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FsReadTextRequest {
@@ -48,6 +57,14 @@ pub struct FsReadTextRequest {
     pub end_line: Option<u32>,
     #[serde(default)]
     pub include_sha256: bool,
+    /// Conditional read validator. A matching whole-file SHA returns metadata
+    /// with `not_modified=true` and no content body.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub known_sha256: Option<String>,
+    /// Model-visible text projection. Numbered mode uses absolute line numbers
+    /// but resume offsets remain in the raw source-byte space.
+    #[serde(default)]
+    pub format: TextReadFormat,
     /// Byte budget for the returned content window (ADR 0027 §6.1). When set,
     /// the file is read as a byte window cut at a UTF-8 code-point boundary and
     /// the result reports `truncated`/`total_bytes`/`returned_bytes`/
@@ -65,7 +82,10 @@ pub struct FsReadTextRequest {
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FsReadTextResult {
-    pub content: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    #[serde(default)]
+    pub not_modified: bool,
     pub total_lines: u64,
     pub start_line: Option<u32>,
     pub end_line: Option<u32>,
@@ -75,6 +95,10 @@ pub struct FsReadTextResult {
     /// Bytes returned in `content` (bounded window only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub returned_bytes: Option<u64>,
+    /// Raw source bytes represented by this window. In raw mode this equals
+    /// `returned_bytes`; numbered display prefixes never count toward it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub returned_source_bytes: Option<u64>,
     /// Chars in `content` (bounded window only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub returned_chars: Option<u64>,
@@ -124,6 +148,30 @@ pub fn read_text(
     }
     let total_bytes = meta.len();
 
+    if let Some(known) = &req.known_sha256 {
+        validate_known_sha256(known, &path, "fs.read_text")?;
+        let facts = scan_text_facts(&mut file, &path)?;
+        if known.eq_ignore_ascii_case(&facts.sha256) {
+            return Ok(FsReadTextResult {
+                content: None,
+                not_modified: true,
+                total_lines: facts.total_lines,
+                start_line: req.start_line,
+                end_line: req.end_line,
+                newline_style: facts.newline_style,
+                sha256: Some(facts.sha256),
+                returned_bytes: None,
+                returned_source_bytes: None,
+                returned_chars: None,
+                total_bytes: Some(total_bytes),
+                truncated: false,
+                next_resume: None,
+                range_start_bytes: None,
+                range_end_bytes: None,
+            });
+        }
+    }
+
     // A line range denotes a logical text slice. Resolve it before bounded
     // windowing so `start_line`/`end_line` never disappear just because the
     // public MCP layer selected an output budget.
@@ -152,20 +200,22 @@ pub fn read_text(
     let newline_style = detect_newline_style(&content);
     let total_lines = content.lines().count() as u64;
 
-    let sha256 = if req.include_sha256 {
+    let sha256 = if req.include_sha256 || req.known_sha256.is_some() {
         Some(sha256_hex(&bytes))
     } else {
         None
     };
 
     Ok(FsReadTextResult {
-        content,
+        content: Some(project_complete_text(&content, &req.format, 1)),
+        not_modified: false,
         total_lines,
         start_line: None,
         end_line: None,
         newline_style,
         sha256: sha256.clone(),
         returned_bytes: None,
+        returned_source_bytes: None,
         returned_chars: None,
         total_bytes: None,
         truncated: false,
@@ -258,39 +308,51 @@ fn read_text_line_range(
     }
     let max_bytes = req.max_bytes;
     let remaining = &content[offset_usize..range_end];
-    let (preview, truncated, returned_bytes) = match max_bytes {
+    let absolute_line = absolute_line_at_offset(&content, offset_usize);
+    let (preview, truncated, returned_source_bytes) = match max_bytes {
         Some(max_bytes) => {
-            let length = utf8_prefix_within_budget(remaining, max_bytes, &path)?;
+            let (preview, source_bytes) =
+                project_bounded_text(remaining, &req.format, absolute_line, max_bytes, &path)?;
             // A zero-byte request is a metadata-only probe. It intentionally
             // has no continuation token: the caller must issue a new window
             // with a positive budget, so a token at the same offset cannot be
             // replayed forever.
             (
-                remaining[..length].to_string(),
-                max_bytes > 0 && length < remaining.len(),
-                length as u64,
+                preview,
+                max_bytes > 0 && source_bytes < remaining.len(),
+                source_bytes as u64,
             )
         }
-        None => (remaining.to_string(), false, remaining.len() as u64),
+        None => (
+            project_complete_text(remaining, &req.format, absolute_line),
+            false,
+            remaining.len() as u64,
+        ),
     };
-    let sha256 = if req.include_sha256 || max_bytes.is_some() || req.resume.is_some() {
+    let sha256 = if req.include_sha256
+        || req.known_sha256.is_some()
+        || max_bytes.is_some()
+        || req.resume.is_some()
+    {
         Some(resume_preimage.unwrap_or_else(|| sha256_hex(&bytes)))
     } else {
         None
     };
     Ok(FsReadTextResult {
         newline_style: detect_newline_style(&content[range_start..range_end]),
+        not_modified: false,
         total_lines,
         start_line,
         end_line,
         returned_chars: max_bytes.map(|_| preview.chars().count() as u64),
         total_bytes: max_bytes.map(|_| whole_file_bytes),
-        content: preview,
+        content: Some(preview.clone()),
         sha256: sha256.clone(),
-        returned_bytes: max_bytes.map(|_| returned_bytes),
+        returned_bytes: max_bytes.map(|_| preview.len() as u64),
+        returned_source_bytes: max_bytes.map(|_| returned_source_bytes),
         truncated,
         next_resume: truncated.then(|| TextResume {
-            offset_bytes: offset + returned_bytes,
+            offset_bytes: offset + returned_source_bytes,
             preimage_sha256: sha256.clone().expect("bounded range reads have a hash"),
             line_range: Some(line_range),
         }),
@@ -338,8 +400,14 @@ fn read_text_bounded(
         )
         .with_path(path.to_string_lossy()));
     }
+    let numbered_facts = matches!(req.format, TextReadFormat::Numbered)
+        .then(|| scan_text_facts(file, path))
+        .transpose()?;
     let resume_preimage = if let Some(resume) = &req.resume {
-        let actual = sha256_open_file(file).map_err(|e| map_io_error(&e, "fs.read_text", path))?;
+        let actual = match &numbered_facts {
+            Some(facts) => facts.sha256.clone(),
+            None => sha256_open_file(file).map_err(|e| map_io_error(&e, "fs.read_text", path))?,
+        };
         if resume.preimage_sha256 != actual {
             return Err(ToolError::new(
                 ToolErrorCode::Conflict,
@@ -412,20 +480,17 @@ fn read_text_bounded(
     let valid_len = valid_utf8_prefix_len(&buf, path)?;
     buf.truncate(valid_len);
     let valid = std::str::from_utf8(&buf).expect("valid_utf8_prefix_len validated prefix");
-    let preview_len = utf8_prefix_within_budget(valid, requested, path)?;
-    buf.truncate(preview_len);
-    let content = String::from_utf8(buf).map_err(|_| {
-        ToolError::new(
-            ToolErrorCode::InvalidUtf8,
-            "fs.read_text",
-            "window is not valid UTF-8 after boundary truncation",
-        )
-        .with_path(path.to_string_lossy())
-    })?;
+    let absolute_line = if matches!(req.format, TextReadFormat::Numbered) {
+        line_number_at_file_offset(file, offset, path)?
+    } else {
+        1
+    };
+    let (content, returned_source_bytes) =
+        project_bounded_text(valid, &req.format, absolute_line, max_bytes, path)?;
 
     let returned_bytes = content.len() as u64;
     let returned_chars = content.chars().count() as u64;
-    let end_offset = offset + returned_bytes;
+    let end_offset = offset + returned_source_bytes as u64;
     // max_bytes=0 is a metadata-only probe, not a resumable truncation. It
     // deliberately returns no same-offset token; callers can request a
     // positive budget from offset zero on the next call.
@@ -438,10 +503,20 @@ fn read_text_bounded(
     // content bytes already in memory (O(content), no extra I/O).  This was the
     // #1 dogfood performance blocker: every fs_read_text was doing a full-file
     // hash pass even for <1KB source files.
-    let (sha256, next_resume) = if resume_preimage.is_some() || truncated || max_bytes == 0 {
+    let (sha256, next_resume) = if resume_preimage.is_some()
+        || numbered_facts.is_some()
+        || req.known_sha256.is_some()
+        || truncated
+        || max_bytes == 0
+    {
         let preimage = match resume_preimage {
             Some(preimage) => preimage,
-            None => sha256_open_file(file).map_err(|e| map_io_error(&e, "fs.read_text", path))?,
+            None => match &numbered_facts {
+                Some(facts) => facts.sha256.clone(),
+                None => {
+                    sha256_open_file(file).map_err(|e| map_io_error(&e, "fs.read_text", path))?
+                }
+            },
         };
         let resume = if truncated {
             Some(TextResume {
@@ -457,20 +532,28 @@ fn read_text_bounded(
         // First read, not truncated: content bytes ARE the whole file from offset 0.
         (Some(sha256_hex(content.as_bytes())), None)
     };
-    let newline_style = detect_newline_style(&content);
+    let newline_style = numbered_facts
+        .as_ref()
+        .map(|facts| facts.newline_style.clone())
+        .unwrap_or_else(|| detect_newline_style(&content));
     // For a bounded window we report the lines present in the returned content
     // (NOT the whole file — ADR 0027 §6.1: total over the full file is only
     // reported when the whole file is scanned).
-    let total_lines = content.lines().count() as u64;
+    let total_lines = numbered_facts
+        .as_ref()
+        .map(|facts| facts.total_lines)
+        .unwrap_or_else(|| content.lines().count() as u64);
 
     Ok(FsReadTextResult {
-        content,
+        content: Some(content),
+        not_modified: false,
         total_lines,
         start_line: None,
         end_line: None,
         newline_style,
         sha256,
         returned_bytes: Some(returned_bytes),
+        returned_source_bytes: Some(returned_source_bytes as u64),
         returned_chars: Some(returned_chars),
         total_bytes: Some(total_bytes),
         truncated,
@@ -529,6 +612,266 @@ fn utf8_prefix_within_budget(
         end = scalar_end;
     }
     Ok(end)
+}
+
+#[derive(Clone, Debug)]
+struct TextFileFacts {
+    sha256: String,
+    total_lines: u64,
+    newline_style: String,
+}
+
+fn validate_known_sha256(
+    value: &str,
+    path: &std::path::Path,
+    operation: &str,
+) -> Result<(), ToolError> {
+    if value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Ok(());
+    }
+    Err(ToolError::new(
+        ToolErrorCode::InvalidInput,
+        operation,
+        "known_sha256 must be exactly 64 hexadecimal characters",
+    )
+    .with_path(path.to_string_lossy())
+    .with_details(serde_json::json!({"reason": "known_sha256_invalid"})))
+}
+
+/// Scan text facts without retaining the whole file. This is used only when
+/// the caller asks for a conditional comparison or numbered projection.
+fn scan_text_facts(
+    file: &mut std::fs::File,
+    path: &std::path::Path,
+) -> Result<TextFileFacts, ToolError> {
+    use sha2::{Digest, Sha256};
+
+    file.seek(SeekFrom::Start(0))
+        .map_err(|error| map_io_error(&error, "fs.read_text", path))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    let mut utf8_tail = Vec::with_capacity(4);
+    let mut total_bytes = 0_u64;
+    let mut lf_count = 0_u64;
+    let mut last_byte = None;
+    let mut pending_cr = false;
+    let mut crlf = 0_u64;
+    let mut lf_only = 0_u64;
+    let mut cr_only = 0_u64;
+
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|error| map_io_error(&error, "fs.read_text", path))?;
+        if read == 0 {
+            break;
+        }
+        let chunk = &buffer[..read];
+        hasher.update(chunk);
+        total_bytes += read as u64;
+        last_byte = chunk.last().copied();
+        lf_count += chunk.iter().filter(|byte| **byte == b'\n').count() as u64;
+
+        for byte in chunk {
+            if pending_cr {
+                if *byte == b'\n' {
+                    crlf += 1;
+                    pending_cr = false;
+                    continue;
+                }
+                cr_only += 1;
+                pending_cr = false;
+            }
+            match *byte {
+                b'\r' => pending_cr = true,
+                b'\n' => lf_only += 1,
+                _ => {}
+            }
+        }
+
+        utf8_tail.extend_from_slice(chunk);
+        match std::str::from_utf8(&utf8_tail) {
+            Ok(_) => utf8_tail.clear(),
+            Err(error) if error.error_len().is_none() => {
+                let tail = utf8_tail.split_off(error.valid_up_to());
+                utf8_tail = tail;
+            }
+            Err(_) => {
+                return Err(ToolError::new(
+                    ToolErrorCode::InvalidUtf8,
+                    "fs.read_text",
+                    "file content is not valid UTF-8",
+                )
+                .with_path(path.to_string_lossy()));
+            }
+        }
+    }
+    if pending_cr {
+        cr_only += 1;
+    }
+    if !utf8_tail.is_empty() {
+        return Err(ToolError::new(
+            ToolErrorCode::InvalidUtf8,
+            "fs.read_text",
+            "file content ends with an incomplete UTF-8 sequence",
+        )
+        .with_path(path.to_string_lossy()));
+    }
+    file.seek(SeekFrom::Start(0))
+        .map_err(|error| map_io_error(&error, "fs.read_text", path))?;
+
+    let total_lines = if total_bytes == 0 {
+        0
+    } else {
+        lf_count + u64::from(last_byte != Some(b'\n'))
+    };
+    Ok(TextFileFacts {
+        sha256: hex_lower(&hasher.finalize()),
+        total_lines,
+        newline_style: newline_style_from_counts(crlf, lf_only, cr_only),
+    })
+}
+
+fn newline_style_from_counts(crlf: u64, lf_only: u64, cr_only: u64) -> String {
+    if crlf == 0 && lf_only == 0 && cr_only == 0 {
+        "none"
+    } else if lf_only > 0 && crlf == 0 && cr_only == 0 {
+        "lf"
+    } else if crlf > 0 && lf_only == 0 && cr_only == 0 {
+        "crlf"
+    } else if cr_only > 0 && crlf == 0 && lf_only == 0 {
+        "cr"
+    } else {
+        "mixed"
+    }
+    .to_string()
+}
+
+fn absolute_line_at_offset(content: &str, offset: usize) -> u64 {
+    content.as_bytes()[..offset]
+        .iter()
+        .filter(|byte| **byte == b'\n')
+        .count() as u64
+        + 1
+}
+
+fn line_number_at_file_offset(
+    file: &mut std::fs::File,
+    offset: u64,
+    path: &std::path::Path,
+) -> Result<u64, ToolError> {
+    file.seek(SeekFrom::Start(0))
+        .map_err(|error| map_io_error(&error, "fs.read_text", path))?;
+    let mut remaining = offset;
+    let mut lines = 1_u64;
+    let mut buffer = [0_u8; 64 * 1024];
+    while remaining > 0 {
+        let want = remaining.min(buffer.len() as u64) as usize;
+        let read = file
+            .read(&mut buffer[..want])
+            .map_err(|error| map_io_error(&error, "fs.read_text", path))?;
+        if read == 0 {
+            break;
+        }
+        lines += buffer[..read].iter().filter(|byte| **byte == b'\n').count() as u64;
+        remaining -= read as u64;
+    }
+    Ok(lines)
+}
+
+fn numbered_prefix(line: u64) -> String {
+    format!("{line:>6}\t")
+}
+
+fn project_complete_text(raw: &str, format: &TextReadFormat, start_line: u64) -> String {
+    if matches!(format, TextReadFormat::Raw) || raw.is_empty() {
+        return raw.to_string();
+    }
+    let mut output = String::with_capacity(raw.len() + raw.lines().count() * 8);
+    let mut line = start_line;
+    for segment in raw.split_inclusive('\n') {
+        output.push_str(&numbered_prefix(line));
+        output.push_str(segment);
+        if segment.ends_with('\n') {
+            line += 1;
+        }
+    }
+    output
+}
+
+fn project_bounded_text(
+    raw: &str,
+    format: &TextReadFormat,
+    start_line: u64,
+    budget: u64,
+    path: &std::path::Path,
+) -> Result<(String, usize), ToolError> {
+    if matches!(format, TextReadFormat::Raw) {
+        let source_bytes = utf8_prefix_within_budget(raw, budget, path)?;
+        return Ok((raw[..source_bytes].to_string(), source_bytes));
+    }
+    if budget == 0 || raw.is_empty() {
+        return Ok((String::new(), 0));
+    }
+    let budget = usize::try_from(budget).unwrap_or(usize::MAX);
+    let mut output = String::new();
+    let mut source_bytes = 0_usize;
+    let mut line = start_line;
+
+    while source_bytes < raw.len() {
+        let remaining = &raw[source_bytes..];
+        let segment_len = remaining
+            .find('\n')
+            .map(|index| index + 1)
+            .unwrap_or(remaining.len());
+        let segment = &remaining[..segment_len];
+        let prefix = numbered_prefix(line);
+        let available = budget.saturating_sub(output.len());
+        if available <= prefix.len() {
+            if source_bytes == 0 {
+                return Err(numbered_budget_error(path, prefix.len() + 1));
+            }
+            break;
+        }
+        let raw_budget = (available - prefix.len()).min(segment.len());
+        let mut take = raw_budget;
+        while take > 0 && !segment.is_char_boundary(take) {
+            take -= 1;
+        }
+        if take == 0 {
+            if source_bytes == 0 {
+                let next_scalar = segment.chars().next().map(char::len_utf8).unwrap_or(1);
+                return Err(numbered_budget_error(path, prefix.len() + next_scalar));
+            }
+            break;
+        }
+
+        output.push_str(&prefix);
+        output.push_str(&segment[..take]);
+        source_bytes += take;
+        if take < segment.len() {
+            break;
+        }
+        if segment.ends_with('\n') {
+            line += 1;
+        }
+    }
+    Ok((output, source_bytes))
+}
+
+fn numbered_budget_error(path: &std::path::Path, minimum: usize) -> ToolError {
+    ToolError::new(
+        ToolErrorCode::InvalidInput,
+        "fs.read_text",
+        format!(
+            "numbered output budget is too small to contain a line prefix and one UTF-8 character; minimum {minimum} bytes"
+        ),
+    )
+    .with_path(path.to_string_lossy())
+    .with_details(serde_json::json!({
+        "reason": "numbered_output_budget_too_small",
+        "minimum_bytes": minimum,
+    }))
 }
 
 /// `lf`, `crlf`, `cr`, `mixed`, or `none`.
@@ -692,6 +1035,8 @@ pub struct FsReadBytesRequest {
     pub length: Option<u64>,
     #[serde(default)]
     pub include_sha256: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub known_sha256: Option<String>,
     /// Resume a previous length-bounded read (ADR 0027 §6.2).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resume: Option<ByteResume>,
@@ -701,7 +1046,10 @@ pub struct FsReadBytesRequest {
 #[serde(deny_unknown_fields)]
 pub struct FsReadBytesResult {
     /// base64-encoded bytes.
-    pub base64: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base64: Option<String>,
+    #[serde(default)]
+    pub not_modified: bool,
     pub offset: u64,
     pub length: u64,
     pub total_bytes: u64,
@@ -743,6 +1091,10 @@ pub fn read_bytes(
     }
     let total = meta.len();
 
+    if let Some(known) = &req.known_sha256 {
+        validate_known_sha256(known, &path, "fs.read_bytes")?;
+    }
+
     // A bounded read is one with an explicit `length` OR an active resume. A
     // full read (no length, no resume) returns the whole file from `offset`.
     let bounded = req.length.is_some() || req.resume.is_some();
@@ -750,12 +1102,27 @@ pub fn read_bytes(
     // Compute the whole-file hash once: needed for resume validation and/or
     // reported on bounded reads (ADR 0027 §6.2). On a full read without
     // include_sha256 we skip the hash pass entirely (zero regression).
-    let need_hash = bounded || req.include_sha256;
+    let need_hash = bounded || req.include_sha256 || req.known_sha256.is_some();
     let file_hash = if need_hash {
         Some(sha256_open_file(&mut file).map_err(|e| map_io_error(&e, "fs.read_bytes", &path))?)
     } else {
         None
     };
+
+    if let (Some(known), Some(actual)) = (&req.known_sha256, &file_hash)
+        && known.eq_ignore_ascii_case(actual)
+    {
+        return Ok(FsReadBytesResult {
+            base64: None,
+            not_modified: true,
+            offset: req.offset.unwrap_or(0).min(total),
+            length: 0,
+            total_bytes: total,
+            sha256: Some(actual.clone()),
+            truncated: false,
+            next_resume: None,
+        });
+    }
 
     // Resolve offset: a resume token's offset wins; otherwise the request offset.
     let offset = match &req.resume {
@@ -834,7 +1201,8 @@ pub fn read_bytes(
     };
 
     Ok(FsReadBytesResult {
-        base64: base64::engine::general_purpose::STANDARD.encode(&buf),
+        base64: Some(base64::engine::general_purpose::STANDARD.encode(&buf)),
+        not_modified: false,
         offset,
         length: returned,
         total_bytes: total,

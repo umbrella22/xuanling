@@ -97,6 +97,10 @@
         "profile": "web",
         "preset": "recommended",
         "resolved_version": "0.2.4",
+        "mode": "install",
+        "from_version": null,
+        "to_version": "0.2.4",
+        "release_notes": "CHANGELOG.md#024",
         "changes_required": true,
         "remove": [],
         "add": [
@@ -153,7 +157,16 @@
       "kind": "tool_call",
       "status": "passed",
       "tool": "mcp__xuanling__system_info",
-      "read_only": true
+      "read_only": true,
+      "runtime_identity": {
+        "native_target_id": "darwin-arm64",
+        "lockfile_launcher_version": "0.2.4",
+        "launcher_version": "0.2.4",
+        "native_package_version": "0.2.4-darwin-arm64",
+        "resolved_native_path": "/isolated/profile/node_modules/xuanling-mcp-darwin-arm64/bin/xuanling-mcp",
+        "system_info_version": "0.2.4",
+        "mcp_contract_version": "2"
+      }
     }
   ],
   "terminal": {

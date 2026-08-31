@@ -315,7 +315,9 @@ pub async fn process_run(
     tree::configure(&mut cmd);
 
     let start = Instant::now();
-    let mut child = cmd.spawn().map_err(|e| spawn_error(e, &req.program))?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| spawn_error(e, &req.program, req.inherit_env))?;
     let process_tree = match ProcessTree::attach(&child) {
         Ok(process_tree) => process_tree,
         Err(error) => {
@@ -674,11 +676,16 @@ fn map_io_for_capture(e: std::io::Error, label: &str, path: &str) -> ToolError {
     io_to_tool(e, label).with_path(path.to_string())
 }
 
-fn spawn_error(e: std::io::Error, program: &str) -> ToolError {
-    spawn_error_for_operation(e, program, "process.run")
+fn spawn_error(e: std::io::Error, program: &str, inherit_env: bool) -> ToolError {
+    spawn_error_for_operation(e, program, "process.run", inherit_env)
 }
 
-fn spawn_error_for_operation(e: std::io::Error, program: &str, operation: &str) -> ToolError {
+fn spawn_error_for_operation(
+    e: std::io::Error,
+    program: &str,
+    operation: &str,
+    inherit_env: bool,
+) -> ToolError {
     let code = match e.kind() {
         std::io::ErrorKind::NotFound => ToolErrorCode::SpawnFailed,
         std::io::ErrorKind::PermissionDenied => ToolErrorCode::PermissionDenied,
@@ -687,6 +694,21 @@ fn spawn_error_for_operation(e: std::io::Error, program: &str, operation: &str) 
     ToolError::new(code, operation, format!("failed to spawn `{program}`: {e}"))
         .with_program(program)
         .with_raw_os_error(e.raw_os_error())
+        .with_details(serde_json::json!({
+            "reason": "spawn_failed",
+            "environment_policy": if inherit_env { "inherited" } else { "minimal" },
+            "remediation": if inherit_env {
+                serde_json::json!({
+                    "verify_program": true,
+                    "message": "verify that the program is installed and executable",
+                })
+            } else {
+                serde_json::json!({
+                    "inherit_env": true,
+                    "message": "if the program depends on login-environment setup, retry with inherit_env=true after host approval",
+                })
+            },
+        }))
 }
 
 fn io_to_tool(e: std::io::Error, op: &str) -> ToolError {
@@ -1039,10 +1061,13 @@ pub async fn process_pipeline(
                         "raw_os_error": cleanup_error.raw_os_error(),
                     });
                 }
-                return Err(
-                    spawn_error_for_operation(error, &stage.program, "process.pipeline")
-                        .with_details(details),
-                );
+                return Err(spawn_error_for_operation(
+                    error,
+                    &stage.program,
+                    "process.pipeline",
+                    stage.inherit_env,
+                )
+                .with_details(details));
             }
         };
         let process_tree = match ProcessTree::attach(&child) {

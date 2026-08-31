@@ -6,15 +6,15 @@
 原生工具，并以 `mcp__xuanling__` 前缀增加 XuanLing 工具。
 
 ```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-tools@0.2.10
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-tools@0.3.0
 ```
 
 该命令会扩展 DSH 内置的 Web profile。内置 Headless profile 应使用 `--profile headless`。
 未知 profile 名称只包含 base bundle，本身不会提供可运行的 Web 或 Headless 应用。
 
-精确版本的 `@xuanling-rs/xuanling-mcp@0.2.10` runtime 会安装在 profile 内，并通过带校验的 JS launcher
-启动；不需要也不会使用全局 npm package。只有文件系统 capability root 与 DSH 工作目录不同时，
-才需要设置 `XUANLING_WORKSPACE_ROOT`。
+精确版本的 `@xuanling-rs/xuanling-mcp@0.3.0` runtime 会安装在 profile 内，并通过带校验的 JS launcher
+启动；不需要也不会使用全局 npm package。启动 DSH 前必须把 `XUANLING_WORKSPACE_ROOT` 设置为
+已确认的绝对 workspace；缺失时 bundle 会启动失败，DSH 进程工作目录不会被当成用户授权。
 
 Bridge 会缓存 MCP 分页中的全部定义，但起初只暴露 `mcp_catalog__xuanling`。应按名称或描述检索并
 激活精确 raw name；选中的定义会在下一次模型请求中作为 `mcp__xuanling__*` 工具出现。不要预先

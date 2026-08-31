@@ -55,10 +55,13 @@ cache path. The MCP server may also provide the short routing policy through
    - **Full pagination**: list or search with a bounded window and page
      through every remaining entry with the typed cursor.
    - **Whole-file creation or replacement**: use `mode: "create"` for a new
-     file. To replace an existing file, obtain its hash with
-     `mcp__xuanling__fs_read_text` (`include_sha256: true`) or
-     `mcp__xuanling__fs_hash`, then pass both `mode: "overwrite"` and the
-     returned `expected_sha256`. Never omit `mode` for a whole-file write.
+     file. For a replacement derived from the current content, read that content
+     with `mcp__xuanling__fs_read_text` (`include_sha256: true`) and use the SHA
+     returned by the same read. When the complete replacement comes from an
+     independently authoritative source and only needs concurrent-change
+     protection, `mcp__xuanling__fs_hash` supplies a fingerprint-only CAS
+     precondition; it does not mean the content was read or understood. Pass
+     both `mode: "overwrite"` and `expected_sha256`. Never omit `mode`.
 4. Do not use the shell tools (bash, pwsh, terminals) for any file operation
    this skill covers; the two file families are sufficient, and shell output
    is not portable evidence.
@@ -82,6 +85,45 @@ cache path. The MCP server may also provide the short routing policy through
   paging.
 - The `output` selector of any window-capable tool is a tagged object such as
   `{"mode":"bounded","max_bytes":65536}` — never a number or a bare string.
+
+## MCP v3 request contract
+
+With MCP contract v3, omitting `output` selects the bounded 65,536-byte
+default and preserves a typed continuation when more data exists. Request the
+entire result only with the explicit `{"mode":"complete"}` selector; omission
+is no longer an unbounded opt-in.
+
+For source inspection, call `fs_read_text` with `format: "numbered"` to obtain
+absolute 1-based line numbers aligned for stable citations. A `TextResume`
+offset always remains in raw-file byte space even though the rendered prefixes
+consume the output budget; never calculate a resume offset from numbered text.
+
+For repeated reads, send the prior `known_sha256` to both `fs_read_text` and
+`fs_read_bytes`. An unchanged response has `not_modified: true`, keeps
+`sha256`, and returns `total_lines` for text or `total_bytes` for bytes without
+replaying the body; a changed file returns its new body and hash normally.
+
+Until a DSH native diff card for XuanLing edits is independently verified,
+keep `include_diff: true` and do not pass `include_diff: false`. The server's
+tool diff remains the model-visible semantic review channel; this requirement
+does not claim that the current host has an unpublished request hook.
+
+A SHA precondition proves integrity and concurrent-version identity, not edit
+semantic correctness. A unique-match edit can still uniquely hit the wrong
+location, so inspect the returned diff before accepting the change; never
+describe before/after hashes as a substitute for that review.
+
+For `project_run`, resolver priority is the exact same-name user script, then a
+proven non-mutating ecosystem convention, then typed `unsupported`. A `check`
+action never falls back to `build`; on a pre-v3 runtime, use direct-argv
+`process_run` for the literal package script instead of relying on the old
+project resolver.
+
+`process_run` and `project_run` retain the minimal environment with
+`inherit_env: false` by default. If the program cannot be found, read the
+non-secret remediation and retry with `inherit_env: true` only when inheriting
+the login environment is explicitly acceptable; diagnostics must not reveal
+secret or environment values.
 
 `mcp__xuanling__system_info` includes `xuanling_version` and
 `mcp_contract_version`; use them to detect a stale server/Skill pairing before

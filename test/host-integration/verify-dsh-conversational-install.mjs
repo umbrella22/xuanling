@@ -342,7 +342,7 @@ function classifyCommand(event, profile, version) {
   return classification;
 }
 
-function validateRuntime(events, profile, afterIndex) {
+function validateRuntime(events, profile, afterIndex, version) {
   const pluginList = events.findIndex((event, index) =>
     index > afterIndex && event.kind === "command" && event.command_kind === "plugin_list" && event.exit_code === 0);
   const dumpConfig = events.findIndex((event, index) =>
@@ -371,6 +371,58 @@ function validateRuntime(events, profile, afterIndex) {
     ].includes(event.tool));
   if (restart === -1 || discovery === -1 || toolCall === -1) {
     reject("runtime_verification_incomplete", "restart, tool discovery, and harmless tool call must pass in order");
+  }
+  validateRuntimeIdentity(events[toolCall], version);
+}
+
+function compareStableVersions(left, right) {
+  const a = left.split(".").map(Number);
+  const b = right.split(".").map(Number);
+  for (let index = 0; index < 3; index += 1) {
+    if (a[index] !== b[index]) return a[index] < b[index] ? -1 : 1;
+  }
+  return 0;
+}
+
+function specVersion(spec, packageName) {
+  const prefix = `${packageName}@`;
+  return spec.startsWith(prefix) ? spec.slice(prefix.length) : null;
+}
+
+function classifyInstallMode(before, presetContract, version) {
+  const installedNames = Object.keys(before.relevant_specs);
+  if (installedNames.length === 0) return "install";
+  const targetNames = [...presetContract.add];
+  const topologyMatches = sameMembers(installedNames, targetNames);
+  if (!topologyMatches) return "repair";
+  const versions = targetNames.map((name) => specVersion(before.relevant_specs[name], name));
+  if (versions.some((candidate) => candidate === null || !stableSemver.test(candidate))) return "repair";
+  if (versions.every((candidate) => candidate === version)) return "verified_noop";
+  if (versions.every((candidate) => compareStableVersions(candidate, version) < 0)) return "update";
+  if (versions.every((candidate) => compareStableVersions(candidate, version) > 0)) return "downgrade";
+  return "repair";
+}
+
+function validateRuntimeIdentity(event, version) {
+  const identity = requireRecord(event.runtime_identity, "tool_call.runtime_identity");
+  const targetId = requireString(identity.native_target_id, "runtime_identity.native_target_id");
+  const supportedTargets = new Set(["darwin-arm64", "linux-x64-gnu", "win32-x64-msvc"]);
+  const lockfileVersion = requireString(identity.lockfile_launcher_version, "runtime_identity.lockfile_launcher_version");
+  const launcherVersion = requireString(identity.launcher_version, "runtime_identity.launcher_version");
+  const nativeVersion = requireString(identity.native_package_version, "runtime_identity.native_package_version");
+  const nativePath = requireString(identity.resolved_native_path, "runtime_identity.resolved_native_path");
+  const systemVersion = requireString(identity.system_info_version, "runtime_identity.system_info_version");
+  const contractVersion = requireString(identity.mcp_contract_version, "runtime_identity.mcp_contract_version");
+  const normalizedNativePath = nativePath.replaceAll("\\", "/");
+  const expectedExecutable = targetId === "win32-x64-msvc" ? "xuanling-mcp.exe" : "xuanling-mcp";
+  const expectedPathSuffix = `/node_modules/xuanling-mcp-${targetId}/bin/${expectedExecutable}`;
+  if (
+    !supportedTargets.has(targetId) || lockfileVersion !== version ||
+    launcherVersion !== version || systemVersion !== version ||
+    nativeVersion !== `${version}-${targetId}` || contractVersion !== "2" ||
+    !normalizedNativePath.endsWith(expectedPathSuffix)
+  ) {
+    reject("runtime_version_incoherent", "lockfile, launcher, native package, resolved binary, and system_info must match the frozen version");
   }
 }
 
@@ -492,10 +544,18 @@ export function verifyTranscript(candidate) {
     .map((name) => before.relevant_specs[name]);
   const targetAlreadyMatched = presetContract.add.every((name) =>
     before.relevant_specs[name] === exactSpec(name, version)) && expectedRemoveSpecs.length === 0;
+  const expectedMode = classifyInstallMode(before, presetContract, version);
   const confirmation = requireRecord(questions[2].plan, "confirmation question.plan");
   if (
     confirmation.profile !== profile || confirmation.preset !== preset ||
-    confirmation.resolved_version !== version ||
+    confirmation.resolved_version !== version || confirmation.mode !== expectedMode ||
+    confirmation.from_version !== (expectedMode === "install" ? null :
+      [...new Set(Object.entries(before.relevant_specs)
+        .filter(([name]) => relevantPackages.has(name))
+        .map(([name, spec]) => specVersion(spec, name))
+        .filter(Boolean))].sort().join(",")) ||
+    confirmation.to_version !== version ||
+    confirmation.release_notes !== `CHANGELOG.md#${version.replaceAll(".", "")}` ||
     confirmation.changes_required !== !targetAlreadyMatched
   ) {
     reject("confirmation_plan_mismatch", "final confirmation does not match the frozen selection/inventory");
@@ -564,7 +624,7 @@ export function verifyTranscript(candidate) {
     } else if (mutationEvents.length === 0 || mutationEvents.some((event) => event.exit_code !== 0)) {
       reject("target_state_mismatch", "installed_verified requires successful mutation evidence");
     }
-    validateRuntime(events, profile, events.indexOf(afterEvents[0]));
+    validateRuntime(events, profile, events.indexOf(afterEvents[0]), version);
   } else if (terminal.status === "rolled_back") {
     const failedApply = mutationEvents.find((event) => event.phase === "apply" && event.exit_code !== 0);
     const rollbackCommands = mutationEvents.filter((event) => event.phase === "rollback");
@@ -591,6 +651,8 @@ export function verifyTranscript(candidate) {
     profile,
     preset,
     resolved_version: version,
+    operation_mode: expectedMode,
+    release_notes: confirmation.release_notes,
     terminal_status: terminal.status,
     event_count: events.length,
     profile_mutation_count: mutationEvents.length,

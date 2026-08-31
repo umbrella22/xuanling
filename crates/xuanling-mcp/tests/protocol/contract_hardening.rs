@@ -1139,6 +1139,18 @@ fn basename(p: &str) -> String {
     p.rsplit(['/', '\\']).next().unwrap_or(p).to_string()
 }
 
+fn strip_numbered_projection(display: &str) -> String {
+    display
+        .split_inclusive('\n')
+        .map(|segment| {
+            segment
+                .split_once('\t')
+                .unwrap_or_else(|| panic!("numbered segment lacks a tab prefix: {segment:?}"))
+                .1
+        })
+        .collect()
+}
+
 #[test]
 fn output_null_is_invalid_input() {
     // ADR 0027 §2: explicit `"output": null` is invalid_input (no magic-null).
@@ -1163,10 +1175,9 @@ fn output_null_is_invalid_input() {
 }
 
 #[test]
-fn omitted_output_returns_complete_content() {
-    // The host owns its context budget. Omitting `output` must preserve the
-    // toolkit's complete-return contract instead of silently selecting a
-    // server-side byte window.
+fn omitted_output_uses_conservative_bounded_default() {
+    // Contract v3: omission is the safe 64 KiB default. Complete output is an
+    // explicit opt-in so an accidental large read cannot consume the context.
     let mut peer = Peer::start();
     peer.initialize();
     let body = format!("{}\n", "x".repeat(70_000));
@@ -1174,19 +1185,219 @@ fn omitted_output_returns_complete_content() {
     let resp = peer.call("fs_read_text", json!({"path": f.path_str()}));
     assert!(
         resp.get("result").is_some(),
-        "omitted output must succeed, got: {resp}"
+        "omitted bounded output must succeed, got: {resp}"
     );
     assert_eq!(resp["result"]["isError"], json!(false));
     assert_eq!(
-        resp["result"]["structuredContent"]["content"],
-        json!(body),
-        "omitted output must return the complete file"
-    );
-    assert_eq!(
         resp["result"]["structuredContent"]["truncated"],
-        json!(false),
-        "omitted output must not select a hidden bounded mode"
+        json!(true),
+        "omitted output must select the conservative bounded mode"
     );
+    let content = resp["result"]["structuredContent"]["content"]
+        .as_str()
+        .expect("bounded content");
+    assert!(
+        content.len() <= 65_536,
+        "default preview must fit the 64 KiB budget"
+    );
+    assert!(
+        resp["result"]["structuredContent"]["next_resume"].is_object(),
+        "default truncation must be resumable: {resp}"
+    );
+}
+
+#[test]
+fn numbered_and_conditional_reads_are_public_v3_schema() {
+    let mut peer = Peer::start();
+    peer.initialize();
+    let f = TempFile::new("alpha\n你好\n");
+    let first = peer.call(
+        "fs_read_text",
+        json!({
+            "path": f.path_str(),
+            "format": "numbered",
+            "include_sha256": true,
+            "output": {"mode": "complete"}
+        }),
+    );
+    assert_eq!(first["result"]["isError"], json!(false), "{first}");
+    let structured = &first["result"]["structuredContent"];
+    assert_eq!(
+        structured["content"],
+        json!("     1\talpha\n     2\t你好\n")
+    );
+    let sha = structured["sha256"].as_str().expect("numbered read hash");
+
+    let unchanged = peer.call(
+        "fs_read_text",
+        json!({"path": f.path_str(), "known_sha256": sha}),
+    );
+    assert_eq!(unchanged["result"]["isError"], json!(false), "{unchanged}");
+    let unchanged = &unchanged["result"]["structuredContent"];
+    assert_eq!(unchanged["not_modified"], json!(true));
+    assert_eq!(unchanged["total_lines"], json!(2));
+    assert!(unchanged.get("content").is_none());
+}
+
+#[test]
+fn numbered_line_range_resume_round_trips_through_mcp() {
+    let mut peer = Peer::start();
+    peer.initialize();
+    let body = "zero\nalpha\n你好世界\nomega\n";
+    let selected = "alpha\n你好世界\n";
+    let f = TempFile::new(body);
+    let range_start = "zero\n".len() as u64;
+    let range_end = range_start + selected.len() as u64;
+    let mut resume = Value::Null;
+    let mut reassembled = String::new();
+    let mut displayed_lines = Vec::new();
+
+    for guard in 0..100 {
+        let mut args = json!({
+            "path": f.path_str(),
+            "start_line": 2,
+            "end_line": 3,
+            "format": "numbered",
+            "output": {"mode": "bounded", "max_bytes": 15}
+        });
+        if !resume.is_null() {
+            args["resume"] = resume.clone();
+        }
+        let response = peer.call("fs_read_text", args);
+        assert_eq!(response["result"]["isError"], json!(false), "{response}");
+        let result = &response["result"]["structuredContent"];
+        let display = result["content"].as_str().expect("numbered content");
+        displayed_lines.push(display[..6].trim().parse::<u64>().unwrap());
+        let raw = strip_numbered_projection(display);
+        reassembled.push_str(&raw);
+        assert_eq!(result["range_start_bytes"], json!(range_start));
+        assert_eq!(result["range_end_bytes"], json!(range_end));
+
+        if result["truncated"] == json!(false) {
+            assert_eq!(reassembled, selected);
+            assert_eq!(displayed_lines.first(), Some(&2));
+            assert!(displayed_lines.contains(&3));
+            return;
+        }
+        resume = result["next_resume"].clone();
+        assert_eq!(
+            resume["offset_bytes"],
+            json!(range_start + reassembled.len() as u64)
+        );
+        assert_eq!(resume["line_range"]["start_line"], json!(2));
+        assert_eq!(resume["line_range"]["end_line"], json!(3));
+        assert!(guard < 99, "MCP numbered resume chain did not terminate");
+    }
+    unreachable!("loop returns after the terminal window")
+}
+
+#[test]
+fn conditional_read_protocol_covers_bytes_invalid_sha_and_empty_files() {
+    let mut peer = Peer::start();
+    peer.initialize();
+    let dir = tempfile::tempdir().unwrap();
+    let binary_path = dir.path().join("payload.bin");
+    let binary = b"\0xuanling\xffbytes";
+    std::fs::write(&binary_path, binary).unwrap();
+    let sha = sha256_hex_of(binary);
+
+    let unchanged = peer.call(
+        "fs_read_bytes",
+        json!({"path": binary_path.to_string_lossy(), "known_sha256": sha}),
+    );
+    assert_eq!(unchanged["result"]["isError"], json!(false), "{unchanged}");
+    let result = &unchanged["result"]["structuredContent"];
+    assert_eq!(result["not_modified"], json!(true));
+    assert_eq!(result["sha256"], json!(sha));
+    assert_eq!(result["total_bytes"], json!(binary.len()));
+    assert!(result.get("base64").is_none(), "{unchanged}");
+
+    for tool in ["fs_read_text", "fs_read_bytes"] {
+        let invalid = peer.call(
+            tool,
+            json!({"path": binary_path.to_string_lossy(), "known_sha256": "bad"}),
+        );
+        assert_eq!(invalid["result"]["isError"], json!(true), "{invalid}");
+        let error = &invalid["result"]["structuredContent"];
+        assert_eq!(error["code"], json!("invalid_input"));
+        assert_eq!(error["details"]["reason"], json!("known_sha256_invalid"));
+    }
+
+    let empty_path = dir.path().join("empty.txt");
+    std::fs::write(&empty_path, []).unwrap();
+    let empty_sha = sha256_hex_of(&[]);
+    let empty_text = peer.call(
+        "fs_read_text",
+        json!({"path": empty_path.to_string_lossy(), "known_sha256": empty_sha}),
+    );
+    let text = &empty_text["result"]["structuredContent"];
+    assert_eq!(text["not_modified"], json!(true), "{empty_text}");
+    assert_eq!(text["total_lines"], json!(0));
+    assert_eq!(text["total_bytes"], json!(0));
+    assert!(text.get("content").is_none());
+
+    let empty_bytes = peer.call(
+        "fs_read_bytes",
+        json!({"path": empty_path.to_string_lossy(), "known_sha256": empty_sha}),
+    );
+    let bytes = &empty_bytes["result"]["structuredContent"];
+    assert_eq!(bytes["not_modified"], json!(true), "{empty_bytes}");
+    assert_eq!(bytes["total_bytes"], json!(0));
+    assert!(bytes.get("base64").is_none());
+}
+
+#[test]
+fn edit_include_diff_false_omits_only_the_projection() {
+    let mut peer = Peer::start();
+    peer.initialize();
+    let f = TempFile::new("before\n");
+    let response = peer.call(
+        "fs_edit",
+        json!({
+            "path": f.path_str(),
+            "old": "before",
+            "new": "after",
+            "include_diff": false
+        }),
+    );
+    assert_eq!(response["result"]["isError"], json!(false), "{response}");
+    let structured = &response["result"]["structuredContent"];
+    assert!(structured.get("diff").is_none(), "{response}");
+    assert!(structured["before_sha256"].is_string());
+    assert!(structured["after_sha256"].is_string());
+    assert_eq!(std::fs::read_to_string(f.path()).unwrap(), "after\n");
+}
+
+#[test]
+fn edit_include_diff_defaults_to_visible_for_preview_and_apply() {
+    let mut peer = Peer::start();
+    peer.initialize();
+    let f = TempFile::new("before\n");
+    let preview = peer.call(
+        "fs_edit_preview",
+        json!({"path": f.path_str(), "old": "before", "new": "after"}),
+    );
+    assert_eq!(preview["result"]["isError"], json!(false), "{preview}");
+    assert!(
+        preview["result"]["structuredContent"]["diff"]
+            .as_str()
+            .is_some_and(|diff| diff.contains("+after")),
+        "compatibility default must keep preview diff visible: {preview}"
+    );
+    assert_eq!(std::fs::read_to_string(f.path()).unwrap(), "before\n");
+
+    let applied = peer.call(
+        "fs_edit",
+        json!({"path": f.path_str(), "old": "before", "new": "after"}),
+    );
+    assert_eq!(applied["result"]["isError"], json!(false), "{applied}");
+    assert!(
+        applied["result"]["structuredContent"]["diff"]
+            .as_str()
+            .is_some_and(|diff| diff.contains("+after")),
+        "compatibility default must keep apply diff visible: {applied}"
+    );
+    assert_eq!(std::fs::read_to_string(f.path()).unwrap(), "after\n");
 }
 
 #[test]
@@ -1212,6 +1423,272 @@ fn complete_mode_is_explicit() {
         "hello complete\n",
         "complete mode must return full content"
     );
+}
+
+#[test]
+fn omitted_output_bounds_collection_and_byte_families_while_complete_opts_out() {
+    use base64::Engine;
+
+    let mut peer = Peer::start();
+    peer.initialize();
+    let dir = tempfile::tempdir().unwrap();
+    let suffix = "x".repeat(72);
+    let expected_files = 700_usize;
+    for index in 0..expected_files {
+        let name = format!("entry-{index:04}-{suffix}.txt");
+        let content = format!("needle-{index:04}-{}\n", "y".repeat(80));
+        std::fs::write(dir.path().join(name), content).unwrap();
+    }
+    let root = dir.path().to_string_lossy().into_owned();
+
+    let list = peer.call("fs_list", json!({"path": root}));
+    let list_result = &list["result"]["structuredContent"];
+    assert_eq!(list["result"]["isError"], json!(false), "{list}");
+    assert_eq!(list_result["has_more"], json!(true), "{list}");
+    assert!(list_result["returned_item_bytes"].as_u64().unwrap() <= 65_536);
+    assert!(list_result["next_cursor"].is_string());
+    assert!(list_result["entries"].as_array().unwrap().len() < expected_files);
+
+    let list_complete = peer.call(
+        "fs_list",
+        json!({"path": root, "output": {"mode": "complete"}}),
+    );
+    let complete = &list_complete["result"]["structuredContent"];
+    assert_eq!(complete["has_more"], json!(false), "{list_complete}");
+    assert_eq!(
+        complete["entries"].as_array().unwrap().len(),
+        expected_files
+    );
+
+    let glob = peer.call(
+        "fs_glob",
+        json!({"path": root, "patterns": ["*.txt"], "include_dirs": false}),
+    );
+    let glob_result = &glob["result"]["structuredContent"];
+    assert_eq!(glob_result["has_more"], json!(true), "{glob}");
+    assert!(glob_result["returned_item_bytes"].as_u64().unwrap() <= 65_536);
+    assert!(glob_result["matches"].as_array().unwrap().len() < expected_files);
+
+    let glob_complete = peer.call(
+        "fs_glob",
+        json!({
+            "path": root,
+            "patterns": ["*.txt"],
+            "include_dirs": false,
+            "output": {"mode": "complete"}
+        }),
+    );
+    let complete = &glob_complete["result"]["structuredContent"];
+    assert_eq!(complete["has_more"], json!(false), "{glob_complete}");
+    assert_eq!(
+        complete["matches"].as_array().unwrap().len(),
+        expected_files
+    );
+
+    let search = peer.call(
+        "fs_search",
+        json!({"path": root, "pattern": "needle", "literal": true}),
+    );
+    let search_result = &search["result"]["structuredContent"];
+    assert_eq!(search_result["has_more"], json!(true), "{search}");
+    assert!(search_result["returned_item_bytes"].as_u64().unwrap() <= 65_536);
+    assert!(search_result["matches"].as_array().unwrap().len() < expected_files);
+
+    let search_complete = peer.call(
+        "fs_search",
+        json!({
+            "path": root,
+            "pattern": "needle",
+            "literal": true,
+            "output": {"mode": "complete"}
+        }),
+    );
+    let complete = &search_complete["result"]["structuredContent"];
+    assert_eq!(complete["has_more"], json!(false), "{search_complete}");
+    assert_eq!(
+        complete["matches"].as_array().unwrap().len(),
+        expected_files
+    );
+
+    let binary_path = dir.path().join("large.bin");
+    let binary: Vec<u8> = (0..70_000).map(|index| (index % 251) as u8).collect();
+    std::fs::write(&binary_path, &binary).unwrap();
+    let bytes = peer.call(
+        "fs_read_bytes",
+        json!({"path": binary_path.to_string_lossy()}),
+    );
+    let bytes_result = &bytes["result"]["structuredContent"];
+    assert_eq!(bytes_result["truncated"], json!(true), "{bytes}");
+    assert_eq!(bytes_result["length"], json!(65_536));
+    assert!(bytes_result["next_resume"].is_object());
+
+    let bytes_complete = peer.call(
+        "fs_read_bytes",
+        json!({
+            "path": binary_path.to_string_lossy(),
+            "output": {"mode": "complete"}
+        }),
+    );
+    let complete = &bytes_complete["result"]["structuredContent"];
+    assert_eq!(complete["truncated"], json!(false), "{bytes_complete}");
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(complete["base64"].as_str().expect("complete base64"))
+        .unwrap();
+    assert_eq!(decoded, binary);
+}
+
+#[test]
+fn omitted_output_bounds_process_families_and_artifacts_while_complete_opts_out() {
+    let artifact_dir = tempfile::tempdir().expect("isolated artifact store");
+    let artifact_path = artifact_dir.path().to_string_lossy().into_owned();
+    let mut peer = Peer::start_with_env(&[("XUANLING_ARTIFACT_DIR", &artifact_path)]);
+    peer.initialize();
+    let script = "process.stdout.write('x'.repeat(70000))";
+    let assert_bounded = |label: &str, response: &Value| {
+        assert_eq!(
+            response["result"]["isError"],
+            json!(false),
+            "{label} failed: {response}"
+        );
+        let result = &response["result"]["structuredContent"];
+        assert_eq!(
+            result["stdout_truncated"],
+            json!(true),
+            "{label} did not use the omitted-output budget: {response}"
+        );
+        assert_eq!(result["stdout_preview_bytes"], json!(65_536));
+        assert!(
+            result["stdout_total_bytes"].as_u64().unwrap() >= 70_000,
+            "{label} must report the complete stream size: {response}"
+        );
+        assert_eq!(result["stdout"].as_str().unwrap().len(), 65_536);
+    };
+
+    let process = peer.call(
+        "process_run",
+        json!({
+            "program": "node",
+            "args": ["-e", script],
+            "inherit_env": true,
+            "stdout": "inline",
+            "stderr": "null",
+            "deterministic": true
+        }),
+    );
+    assert_bounded("process_run", &process);
+    let artifact = &process["result"]["structuredContent"]["stdout_artifact"];
+    assert!(
+        artifact.is_object(),
+        "bounded process output must spill: {process}"
+    );
+
+    let artifact_read = peer.call(
+        "artifact_read",
+        json!({
+            "id": artifact["id"],
+            "read_capability": artifact["read_capability"]
+        }),
+    );
+    let artifact_result = &artifact_read["result"]["structuredContent"];
+    assert_eq!(artifact_result["truncated"], json!(true), "{artifact_read}");
+    assert_eq!(artifact_result["length"], json!(65_536));
+    assert_eq!(artifact_result["total_bytes"], json!(70_000));
+    assert!(artifact_result["next_offset"].is_number());
+
+    let artifact_complete = peer.call(
+        "artifact_read",
+        json!({
+            "id": artifact["id"],
+            "read_capability": artifact["read_capability"],
+            "output": {"mode": "complete"}
+        }),
+    );
+    let complete = &artifact_complete["result"]["structuredContent"];
+    assert_eq!(complete["truncated"], json!(false), "{artifact_complete}");
+    assert_eq!(complete["length"], json!(70_000));
+
+    let process_complete = peer.call(
+        "process_run",
+        json!({
+            "program": "node",
+            "args": ["-e", script],
+            "inherit_env": true,
+            "stdout": "inline",
+            "stderr": "null",
+            "deterministic": true,
+            "output": {"mode": "complete"}
+        }),
+    );
+    let complete = &process_complete["result"]["structuredContent"];
+    assert_eq!(
+        process_complete["result"]["isError"],
+        json!(false),
+        "{process_complete}"
+    );
+    assert_eq!(complete["stdout"].as_str().unwrap().len(), 70_000);
+    assert!(complete.get("stdout_truncated").is_none());
+
+    let pipeline = peer.call(
+        "process_pipeline",
+        json!({
+            "stages": [{"program": "node", "args": ["-e", script], "inherit_env": true}],
+            "stdout": "inline",
+            "deterministic": true
+        }),
+    );
+    assert_bounded("process_pipeline", &pipeline);
+
+    let session = peer.call("session_open", json!({"inherit_env": true}));
+    assert_eq!(session["result"]["isError"], json!(false), "{session}");
+    let session_id = session["result"]["structuredContent"]["session_id"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+    let session_exec = peer.call(
+        "session_exec",
+        json!({
+            "session_id": session_id,
+            "program": "node",
+            "args": ["-e", script],
+            "stdout": "inline",
+            "stderr": "null",
+            "deterministic": true
+        }),
+    );
+    assert_bounded("session_exec", &session_exec);
+    let closed = peer.call("session_close", json!({"session_id": session_id}));
+    assert_eq!(closed["result"]["isError"], json!(false), "{closed}");
+
+    let project = tempfile::tempdir().expect("node project fixture");
+    std::fs::write(
+        project.path().join("package.json"),
+        r#"{"scripts":{"check":"node emit.mjs","build":"node build.mjs"}}"#,
+    )
+    .unwrap();
+    std::fs::write(project.path().join("package-lock.json"), "{}\n").unwrap();
+    std::fs::write(project.path().join("emit.mjs"), format!("{script};\n")).unwrap();
+    std::fs::write(
+        project.path().join("build.mjs"),
+        "throw new Error('build must not run');\n",
+    )
+    .unwrap();
+    let project_run = peer.call(
+        "project_run",
+        json!({
+            "project_path": project.path().to_string_lossy(),
+            "action": "check",
+            "inherit_env": true,
+            "stdout": "inline",
+            "stderr": "inline",
+            "deterministic": true
+        }),
+    );
+    assert_bounded("project_run", &project_run);
+    let project_result = &project_run["result"]["structuredContent"];
+    assert_eq!(project_result["action"], json!("check"));
+    assert_eq!(project_result["ecosystem"], json!("node"));
+    assert_eq!(project_result["args"], json!(["run", "check"]));
+    assert!(project_result["reason"].as_str().unwrap().contains("exact"));
 }
 
 #[test]
@@ -4171,8 +4648,8 @@ fn server_info_publishes_contract_version_and_identity() {
     let contract_version = resp["result"]["_meta"]["xuanling.contract_version"].clone();
     assert_eq!(
         contract_version,
-        json!("2"),
-        "server must publish contract_version=2 in _meta (ADR 0027 §10): {resp}"
+        json!("3"),
+        "server must publish contract_version=3 in _meta: {resp}"
     );
     let instructions = resp["result"]["instructions"]
         .as_str()

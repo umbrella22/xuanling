@@ -147,9 +147,22 @@ async function runAdapter({ host, path: adapterPath, childArgs, projection }, bi
     assert.equal(initialized.result?.serverInfo?.name, "xuanling-mcp", `${host}: initialize`);
     send({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
 
-    const listed = await request("tools/list", {});
-    assert.equal(listed.error, undefined, `${host}: ${JSON.stringify(listed.error)}`);
-    assert.equal(listed.result?.tools?.length, 16, `${host}: fs catalog`);
+    const tools = [];
+    const seenCursors = new Set();
+    let cursor;
+    do {
+      const listed = await request("tools/list", cursor ? { cursor } : {});
+      assert.equal(listed.error, undefined, `${host}: ${JSON.stringify(listed.error)}`);
+      assert.ok(Array.isArray(listed.result?.tools), `${host}: tools/list page`);
+      tools.push(...listed.result.tools);
+      cursor = listed.result.nextCursor;
+      if (cursor) {
+        assert.equal(seenCursors.has(cursor), false, `${host}: tools/list cursor loop`);
+        seenCursors.add(cursor);
+      }
+    } while (cursor);
+    assert.equal(tools.length, 16, `${host}: complete fs catalog`);
+    assert.equal(new Set(tools.map((tool) => tool.name)).size, 16, `${host}: unique fs catalog`);
 
     const called = await request("tools/call", {
       name: "fs_hash",
@@ -176,7 +189,8 @@ async function runAdapter({ host, path: adapterPath, childArgs, projection }, bi
     assert.deepEqual(exit, { code: 0, signal: null }, `${host}: ${stderr}`);
     return {
       host,
-      catalog_tools: listed.result.tools.length,
+      catalog_tools: tools.length,
+      catalog_pages: seenCursors.size + 1,
       model_text_blocks: called.result.content.length,
       equivalent_structured_text_blocks: equivalent.length,
       structured_content_preserved: true,

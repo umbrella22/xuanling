@@ -2,32 +2,22 @@
 
 [English](README.md) | 简体中文
 
-这是完整 XuanLing catalog 的替换式 DeepSeek Harness bundle。它会停用三个模型可见的原生
-文件系统工具行，让 XuanLing 成为文件系统层，同时保留 shell、web、LSP、审批、PTY、任务与
-编排集成。
+这是为历史 filesystem-replacement preset 保留的 DeepSeek Harness 兼容 bundle。它现在会保留
+全部 Harness 原生工具，包括 `read_image`、文件 observation guard 和 editor card，同时把完整
+XuanLing catalog 以 `mcp__xuanling__*` 名称按需增加。
 
-```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-tools-replace@0.2.10
-```
+新安装应使用 `@xuanling-rs/xuanling-dsh-tools`。现有 profile 可以原地更新本包以恢复原生工具面，
+再通过问答式安装器迁移到 additive package。一个 profile 内不得组合两个 XuanLing runtime bundle。
 
-该命令会扩展 DSH 内置的 Web profile。内置 Headless profile 应使用 `--profile headless`。
-未知 profile 名称只包含 base bundle，本身不会提供可运行的 Web 或 Headless 应用。
+精确版本的 `@xuanling-rs/xuanling-mcp@0.3.0` runtime 会安装在 profile 内，并通过带校验的 JS
+launcher 启动；不会使用全局 npm package。启动 DSH 前必须把 `XUANLING_WORKSPACE_ROOT` 设置为
+已确认的绝对 workspace，缺失时启动失败。
 
-精确版本的 `@xuanling-rs/xuanling-mcp@0.2.10` runtime 会安装在 profile 内，并通过带校验的 JS launcher
-启动；不会使用全局 npm package。
+Bridge 会缓存完整分页 MCP 目录，但起初只暴露 `mcp_catalog__xuanling`。按能力搜索并只激活下一步
+所需的精确 raw name。普通读取、小编辑、图片读取和 editor UX 继续使用 Harness 原生工具面。
 
-Bridge 会缓存完整的分页 MCP 目录，但起初只暴露 `mcp_catalog__xuanling`。由于该变体会停用原生
-文件系统工具行，执行下一步操作前必须先激活所需的精确 XuanLing 文件系统 raw name；得到的工具
-使用常规 `mcp__xuanling__*` 名称。
-
-该 bundle 的 result adapter 保留一个完整 Native 文本投影，只删除与 `structuredContent` 完全重复
-的意外文本块；structured value 仍可供 Code Mode 与校验使用。
-
-Adapter 只接受子进程 JSON object frame。输出 malformed 或子进程正常退出时仍有未结算 request 会以非零状态
-结束；Host 终止信号会被转发，子进程未在 500 ms grace 内退出时会被强制终止。
-
-该变体会从模型可见的文件系统表面移除原生 `read_image`、先读后改 observation guard 和 editor
-card，改用 XuanLing SHA-256 前置条件与严格 patch 合同。只有明确接受这一取舍时才应使用，且
-不要与另一个 XuanLing 工具 bundle 安装在同一 profile。
+Result adapter 保留一个完整 Native 文本投影，只删除与 `structuredContent` 完全重复的意外文本块；
+structured value 仍供 Code Mode 与校验使用。子进程输出 malformed 或正常退出时仍有未结算 request
+会返回非零状态。
 
 要求 Node.js 22.14 或更高版本。使用 MIT License。

@@ -10,8 +10,9 @@
 # the DSH profile. The JS launcher then selects and verifies the matching native
 # package; the adapter preserves one complete text projection and structured value.
 #
-# The filesystem capability root defaults to the directory dsh was started
-# from; override with XUANLING_WORKSPACE_ROOT. Memory uses the shared default
+# The filesystem capability root is explicit. XUANLING_WORKSPACE_ROOT must
+# name the confirmed absolute workspace; missing configuration fails startup.
+# Memory uses the shared default
 # database (~/.xuanling/memory.db) exactly like the ZCode plugin deployment.
 # The ZCode-only object-parameter compat shim stays OFF everywhere in this
 # integration: DeepSeek forwards model arguments as verbatim JSON.
@@ -31,5 +32,5 @@
           - '--'
           - !!js process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@xuanling-rs/xuanling-mcp/bin/xuanling-mcp.js')
           - '--workspace-root'
-          - !!js process.env.XUANLING_WORKSPACE_ROOT ?? process.cwd()
+          - !!js (() => { const root = process.env.XUANLING_WORKSPACE_ROOT; if (!root) throw new Error('XUANLING_WORKSPACE_ROOT is required for the XuanLing full-tools bundle'); return root })()
         toolCallTimeoutMs: 120000

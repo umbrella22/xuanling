@@ -15,8 +15,8 @@ Install the Memory and Skills bundles into DSH's shipped `web` profile:
 
 ```sh
 dsh plugin --profile web add \
-  @xuanling-rs/xuanling-dsh-memory@0.2.10 \
-  @xuanling-rs/xuanling-dsh-skills@0.2.10
+  @xuanling-rs/xuanling-dsh-memory@0.3.0 \
+  @xuanling-rs/xuanling-dsh-skills@0.3.0
 dsh --profile web --dump-config
 dsh web
 ```
@@ -26,7 +26,7 @@ profile. A new arbitrary profile name is not a drop-in replacement: current
 DSH initializes unknown profiles with `@deepseek-ai/dsh-base` only, without a
 Web or Headless application bundle.
 
-The Memory bundle installs the exact `@xuanling-rs/xuanling-mcp@0.2.10` launcher and native
+The Memory bundle installs the exact `@xuanling-rs/xuanling-mcp@0.3.0` launcher and native
 optional dependency inside the profile. No global npm package, `npx`, or
 install-time binary download is used.
 
@@ -42,18 +42,18 @@ separate tools bundle makes the XuanLing fs family visible.
 | `@xuanling-rs/xuanling-dsh-memory` | Caches the complete nine-tool Memory v2 profile with DSH schema projection and activates exact tools lazily; retains every native Harness tool | Recommended daily configuration |
 | `@xuanling-rs/xuanling-dsh-skills` | Adds isolated file and Memory workflow Skills plus strict overwrite policy; mounts no MCP tools | Combine with any XuanLing tool bundle |
 | `@xuanling-rs/xuanling-dsh-tools` | Caches the complete XuanLing catalog, projects exact activations, and retains native Harness tools | Access artifact, project, filesystem, process, and advanced tools |
-| `@xuanling-rs/xuanling-dsh-tools-replace` | Caches the complete catalog, projects exact activations, and disables the three model-facing native filesystem rows | Controlled full-catalog replacement |
+| `@xuanling-rs/xuanling-dsh-tools-replace` | Compatibility alias that restores native rows and lazily adds the complete catalog | Migrate historical replacement profiles to the additive bundle |
 
 The Memory bundle deliberately exposes the complete lifecycle. Search, get,
 candidate creation/replacement/archive, review, and feedback form one contract;
 a read-only two-tool subset would hide required state transitions from the
 model.
 
-The replacement bundle leaves shell, web, LSP, approval, background job, PTY,
-and orchestration integrations enabled. Replacing Harness-native filesystem
-tools removes their read-before-edit observation guard and specialized UI
-cards; XuanLing supplies SHA-256 preconditions and strict patching, but the
-host experience is not identical.
+The historical replacement bundle now preserves every Harness-native row,
+including `read_image`, read-before-edit observation guards, and editor cards.
+It remains only as a migration-compatible alias; new full-catalog installs use
+the additive bundle. Shell, web, LSP, approval, background job, PTY, and
+orchestration integrations remain separate host capabilities.
 
 ## Runtime Configuration
 
@@ -61,8 +61,8 @@ Bundle expressions resolve these values when DSH starts:
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| MCP runtime | Profile-local `@xuanling-rs/xuanling-mcp@0.2.10` | Verified JS launcher and native optional dependency |
-| `XUANLING_WORKSPACE_ROOT` | DSH process working directory | XuanLing filesystem capability root |
+| MCP runtime | Profile-local `@xuanling-rs/xuanling-mcp@0.3.0` | Verified JS launcher and native optional dependency |
+| `XUANLING_WORKSPACE_ROOT` | Required for full-tools bundles; unused by Memory-only | Explicit XuanLing filesystem capability root |
 | Schema adapter | Installed `xuanling-dsh-memory/schema-adapter.mjs` | Projects discovery schemas for DSH |
 | Result adapter | Installed bundle-local `mcp-result-adapter.mjs` (memory is composed into the schema adapter) | Removes only duplicate equivalent text blocks |
 | MCP tool profile | `memory` in the recommended bundle | Server-side discovery and dispatch selection |
@@ -144,6 +144,15 @@ Skills:
   topic switch, not every turn. `memory_search` returns full active records,
   not a lightweight manifest. New candidates remain pending, and
   `memory_review` requires an explicit user decision for that proposal.
+
+For the generic MCP v3 contract, the file workflow treats omitted `output` as
+a bounded 65,536-byte request, uses absolute numbered reads and
+`known_sha256` conditional re-reads, and keeps `include_diff: true` until a DSH
+native XuanLing diff projection is independently verified. SHA remains a
+concurrency/integrity precondition rather than semantic edit validation.
+`project_run(check)` follows the exact project script and never substitutes a
+build; minimal process environments remain the default and failures include a
+non-secret `inherit_env: true` remediation.
 
 The strict overwrite policy rejects
 `mcp__xuanling__fs_write_text` overwrite requests without a non-empty

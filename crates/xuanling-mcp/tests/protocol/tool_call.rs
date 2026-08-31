@@ -98,7 +98,7 @@ fn system_info_call_returns_structured_facts() {
     assert!(facts["os"].is_string(), "os must be a string: {facts}");
     assert!(facts["arch"].is_string());
     assert!(facts["xuanling_version"].is_string());
-    assert_eq!(facts["mcp_contract_version"], json!("2"));
+    assert_eq!(facts["mcp_contract_version"], json!("3"));
     assert_eq!(
         facts["path_separator"],
         json!(std::path::MAIN_SEPARATOR.to_string())

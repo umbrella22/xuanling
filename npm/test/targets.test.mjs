@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -13,6 +14,9 @@ import {
   expectedOptionalDependencies,
   platformVersion,
 } from "../packages/xuanling-mcp/lib/targets.js";
+
+const require = createRequire(import.meta.url);
+const launcherPackage = require("../packages/xuanling-mcp/package.json");
 
 const glibcReport = { getReport: () => ({ header: { glibcVersionRuntime: "2.39" } }) };
 const oldGlibcReport = { getReport: () => ({ header: { glibcVersionRuntime: "2.34" } }) };
@@ -59,12 +63,15 @@ test("native resolver validates target metadata and binary checksum", async () =
   const directory = await mkdtemp(path.join(os.tmpdir(), "xuanling-launcher-test-"));
   try {
     const fixture = "native fixture";
+    const launcherVersion = launcherPackage.version;
+    const nativeVersion = `${launcherVersion}-fixture-target`;
     const binaryPath = path.join(directory, "xuanling-mcp");
     const packageJsonPath = path.join(directory, "package.json");
     await writeFile(binaryPath, fixture);
     await writeFile(
       packageJsonPath,
       JSON.stringify({
+        version: nativeVersion,
         xuanlingBinary: {
           binary: "xuanling-mcp",
           sha256: createHash("sha256").update(fixture).digest("hex"),
@@ -74,10 +81,43 @@ test("native resolver validates target metadata and binary checksum", async () =
     );
     const target = { alias: "fixture-package", binary: "xuanling-mcp", rustTarget: "fixture-target" };
     assert.equal(
-      resolveNativeBinary(target, { resolvePackageJson: () => packageJsonPath }),
+      resolveNativeBinary(target, {
+        launcherVersion,
+        resolvePackageJson: () => packageJsonPath,
+      }),
       binaryPath,
     );
 
+    await writeFile(
+      packageJsonPath,
+      JSON.stringify({
+        version: `${launcherVersion}-mismatch-fixture-target`,
+        xuanlingBinary: {
+          binary: "xuanling-mcp",
+          sha256: createHash("sha256").update(fixture).digest("hex"),
+          target: "fixture-target",
+        },
+      }),
+    );
+    assert.throws(
+      () => resolveNativeBinary(target, {
+        launcherVersion,
+        resolvePackageJson: () => packageJsonPath,
+      }),
+      /version mismatch/,
+    );
+
+    await writeFile(
+      packageJsonPath,
+      JSON.stringify({
+        version: nativeVersion,
+        xuanlingBinary: {
+          binary: "xuanling-mcp",
+          sha256: createHash("sha256").update(fixture).digest("hex"),
+          target: "fixture-target",
+        },
+      }),
+    );
     await writeFile(binaryPath, "corrupted fixture");
     assert.throws(
       () => resolveNativeBinary(target, { resolvePackageJson: () => packageJsonPath }),

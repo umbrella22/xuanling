@@ -2,7 +2,7 @@
 
 [English](README.md) | 简体中文
 
-发行版 `xuanling-mcp` 0.2.10 是自包含的 ZCode 集成。插件携带经过验证的 Node.js launcher，
+发行版 `xuanling-mcp` 0.3.0 是自包含的 ZCode 集成。插件携带经过验证的 Node.js launcher，
 以及 macOS ARM64、Linux x64 glibc 和 Windows x64 原生 package。它不依赖全局 npm 安装，
 安装期间也不会下载可执行文件。
 
@@ -47,6 +47,12 @@ Adapter 只接受子进程 JSON object frame。输出 malformed 或子进程正�
 hash/CAS overwrite 与同文件多 hunk 原子 patch 使用 XuanLing。`d.ts`、`d.mts` 等复合后缀会直接
 传入。相同 argv 的短验证使用 `deterministic: true`，长任务保留在 ZCode 后台 job 能力上。
 
+在通用 MCP v3 合同中，省略 `output` 使用 65,536 byte 有界预算，完整输出必须显式请求；带行号
+读取采用绝对源码行，`known_sha256` 可以避免重复返回未变化的文本或字节。在 ZCode 原生
+XuanLing diff 投影得到独立证明前，Skill 保持 `include_diff: true`；SHA 保护完整性和并发版本，
+但不证明编辑语义。精确项目脚本优先于生态惯例，`check` 绝不映射到 `build`；最小环境启动失败
+会提供不泄露环境值的 `inherit_env: true` 修复提示。
+
 Memory 采用 L1/L2 单写。每会话必见的项目局部事实留在 Host 文件 Memory；跨项目共享事实通过
 XuanLing pending candidate 保存。显式 L1 指针只在任务开始或主题切换时触发一次 scoped
 `memory_search`。Search 返回完整 active record，而非轻量 manifest；review 始终要求用户对具体
@@ -55,6 +61,7 @@ proposal 作出显式决定。
 ## 安全边界
 
 `--workspace-root` 约束 XuanLing 文件工具打开的路径，但不是进程 sandbox。工具审批仍由
-ZCode 负责；可能执行恶意代码时，子进程隔离需要 OS sandbox 或 container。XuanLing 0.2.10
-不带发布者证书签名；npm provenance、绑定 source commit 的 native hash 与 GitHub attested
+ZCode 负责；可能执行恶意代码时，子进程隔离需要 OS sandbox 或 container。打包的 adapter 只投影
+结果，不会重写 tool-call 参数；ZCode 未提供请求 policy hook 的部分只能明确作为 advisory。
+XuanLing 0.3.0 不带发布者证书签名；npm provenance、绑定 source commit 的 native hash 与 GitHub attested
 marketplace archive 可以降低分发风险，但不能保证所有安全软件对新 binary 给出相同判断。

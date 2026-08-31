@@ -69,6 +69,38 @@ test("overwrite and default-overwrite calls require a non-empty preimage hash", 
   }
 });
 
+test("overwrite recovery distinguishes content-derived reads from fingerprint-only CAS", async () => {
+  const { STRICT_OVERWRITE_DENIAL } = await loadPolicy();
+  assert.match(STRICT_OVERWRITE_DENIAL, /content-derived/i);
+  assert.match(STRICT_OVERWRITE_DENIAL, /fingerprint-only/i);
+  assert.match(STRICT_OVERWRITE_DENIAL, /fs_read_text/);
+  assert.match(STRICT_OVERWRITE_DENIAL, /fs_hash/);
+  assert.doesNotMatch(STRICT_OVERWRITE_DENIAL, /fs_hash[^;]*read(?:ing)? the content/i);
+});
+
+test("memory review asks the host approval service without exposing payload content", async () => {
+  const { apply } = await loadPolicy();
+  const listener = captureListener(apply);
+  let nextCalls = 0;
+  const decision = await listener({
+    name: "mcp__xuanling__memory_review",
+    arguments: {
+      proposal_id: "proposal-17",
+      decision: "approve",
+      reviewer_id: "caller-attested",
+      comment: "SECRET-PAYLOAD-MUST-NOT-LEAK",
+    },
+  }, async () => {
+    nextCalls += 1;
+    return { kind: "allow" };
+  });
+  assert.equal(decision.kind, "ask");
+  assert.match(decision.reason, /proposal-17/);
+  assert.match(decision.reason, /approve/);
+  assert.doesNotMatch(decision.reason, /SECRET-PAYLOAD-MUST-NOT-LEAK/);
+  assert.equal(nextCalls, 0);
+});
+
 test("create, hash-bearing overwrite, and canonical malformed inputs delegate unchanged", async () => {
   const { decideStrictOverwrite } = await loadPolicy();
   const cases = [
@@ -89,7 +121,7 @@ test("create, hash-bearing overwrite, and canonical malformed inputs delegate un
 });
 
 test("exact tool identity prevents native and foreign-provider false positives", async () => {
-  const { decideStrictOverwrite } = await loadPolicy();
+  const { decideMemoryReview, decideStrictOverwrite } = await loadPolicy();
   const unsafeArguments = { path: "existing.txt", content: "next", mode: "overwrite" };
   for (const name of [
     "write",
@@ -99,6 +131,15 @@ test("exact tool identity prevents native and foreign-provider false positives",
     "mcp__xuanling__fs_write_text_extra",
   ]) {
     assert.deepEqual(decideStrictOverwrite(name, unsafeArguments), { kind: "delegate" }, name);
+  }
+  for (const name of [
+    "memory_review",
+    "mcp__other__memory_review",
+    "mcp__xuanling__memory_review_extra",
+  ]) {
+    assert.deepEqual(decideMemoryReview(name, { proposal_id: "p", decision: "approve" }), {
+      kind: "delegate",
+    }, name);
   }
 });
 
@@ -148,4 +189,26 @@ test("the same listener covers a Code Mode sub-dispatch and delegates safe calls
   }, next);
   assert.deepEqual(allowed, { kind: "allow", marker: "downstream" });
   assert.equal(nextCalls, 1);
+});
+
+test("the host policy preserves v3 selectors and never disables the tool diff", async () => {
+  const { apply } = await loadPolicy();
+  const listener = captureListener(apply);
+  const argumentsValue = Object.freeze({
+    path: "existing.txt",
+    old: "before",
+    new: "after",
+    include_diff: true,
+  });
+  let observedArguments;
+  const result = await listener({
+    name: "mcp__xuanling__fs_edit",
+    arguments: argumentsValue,
+  }, async () => {
+    observedArguments = argumentsValue;
+    return { kind: "allow" };
+  });
+  assert.deepEqual(result, { kind: "allow" });
+  assert.equal(observedArguments, argumentsValue, "request selectors pass through unchanged");
+  assert.doesNotMatch(readBundle("strict-overwrite-policy.mjs"), /include_diff\s*[:=]\s*false/);
 });

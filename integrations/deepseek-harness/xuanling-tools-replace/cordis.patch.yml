@@ -1,41 +1,17 @@
-# XuanLing tools for DeepSeek Harness — replace variant.
+# XuanLing tools for DeepSeek Harness — compatibility alias.
 #
-# Same mount as xuanling-dsh-tools (see that bundle's patch for the adapter,
-# binary resolution, and capability notes), plus retirement of the built-in model-facing
-# filesystem tool rows so lazy XuanLing activation becomes the filesystem layer the model sees:
+# Releases before this boundary remediation disabled the complete native
+# tool-fs row, which also removed read_image and the host observation/editor
+# integration. The package now preserves every native row and mounts the same
+# lazy XuanLing full catalog as the additive bundle. Existing profiles therefore
+# recover native filesystem behavior on update without a destructive migration.
 #
-#   read / write / edit / read_image   (tool-fs)            -> mcp__xuanling__fs_*
-#   glob / grep                        (tool-fs-search)     -> mcp__xuanling__fs_glob / fs_search
-#   str_replace_editor                 (tool-str-replace-editor) -> mcp__xuanling__fs_edit / fs_patch
-#
-# Intentionally NOT retired:
-#   - bash / pwsh (tool-bash, tool-pwsh): they pair with the sandbox rows and
-#     carry approval, background-job, and PTY integration. XuanLing's
-#     process_run / session_* are available alongside them instead.
-#   - web_fetch / web_search, todo_write, and every orchestration tool.
-#
-# Known regressions in this variant (documented in the integration README):
-# read_image disappears (XuanLing exposes no image tool), and the built-in fs
-# observation policy / editor cards no longer apply to filesystem calls
-# (XuanLing's own sha256/CAS contracts take over).
-#
-# Disable rows restate the full row (id + name) per the bundle patch contract:
-# a patch entry replaces the targeted row, it never deep-merges into it.
-
-- id: tool-fs
-  name: '@deepseek-ai/dsh-tool-fs'
-  disabled: true
-
-- id: tool-fs-search
-  name: '@deepseek-ai/dsh-tool-fs-search'
-  disabled: true
-
-- id: tool-str-replace-editor
-  name: '@deepseek-ai/dsh-tool-str-replace-editor'
-  disabled: true
+# New installs should use @xuanling-rs/xuanling-dsh-tools. This row keeps a
+# package-specific id so inventory can detect two XuanLing runtimes explicitly;
+# it never relies on Cordis replacement order to express mutual exclusion.
 
 - insert:
-    - id: xuanling-tools
+    - id: xuanling-tools-replace
       name: '@deepseek-ai/dsh-mcp-client'
       config:
         serverName: xuanling
@@ -49,5 +25,5 @@
           - '--'
           - !!js process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@xuanling-rs/xuanling-mcp/bin/xuanling-mcp.js')
           - '--workspace-root'
-          - !!js process.env.XUANLING_WORKSPACE_ROOT ?? process.cwd()
+          - !!js (() => { const root = process.env.XUANLING_WORKSPACE_ROOT; if (!root) throw new Error('XUANLING_WORKSPACE_ROOT is required for the XuanLing full-tools compatibility bundle'); return root })()
         toolCallTimeoutMs: 120000

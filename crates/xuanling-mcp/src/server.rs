@@ -244,7 +244,7 @@ impl ServerHandler for XuanlingServer {
         let mut meta = serde_json::Map::new();
         meta.insert(
             "xuanling.contract_version".to_string(),
-            serde_json::json!("2"),
+            serde_json::json!("3"),
         );
         // Memory v2 (plan §5/C-08): candidate/review tools, breaking change
         // from the v1 direct-mutation surface. Kept alongside the generic

@@ -234,19 +234,21 @@ Use a second single-select `ask_user_question` with stable id
 2. `Full tools + Skills` -> normalized id `full-additive`. It adds the full
    XuanLing catalog behind DSH lazy projection plus Skills while retaining
    DSH's native file tools.
-3. `Replace native filesystem tools + Skills` -> normalized id
-   `filesystem-replacement`. It adds the full catalog behind DSH lazy
-   projection and Skills, and the bundle disables DSH's three model-facing
-   native filesystem rows to avoid a duplicate file-tool surface.
+3. `Legacy replacement compatibility + Skills` -> normalized id
+   `filesystem-replacement`. It updates profiles that already selected the
+   historical package, but now preserves all DSH-native filesystem rows. For a
+   new full-catalog install, recommend `full-additive` instead.
 
 Every runtime bundle sets `toolExposure: lazy`. The bridge still fetches and
 caches every MCP `tools/list` page, but the initial model surface contains
 `mcp_catalog__xuanling` rather than all `mcp__xuanling__*` definitions. This is
 a Host projection policy, not a server profile or `list_changed` behavior.
 
-The three runtime packages all mount the same `xuanling-tools` bundle id and
-are mutually exclusive. The Skills package is a separate provider and is part
-of every preset. Unknown, custom, multiple, skipped, or cancelled answers stop
+The three runtime packages use distinct row ids (`xuanling-memory`,
+`xuanling-tools`, and `xuanling-tools-replace`) so inventory can report an
+explicit `runtime_bundle_conflict`; they remain mutually exclusive by preset.
+The Skills package is a separate provider and is part of every preset. Unknown,
+custom, multiple, skipped, or cancelled answers stop
 as `cancelled_before_side_effect` before registry or profile mutation.
 
 ## Step 3: resolve and freeze one registry version
@@ -281,7 +283,9 @@ For an existing profile, use read-only file inspection to record:
 - the current `dsh.profile.bundles` rows;
 - the effective configuration from
   `dsh --profile <profile> --dump-config` when that command is read-only for
-  the existing profile.
+  the existing profile;
+- the launcher version, installed native package version and resolved native
+  binary path when present. A mismatch is repair evidence, never a no-op.
 
 Do not edit any of those files. At most one of the three runtime package names
 may be present. If two are present, record the conflict rather than guessing
@@ -293,16 +297,23 @@ profile initialization and reconciliation inside the user's final consent.
 
 ## Step 5: show the exact plan and ask for final confirmation
 
-Build the plan only from the frozen selection and inventory. Show all of the
-following in the text of one final single-select question:
+Build the plan only from the frozen selection and inventory. Classify it as
+exactly one operation: `install` when no related package exists;
+`verified_noop` when package, row, launcher, native, and runtime identity
+already match; `update` when the same preset is wholly below the frozen
+version; `downgrade` when it is wholly above; otherwise `repair` (including
+package-topology changes, mixed versions, runtime conflicts, and identity
+mismatch). Show all of the following in one final single-select question:
 
 - selected profile and preset;
-- exact `resolved_version`;
+- operation mode and exact from/to version delta;
+- exact `resolved_version` and the matching `CHANGELOG.md` release heading;
 - current matching and conflicting package specs;
 - each exact spec that will be removed;
 - each exact `package@resolved_version` that will be ensured;
 - whether this is an already-matched verification-only run;
-- for `filesystem-replacement`, the three native filesystem rows it disables;
+- for `filesystem-replacement`, that this is a legacy compatibility package
+  which now preserves native `read_image`, observation guards, and editor UI;
 - that the runtime initially exposes `mcp_catalog__xuanling` and activates
   exact XuanLing tools on demand;
 - that plugin changes require a DSH restart before new tools are visible.
@@ -331,8 +342,8 @@ Otherwise, mutate in this order:
 2. Add or update both selected packages together with
    `dsh plugin --profile <profile> add <package@resolved_version> ...`.
 3. Re-read the manifest and effective config. Require the two exact target
-   specs, no conflicting runtime package, one `xuanling-tools` runtime row,
-   and one `xuanling-skills` provider.
+   specs, no conflicting runtime package, the selected package-specific
+   runtime row, and one `xuanling-skills` provider.
 
 Do not continue after a nonzero exit, timeout, cancellation, manifest drift,
 or unexpected package/config state. Move immediately to rollback.
@@ -365,9 +376,9 @@ For a converged or already-matched state:
 
 1. Run `dsh plugin --profile <profile> list`; require both selected packages
    at `resolved_version`.
-2. Run `dsh --profile <profile> --dump-config`; require exactly one
-   `xuanling-tools` runtime row and one `xuanling-skills` provider, with no
-   conflicting XuanLing runtime package. A config dump is necessary but is not
+2. Run `dsh --profile <profile> --dump-config`; require exactly one selected
+   package-specific XuanLing runtime row and one `xuanling-skills` provider,
+   with no conflicting runtime package. A config dump is necessary but is not
    proof that a model can call a tool.
 3. For `web`, keep any current server alive and start a separate bounded probe
    with direct argv `dsh --profile web --no-open --port 0`. Wait for its
@@ -381,14 +392,19 @@ For a converged or already-matched state:
    the old graph. Restart the selected profile explicitly, preserving its
    session when the host supports resume. Do not claim the tools are active
    before that restart.
-6. After restart, require discovery of `mcp_catalog__xuanling`. Use it to
-   search and activate exactly one harmless raw name. For the recommended
+6. After restart, require discovery of `mcp_catalog__xuanling`. Record and
+   compare the frozen manifest/lock version, launcher version, native package
+   version and resolved binary path. Use the catalog to search and activate
+   exactly one harmless raw name. For the recommended
    preset, activate `memory_search`, then call
    `mcp__xuanling__memory_search` with a narrow read-only query. For either
    full-tool preset, activate `system_info`, then call
    `mcp__xuanling__system_info`. Require the activated definition to appear
-   before calling it. Never create or review a Memory candidate as an
-   installation smoke test.
+   before calling it. Its reported version and MCP contract version must agree
+   with the frozen release and expected contract. Any launcher/native/path/
+   `system_info` mismatch is `runtime_version_incoherent`: roll back a changed
+   graph, or classify an unchanged graph as `repair`; never report verified.
+   Never create or review a Memory candidate as an installation smoke test.
 
 Use `installed_verified` only after package, config, cold/bounded start,
 restart, discovery, and harmless call evidence all pass. If the profile graph
@@ -403,6 +419,11 @@ responses, and unrelated profile content. Include the source URL/ref, DSH
 version, normalized answers, frozen version, related before/current specs,
 direct argv with no secret values, exit codes, terminal status, and the next
 exact recovery or restart action.
+
+Do not claim that DSH release age caused a stale native package unless a
+controlled Host transcript proves the mechanism. Without that evidence record
+release-age causality as `UNVERIFIED_RISK`; package/runtime mismatch itself is
+still a confirmed repair condition.
 
 Use these terminal names consistently: `installer_source_unavailable`,
 `host_prerequisite_missing`, `cancelled_before_side_effect`,

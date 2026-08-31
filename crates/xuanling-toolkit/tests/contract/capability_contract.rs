@@ -53,12 +53,14 @@ fn workspace_scope_allows_internal_read_and_rejects_absolute_escape() {
             start_line: None,
             end_line: None,
             include_sha256: false,
+            known_sha256: None,
+            format: xuanling_toolkit::fs::TextReadFormat::Raw,
             max_bytes: None,
             resume: None,
         },
     )
     .expect("inside read");
-    assert_eq!(inside.content, "inside");
+    assert_eq!(inside.content.as_deref(), Some("inside"));
 
     let error = read_text(
         &ctx,
@@ -68,6 +70,8 @@ fn workspace_scope_allows_internal_read_and_rejects_absolute_escape() {
             start_line: None,
             end_line: None,
             include_sha256: false,
+            known_sha256: None,
+            format: xuanling_toolkit::fs::TextReadFormat::Raw,
             max_bytes: None,
             resume: None,
         },
@@ -90,6 +94,8 @@ fn request_base_cannot_expand_workspace_scope() {
             start_line: None,
             end_line: None,
             include_sha256: false,
+            known_sha256: None,
+            format: xuanling_toolkit::fs::TextReadFormat::Raw,
             max_bytes: None,
             resume: None,
         },
@@ -113,12 +119,14 @@ fn relative_request_base_is_resolved_against_the_invocation_context() {
             start_line: None,
             end_line: None,
             include_sha256: false,
+            known_sha256: None,
+            format: xuanling_toolkit::fs::TextReadFormat::Raw,
             max_bytes: None,
             resume: None,
         },
     )
     .expect("relative base resolves within the invocation workspace");
-    assert_eq!(result.content, "inside");
+    assert_eq!(result.content.as_deref(), Some("inside"));
 }
 
 #[test]
@@ -398,6 +406,8 @@ fn symlink_followed_by_parent_traversal_keeps_os_path_semantics() {
             start_line: None,
             end_line: None,
             include_sha256: false,
+            known_sha256: None,
+            format: xuanling_toolkit::fs::TextReadFormat::Raw,
             max_bytes: None,
             resume: None,
         },
@@ -553,6 +563,8 @@ fn nofollow_tools_can_inspect_and_unlink_an_external_target_symlink_entry() {
             start_line: None,
             end_line: None,
             include_sha256: false,
+            known_sha256: None,
+            format: xuanling_toolkit::fs::TextReadFormat::Raw,
             max_bytes: None,
             resume: None,
         },
@@ -1516,6 +1528,7 @@ fn contained_invocation_cannot_finish_changeset_registered_outside_scope() {
             expected_sha256: None,
             dry_run: false,
             reversible: true,
+            include_diff: true,
         },
     )
     .expect("unrestricted reversible edit");
@@ -1550,6 +1563,7 @@ fn contained_invocation_cannot_finish_changeset_registered_outside_scope() {
             expected_sha256: None,
             dry_run: false,
             reversible: true,
+            include_diff: true,
         },
     )
     .expect("unrestricted reversible edit");
@@ -1593,12 +1607,14 @@ fn multi_root_scope_reads_and_writes_every_root_and_rejects_outside() {
             start_line: None,
             end_line: None,
             include_sha256: false,
+            known_sha256: None,
+            format: xuanling_toolkit::fs::TextReadFormat::Raw,
             max_bytes: None,
             resume: None,
         },
     )
     .expect("read in root A");
-    assert_eq!(a.content, "a");
+    assert_eq!(a.content.as_deref(), Some("a"));
     let b = read_text(
         &ctx,
         &FsReadTextRequest {
@@ -1607,12 +1623,14 @@ fn multi_root_scope_reads_and_writes_every_root_and_rejects_outside() {
             start_line: None,
             end_line: None,
             include_sha256: false,
+            known_sha256: None,
+            format: xuanling_toolkit::fs::TextReadFormat::Raw,
             max_bytes: None,
             resume: None,
         },
     )
     .expect("read in root B");
-    assert_eq!(b.content, "b");
+    assert_eq!(b.content.as_deref(), Some("b"));
 
     fs_write_text(
         &ctx,
@@ -1653,6 +1671,8 @@ fn multi_root_scope_reads_and_writes_every_root_and_rejects_outside() {
             start_line: None,
             end_line: None,
             include_sha256: false,
+            known_sha256: None,
+            format: xuanling_toolkit::fs::TextReadFormat::Raw,
             max_bytes: None,
             resume: None,
         },
@@ -1682,12 +1702,14 @@ fn read_only_root_allows_reads_and_rejects_writes_and_removal() {
             start_line: None,
             end_line: None,
             include_sha256: false,
+            known_sha256: None,
+            format: xuanling_toolkit::fs::TextReadFormat::Raw,
             max_bytes: None,
             resume: None,
         },
     )
     .expect("read-only root is readable");
-    assert_eq!(read.content, "frozen");
+    assert_eq!(read.content.as_deref(), Some("frozen"));
 
     let write_error = fs_write_text(
         &ctx,
@@ -1759,12 +1781,14 @@ async fn read_only_scope_without_write_roots_rejects_writes_and_process_cwd() {
             start_line: None,
             end_line: None,
             include_sha256: false,
+            known_sha256: None,
+            format: xuanling_toolkit::fs::TextReadFormat::Raw,
             max_bytes: None,
             resume: None,
         },
     )
     .expect("read within the read-only root");
-    assert_eq!(read.content, "frozen");
+    assert_eq!(read.content.as_deref(), Some("frozen"));
 
     let write_error = fs_write_text(
         &ctx,

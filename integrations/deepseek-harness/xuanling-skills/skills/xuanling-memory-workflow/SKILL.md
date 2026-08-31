@@ -62,7 +62,9 @@ small, then use `memory_get` only when an exact current record is required.
 - Call `memory_review` only after an explicit user instruction — an approval
   or rejection decision that names the concrete proposal. A conversational
   "looks good" during other work is not that decision; ask the user to
-  confirm the specific proposal id if in doubt.
+  confirm the specific proposal id if in doubt. DSH also asks for one-time Host
+  approval immediately before dispatch; this runtime gate enforces the user
+  decision, while `reviewer_id` remains caller-attested at the Rust boundary.
 - Never describe yourself or this agent as the human reviewer. You propose;
   the user disposes. When you report a review outcome, attribute the decision
   to the user who made it.

@@ -27,7 +27,8 @@ pub use change::{
 };
 pub use read::{
     ByteResume, FsHashRequest, FsHashResult, FsReadBytesRequest, FsReadBytesResult,
-    FsReadTextRequest, FsReadTextResult, TextResume, fs_hash, read_bytes, read_text,
+    FsReadTextRequest, FsReadTextResult, TextReadFormat, TextResume, fs_hash, read_bytes,
+    read_text,
 };
 pub use search::{
     FsGlobRequest, FsGlobResult, FsSearchOptions, FsSearchRequest, FsSearchResult, SearchMatch,

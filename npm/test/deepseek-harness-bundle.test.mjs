@@ -318,10 +318,18 @@ test("profile-local launcher resolution works with no global command on PATH", (
   }
 });
 
-test("all patches mount the bridge with the documented xuanling identity", () => {
+test("runtime patches use unique row ids with one documented server identity", () => {
+  const expectedIds = new Map([
+    ["xuanling-memory", "xuanling-memory"],
+    ["xuanling-tools", "xuanling-tools"],
+    ["xuanling-tools-replace", "xuanling-tools-replace"],
+  ]);
+  const seenIds = new Set();
   for (const bundle of bundles) {
     const row = mountRow(readText(path.join(bundle, "cordis.patch.yml")));
-    assert.equal(row.id, "xuanling-tools", `${bundle}: row id`);
+    assert.equal(row.id, expectedIds.get(bundle), `${bundle}: stable package-specific row id`);
+    assert.ok(!seenIds.has(row.id), `${bundle}: row id must be unique`);
+    seenIds.add(row.id);
     assert.equal(row.name, "@deepseek-ai/dsh-mcp-client", `${bundle}: bridge package`);
     const config = row.config ?? {};
     assert.equal(config.serverName, "xuanling", `${bundle}: serverName fixes the public names`);
@@ -330,14 +338,18 @@ test("all patches mount the bridge with the documented xuanling identity", () =>
     assert.ok(!config.args.includes("--memory-db"), `${bundle}: production uses shared memory DB`);
     assert.equal(config.toolCallTimeoutMs, 120000, `${bundle}: per-call timeout`);
   }
+});
 
+test("full-tool bundles require an explicit workspace root and memory has no fs root argv", () => {
   for (const bundle of fullCatalogBundles) {
     const config = mountRow(readText(path.join(bundle, "cordis.patch.yml"))).config;
     assert.deepEqual(config.command, { js: "process.execPath" }, `${bundle}: Node runtime`);
-    assert.deepEqual(config.args.slice(5, 7), [
-      "--workspace-root",
-      { js: "process.env.XUANLING_WORKSPACE_ROOT ?? process.cwd()" },
-    ]);
+    const rootFlag = config.args.indexOf("--workspace-root");
+    assert.notEqual(rootFlag, -1, `${bundle}: contained filesystem root flag`);
+    const rootExpression = config.args[rootFlag + 1]?.js ?? "";
+    assert.match(rootExpression, /XUANLING_WORKSPACE_ROOT/, `${bundle}: explicit env contract`);
+    assert.match(rootExpression, /throw new Error/, `${bundle}: missing root fails loud`);
+    assert.doesNotMatch(rootExpression, /process\.cwd/, `${bundle}: ambient cwd is never a capability root`);
   }
 
   const memoryConfig = mountRow(readText(path.join("xuanling-memory", "cordis.patch.yml"))).config;
@@ -346,16 +358,8 @@ test("all patches mount the bridge with the documented xuanling identity", () =>
     memoryConfig.args[0].js,
     /XUANLING_DSH_SCHEMA_ADAPTER.*@xuanling-rs\/xuanling-dsh-memory\/schema-adapter\.mjs/,
   );
-  assert.deepEqual(memoryConfig.args.slice(1, 7), [
-    "--binary",
-    { js: "process.execPath" },
-    "--",
-    {
-      js: "process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@xuanling-rs/xuanling-mcp/bin/xuanling-mcp.js')",
-    },
-    "--workspace-root",
-    { js: "process.env.XUANLING_WORKSPACE_ROOT ?? process.cwd()" },
-  ]);
+  assert.equal(memoryConfig.args.includes("--workspace-root"), false, "memory-only profile carries no ambient fs root");
+  assert.deepEqual(memoryConfig.args.slice(-2), ["--tool-profile", "memory"]);
 });
 
 test("the recommended bundle exposes only the complete memory profile", () => {
@@ -380,32 +384,17 @@ test("the recommended bundle exposes only the complete memory profile", () => {
   }
 });
 
-test("the replace bundle disables exactly the three built-in fs tool rows", () => {
-  const additiveEntries = parsePatch(readText(path.join("xuanling-tools", "cordis.patch.yml")));
-  assert.equal(
-    additiveEntries.filter((entry) => entry.disabled === true).length,
-    0,
-    "additive bundle disables nothing",
-  );
-
-  const entries = parsePatch(readText(path.join("xuanling-tools-replace", "cordis.patch.yml")));
-  const disabled = new Map(
-    entries
-      .filter((entry) => entry.disabled === true)
-      .map((entry) => [entry.id, entry.name]),
-  );
-  assert.deepEqual(
-    [...disabled.keys()].sort(),
-    ["tool-fs", "tool-fs-search", "tool-str-replace-editor"],
-    "exactly the model-facing filesystem rows are retired",
-  );
-  assert.deepEqual(
-    disabled.get("tool-fs"),
-    "@deepseek-ai/dsh-tool-fs",
-    "disable rows restate the full row (id + name), never a bare id",
-  );
-  assert.equal(disabled.get("tool-fs-search"), "@deepseek-ai/dsh-tool-fs-search");
-  assert.equal(disabled.get("tool-str-replace-editor"), "@deepseek-ai/dsh-tool-str-replace-editor");
+test("every supported runtime bundle preserves native filesystem and read_image rows", () => {
+  for (const bundle of bundles) {
+    const entries = parsePatch(readText(path.join(bundle, "cordis.patch.yml")));
+    assert.equal(
+      entries.filter((entry) => entry.disabled === true).length,
+      0,
+      `${bundle}: native tool rows remain enabled`,
+    );
+    const patch = readText(path.join(bundle, "cordis.patch.yml"));
+    assert.doesNotMatch(patch, /read_image disappears|Known regressions in this variant/);
+  }
 });
 
 test("the ZCode-only compat shim never leaks into DeepSeek configs", () => {
@@ -460,13 +449,22 @@ test("README documents the mount and the legacy tool surface stays out", () => {
 });
 
 test("public install commands use a shipped runnable DSH profile", () => {
+  const compatibilityReadmes = new Set([
+    path.join("xuanling-tools-replace", "README.md"),
+    path.join("xuanling-tools-replace", "README-ZH.md"),
+  ]);
   for (const relative of publicReadmes) {
     const readme = readText(relative);
-    assert.match(
-      readme,
-      /dsh plugin --profile web add/,
-      `${relative}: install command targets the shipped Web profile`,
-    );
+    if (compatibilityReadmes.has(relative)) {
+      assert.doesNotMatch(readme, /dsh plugin --profile web add[^\n]*xuanling-dsh-tools-replace/);
+      assert.match(readme, /@xuanling-rs\/xuanling-dsh-tools/);
+    } else {
+      assert.match(
+        readme,
+        /dsh plugin --profile web add/,
+        `${relative}: install command targets the shipped Web profile`,
+      );
+    }
     assert.doesNotMatch(
       readme,
       /dsh plugin --profile (?:demo|full|replace|xuanling-acceptance)\b/,

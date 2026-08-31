@@ -318,6 +318,21 @@ fn a5_detect_and_run_project_check() {
         return;
     }
     let s2 = &r2["result"]["structuredContent"];
+    assert_eq!(s2["program"], json!("cargo"), "A5: run result program");
+    assert_eq!(s2["ecosystem"], json!("rust"), "A5: run result ecosystem");
+    assert_eq!(s2["action"], json!("check"), "A5: run result action");
+    assert!(
+        s2["args"]
+            .as_array()
+            .is_some_and(|args| args.contains(&json!("check"))),
+        "A5: run result must expose the executed argv: {r2}"
+    );
+    assert!(
+        s2["reason"]
+            .as_str()
+            .is_some_and(|reason| !reason.is_empty()),
+        "A5: run result must explain resolver choice: {r2}"
+    );
     assert!(
         s2["success"].as_bool().unwrap_or(false),
         "A5: cargo check via project_run must succeed on a valid temp project: {r2}"

@@ -15,7 +15,7 @@ import { describeProjection } from "../scripts/zcode-promotion-lib.mjs";
 //   - .mcp.json is the sole launch contract;
 //   - integration documentation contains installed-runtime guidance only;
 //   - the Skill carries no legacy tool names, no hardcoded tool count, and
-//     states the omitted-output=complete semantics.
+//     states the v3 bounded-output and cross-host request policy.
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 const routingVerifier = path.join(repoRoot, "test", "host-integration", "verify-skill-routing.mjs");
@@ -61,6 +61,13 @@ test("current ZCode Skill satisfies the frozen routing contract", () => {
     "shared_l2_pull_then_pending",
     "explicit_pointer_recall",
     "no_match_or_unavailable_continues",
+    "v3_omitted_output_bounded",
+    "v3_numbered_read_raw_resume",
+    "v3_conditional_reread",
+    "v3_diff_visibility_dependency",
+    "v3_sha_not_semantic_validation",
+    "v3_project_check_resolution",
+    "v3_minimal_env_diagnostic",
   ]);
   assert.deepEqual(report.missing_case_ids, []);
   assert.equal(result.stderr, "");
@@ -187,9 +194,11 @@ test("Skill has no hardcoded tool count", () => {
   }
 });
 
-test("Skill states omitted-output=complete and direct-argv", () => {
+test("Skill states v3 bounded-output and direct-argv contracts", () => {
   const skill = readFileSync(skillPath, "utf8");
-  assert.match(skill, /omitted[^\n]{0,80}complete/i, "omitted -> complete semantics");
+  assert.match(skill, /omitt(?:ed|ing)[^\n]{0,100}(?:65,536|64 KiB)[^\n]{0,100}bounded/i,
+    "omitted output uses the v3 bounded default");
+  assert.match(skill, /mode[^\n]{0,30}complete/i, "complete output is an explicit opt-in");
   assert.match(skill, /no shell/i, "direct argv / no shell contract");
   assert.match(skill, /idempotency_key/, "proposal/review memory usage");
   assert.match(skill, /host file memory\s+\(L1\)/i, "project-local memory stays on the host");

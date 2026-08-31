@@ -2,7 +2,7 @@
 
 English | [Simplified Chinese](README-ZH.md)
 
-The released `xuanling-mcp` 0.2.10 plugin is a self-contained ZCode integration.
+The released `xuanling-mcp` 0.3.0 plugin is a self-contained ZCode integration.
 It carries the verified Node.js launcher and native packages for macOS ARM64,
 Linux x64 glibc, and Windows x64. It does not require a global npm installation
 and does not download an executable during installation.
@@ -57,6 +57,15 @@ Compound suffixes such as `d.ts` and `d.mts` are passed directly. Repeated
 short validations with identical argv use `deterministic: true`; long jobs stay
 on ZCode's background/job surface.
 
+Under the generic MCP v3 contract, omitted `output` is bounded at 65,536 bytes,
+complete output is explicit, numbered reads use absolute source lines, and
+`known_sha256` avoids replaying unchanged text or bytes. The Skill keeps
+`include_diff: true` until a native ZCode diff projection for XuanLing is
+independently proven; SHA protects integrity and concurrency but does not prove
+edit semantics. Exact project scripts outrank ecosystem conventions, `check`
+never becomes `build`, and minimal-environment spawn failures provide a
+non-secret `inherit_env: true` remediation.
+
 Memory uses a single-write L1/L2 split. Project-local facts that must appear in
 every session stay in host file memory; cross-project shared facts use XuanLing
 pending candidates. An explicit L1 pointer triggers one scoped
@@ -69,7 +78,9 @@ explicit user decision for the concrete proposal.
 `--workspace-root` constrains paths opened by XuanLing filesystem tools. It is
 not a process sandbox. ZCode remains responsible for tool approval, and child
 process isolation requires an OS sandbox or container when hostile execution
-is possible. XuanLing 0.2.10 is not publisher-signed; npm provenance, the
+is possible. The packaged adapter projects results only and does not rewrite
+tool-call arguments, so the v3 request guidance is advisory where ZCode exposes
+no request-policy hook. XuanLing 0.3.0 is not publisher-signed; npm provenance, the
 source-bound native hashes, and the GitHub-attested marketplace archive reduce
 distribution risk. They do not guarantee that every security product will
 classify a new binary the same way.

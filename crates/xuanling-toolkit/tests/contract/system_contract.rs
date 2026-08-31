@@ -47,7 +47,7 @@ fn system_info_returns_required_fields() {
         !info.xuanling_version.is_empty(),
         "version must be populated"
     );
-    assert_eq!(info.mcp_contract_version, "2");
+    assert_eq!(info.mcp_contract_version, "3");
     assert!(!info.family.is_empty(), "family must be populated");
     assert!(!info.os.is_empty(), "os must be populated");
     assert!(!info.arch.is_empty(), "arch must be populated");

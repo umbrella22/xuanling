@@ -49,15 +49,13 @@ function assertDshSubset(schema, location = "schema") {
   if (schema.items !== undefined) assertDshSubset(schema.items, `${location}.items`);
 }
 
-function collectSchemaKeys(value, keys = new Set()) {
-  if (Array.isArray(value)) {
-    value.forEach((entry) => collectSchemaKeys(entry, keys));
-  } else if (typeof value === "object" && value !== null) {
-    for (const [key, entry] of Object.entries(value)) {
-      keys.add(key);
-      collectSchemaKeys(entry, keys);
-    }
+function collectSchemaKeywords(schema, keys = new Set()) {
+  for (const key of Object.keys(schema)) keys.add(key);
+  for (const branch of schema.oneOf ?? []) collectSchemaKeywords(branch, keys);
+  for (const child of Object.values(schema.properties ?? {})) {
+    collectSchemaKeywords(child, keys);
   }
+  if (schema.items !== undefined) collectSchemaKeywords(schema.items, keys);
   return keys;
 }
 
@@ -80,7 +78,7 @@ test("all Memory v2 input schemas project to the DSH subset without mutating can
         `${tool.name}: all scope variants remain visible`,
       );
     }
-    const allKeys = collectSchemaKeys(projected);
+    const allKeys = collectSchemaKeywords(projected);
     for (const forbidden of ["$schema", "$defs", "$ref", "anyOf", "format", "minimum"]) {
       assert.ok(!allKeys.has(forbidden), `${tool.name}: ${forbidden} projected away`);
     }
@@ -128,7 +126,7 @@ test("all 16 fs input schemas project to the DSH subset with object semantics pr
     assert.deepEqual(tool.input_schema, before, `${tool.name}: canonical schema remains unchanged`);
     assert.equal(projected.type, "object", `${tool.name}: object parameter root`);
     assertDshSubset(projected, tool.name);
-    const allKeys = collectSchemaKeys(projected);
+    const allKeys = collectSchemaKeywords(projected);
     for (const forbidden of ["$schema", "$defs", "$ref", "anyOf", "format", "minimum"]) {
       assert.ok(!allKeys.has(forbidden), `${tool.name}: ${forbidden} projected away`);
     }
@@ -147,9 +145,27 @@ test("all 16 fs input schemas project to the DSH subset with object semantics pr
   assert.equal(patchTool.properties.unified_diff.type, "string");
   assert.equal(patchTool.properties.expected_preimage_sha256.type, "string");
 
+  // User field names are not schema keywords. Every v3 request selector must
+  // remain visible to the DSH model after representation-only projection.
+  const readText = byName("fs_read_text");
+  assert.deepEqual(readText.properties.format.enum, ["raw", "numbered"]);
+  assert.deepEqual(
+    readText.properties.known_sha256.oneOf.map((branch) => branch.type),
+    ["string", "null"],
+  );
+  const readBytes = byName("fs_read_bytes");
+  assert.deepEqual(
+    readBytes.properties.known_sha256.oneOf.map((branch) => branch.type),
+    ["string", "null"],
+  );
+  for (const name of ["fs_edit", "fs_edit_preview"]) {
+    const edit = byName(name);
+    assert.equal(edit.properties.include_diff.type, "boolean", `${name}: include_diff type`);
+    assert.equal(edit.properties.include_diff.default, true, `${name}: include_diff stays on`);
+  }
+
   // The output selector stays an object-valued tagged union with its
   // canonical numeric constraint surfaced in the description.
-  const readBytes = byName("fs_read_bytes");
   const branches = readBytes.properties.output.oneOf;
   assert.ok(Array.isArray(branches) && branches.length === 2, "output selector keeps both variants");
   const [bounded, complete] = branches;

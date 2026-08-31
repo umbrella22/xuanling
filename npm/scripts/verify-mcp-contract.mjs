@@ -12,7 +12,7 @@ import { parseArgs, requiredArg } from "./shared.mjs";
 // Starts the binary as a stdio MCP server with an explicit unique temp
 // `--memory-db` (C-15: the real default database is never opened), then
 // checks every layer of the public host contract:
-//   1. initialize `_meta` publishes xuanling.contract_version=2 and
+//   1. initialize `_meta` publishes xuanling.contract_version=3 and
 //      xuanling.memory_contract_version=2;
 //   2. all tools/list pages reproduce `_meta.catalog_sha256`;
 //   3. the catalog count is DERIVED from tools/list (no literal total) and
@@ -187,8 +187,8 @@ try {
   }
   const meta = initialized.result?._meta ?? {};
   check(
-    "contract_version=2",
-    meta["xuanling.contract_version"] === "2",
+    "contract_version=3",
+    meta["xuanling.contract_version"] === "3",
     String(meta["xuanling.contract_version"]),
   );
   check(

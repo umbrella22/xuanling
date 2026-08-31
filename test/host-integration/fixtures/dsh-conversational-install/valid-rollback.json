@@ -84,6 +84,10 @@
         "profile": "web",
         "preset": "filesystem-replacement",
         "resolved_version": "0.2.4",
+        "mode": "repair",
+        "from_version": "0.2.3",
+        "to_version": "0.2.4",
+        "release_notes": "CHANGELOG.md#024",
         "changes_required": true,
         "remove": ["@xuanling-rs/xuanling-dsh-tools@0.2.3"],
         "add": [

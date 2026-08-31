@@ -27,6 +27,8 @@ fn fs_read_text_without_range_returns_complete_file() {
         start_line: None,
         end_line: None,
         include_sha256: false,
+        known_sha256: None,
+        format: xuanling_toolkit::fs::TextReadFormat::Raw,
         max_bytes: None,
         resume: None,
     };
@@ -35,7 +37,8 @@ fn fs_read_text_without_range_returns_complete_file() {
     // No range was requested, so the FULL content must come back — not a
     // silently truncated prefix.
     assert_eq!(
-        result.content, body,
+        result.content,
+        Some(body),
         "content must not be silently truncated"
     );
     assert_eq!(result.total_lines, 10_000);
