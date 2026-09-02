@@ -29,8 +29,24 @@ const routingFixture = path.join(
 );
 const pluginRoot = path.join(repoRoot, "integrations", "zcode-plugin");
 const pluginPackageRoot = path.join(pluginRoot, "plugins", "xuanling-mcp");
+const replacementPluginRoot = path.join(pluginRoot, "plugins", "xuanling-mcp-replace");
 const skillPath = path.join(pluginPackageRoot, "skills", "xuanling-mcp-tools", "SKILL.md");
+const replacementSkillPath = path.join(
+  replacementPluginRoot,
+  "skills",
+  "xuanling-mcp-replacement",
+  "SKILL.md",
+);
+const replacementHookPath = path.join(replacementPluginRoot, "hooks", "pretooluse.mjs");
+const replacementVerifierPath = path.join(
+  repoRoot,
+  "test",
+  "host-integration",
+  "verify-zcode-filesystem-replacement.mjs",
+);
 const workspaceVersion = await readWorkspaceVersion();
+const validSha = "0".repeat(64);
+const qualifiedMcpPrefix = "mcp__plugin_xuanling-mcp-replace_xuanling__";
 
 function readJson(relative) {
   return JSON.parse(readFileSync(path.join(repoRoot, relative), "utf8"));
@@ -41,6 +57,13 @@ function runNode(args) {
     cwd: repoRoot,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+  });
+}
+
+function runReplacementHook(event) {
+  return spawnSync(process.execPath, [replacementHookPath], {
+    input: typeof event === "string" ? event : JSON.stringify(event),
+    encoding: "utf8",
   });
 }
 
@@ -55,7 +78,7 @@ test("current ZCode Skill satisfies the frozen routing contract", () => {
   assert.deepEqual(report.passed_case_ids, [
     "repeated_validation_deterministic",
     "existing_overwrite_cas",
-    "same_file_multi_hunk_patch",
+    "ordered_multi_edit_batch",
     "compound_extension_exact",
     "project_local_l1_only",
     "shared_l2_pull_then_pending",
@@ -83,16 +106,178 @@ test("current ZCode Skill satisfies the frozen routing contract", () => {
 test("plugin/npm/cargo/marketplace versions agree", () => {
   const marketplace = readJson("integrations/zcode-plugin/marketplace.json");
   const plugin = readJson("integrations/zcode-plugin/plugins/xuanling-mcp/.zcode-plugin/plugin.json");
+  const replacement = readJson(
+    "integrations/zcode-plugin/plugins/xuanling-mcp-replace/.zcode-plugin/plugin.json",
+  );
   const npmMain = readJson("npm/package.json");
   const npmPackage = readJson("npm/packages/xuanling-mcp/package.json");
   assert.equal(plugin.version, npmMain.version);
+  assert.equal(replacement.version, plugin.version);
   assert.equal(plugin.version, npmPackage.version);
   assert.equal(plugin.version, workspaceVersion);
-  assert.equal(
-    marketplace.plugins.find((entry) => entry.name === "xuanling-mcp")?.version,
-    plugin.version,
-    "marketplace.json must pin the same plugin version",
+  for (const name of ["xuanling-mcp", "xuanling-mcp-replace"]) {
+    assert.equal(
+      marketplace.plugins.find((entry) => entry.name === name)?.version,
+      plugin.version,
+      `marketplace.json must pin the same ${name} version`,
+    );
+  }
+});
+
+test("replacement plugin ships a cross-platform PreToolUse CAS gate", () => {
+  const marketplace = readJson("integrations/zcode-plugin/marketplace.json");
+  const entry = marketplace.plugins.find((candidate) => candidate.name === "xuanling-mcp-replace");
+  assert.ok(entry, "marketplace must expose the independent replacement plugin");
+
+  const manifest = JSON.parse(
+    readFileSync(path.join(replacementPluginRoot, ".zcode-plugin", "plugin.json"), "utf8"),
   );
+  assert.equal(manifest.name, "xuanling-mcp-replace");
+  assert.equal(
+    manifest.hooks,
+    undefined,
+    "the conventional hooks/hooks.json path must not also be declared in the manifest",
+  );
+  assert.equal(manifest.mcpServers, ".mcp.json");
+
+  const hooks = JSON.parse(
+    readFileSync(path.join(replacementPluginRoot, "hooks", "hooks.json"), "utf8"),
+  );
+  const registrations = hooks.hooks?.PreToolUse ?? [];
+  assert.equal(registrations.length, 1, "replacement has one auditable PreToolUse gate");
+  const matcher = new RegExp(registrations[0].matcher);
+  for (const name of [
+    "Read",
+    "mcp__xuanling__fs_edit_batch",
+    `${qualifiedMcpPrefix}fs_edit_batch`,
+  ]) {
+    assert.equal(matcher.test(name), true, `hook matcher must cover ${name}`);
+  }
+  for (const name of ["SomeReadHelper", "mcp__plugin_other_xuanling__fs_edit_batch"]) {
+    assert.equal(matcher.test(name), false, `hook matcher must not capture ${name}`);
+  }
+  assert.deepEqual(registrations[0].hooks, [{
+    type: "process",
+    command: "node",
+    args: ["${ZCODE_PLUGIN_ROOT}/hooks/pretooluse.mjs"],
+    timeoutMs: 10000,
+  }]);
+
+  assert.deepEqual(
+    readJson("integrations/zcode-plugin/plugins/xuanling-mcp-replace/.mcp.json"),
+    readJson("integrations/zcode-plugin/plugins/xuanling-mcp/.mcp.json"),
+    "replacement and additive launch the same MCP v3 runtime",
+  );
+  assert.equal(
+    readFileSync(path.join(replacementPluginRoot, "mcp-result-adapter.mjs"), "utf8"),
+    readFileSync(path.join(pluginPackageRoot, "mcp-result-adapter.mjs"), "utf8"),
+    "replacement preserves the additive result projection byte-for-byte",
+  );
+});
+
+test("replacement hook denies exact native file tools without leaking input", () => {
+  for (const toolName of ["Read", "Write", "Edit", "ApplyPatch", "MultiEdit"]) {
+    const result = runReplacementHook({
+      tool_name: toolName,
+      tool_input: { content: "must-not-appear-in-errors" },
+    });
+    assert.equal(result.status, 2, `${toolName} must be denied`);
+    assert.match(result.stderr, /XUANLING_REPLACEMENT_NATIVE_TOOL_DISABLED/);
+    assert.doesNotMatch(result.stderr, /must-not-appear-in-errors/);
+    assert.equal(result.stdout, "");
+  }
+});
+
+test("replacement hook enforces each XuanLing mutation CAS contract", () => {
+  const denied = [
+    { tool_name: "mcp__xuanling__fs_write_text", tool_input: { mode: "overwrite" } },
+    { tool_name: "mcp__xuanling__fs_write_text", tool_input: {} },
+    { tool_name: "mcp__xuanling__fs_replace_text", tool_input: {} },
+    { tool_name: "mcp__xuanling__fs_edit", tool_input: { expected_sha256: "A".repeat(64) } },
+    { tool_name: "mcp__xuanling__fs_edit", tool_input: { expected_sha256: [validSha] } },
+    { tool_name: "mcp__xuanling__fs_replace_text", tool_input: { expected_sha256: null } },
+    { tool_name: "mcp__xuanling__fs_edit_batch", tool_input: {
+      files: [
+        { path: "a.txt", expected_sha256: validSha },
+        { path: "b.txt", edits: [{ old: "a", new: "b" }] },
+      ],
+    } },
+    { tool_name: "mcp__xuanling__fs_patch", tool_input: { expected_sha256: validSha } },
+  ];
+  for (const event of denied) {
+    const result = runReplacementHook(event);
+    assert.equal(result.status, 2, `${event.tool_name} missing/invalid CAS must be denied`);
+    assert.match(result.stderr, /XUANLING_REPLACEMENT_(?:CAS_REQUIRED|INVALID_CAS)/);
+  }
+
+  const allowed = [
+    { tool_name: "mcp__xuanling__fs_write_text", tool_input: { mode: "create" } },
+    { tool_name: "mcp__xuanling__fs_write_text", tool_input: {
+      mode: "overwrite", expected_sha256: validSha,
+    } },
+    { tool_name: "mcp__xuanling__fs_replace_text", tool_input: { expected_sha256: validSha } },
+    { tool_name: "mcp__xuanling__fs_edit", tool_input: { expected_sha256: validSha } },
+    { tool_name: "mcp__xuanling__fs_edit_batch", tool_input: {
+      files: [
+        { path: "a.txt", expected_sha256: validSha },
+        { path: "b.txt", expected_sha256: validSha },
+      ],
+    } },
+    { tool_name: "mcp__xuanling__fs_patch", tool_input: {
+      expected_preimage_sha256: validSha,
+    } },
+  ];
+  for (const event of allowed) {
+    const result = runReplacementHook(event);
+    assert.equal(result.status, 0, `${event.tool_name} with valid CAS must pass: ${result.stderr}`);
+    assert.equal(result.stdout, "");
+    assert.equal(result.stderr, "");
+  }
+
+  const qualified = runReplacementHook({
+    tool_name: `${qualifiedMcpPrefix}fs_edit`,
+    tool_input: {},
+  });
+  assert.equal(qualified.status, 2, "the host-registered plugin tool name must enforce CAS");
+  assert.match(qualified.stderr, /XUANLING_REPLACEMENT_CAS_REQUIRED/);
+});
+
+test("replacement hook fails closed for malformed relevant input and ignores foreign tools", () => {
+  for (const input of ["not-json", "null", JSON.stringify({ tool_input: {} })]) {
+    const result = runReplacementHook(input);
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /XUANLING_REPLACEMENT_INVALID_HOOK_INPUT/);
+  }
+
+  for (const event of [
+    { tool_name: "mcp__other__fs_edit", tool_input: {} },
+    { tool_name: "mcp__plugin_other_xuanling__fs_edit", tool_input: {} },
+    { tool_name: "SomeReadHelper", tool_input: {} },
+    { tool_name: "mcp__xuanling__fs_hash", tool_input: { path: "a.txt" } },
+  ]) {
+    const result = runReplacementHook(event);
+    assert.equal(result.status, 0, `foreign/read-only tool must not be denied: ${event.tool_name}`);
+  }
+});
+
+test("replacement Skill keeps CAS, batch, diff, formatter, and host-limit guidance", () => {
+  const skill = readFileSync(replacementSkillPath, "utf8");
+  assert.match(skill, /fs_edit_batch/);
+  assert.match(skill, /include_diff: true/);
+  assert.match(skill, /formatter[\s\S]{0,200}read or hash/i);
+  assert.match(skill, /expected_preimage_sha256/);
+  assert.match(skill, /mcp__plugin_xuanling-mcp-replace_xuanling__/);
+  assert.match(skill, /cannot hide native tool names/);
+  assert.match(skill, /cannot guarantee a native ZCode diff[\s\S]{0,20}card or native image rendering/);
+  assert.match(skill, /Disabling[\s\S]{0,100}restores native tool execution/);
+});
+
+test("replacement live verifier is syntactically valid and binds the real host namespace", () => {
+  assert.equal(runNode(["--check", replacementVerifierPath]), "");
+  const source = readFileSync(replacementVerifierPath, "utf8");
+  assert.match(source, /realpath\(path\.resolve\(/);
+  assert.match(source, /mcp__plugin_xuanling-mcp-replace_xuanling__/);
+  assert.match(source, /user_config_unchanged: true/);
 });
 
 test("plugin manifest references the sole .mcp.json launch contract", () => {
@@ -123,33 +308,39 @@ test(".mcp.json is the sole ZCode launch contract", () => {
 });
 
 test("ZCode source is a runtime template, not a checked-in host staging tree", () => {
-  assert.equal(existsSync(path.join(pluginPackageRoot, "bin")), false, "native bytes are generated for release");
-  assert.equal(
-    existsSync(path.join(pluginPackageRoot, "scripts", "sync-binary.mjs")),
-    false,
-    "release staging lives outside integrations",
-  );
+  for (const root of [pluginPackageRoot, replacementPluginRoot]) {
+    assert.equal(existsSync(path.join(root, "bin")), false, "native bytes are generated for release");
+    assert.equal(
+      existsSync(path.join(root, "scripts", "sync-binary.mjs")),
+      false,
+      "release staging lives outside integrations",
+    );
+  }
   const marketplace = readJson("integrations/zcode-plugin/marketplace.json");
-  const entry = marketplace.plugins.find((candidate) => candidate.name === "xuanling-mcp");
-  assert.deepEqual(entry.source, {
-    source: "github",
-    repo: "umbrella22/xuanling-zcode-marketplace",
-    path: "plugins/xuanling-mcp",
-    ref: `xuanling-mcp-v${entry.version}`,
-  });
+  for (const name of ["xuanling-mcp", "xuanling-mcp-replace"]) {
+    const entry = marketplace.plugins.find((candidate) => candidate.name === name);
+    assert.deepEqual(entry.source, {
+      source: "github",
+      repo: "umbrella22/xuanling-zcode-marketplace",
+      path: `plugins/${name}`,
+      ref: `${name}-v${entry.version}`,
+    });
+  }
 });
 
 test("ZCode plugin READMEs contain installed-runtime guidance only", () => {
-  for (const name of ["README.md", "README-ZH.md"]) {
-    const readme = readFileSync(path.join(pluginPackageRoot, name), "utf8");
-    assert.match(readme, /umbrella22\/xuanling-zcode-marketplace/);
-    assert.match(readme, /Node\.js 18\.17/);
-    assert.match(readme, /does not require a global npm|不依赖全局 npm/);
-    assert.doesNotMatch(
-      readme,
-      /npm\/scripts|stage-zcode-marketplace|sync-binary|Updating the Runtime|更新 Runtime|source template/i,
-      `${name} must not expose repository staging procedures to installed agents`,
-    );
+  for (const root of [pluginPackageRoot, replacementPluginRoot]) {
+    for (const name of ["README.md", "README-ZH.md"]) {
+      const readme = readFileSync(path.join(root, name), "utf8");
+      assert.match(readme, /umbrella22\/xuanling-zcode-marketplace/);
+      assert.match(readme, /Node\.js 18\.17/);
+      assert.match(readme, /does not require a global npm|不依赖全局 npm/);
+      assert.doesNotMatch(
+        readme,
+        /npm\/scripts|stage-zcode-marketplace|sync-binary|Updating the Runtime|更新 Runtime|source template/i,
+        `${path.basename(root)}/${name} must not expose repository staging procedures`,
+      );
+    }
   }
 });
 
@@ -208,12 +399,14 @@ test("Skill states v3 bounded-output and direct-argv contracts", () => {
 });
 
 test("ZCode runtime payload is generated outside the source integration", () => {
-  for (const relative of ["bin", "scripts/sync-binary.mjs"]) {
-    assert.equal(
-      existsSync(path.join(pluginPackageRoot, relative)),
-      false,
-      `${relative} must be release-generated rather than checked into integrations`,
-    );
+  for (const root of [pluginPackageRoot, replacementPluginRoot]) {
+    for (const relative of ["bin", "scripts/sync-binary.mjs"]) {
+      assert.equal(
+        existsSync(path.join(root, relative)),
+        false,
+        `${path.basename(root)}/${relative} must be release-generated`,
+      );
+    }
   }
 
   for (const script of ["stage-zcode-marketplace.mjs", "verify-zcode-marketplace.mjs"]) {
@@ -226,12 +419,16 @@ test("ZCode runtime payload is generated outside the source integration", () => 
 });
 
 test("ZCode source ships the result projection adapter", () => {
-  const adapter = path.join(pluginPackageRoot, "mcp-result-adapter.mjs");
-  assert.equal(existsSync(adapter), true);
-  const source = readFileSync(adapter, "utf8");
-  assert.match(source, /projectZcodeCallResult/);
-  assert.match(source, /structuredContent/);
-  assert.match(source, /Result available in structuredContent/);
+  const sources = [pluginPackageRoot, replacementPluginRoot].map((root) => {
+    const adapter = path.join(root, "mcp-result-adapter.mjs");
+    assert.equal(existsSync(adapter), true);
+    const source = readFileSync(adapter, "utf8");
+    assert.match(source, /projectZcodeCallResult/);
+    assert.match(source, /structuredContent/);
+    assert.match(source, /Result available in structuredContent/);
+    return source;
+  });
+  assert.equal(sources[0], sources[1], "both variants use the identical projection adapter");
 });
 
 test("ZCode marketplace generation is deterministic and fails closed", async () => {

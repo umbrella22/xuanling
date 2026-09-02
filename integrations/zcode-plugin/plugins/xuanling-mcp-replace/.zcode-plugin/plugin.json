@@ -1,0 +1,13 @@
+{
+  "name": "xuanling-mcp-replace",
+  "version": "0.4.0",
+  "description": "Opt-in XuanLing filesystem replacement for ZCode with native-tool denial and mandatory mutation CAS.",
+  "author": {
+    "name": "umbrella22 and XuanLing contributors",
+    "url": "https://github.com/umbrella22/xuanling"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/umbrella22/xuanling",
+  "skills": "skills",
+  "mcpServers": ".mcp.json"
+}

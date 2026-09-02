@@ -234,6 +234,45 @@ fn every_catalog_tool_has_schema_and_handler() {
 }
 
 #[test]
+fn edit_batch_is_a_strict_public_mcp_tool() {
+    let mut peer = Peer::start();
+    peer.initialize();
+    let tools = list_tools(&mut peer);
+    let batch = tools
+        .iter()
+        .find(|tool| tool["name"] == json!("fs_edit_batch"))
+        .expect("fs_edit_batch must be present in the v3 catalog");
+
+    assert_eq!(batch["annotations"]["readOnlyHint"], json!(false));
+    assert_eq!(batch["inputSchema"]["additionalProperties"], json!(false));
+    assert_eq!(batch["inputSchema"]["required"], json!(["files"]));
+    assert_eq!(
+        batch["inputSchema"]["properties"]["files"]["minItems"],
+        json!(1)
+    );
+    let input_schema = &batch["inputSchema"];
+    assert_eq!(
+        input_schema["properties"]["files"]["items"]["$ref"],
+        json!("#/$defs/FsEditBatchFile")
+    );
+    let file_schema = &input_schema["$defs"]["FsEditBatchFile"];
+    assert_eq!(file_schema["additionalProperties"], json!(false));
+    assert_eq!(
+        file_schema["properties"]["expected_sha256"]["pattern"],
+        json!("^[0-9a-f]{64}$")
+    );
+    assert_eq!(file_schema["properties"]["edits"]["minItems"], json!(1));
+    assert_eq!(
+        file_schema["properties"]["edits"]["items"]["$ref"],
+        json!("#/$defs/FsEditBatchEdit")
+    );
+    assert_eq!(
+        input_schema["$defs"]["FsEditBatchEdit"]["additionalProperties"],
+        json!(false)
+    );
+}
+
+#[test]
 fn schema_snapshot_matches_public_dto() {
     // The frozen snapshot file exists and its tool names match the live
     // catalog exactly (no drift between snapshot and runtime).
@@ -3995,6 +4034,131 @@ fn rollback_conflict_preserves_user_change() {
 }
 
 #[test]
+fn fs_edit_batch_round_trip_and_group_rollback() {
+    let mut peer = Peer::start();
+    peer.initialize();
+    let dir = tempfile::tempdir().expect("batch fixture directory");
+    let first = dir.path().join("first.txt");
+    let second = dir.path().join("second.txt");
+    let first_before = "alpha\n";
+    let second_before = "one one\n";
+    std::fs::write(&first, first_before).expect("first fixture");
+    std::fs::write(&second, second_before).expect("second fixture");
+
+    let apply = peer.call(
+        "fs_edit_batch",
+        json!({
+            "files": [
+                {
+                    "path": &first,
+                    "expected_sha256": sha256_hex_of(first_before.as_bytes()),
+                    "edits": [
+                        {"old": "alpha", "new": "beta"},
+                        {"old": "beta", "new": "gamma"}
+                    ]
+                },
+                {
+                    "path": &second,
+                    "expected_sha256": sha256_hex_of(second_before.as_bytes()),
+                    "edits": [{"old": "one", "new": "two", "replace_all": true}]
+                }
+            ],
+            "reversible": true,
+            "include_diff": true
+        }),
+    );
+    assert_eq!(apply["result"]["isError"], json!(false), "{apply}");
+    let result = &apply["result"]["structuredContent"];
+    assert_eq!(result["replacements"], json!(4), "{apply}");
+    assert_eq!(result["files"].as_array().map(Vec::len), Some(2));
+    assert_eq!(result["files"][0]["edits"][0]["index"], json!(0));
+    assert_eq!(result["files"][0]["edits"][1]["index"], json!(1));
+    assert_eq!(result["files"][1]["edits"][0]["replacements"], json!(2));
+    assert!(
+        result["files"][0]["diff"]
+            .as_str()
+            .is_some_and(|diff| diff.contains("alpha") && diff.contains("gamma")),
+        "{apply}"
+    );
+    assert_eq!(result["change_state"], json!("applied_awaiting_completion"));
+    assert_eq!(std::fs::read_to_string(&first).unwrap(), "gamma\n");
+    assert_eq!(std::fs::read_to_string(&second).unwrap(), "two two\n");
+
+    let change_id = result["change_id"].as_str().expect("group change id");
+    let rollback = peer.call("change_rollback", json!({"change_id": change_id}));
+    assert_eq!(rollback["result"]["isError"], json!(false), "{rollback}");
+    assert_eq!(
+        rollback["result"]["structuredContent"]["state"],
+        json!("rolled_back")
+    );
+    assert_eq!(std::fs::read_to_string(&first).unwrap(), first_before);
+    assert_eq!(std::fs::read_to_string(&second).unwrap(), second_before);
+}
+
+#[test]
+fn fs_edit_batch_rejects_unknown_fields_and_invalid_domain_inputs() {
+    let mut peer = Peer::start();
+    peer.initialize();
+    let f = TempFile::new("alpha\n");
+    let sha = sha256_hex_of(b"alpha\n");
+
+    let unknown = peer.call(
+        "fs_edit_batch",
+        json!({
+            "files": [{
+                "path": f.path_str(),
+                "expected_sha256": &sha,
+                "edits": [{"old": "alpha", "new": "beta", "edit_typo": true}]
+            }]
+        }),
+    );
+    assert_eq!(unknown["error"]["code"], json!(-32602), "{unknown}");
+    assert!(
+        unknown["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("unknown field `edit_typo`")),
+        "{unknown}"
+    );
+
+    for (label, arguments) in [
+        ("empty files", json!({"files": []})),
+        (
+            "invalid hash",
+            json!({"files": [{
+                "path": f.path_str(),
+                "expected_sha256": "ABC",
+                "edits": [{"old": "alpha", "new": "beta"}]
+            }]}),
+        ),
+        (
+            "dry-run reversible",
+            json!({
+                "files": [{
+                    "path": f.path_str(),
+                    "expected_sha256": &sha,
+                    "edits": [{"old": "alpha", "new": "beta"}]
+                }],
+                "dry_run": true,
+                "reversible": true
+            }),
+        ),
+    ] {
+        let response = peer.call("fs_edit_batch", arguments);
+        assert_eq!(
+            response["result"]["isError"],
+            json!(true),
+            "{label}: {response}"
+        );
+        assert_eq!(
+            response["result"]["structuredContent"]["code"],
+            json!("invalid_input"),
+            "{label}: {response}"
+        );
+    }
+    assert_eq!(std::fs::read_to_string(f.path()).unwrap(), "alpha\n");
+}
+
+#[test]
 fn fs_edit_preview_returns_diff_without_write() {
     // Preview is a distinct read-only MCP tool so hosts do not apply the
     // destructive annotation used by fs_edit apply calls.
@@ -4916,6 +5080,7 @@ fn tool_annotations_mark_mutating_calls() {
         "fs_replace_text",
         "fs_patch",
         "fs_edit",
+        "fs_edit_batch",
         "change_rollback",
         "change_commit",
         "fs_copy",

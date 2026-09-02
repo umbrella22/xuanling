@@ -16,10 +16,10 @@
           "ordered": ["replacement derived", "fingerprint-only", "mode:\\s*[`\"]?overwrite", "expected_sha256"]
         },
         {
-          "id": "same_file_multi_hunk_patch",
+          "id": "ordered_multi_edit_batch",
           "skill": "integrations/deepseek-harness/xuanling-skills/skills/xuanling-file-workflow/SKILL.md",
-          "all": ["same file|one file", "multiple|multi", "hunks?", "fs_patch", "atomic|single call"],
-          "forbidden": ["fs_edit_batch"]
+          "all": ["one or more existing files", "multiple|ordered", "fs_edit_batch", "expected_sha256", "preflight", "atomically replaces each file once"],
+          "forbidden": ["prefer.{0,40}fs_patch"]
         },
         {
           "id": "compound_extension_exact",
@@ -104,10 +104,10 @@
           "ordered": ["replacement derived", "fingerprint-only", "mode:\\s*[`\"]?overwrite", "expected_sha256"]
         },
         {
-          "id": "same_file_multi_hunk_patch",
+          "id": "ordered_multi_edit_batch",
           "skill": "integrations/zcode-plugin/plugins/xuanling-mcp/skills/xuanling-mcp-tools/SKILL.md",
-          "all": ["same file|one file", "multiple|multi", "hunks?", "fs_patch", "atomic|single call"],
-          "forbidden": ["fs_edit_batch"]
+          "all": ["one or more existing files", "multiple|ordered", "fs_edit_batch", "expected_sha256", "preflight", "atomically replaces each file once"],
+          "forbidden": ["prefer.{0,40}fs_patch"]
         },
         {
           "id": "compound_extension_exact",

@@ -14,8 +14,8 @@ projection、工作流 Skill 和 overwrite policy 保持在 Rust MCP 合同之�
 
 ```sh
 dsh plugin --profile web add \
-  @xuanling-rs/xuanling-dsh-memory@0.3.2 \
-  @xuanling-rs/xuanling-dsh-skills@0.3.2
+  @xuanling-rs/xuanling-dsh-memory@0.4.0 \
+  @xuanling-rs/xuanling-dsh-skills@0.4.0
 dsh --profile web --dump-config
 dsh web
 ```
@@ -24,7 +24,7 @@ dsh web
 等价替换：当前 DSH 对未知名称只初始化 `@deepseek-ai/dsh-base`，不会自动加入 Web 或
 Headless 应用 bundle。
 
-Memory bundle 会在 profile 内安装精确版本的 `@xuanling-rs/xuanling-mcp@0.3.2` launcher 和原生 optional
+Memory bundle 会在 profile 内安装精确版本的 `@xuanling-rs/xuanling-mcp@0.4.0` launcher 和原生 optional
 dependency；不需要全局 npm package、`npx` 或安装时下载 binary。
 
 推荐组合会增加完整的 Memory v2 九工具生命周期，保留全部 Harness 原生工具，并加载两个按需
@@ -38,14 +38,15 @@ dependency；不需要全局 npm package、`npx` 或安装时下载 binary。
 | `@xuanling-rs/xuanling-dsh-memory` | 缓存带 DSH schema projection 的完整 Memory v2 九工具 profile，并按精确名称 lazy 激活；保留全部 Harness 原生工具 | 推荐日常配置 |
 | `@xuanling-rs/xuanling-dsh-skills` | 增加隔离的文件与 Memory 工作流 Skill 以及严格 overwrite policy；不挂载 MCP 工具 | 与任意 XuanLing 工具 bundle 组合 |
 | `@xuanling-rs/xuanling-dsh-tools` | 缓存完整 XuanLing catalog，按精确名称投影，并保留 Harness 原生工具 | 使用 Artifact、Project、Filesystem、Process 与 Advanced 工具 |
-| `@xuanling-rs/xuanling-dsh-tools-replace` | 恢复原生工具行并按需增加完整 catalog 的兼容 alias | 将历史 replacement profile 迁移到 additive bundle |
+| `@xuanling-rs/xuanling-dsh-tools-replace` | 显式启用的同名文件 facade，组合 XuanLing CAS/batch 与原生审批、observation、图片和 diff 投影 | 替换 DSH 文本文件工具并保留宿主策略与 UI 集成 |
 
 Memory bundle 会暴露完整生命周期。Search、get、candidate create/replace/archive、review 与
 feedback 共同构成一个合同；只暴露两个只读工具会向模型隐藏必要的状态转换。
 
-历史 Replace bundle 现在会保留全部 Harness 原生工具行，包括 `read_image`、read-before-edit
-observation guard 和专用 UI card；它只作为迁移兼容 alias，新安装完整 catalog 使用 additive
-bundle。shell、web、LSP、审批、后台任务、PTY 与编排仍是独立 Host 能力。
+Replacement bundle 只禁用原生 `tool-fs` 行，通过 XuanLing-backed facade 注册
+`read/write/edit/file_hash/edit_batch`，并重新注册原生 `read_image` definition。它保留 `ctx.fs`、
+read-before-edit observation、ApprovalService 和专用 UI card。Additive bundle 仍是默认选择，两个
+tools bundle 互斥。shell、web、LSP、后台任务、PTY 与编排仍是独立 Host 能力。
 
 ## 运行配置
 
@@ -53,12 +54,12 @@ Bundle 表达式在 DSH 启动时解析以下设置：
 
 | 设置 | 默认值 | 作用 |
 | --- | --- | --- |
-| MCP runtime | Profile 内的 `@xuanling-rs/xuanling-mcp@0.3.2` | 经过校验的 JS launcher 与原生 optional dependency |
+| MCP runtime | Profile 内的 `@xuanling-rs/xuanling-mcp@0.4.0` | 经过校验的 JS launcher 与原生 optional dependency |
 | `XUANLING_WORKSPACE_ROOT` | full-tools bundle 必填；Memory-only 不使用 | 显式 XuanLing 文件系统 capability root |
 | Schema adapter | 已安装的 `xuanling-dsh-memory/schema-adapter.mjs` | 为 DSH 投影 discovery schema |
 | Result adapter | 各 bundle 内置的 `mcp-result-adapter.mjs`（memory 由 schema adapter 组合） | 只删除等价的重复文本块 |
 | MCP tool profile | 推荐 bundle 固定为 `memory` | 服务端工具发现与调用分发选择 |
-| DSH tool exposure | bundle 自带 lazy wrapper | 完整 Host cache，并只初始暴露一个 `mcp_catalog__xuanling` 检索／激活工具 |
+| DSH tool exposure | Additive/Memory 使用 lazy wrapper；replacement 使用同名 facade | 完整 lazy Host cache 或六个 replacement 文件工具 |
 | Tool-call timeout | 120 秒 | Harness MCP bridge 的调用预算 |
 
 Server name 固定为 `xuanling`；修改它会重命名全部模型可见工具。Skills bundle 不需要 binary、
@@ -70,7 +71,7 @@ checkpoint 数据库。需要隔离存储的 Host 可以重述 bridge row，并�
 
 ## Lazy 工具投影
 
-每个 bundle 都会遍历标准 MCP `tools/list` 分页并形成完整 Host cache。它不会停在第一页，也不会
+Additive 与 Memory bundle 会遍历标准 MCP `tools/list` 分页并形成完整 Host cache。它不会停在第一页，也不会
 要求服务器改变静态目录。模型起初只接收一个紧凑的 `mcp_catalog__xuanling` schema。这个 bundle
 自带的 Host 控制工具会检索 raw name 与描述，并可在每次调用中把一个精确 raw name 激活为后续
 模型请求中的常规 `mcp__xuanling__*` 工具。
@@ -111,9 +112,9 @@ Adapter 只接受子进程 stdout 中的 JSON object。malformed stdout、非 ob
 `xuanling-skills` 挂载隔离的静态 Skill provider，并提供两个按需 Skill：
 
 - `xuanling-file-workflow`：可以通过 `mcp_catalog__xuanling` 激活精确缺失工具。普通读取和小编辑优先 Harness
-  原生工具；hash/CAS、复合后缀精确检索、显式 byte budget、完整分页，以及同文件多 hunk 的
-  单次原子 `fs_patch` 使用 XuanLing。相同 argv 的短验证使用 `deterministic: true`，长任务使用
-  Harness 后台 job。
+  原生工具；hash/CAS、复合后缀精确检索、显式 byte budget、完整分页，以及全请求预检的有序多文件
+  `fs_edit_batch` 使用 XuanLing。`fs_patch` 只保留为严格 unified diff 的兼容入口。相同 argv 的短验证
+  使用 `deterministic: true`，长任务使用 Harness 后台 job。
 - `xuanling-memory-workflow`：采用 L1/L2 单写，并且只激活下一步所需的 Memory 操作。项目局部、每会话必见的事实只写 Host 文件
   Memory；跨项目共享事实进入 XuanLing。显式 L1 指针只在任务开始或主题切换时触发一次 scoped
   pull，而非每轮检索。`memory_search` 返回完整 active record，不是轻量 manifest。所有新

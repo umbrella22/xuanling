@@ -26,15 +26,15 @@ cache path. The MCP server may also provide the short routing policy through
   guard, native diff/read UI cards, and the workspace sandbox policy.
 - **XuanLing tools** (`mcp__xuanling__fs_*`, for example
   `mcp__xuanling__fs_read_text`, `mcp__xuanling__fs_edit`,
-  `mcp__xuanling__fs_search`): typed cross-platform filesystem tools with
-  sha256 preimage guards, explicit byte budgets, strict patches, and
+  `mcp__xuanling__fs_edit_batch`): typed cross-platform filesystem tools with
+  sha256 preimage guards, whole-request batch preflight, strict patches, and
   resumable pagination. Results are structured JSON, identical on every OS.
 
 ## Routing rules
 
 1. If the selected XuanLing tool is not visible and
    `mcp_catalog__xuanling` is, search by capability and activate the exact raw
-   name (for example `fs_search` or `fs_patch`). Do not activate a whole family
+   name (for example `fs_search` or `fs_edit_batch`). Do not activate a whole family
    speculatively.
 2. Prefer the native file tools for routine small edits and ordinary reads:
    their observation policy and editor cards are part of the harness UX, and
@@ -46,12 +46,13 @@ cache path. The MCP server may also provide the short routing policy through
    - **Explicit output limits**: request a bounded result with an `output`
      byte budget (`max_bytes`) and continue later through the returned
      cursor or resume token instead of truncating silently.
-   - **Strict edits**: apply a verified unified diff with
-     `mcp__xuanling__fs_patch` (preimage-hash guarded), or a unique-match
-     replacement with `mcp__xuanling__fs_edit` / `mcp__xuanling__fs_replace_text`.
-     For one file with multiple hunks, prefer `mcp__xuanling__fs_patch` in a
-     single atomic call with the full preimage hash; do not split the change
-     into independently committed edits or invent another batch tool.
+   - **Strict edits**: use `mcp__xuanling__fs_edit_batch` for multiple ordered
+     exact replacements in one or more existing files. Supply every file's
+     `expected_sha256` and ordered `edits`; the server preflights the whole
+     batch before writing and atomically replaces each file once. Use
+     `mcp__xuanling__fs_edit` for one exact replacement. `mcp__xuanling__fs_patch`
+     is a compatibility entry point when a strict unified diff already exists,
+     not the preferred multi-edit format, and it does not accept `reversible`.
    - **Full pagination**: list or search with a bounded window and page
      through every remaining entry with the typed cursor.
    - **Whole-file creation or replacement**: use `mode: "create"` for a new

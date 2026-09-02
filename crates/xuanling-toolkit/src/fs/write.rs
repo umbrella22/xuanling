@@ -496,51 +496,60 @@ fn parse_unified_diff(diff: &str) -> Result<Vec<Hunk>, ToolError> {
 
 /// Parse the `... -a,b +c,d ...` tail of an `@@` hunk header.
 fn parse_hunk_header(tail: &str) -> Result<HunkHeader, ToolError> {
-    // tail looks like " -a,b +c,d @@ <optional section>"
+    // tail looks like " -a[,b] +c[,d] @@ <optional section>". Unified diff
+    // omits `,1` by default, so range parsing must stop at whitespace rather
+    // than assuming a comma is present.
     let s = tail.trim_start();
     let Some(minus) = s.strip_prefix('-') else {
         return Err(invalid_diff("hunk header missing `-old` range"));
     };
-    let comma_old = minus.find(',').unwrap_or(minus.len());
-    let old_start: usize = minus[..comma_old]
-        .parse()
-        .map_err(|_| invalid_diff("hunk header old-start is not a number"))?;
-    let after_old = &minus[comma_old.min(minus.len())..];
-    let rest = after_old.strip_prefix(',').unwrap_or(after_old);
-    // Skip the old-len digits.
-    let old_len_digits = rest.chars().take_while(|c| c.is_ascii_digit()).count();
-    let old_len: usize = if old_len_digits == 0 {
-        1
-    } else {
-        rest[..old_len_digits]
-            .parse()
-            .map_err(|_| invalid_diff("hunk header old-len is not a number"))?
-    };
-    let rest = &rest[old_len_digits..];
+    let (old_start, old_len, rest) = parse_hunk_range(minus, "old")?;
     let rest = rest.trim_start();
     let Some(plus_part) = rest.strip_prefix('+') else {
         return Err(invalid_diff("hunk header missing `+new` range"));
     };
-    let comma_new = plus_part.find(',').unwrap_or(plus_part.len());
-    let new_start: usize = plus_part[..comma_new]
-        .parse()
-        .map_err(|_| invalid_diff("hunk header new-start is not a number"))?;
-    let after_new = &plus_part[comma_new.min(plus_part.len())..];
-    let rest = after_new.strip_prefix(',').unwrap_or(after_new);
-    let new_len_digits = rest.chars().take_while(|c| c.is_ascii_digit()).count();
-    let new_len: usize = if new_len_digits == 0 {
-        1
-    } else {
-        rest[..new_len_digits]
-            .parse()
-            .map_err(|_| invalid_diff("hunk header new-len is not a number"))?
-    };
+    let (new_start, new_len, rest) = parse_hunk_range(plus_part, "new")?;
+    if !rest.trim_start().starts_with("@@") {
+        return Err(invalid_diff("hunk header missing closing `@@`"));
+    }
     Ok(HunkHeader {
         old_start,
         old_len,
         _new_start: new_start,
         new_len,
     })
+}
+
+fn parse_hunk_range<'a>(input: &'a str, side: &str) -> Result<(usize, usize, &'a str), ToolError> {
+    let start_digits = input.chars().take_while(|c| c.is_ascii_digit()).count();
+    if start_digits == 0 {
+        return Err(invalid_diff(&format!(
+            "hunk header {side}-start is not a number"
+        )));
+    }
+    let start = input[..start_digits]
+        .parse()
+        .map_err(|_| invalid_diff(&format!("hunk header {side}-start is not a number")))?;
+    let mut rest = &input[start_digits..];
+    let length = if let Some(after_comma) = rest.strip_prefix(',') {
+        let length_digits = after_comma
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .count();
+        if length_digits == 0 {
+            return Err(invalid_diff(&format!(
+                "hunk header {side}-len is not a number"
+            )));
+        }
+        let length = after_comma[..length_digits]
+            .parse()
+            .map_err(|_| invalid_diff(&format!("hunk header {side}-len is not a number")))?;
+        rest = &after_comma[length_digits..];
+        length
+    } else {
+        1
+    };
+    Ok((start, length, rest))
 }
 
 /// Apply parsed hunks to `original`, validating that each hunk's old-side lines
@@ -1005,7 +1014,7 @@ fn group_hunks(old: &[&str], new: &[&str], ops: &[DiffOp]) -> Vec<DiffHunkSpec> 
 /// trailing newline is stripped before splitting and the ORIGINAL trailing
 /// newline state is preserved by the apply step, so the diff never encodes
 /// trailing-newline changes.
-fn make_unified_diff(original: &str, updated: &str) -> String {
+pub(crate) fn make_unified_diff(original: &str, updated: &str) -> String {
     let old_body = original.strip_suffix('\n').unwrap_or(original);
     let new_body = updated.strip_suffix('\n').unwrap_or(updated);
     let old: Vec<&str> = old_body.split('\n').collect();

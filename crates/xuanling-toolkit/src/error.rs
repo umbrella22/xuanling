@@ -57,6 +57,9 @@ pub enum ToolErrorCode {
     DatabaseBusy,
     /// Unclassified I/O failure.
     IoError,
+    /// A multi-file operation failed and its live-process recovery could not
+    /// restore every target to a known terminal state.
+    RecoveryFailed,
     /// Unexpected internal failure (bug); clients should not retry blindly.
     Internal,
 }
@@ -80,6 +83,7 @@ impl ToolErrorCode {
             Self::SpawnFailed => "spawn_failed",
             Self::DatabaseBusy => "database_busy",
             Self::IoError => "io_error",
+            Self::RecoveryFailed => "recovery_failed",
             Self::Internal => "internal",
         }
     }

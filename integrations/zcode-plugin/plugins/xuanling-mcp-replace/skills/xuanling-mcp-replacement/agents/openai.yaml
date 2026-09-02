@@ -1,0 +1,4 @@
+interface:
+  display_name: "XuanLing MCP Replacement"
+  short_description: "Route ZCode file edits through XuanLing CAS"
+  default_prompt: "Use $xuanling-mcp-replacement to edit files through XuanLing with mandatory CAS."

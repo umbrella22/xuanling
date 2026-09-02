@@ -168,8 +168,10 @@ await rm(outputRoot, { force: true, recursive: true });
 await mkdir(path.dirname(outputRoot), { recursive: true });
 await cp(templateRoot, outputRoot, { recursive: true });
 
-const pluginRoot = path.join(outputRoot, "plugins", "xuanling-mcp");
-const nodeModules = path.join(pluginRoot, "bin", "node_modules");
+const pluginRoots = ["xuanling-mcp", "xuanling-mcp-replace"]
+  .map((name) => path.join(outputRoot, "plugins", name));
+const primaryPluginRoot = pluginRoots[0];
+const nodeModules = path.join(primaryPluginRoot, "bin", "node_modules");
 await mkdir(nodeModules, { recursive: true });
 
 const packageManifests = [];
@@ -197,6 +199,10 @@ for (const [targetId, target] of Object.entries(TARGETS)) {
     sha256: packageJson.xuanlingBinary.sha256,
     release_trust: packageJson.xuanlingBinary.releaseTrust,
   };
+}
+
+for (const pluginRoot of pluginRoots.slice(1)) {
+  await cp(path.join(primaryPluginRoot, "bin"), path.join(pluginRoot, "bin"), { recursive: true });
 }
 
 const payload = await describeTree(outputRoot);

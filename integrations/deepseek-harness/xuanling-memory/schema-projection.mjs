@@ -24,6 +24,9 @@ const KNOWN_KEYWORDS = new Set([
   ...ANNOTATION_KEYWORDS,
   "format",
   "minimum",
+  "minItems",
+  "minLength",
+  "pattern",
 ]);
 
 export class DshSchemaProjectionError extends Error {
@@ -129,6 +132,33 @@ function appendCanonicalConstraints(projected, node, path) {
       projectionError(`${path}.minimum`, "is only supported on numeric schemas");
     }
     constraints.push(`minimum=${JSON.stringify(node.minimum)}`);
+  }
+  if (Object.hasOwn(node, "minItems")) {
+    if (!Number.isInteger(node.minItems) || node.minItems < 0) {
+      projectionError(`${path}.minItems`, "must be a non-negative integer");
+    }
+    if (node.type !== "array") {
+      projectionError(`${path}.minItems`, "is only supported on array schemas");
+    }
+    constraints.push(`minItems=${node.minItems}`);
+  }
+  if (Object.hasOwn(node, "minLength")) {
+    if (!Number.isInteger(node.minLength) || node.minLength < 0) {
+      projectionError(`${path}.minLength`, "must be a non-negative integer");
+    }
+    if (node.type !== "string") {
+      projectionError(`${path}.minLength`, "is only supported on string schemas");
+    }
+    constraints.push(`minLength=${node.minLength}`);
+  }
+  if (Object.hasOwn(node, "pattern")) {
+    if (typeof node.pattern !== "string") {
+      projectionError(`${path}.pattern`, "must be a string");
+    }
+    if (node.type !== "string") {
+      projectionError(`${path}.pattern`, "is only supported on string schemas");
+    }
+    constraints.push(`pattern=${JSON.stringify(node.pattern)}`);
   }
   if (constraints.length === 0) return;
   const note = `Canonical constraints enforced by XuanLing: ${constraints.join(", ")}.`;
@@ -354,16 +384,26 @@ function projectNode(node, root, path, refStack, depth) {
   }
 
   if (node.type === "array") {
-    assertOnly(node, new Set(["type", "items", ...ANNOTATION_KEYWORDS]), path);
+    assertOnly(node, new Set(["type", "items", "minItems", ...ANNOTATION_KEYWORDS]), path);
     if (Object.hasOwn(node, "items")) {
       projected.items = projectNode(node.items, root, `${path}.items`, refStack, depth + 1);
     }
+    appendCanonicalConstraints(projected, node, path);
     return projected;
   }
 
   assertOnly(
     node,
-    new Set(["type", "enum", "const", "format", "minimum", ...ANNOTATION_KEYWORDS]),
+    new Set([
+      "type",
+      "enum",
+      "const",
+      "format",
+      "minimum",
+      "minLength",
+      "pattern",
+      ...ANNOTATION_KEYWORDS,
+    ]),
     path,
   );
   if (Object.hasOwn(node, "enum")) {

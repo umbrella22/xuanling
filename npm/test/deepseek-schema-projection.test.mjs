@@ -79,7 +79,17 @@ test("all Memory v2 input schemas project to the DSH subset without mutating can
       );
     }
     const allKeys = collectSchemaKeywords(projected);
-    for (const forbidden of ["$schema", "$defs", "$ref", "anyOf", "format", "minimum"]) {
+    for (const forbidden of [
+      "$schema",
+      "$defs",
+      "$ref",
+      "anyOf",
+      "format",
+      "minimum",
+      "minItems",
+      "minLength",
+      "pattern",
+    ]) {
       assert.ok(!allKeys.has(forbidden), `${tool.name}: ${forbidden} projected away`);
     }
   }
@@ -108,10 +118,10 @@ test("all Memory v2 input schemas project to the DSH subset without mutating can
   ]);
 });
 
-test("all 16 fs input schemas project to the DSH subset with object semantics preserved", () => {
+test("all 17 fs input schemas project to the DSH subset with object semantics preserved", () => {
   const catalog = JSON.parse(readFileSync(snapshotPath, "utf8"));
   const fsTools = catalog.filter((tool) => tool.name.startsWith("fs_"));
-  assert.equal(fsTools.length, 16);
+  assert.equal(fsTools.length, 17);
 
   const uncovered = [];
   for (const tool of fsTools) {
@@ -144,6 +154,14 @@ test("all 16 fs input schemas project to the DSH subset with object semantics pr
   const patchTool = byName("fs_patch");
   assert.equal(patchTool.properties.unified_diff.type, "string");
   assert.equal(patchTool.properties.expected_preimage_sha256.type, "string");
+  const editBatch = byName("fs_edit_batch");
+  assert.match(editBatch.properties.files.description, /minItems=1/);
+  assert.match(editBatch.properties.files.items.properties.edits.description, /minItems=1/);
+  assert.match(
+    editBatch.properties.files.items.properties.expected_sha256.description,
+    /pattern=.*0-9a-f.*64/,
+  );
+  assert.match(editBatch.properties.files.items.properties.edits.items.properties.old.description, /minLength=1/);
 
   // User field names are not schema keywords. Every v3 request selector must
   // remain visible to the DSH model after representation-only projection.

@@ -68,28 +68,48 @@ assert.deepEqual(
   ["marketplace.json", "plugins", "release-manifest.json"],
   "generated marketplace has an exact top-level tree",
 );
-const pluginRoot = path.join(root, "plugins", "xuanling-mcp");
+const pluginsRoot = path.join(root, "plugins");
+assert.deepEqual(
+  (await readdir(pluginsRoot)).sort(),
+  ["xuanling-mcp", "xuanling-mcp-replace"],
+  "marketplace contains exactly the additive and replacement plugins",
+);
+const pluginRoot = path.join(pluginsRoot, "xuanling-mcp");
+const replacementPluginRoot = path.join(pluginsRoot, "xuanling-mcp-replace");
 assert.deepEqual(
   (await readdir(pluginRoot)).sort(),
   [".mcp.json", ".zcode-plugin", "LICENSE", "README-ZH.md", "README.md", "bin", "mcp-result-adapter.mjs", "skills"],
-  "plugin tree contains only runtime components",
+  "additive plugin tree contains only runtime components",
+);
+assert.deepEqual(
+  (await readdir(replacementPluginRoot)).sort(),
+  [".mcp.json", ".zcode-plugin", "LICENSE", "README-ZH.md", "README.md", "bin", "hooks", "mcp-result-adapter.mjs", "skills"],
+  "replacement plugin tree contains only runtime components",
 );
 
 const marketplace = await readJson(path.join(root, "marketplace.json"));
-const entry = marketplace.plugins.find((candidate) => candidate.name === "xuanling-mcp");
-assert.equal(entry.version, version);
-assert.deepEqual(entry.source, {
-  source: "github",
-  repo: "umbrella22/xuanling-zcode-marketplace",
-  path: "plugins/xuanling-mcp",
-  ref: `xuanling-mcp-v${version}`,
-});
+assert.deepEqual(
+  marketplace.plugins.map((entry) => entry.name),
+  ["xuanling-mcp", "xuanling-mcp-replace"],
+  "marketplace keeps additive first and replacement explicitly opt-in",
+);
+for (const name of ["xuanling-mcp", "xuanling-mcp-replace"]) {
+  const entry = marketplace.plugins.find((candidate) => candidate.name === name);
+  assert.equal(entry.version, version);
+  assert.deepEqual(entry.source, {
+    source: "github",
+    repo: "umbrella22/xuanling-zcode-marketplace",
+    path: `plugins/${name}`,
+    ref: `${name}-v${version}`,
+  });
 
-const plugin = await readJson(path.join(pluginRoot, ".zcode-plugin", "plugin.json"));
-assert.equal(plugin.version, version);
-assert.equal(plugin.license, "MIT");
-assert.equal(plugin.mcpServers, ".mcp.json");
-assert.equal(typeof plugin.mcpServers, "string", "inline MCP definitions are forbidden");
+  const plugin = await readJson(path.join(pluginsRoot, name, ".zcode-plugin", "plugin.json"));
+  assert.equal(plugin.name, name);
+  assert.equal(plugin.version, version);
+  assert.equal(plugin.license, "MIT");
+  assert.equal(plugin.mcpServers, ".mcp.json");
+  assert.equal(typeof plugin.mcpServers, "string", "inline MCP definitions are forbidden");
+}
 const mcp = await readJson(path.join(pluginRoot, ".mcp.json"));
 assert.deepEqual(mcp.mcpServers?.xuanling, {
   command: "node",
@@ -104,8 +124,29 @@ assert.deepEqual(mcp.mcpServers?.xuanling, {
     "--compat-lenient-object-params",
   ],
 });
+assert.deepEqual(
+  await readJson(path.join(replacementPluginRoot, ".mcp.json")),
+  mcp,
+  "both plugins launch the same MCP contract through package-relative paths",
+);
+
+const replacementManifest = await readJson(
+  path.join(replacementPluginRoot, ".zcode-plugin", "plugin.json"),
+);
+assert.equal(
+  replacementManifest.hooks,
+  undefined,
+  "the conventional hooks path must not be declared twice",
+);
+const replacementHooks = await readJson(path.join(replacementPluginRoot, "hooks", "hooks.json"));
+assert.equal(replacementHooks.hooks?.PreToolUse?.length, 1);
 
 const nodeModules = path.join(pluginRoot, "bin", "node_modules");
+assert.equal(
+  (await describeTree(path.join(replacementPluginRoot, "bin"))).sha256,
+  (await describeTree(path.join(pluginRoot, "bin"))).sha256,
+  "replacement and additive plugins contain the identical verified runtime",
+);
 assert.deepEqual(
   (await readdir(nodeModules)).sort(),
   ["@xuanling-rs", ...Object.values(TARGETS).map((target) => target.alias)].sort(),

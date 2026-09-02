@@ -25,7 +25,8 @@ use xuanling_memory as tk_memory;
 use xuanling_toolkit::FilesystemScope;
 use xuanling_toolkit::PathContext;
 use xuanling_toolkit::fs::{
-    self as tk_fs, FsCopyRequest, FsCopyResult, FsEditRequest, FsEditResult, FsGlobRequest,
+    self as tk_fs, FsCopyRequest, FsCopyResult, FsEditBatchEdit, FsEditBatchFile,
+    FsEditBatchRequest, FsEditBatchResult, FsEditRequest, FsEditResult, FsGlobRequest,
     FsGlobResult, FsHashRequest, FsHashResult, FsListRequest, FsListResult, FsMkdirRequest,
     FsMkdirResult, FsMoveRequest, FsMoveResult, FsPatchRequest, FsPatchResult, FsReadBytesRequest,
     FsReadBytesResult, FsReadTextRequest, FsReadTextResult, FsRemoveRequest, FsRemoveResult,
@@ -294,9 +295,29 @@ fn build_catalog() -> Vec<Tool> {
                 include_diff: true,
             },
         ),
+        tool::<FsEditBatchRequest, FsEditBatchResult>(
+            "fs_edit_batch",
+            "Apply ordered exact-text edits across one or more existing UTF-8 files. Every file requires a lowercase SHA-256 preimage. All paths, hashes, UTF-8, and matches are validated before the first write; each file is atomically replaced once in request order. Later edits in one file observe earlier edits. A write failure restores already-applied files in reverse order without overwriting external changes. reversible=true registers one grouped in-process ChangeSet; dry_run and reversible cannot both be true. include_diff defaults to true and returns one initial-to-final diff per file.",
+            mutating_destructive(),
+            FsEditBatchRequest {
+                files: vec![FsEditBatchFile {
+                    path: String::new(),
+                    expected_sha256: String::new(),
+                    edits: vec![FsEditBatchEdit {
+                        old: String::new(),
+                        new: String::new(),
+                        replace_all: false,
+                    }],
+                }],
+                base_dir: None,
+                dry_run: false,
+                reversible: false,
+                include_diff: true,
+            },
+        ),
         tool::<ChangeOpSchema, ChangeOpResult>(
             "change_rollback",
-            "Roll back a reversible ChangeSet (from fs_edit/patch with reversible=true). Re-reads the file: if it still matches what the change wrote, the pre-change content is restored (rolled_back); if the file changed in the meantime, the user's content is PRESERVED and the state is rollback_conflict (ADR 0013, plan §8.1).",
+            "Roll back a reversible ChangeSet from fs_edit or fs_edit_batch. Before the first restore, every member must still match its recorded after hash; otherwise no file is restored and the state is rollback_conflict. A grouped rollback restores members in reverse order. External content is preserved, and an incomplete restore is reported as recovery_failed for a later retry (ADR 0013, ADR 0002).",
             mutating_destructive(),
             ChangeOpSchema {
                 change_id: String::new(),
@@ -1329,6 +1350,10 @@ pub(crate) async fn dispatch(
                 },
             ))
         }
+        "fs_edit_batch" => run(tk_fs::fs_edit_batch(
+            &tk_ctx,
+            &decode::<FsEditBatchRequest>(arguments)?,
+        )),
         "change_rollback" => {
             let req = decode::<ChangeOpSchema>(arguments)?;
             run_async(

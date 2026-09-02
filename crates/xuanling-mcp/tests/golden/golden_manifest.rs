@@ -362,6 +362,53 @@ fn golden_fs_mkdir_write_replace() {
 }
 
 #[test]
+fn golden_fs_edit_batch() {
+    let mut p = Peer::start();
+    p.initialize();
+    let dir = tempfile::tempdir().expect("batch golden directory");
+    let first = dir.path().join("first.txt");
+    let second = dir.path().join("second.txt");
+    std::fs::write(&first, "red\n").expect("first fixture");
+    std::fs::write(&second, "left left\n").expect("second fixture");
+
+    let first_hash = ok_structured(&p.call("fs_hash", json!({"path": &first})))["digest"]
+        .as_str()
+        .expect("first hash")
+        .to_string();
+    let second_hash = ok_structured(&p.call("fs_hash", json!({"path": &second})))["digest"]
+        .as_str()
+        .expect("second hash")
+        .to_string();
+    let response = p.call(
+        "fs_edit_batch",
+        json!({
+            "files": [
+                {
+                    "path": &first,
+                    "expected_sha256": first_hash,
+                    "edits": [
+                        {"old": "red", "new": "green"},
+                        {"old": "green", "new": "blue"}
+                    ]
+                },
+                {
+                    "path": &second,
+                    "expected_sha256": second_hash,
+                    "edits": [{"old": "left", "new": "right", "replace_all": true}]
+                }
+            ]
+        }),
+    );
+    let result = ok_structured(&response);
+    assert_eq!(result["files"].as_array().map(Vec::len), Some(2));
+    assert_eq!(result["replacements"], json!(4));
+    assert_eq!(result["files"][0]["edits"][1]["index"], json!(1));
+    assert!(result["files"][0]["diff"].is_string());
+    assert_eq!(std::fs::read_to_string(first).unwrap(), "blue\n");
+    assert_eq!(std::fs::read_to_string(second).unwrap(), "right right\n");
+}
+
+#[test]
 fn golden_fs_copy_move_remove() {
     let dir = tempfile::tempdir().unwrap();
     let src = dir.path().join("orig.txt");

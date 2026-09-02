@@ -203,7 +203,7 @@ test("current DSH Skills satisfy the frozen routing contract", () => {
   assert.deepEqual(report.passed_case_ids, [
     "repeated_validation_deterministic",
     "existing_overwrite_cas",
-    "same_file_multi_hunk_patch",
+    "ordered_multi_edit_batch",
     "compound_extension_exact",
     "project_local_l1_only",
     "shared_l2_pull_then_pending",
@@ -293,11 +293,12 @@ test("xuanling-file-workflow routes between the native and XuanLing fs families"
   assert.match(body, /mode:\s*"overwrite"/i, "whole-file replacement uses explicit overwrite mode");
   assert.match(body, /XUANLING_FS_OVERWRITE_REQUIRES_SHA256/, "documents the host policy recovery code");
   assert.match(body, /byte (budget|cap)|bounded|max_bytes/i, "XuanLing chosen for explicit output budgets");
-  assert.match(body, /fs_patch|unified diff/i, "XuanLing chosen for strict patch application");
+  assert.match(body, /fs_patch|unified diff/i, "strict patch compatibility remains documented");
+  assert.match(body, /fs_edit_batch/i, "ordered multi-edit requests use the batch tool");
   assert.match(body, /cursor|pagination|resume/i, "XuanLing chosen for bounded continuation");
   assert.match(body, /same argv|repeated validation/i, "repeated validation is identified");
   assert.match(body, /deterministic:\s*true/i, "repeated validation removes volatile duration");
-  assert.match(body, /multiple hunks|multi.*hunks/i, "same-file multi-hunk edits use one patch");
+  assert.match(body, /multiple ordered|ordered.*replacements/i, "ordered multi-edits use one batch");
   assert.match(body, /file_extensions/i, "exact compound extension filtering is documented");
   assert.match(body, /memory-only bundle does not provide file or process tools/i, "memory-only profiles do not infer absent tools");
   assert.match(body, /background\/job/i, "long-running work stays on the host job surface");

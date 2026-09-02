@@ -1,22 +1,23 @@
-# XuanLing tools for DeepSeek Harness — compatibility alias.
+# XuanLing filesystem replacement for DeepSeek Harness.
 #
-# Releases before this boundary remediation disabled the complete native
-# tool-fs row, which also removed read_image and the host observation/editor
-# integration. The package now preserves every native row and mounts the same
-# lazy XuanLing full catalog as the additive bundle. A bundle-owned wrapper
-# captures the official bridge generation and controls exact activation.
-# Existing profiles recover native filesystem behavior without a destructive
-# migration.
-#
-# New installs should use @xuanling-rs/xuanling-dsh-tools. This row keeps a
-# package-specific id so inventory can detect two XuanLing runtimes explicitly;
-# it never relies on Cordis replacement order to express mutual exclusion.
+# The native tool-fs row is disabled because it occupies read/write/edit and
+# read_image as one plugin. The facade privately mounts the official MCP bridge,
+# projects XuanLing text operations under host-native names, and selectively
+# re-registers the native read_image definition. The host fs service,
+# observation policy, ToolRuntime, ApprovalService, and UI presenters remain in
+# place. This package is opt-in and must not be combined with the additive
+# XuanLing tools bundle.
+
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'
+  disabled: true
 
 - insert:
     - id: xuanling-tools-replace
-      name: '@xuanling-rs/xuanling-dsh-tools-replace/lazy-mcp-client.mjs'
+      name: '@xuanling-rs/xuanling-dsh-tools-replace/filesystem-facade.mjs'
       config:
         serverName: xuanling
+        workspaceRoot: !!js (() => { const root = process.env.XUANLING_WORKSPACE_ROOT; if (!root) throw new Error('XUANLING_WORKSPACE_ROOT is required for the XuanLing filesystem replacement bundle'); return root })()
         transport: stdio
         command: !!js process.execPath
         args:
@@ -26,5 +27,5 @@
           - '--'
           - !!js process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@xuanling-rs/xuanling-mcp/bin/xuanling-mcp.js')
           - '--workspace-root'
-          - !!js (() => { const root = process.env.XUANLING_WORKSPACE_ROOT; if (!root) throw new Error('XUANLING_WORKSPACE_ROOT is required for the XuanLing full-tools compatibility bundle'); return root })()
+          - !!js (() => { const root = process.env.XUANLING_WORKSPACE_ROOT; if (!root) throw new Error('XUANLING_WORKSPACE_ROOT is required for the XuanLing filesystem replacement bundle'); return root })()
         toolCallTimeoutMs: 120000

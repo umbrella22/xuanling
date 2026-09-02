@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
@@ -12,13 +12,12 @@ import { readWorkspaceVersion } from "../scripts/shared.mjs";
 // DeepSeek Harness bundle contract (integrations/deepseek-harness):
 //   - all bundles declare the dsh bundle manifest and pin the npm package
 //     version;
-//   - the patch layers mount the bundle-owned lazy wrapper around
-//     @deepseek-ai/dsh-mcp-client with the xuanling server identity and the
-//     documented binary/capability resolution;
+//   - additive patches mount the bundle-owned lazy wrapper, while the
+//     replacement patch mounts its same-name facade around the official bridge;
 //   - the recommended memory bundle exposes the complete canonical memory
 //     profile without replacing any built-in harness tool;
-//   - the replace bundle disables exactly the three built-in filesystem tool
-//     rows, with full-row restatement;
+//   - the replace bundle disables exactly the built-in tool-fs row, with
+//     full-row restatement, and selectively restores native read_image;
 //   - public install commands target a shipped runnable profile, never a
 //     base-only arbitrary profile;
 //   - the ZCode-only compat shim never appears in any DeepSeek config;
@@ -36,6 +35,7 @@ const testRoot = path.join(repoRoot, "test", "deepseek-harness");
 const workspaceVersion = await readWorkspaceVersion();
 const bundles = ["xuanling-memory", "xuanling-tools", "xuanling-tools-replace"];
 const fullCatalogBundles = ["xuanling-tools", "xuanling-tools-replace"];
+const lazyBundles = ["xuanling-memory", "xuanling-tools"];
 const publicReadmes = [
   "README.md",
   "README-ZH.md",
@@ -237,7 +237,16 @@ test("bundle manifests declare the dsh bundle and pin the npm version", () => {
           "schema-adapter.mjs",
           "schema-projection.mjs",
         ]
-      : [
+      : bundle === "xuanling-tools-replace"
+        ? [
+            "LICENSE",
+            "README.md",
+            "README-ZH.md",
+            "cordis.patch.yml",
+            "filesystem-facade.mjs",
+            "mcp-result-adapter.mjs",
+          ]
+        : [
           "LICENSE",
           "README.md",
           "README-ZH.md",
@@ -254,6 +263,11 @@ test("bundle manifests declare the dsh bundle and pin the npm version", () => {
   assert.equal(memory.name, "@xuanling-rs/xuanling-dsh-memory");
   assert.deepEqual(memory.bin, { "xuanling-dsh-schema-adapter": "schema-adapter.mjs" });
   assert.equal(replace.name, "@xuanling-rs/xuanling-dsh-tools-replace");
+  assert.equal(
+    replace.dependencies?.["@deepseek-ai/dsh-tool-fs"],
+    "^0.1.0-rc.5",
+    "replacement facade uses the official native image implementation",
+  );
 });
 
 test("tool bundles depend on the exact profile-local XuanLing runtime", () => {
@@ -326,7 +340,7 @@ test("profile-local launcher resolution works with no global command on PATH", (
   }
 });
 
-test("runtime patches use unique row ids with one bundle-owned lazy bridge", () => {
+test("runtime patches use unique row ids with one bundle-owned host projection", () => {
   const expectedIds = new Map([
     ["xuanling-memory", "xuanling-memory"],
     ["xuanling-tools", "xuanling-tools"],
@@ -339,11 +353,10 @@ test("runtime patches use unique row ids with one bundle-owned lazy bridge", () 
     assert.equal(row.id, expectedIds.get(bundle), `${bundle}: stable package-specific row id`);
     assert.ok(!seenIds.has(row.id), `${bundle}: row id must be unique`);
     seenIds.add(row.id);
-    assert.equal(
-      row.name,
-      `${manifest.name}/lazy-mcp-client.mjs`,
-      `${bundle}: bundle-owned wrapper provides the lazy host projection`,
-    );
+    const runtimeModule = bundle === "xuanling-tools-replace"
+      ? "filesystem-facade.mjs"
+      : "lazy-mcp-client.mjs";
+    assert.equal(row.name, `${manifest.name}/${runtimeModule}`, `${bundle}: bundle-owned host projection`);
     const config = row.config ?? {};
     assert.equal(config.serverName, "xuanling", `${bundle}: serverName fixes the public names`);
     assert.equal(config.toolExposure, undefined, `${bundle}: no unsupported host option is emitted`);
@@ -358,7 +371,7 @@ test("the frozen XuanLing catalog is lossless through DSH public tool naming", (
     path.join(repoRoot, "crates", "xuanling-mcp", "tests", "snapshots", "tools-list.json"),
     "utf8",
   ));
-  assert.equal(catalog.length, 42, "the frozen contract owns the complete catalog");
+  assert.equal(catalog.length, 43, "the frozen contract owns the complete catalog");
   for (const tool of catalog) {
     assert.match(tool.name, /^[A-Za-z0-9_-]+$/, `${tool.name}: no bridge normalization`);
     assert.ok(
@@ -369,7 +382,7 @@ test("the frozen XuanLing catalog is lossless through DSH public tool naming", (
 });
 
 test("bundle-owned lazy bridge registers only catalog until exact activation", async () => {
-  const lazySources = bundles.map((bundle) =>
+  const lazySources = lazyBundles.map((bundle) =>
     readText(path.join(bundle, "lazy-mcp-client.mjs"))
   );
   assert.ok(
@@ -565,8 +578,8 @@ test("the recommended bundle exposes only the complete memory profile", () => {
   }
 });
 
-test("every supported runtime bundle preserves native filesystem and read_image rows", () => {
-  for (const bundle of bundles) {
+test("additive bundles preserve native filesystem rows and replacement disables only tool-fs", () => {
+  for (const bundle of lazyBundles) {
     const entries = parsePatch(readText(path.join(bundle, "cordis.patch.yml")));
     assert.equal(
       entries.filter((entry) => entry.disabled === true).length,
@@ -576,6 +589,37 @@ test("every supported runtime bundle preserves native filesystem and read_image 
     const patch = readText(path.join(bundle, "cordis.patch.yml"));
     assert.doesNotMatch(patch, /read_image disappears|Known regressions in this variant/);
   }
+  const replacementEntries = parsePatch(readText(path.join("xuanling-tools-replace", "cordis.patch.yml")));
+  const disabled = replacementEntries.filter((entry) => entry.disabled === true);
+  assert.deepEqual(
+    disabled.map(({ id, name }) => ({ id, name })),
+    [{ id: "tool-fs", name: "@deepseek-ai/dsh-tool-fs" }],
+    "replacement disables the one native row that owns read/write/edit/read_image",
+  );
+});
+
+test("replacement bundle installs an explicit same-name filesystem facade", () => {
+  const bundle = "xuanling-tools-replace";
+  const manifest = readJson(path.join(bundle, "package.json"));
+  const patch = readText(path.join(bundle, "cordis.patch.yml"));
+  const facadePath = path.join(repoRoot, "integrations", "deepseek-harness", bundle, "filesystem-facade.mjs");
+
+  assert.ok(
+    manifest.files.includes("filesystem-facade.mjs"),
+    "replacement package must ship its same-name facade",
+  );
+  assert.equal(existsSync(facadePath), true, "replacement facade source must exist");
+  assert.match(patch, /filesystem-facade\.mjs/);
+  assert.doesNotMatch(patch, /compatibility alias/i);
+
+  const facade = readFileSync(facadePath, "utf8");
+  for (const name of ["read", "write", "edit", "read_image", "file_hash", "edit_batch"]) {
+    assert.match(facade, new RegExp(`(?:name|toolName).{0,40}["']${name}["']`, "s"),
+      `facade must register ${name}`);
+  }
+  assert.match(facade, /ApprovalService/);
+  assert.match(facade, /observation/i);
+  assert.doesNotMatch(facade, /ctx\.fs\s*=/, "facade must not replace the host filesystem provider");
 });
 
 test("the ZCode-only compat shim never leaks into DeepSeek configs", () => {

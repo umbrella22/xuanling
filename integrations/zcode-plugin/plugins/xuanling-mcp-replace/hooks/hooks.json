@@ -1,0 +1,19 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^(?:Read|Write|Edit|ApplyPatch|MultiEdit|mcp__(?:xuanling|plugin_xuanling-mcp-replace_xuanling)__(?:fs_write_text|fs_replace_text|fs_edit|fs_edit_batch|fs_patch))$",
+        "hooks": [
+          {
+            "type": "process",
+            "command": "node",
+            "args": [
+              "${ZCODE_PLUGIN_ROOT}/hooks/pretooluse.mjs"
+            ],
+            "timeoutMs": 10000
+          }
+        ]
+      }
+    ]
+  }
+}

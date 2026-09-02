@@ -8,6 +8,7 @@
 //! AppliedAwaitingCompletion -> Committed
 //! AppliedAwaitingCompletion -> RolledBack
 //! AppliedAwaitingCompletion -> RollbackConflict
+//! AppliedAwaitingCompletion -> RecoveryFailed -> RolledBack
 //! ```
 //! Rollback re-reads the file and compares to the `after_hash` the ChangeSet
 //! wrote; if a user/editor changed the file in the meantime, rollback is
@@ -42,6 +43,7 @@ pub enum ChangeSetState {
     Committed,
     RolledBack,
     RollbackConflict,
+    RecoveryFailed,
 }
 
 impl ChangeSetState {
@@ -53,16 +55,22 @@ impl ChangeSetState {
             ChangeSetState::Committed => "committed",
             ChangeSetState::RolledBack => "rolled_back",
             ChangeSetState::RollbackConflict => "rollback_conflict",
+            ChangeSetState::RecoveryFailed => "recovery_failed",
         }
     }
 }
 
-/// A registered single-file change with its recovery buffer.
+/// A registered single- or multi-file change with in-process recovery buffers.
 struct ChangeSet {
+    members: Vec<ChangeSetMember>,
+    state: ChangeSetState,
+}
+
+struct ChangeSetMember {
     path: PathBuf,
     before_bytes: Vec<u8>,
+    before_hash: String,
     after_hash: String,
-    state: ChangeSetState,
 }
 
 fn store() -> &'static Mutex<HashMap<String, ChangeSet>> {
@@ -91,11 +99,23 @@ pub struct AppliedChange {
 /// caller supplies the exact before/after bytes; the store keeps the before
 /// bytes as a recovery buffer. State is `AppliedAwaitingCompletion`.
 pub fn register_applied(path: PathBuf, before_bytes: Vec<u8>, after_bytes: &[u8]) -> AppliedChange {
+    register_applied_group(vec![(path, before_bytes, sha256_hex(after_bytes))])
+}
+
+/// Register a group that has already been applied successfully. Every tuple is
+/// `(resolved_path, exact_before_bytes, exact_after_hash)` in request order.
+pub(crate) fn register_applied_group(members: Vec<(PathBuf, Vec<u8>, String)>) -> AppliedChange {
     let id = next_id();
     let entry = ChangeSet {
-        path,
-        before_bytes,
-        after_hash: sha256_hex(after_bytes),
+        members: members
+            .into_iter()
+            .map(|(path, before_bytes, after_hash)| ChangeSetMember {
+                before_hash: sha256_hex(&before_bytes),
+                path,
+                before_bytes,
+                after_hash,
+            })
+            .collect(),
         state: ChangeSetState::AppliedAwaitingCompletion,
     };
     store()
@@ -339,7 +359,9 @@ fn commit_impl(
     let mut s = store().lock().expect("changeset store not poisoned");
     let entry = s.get_mut(change_id).ok_or_else(|| missing(change_id))?;
     if let Some(ctx) = ctx {
-        validate_registered_target(ctx, &entry.path, "fs.changeset.commit")?;
+        for member in &entry.members {
+            validate_registered_target(ctx, &member.path, "fs.changeset.commit")?;
+        }
     }
     if entry.state != ChangeSetState::AppliedAwaitingCompletion {
         return Err(state_error(change_id, entry.state.as_str(), "commit"));
@@ -373,86 +395,149 @@ fn rollback_impl(
     ctx: Option<&InvocationContext>,
     change_id: &str,
 ) -> Result<ChangeSetState, ToolError> {
+    let _mutation_guard = super::mutation_lock();
     // Validate and take the entry under the same lock, then do rollback I/O
     // outside it. A capability rejection therefore leaves the registry
     // completely unchanged, without a transient not-found window.
-    let entry = {
+    let mut entry = {
         let mut s = store().lock().expect("changeset store not poisoned");
         if let Some(ctx) = ctx {
             let entry = s.get(change_id).ok_or_else(|| missing(change_id))?;
-            validate_registered_target(ctx, &entry.path, "fs.changeset.rollback")?;
+            for member in &entry.members {
+                validate_registered_target(ctx, &member.path, "fs.changeset.rollback")?;
+            }
         }
         match s.remove(change_id) {
             Some(e) => e,
             None => return Err(missing(change_id)),
         }
     };
-    if entry.state != ChangeSetState::AppliedAwaitingCompletion {
+    let retrying_recovery = entry.state == ChangeSetState::RecoveryFailed;
+    if entry.state != ChangeSetState::AppliedAwaitingCompletion && !retrying_recovery {
         let state = entry.state.clone();
-        store()
-            .lock()
-            .expect("changeset store not poisoned")
-            .insert(change_id.to_string(), entry);
+        reinsert(change_id, entry);
         return Err(state_error(change_id, state.as_str(), "rollback"));
     }
-    // Re-read the file. An absent file is a conflict, while a genuine I/O
-    // failure must remain retryable rather than being relabelled as a user
-    // conflict and silently discarded from the registry.
-    let current = match std::fs::read(&entry.path) {
-        Ok(current) => current,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            let mut entry = entry;
+
+    // Initial rollback requires every target to still equal its after hash.
+    // A retry after partial recovery accepts either the known before or after
+    // hash, but never an unrelated external value.
+    let mut needs_restore = Vec::with_capacity(entry.members.len());
+    for (index, member) in entry.members.iter().enumerate() {
+        let current = match std::fs::read(&member.path) {
+            Ok(current) => current,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                entry.state = ChangeSetState::RollbackConflict;
+                reinsert(change_id, entry);
+                return Ok(ChangeSetState::RollbackConflict);
+            }
+            Err(error) => {
+                let path = member.path.to_string_lossy().into_owned();
+                reinsert(change_id, entry);
+                return Err(ToolError::new(
+                    ToolErrorCode::IoError,
+                    "fs.changeset",
+                    format!("failed to read change target during rollback: {error}"),
+                )
+                .with_path(path)
+                .with_raw_os_error(error.raw_os_error())
+                .with_details(serde_json::json!({"reason": "rollback_read_failed"})));
+            }
+        };
+        let current_hash = sha256_hex(&current);
+        if current_hash == member.after_hash {
+            needs_restore.push(index);
+        } else if retrying_recovery && current_hash == member.before_hash {
+            // This member was already restored by the previous attempt.
+        } else {
             entry.state = ChangeSetState::RollbackConflict;
-            let mut s = store().lock().expect("changeset store not poisoned");
-            s.insert(change_id.to_string(), entry);
+            reinsert(change_id, entry);
             return Ok(ChangeSetState::RollbackConflict);
         }
-        Err(error) => {
-            let mut s = store().lock().expect("changeset store not poisoned");
-            s.insert(change_id.to_string(), entry);
-            return Err(ToolError::new(
-                ToolErrorCode::IoError,
-                "fs.changeset",
-                format!("failed to read change target during rollback: {error}"),
-            )
-            .with_raw_os_error(error.raw_os_error())
-            .with_details(serde_json::json!({"reason": "rollback_read_failed"})));
-        }
-    };
-    let current_hash = sha256_hex(&current);
-    if current_hash == entry.after_hash {
-        // No concurrent modification: restore the before-bytes atomically.
-        if let Err(error) = super::atomic_write_file(&entry.path, &entry.before_bytes) {
-            // Keep the entry so callers can retry after repairing the I/O
-            // condition. A failed restoration is not evidence of a concurrent
-            // editor change and must not be reported as such.
-            let mut s = store().lock().expect("changeset store not poisoned");
-            s.insert(change_id.to_string(), entry);
-            return Err(ToolError::new(
-                ToolErrorCode::IoError,
-                "fs.changeset",
-                format!("failed to restore change target during rollback: {error}"),
-            )
-            .with_raw_os_error(error.raw_os_error())
-            .with_details(serde_json::json!({"reason": "rollback_restore_failed"})));
-        }
-        let mut entry = entry;
-        entry.state = ChangeSetState::RolledBack;
-        store()
-            .lock()
-            .expect("changeset store not poisoned")
-            .insert(change_id.to_string(), entry);
-        Ok(ChangeSetState::RolledBack)
-    } else {
-        // User/editor changed the file after our apply. Preserve their content.
-        let mut entry = entry;
-        entry.state = ChangeSetState::RollbackConflict;
-        store()
-            .lock()
-            .expect("changeset store not poisoned")
-            .insert(change_id.to_string(), entry);
-        Ok(ChangeSetState::RollbackConflict)
     }
+
+    for index in needs_restore.into_iter().rev() {
+        let member = &entry.members[index];
+        if let Err(error) = super::atomic_write_file(&member.path, &member.before_bytes) {
+            let path = member.path.to_string_lossy().into_owned();
+            if entry.members.len() == 1 {
+                // Preserve the established single-file contract: an I/O
+                // restore failure remains pending and returns io_error.
+                reinsert(change_id, entry);
+                return Err(ToolError::new(
+                    ToolErrorCode::IoError,
+                    "fs.changeset",
+                    format!("failed to restore change target during rollback: {error}"),
+                )
+                .with_path(path)
+                .with_raw_os_error(error.raw_os_error())
+                .with_details(serde_json::json!({"reason": "rollback_restore_failed"})));
+            }
+
+            entry.state = ChangeSetState::RecoveryFailed;
+            let paths = changeset_path_states(&entry);
+            reinsert(change_id, entry);
+            return Err(ToolError::new(
+                ToolErrorCode::RecoveryFailed,
+                "fs.changeset",
+                "group ChangeSet rollback could not restore every target",
+            )
+            .with_path(path)
+            .with_raw_os_error(error.raw_os_error())
+            .with_details(serde_json::json!({
+                "reason": "changeset_recovery_incomplete",
+                "paths": paths,
+            })));
+        }
+    }
+
+    entry.state = ChangeSetState::RolledBack;
+    reinsert(change_id, entry);
+    Ok(ChangeSetState::RolledBack)
+}
+
+fn reinsert(change_id: &str, entry: ChangeSet) {
+    store()
+        .lock()
+        .expect("changeset store not poisoned")
+        .insert(change_id.to_string(), entry);
+}
+
+fn changeset_path_states(entry: &ChangeSet) -> Vec<serde_json::Value> {
+    entry
+        .members
+        .iter()
+        .map(|member| match std::fs::read(&member.path) {
+            Ok(bytes) => {
+                let actual = sha256_hex(&bytes);
+                let final_state = if actual == member.before_hash {
+                    "restored"
+                } else if actual == member.after_hash {
+                    "still_applied"
+                } else {
+                    "changed_externally"
+                };
+                serde_json::json!({
+                    "path": member.path,
+                    "final_state": final_state,
+                    "actual_sha256": actual,
+                })
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => serde_json::json!({
+                "path": member.path,
+                "final_state": "absent",
+                "error_code": ToolErrorCode::NotFound.as_snake_case(),
+            }),
+            Err(error) => {
+                let code = super::map_io_error(&error, "fs.changeset.rollback", &member.path).code;
+                serde_json::json!({
+                    "path": member.path,
+                    "final_state": "unknown",
+                    "error_code": code.as_snake_case(),
+                })
+            }
+        })
+        .collect()
 }
 
 fn validate_registered_target(

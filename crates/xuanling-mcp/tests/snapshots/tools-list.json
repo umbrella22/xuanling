@@ -267,7 +267,7 @@
       "openWorldHint": false,
       "readOnlyHint": false
     },
-    "description": "Roll back a reversible ChangeSet (from fs_edit/patch with reversible=true). Re-reads the file: if it still matches what the change wrote, the pre-change content is restored (rolled_back); if the file changed in the meantime, the user's content is PRESERVED and the state is rollback_conflict (ADR 0013, plan §8.1).",
+    "description": "Roll back a reversible ChangeSet from fs_edit or fs_edit_batch. Before the first restore, every member must still match its recorded after hash; otherwise no file is restored and the state is rollback_conflict. A grouped rollback restores members in reverse order. External content is preserved, and an incomplete restore is reported as recovery_failed for a later retry (ADR 0013, ADR 0002).",
     "input_schema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -489,6 +489,194 @@
         "replacements",
         "before_sha256",
         "after_sha256"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Apply ordered exact-text edits across one or more existing UTF-8 files. Every file requires a lowercase SHA-256 preimage. All paths, hashes, UTF-8, and matches are validated before the first write; each file is atomically replaced once in request order. Later edits in one file observe earlier edits. A write failure restores already-applied files in reverse order without overwriting external changes. reversible=true registers one grouped in-process ChangeSet; dry_run and reversible cannot both be true. include_diff defaults to true and returns one initial-to-final diff per file.",
+    "input_schema": {
+      "$defs": {
+        "FsEditBatchEdit": {
+          "additionalProperties": false,
+          "properties": {
+            "new": {
+              "type": "string"
+            },
+            "old": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "replace_all": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "old",
+            "new"
+          ],
+          "type": "object"
+        },
+        "FsEditBatchFile": {
+          "additionalProperties": false,
+          "properties": {
+            "edits": {
+              "items": {
+                "$ref": "#/$defs/FsEditBatchEdit"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "expected_sha256": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "expected_sha256",
+            "edits"
+          ],
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "base_dir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dry_run": {
+          "default": false,
+          "type": "boolean"
+        },
+        "files": {
+          "items": {
+            "$ref": "#/$defs/FsEditBatchFile"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "include_diff": {
+          "default": true,
+          "type": "boolean"
+        },
+        "reversible": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "files"
+      ],
+      "type": "object"
+    },
+    "name": "fs_edit_batch",
+    "output_schema": {
+      "$defs": {
+        "FsEditBatchEditResult": {
+          "additionalProperties": false,
+          "properties": {
+            "index": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "replacements": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "index",
+            "replacements"
+          ],
+          "type": "object"
+        },
+        "FsEditBatchFileResult": {
+          "additionalProperties": false,
+          "properties": {
+            "after_sha256": {
+              "type": "string"
+            },
+            "before_sha256": {
+              "type": "string"
+            },
+            "diff": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "edits": {
+              "items": {
+                "$ref": "#/$defs/FsEditBatchEditResult"
+              },
+              "type": "array"
+            },
+            "path": {
+              "type": "string"
+            },
+            "replacements": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "path",
+            "before_sha256",
+            "after_sha256",
+            "replacements",
+            "edits"
+          ],
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "change_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "change_state": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "files": {
+          "items": {
+            "$ref": "#/$defs/FsEditBatchFileResult"
+          },
+          "type": "array"
+        },
+        "replacements": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "files",
+        "replacements"
       ],
       "type": "object"
     }

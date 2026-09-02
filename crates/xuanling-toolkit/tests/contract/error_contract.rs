@@ -26,6 +26,7 @@ fn tool_error_code_round_trips_as_snake_case() {
         (ToolErrorCode::SpawnFailed, "spawn_failed"),
         (ToolErrorCode::DatabaseBusy, "database_busy"),
         (ToolErrorCode::IoError, "io_error"),
+        (ToolErrorCode::RecoveryFailed, "recovery_failed"),
         (ToolErrorCode::Internal, "internal"),
     ];
     for (code, expected) in cases {

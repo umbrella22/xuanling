@@ -33,7 +33,8 @@ routing policy through MCP `initialize.instructions` before loading this file.
 
 ### Filesystem
 `fs_stat` `fs_list` `fs_read_text` `fs_read_bytes` `fs_search` `fs_glob` `fs_hash` `fs_mkdir`
-`fs_write_text` `fs_replace_text` `fs_patch` `fs_edit` `fs_copy` `fs_move` `fs_remove`
+`fs_write_text` `fs_replace_text` `fs_patch` `fs_edit` `fs_edit_batch` `fs_copy` `fs_move`
+`fs_remove`
 
 Prefer the host's native Read/Edit tools for routine small edits and ordinary reads so their
 read-before-edit observation and UI remain active. Choose XuanLing for cross-OS structured
@@ -46,9 +47,10 @@ fingerprint-only CAS precondition; it does not mean the body was read or underst
 `fs_write_text` with both `mode: "overwrite"` and `expected_sha256`. Use `mode: "create"` only for
 a new path and never turn an overwrite conflict into a create call.
 
-For multiple hunks in the same file, use `fs_patch` in a single atomic call with
-`expected_preimage_sha256`. Do not split the operation into independently committed edits or
-invent another batch tool.
+For multiple ordered exact replacements in one or more existing files, use `fs_edit_batch` with
+each file's `expected_sha256` and ordered `edits`. It preflights the entire request before writing
+and atomically replaces each file once. `fs_patch` remains a compatibility entry point when a
+strict unified diff already exists; it is not the preferred multi-edit format.
 
 Schema gotchas learned from live use:
 - **`fs_search`**: the search term goes in `pattern`; `literal` is a **boolean** (treat `pattern`
@@ -70,11 +72,11 @@ Schema gotchas learned from live use:
   `start_line`/`end_line` are 1-based and inclusive. See **Using fs_read_text well** below for when
   to prefer it over the host's native Read.
 - **`fs_list`**: returns `entries[]` + `returned_item_bytes` + `has_more` + `next_cursor`.
-- `fs_edit` is precise old→new (ADR 0027 §8.2); `fs_patch` applies a strict unified diff
-  (ADR 0013 v2) with `expected_preimage_sha256`. A non-unique `fs_edit`/`fs_patch` match is a
-  typed conflict: the server returns every line/column location and performs **zero writes**;
-  never guess a location or fall back to a broad replacement. Both support reversible ChangeSets
-  → `change_commit` / `change_rollback`.
+- `fs_edit` is precise old→new (ADR 0027 §8.2); `fs_edit_batch` applies ordered old→new edits after
+  mandatory per-file CAS and whole-request preflight. Both support reversible ChangeSets through
+  `change_commit` / `change_rollback`. `fs_patch` applies a strict unified diff (ADR 0013 v2) with
+  `expected_preimage_sha256`, but does not accept `reversible`. A non-unique exact edit is a typed
+  conflict and performs **zero writes**; never guess a location or fall back to a broad replacement.
 
 ### Process / Project
 `process_which` `process_run` `project_detect` `project_command` `project_run` `process_pipeline`
@@ -145,7 +147,7 @@ artifact by **`id`** + `read_capability` (issued when process output is truncate
 `path_resolve` `path_relative` — resolution-context helpers (base_dir or workspace root).
 
 ### Change / System
-`change_commit` `change_rollback` (reversible ChangeSets from `fs_edit`/`fs_patch`) and
+`change_commit` `change_rollback` (reversible ChangeSets from `fs_edit`/`fs_edit_batch`) and
 `system_info` (deterministic OS/arch/family/pointer-width/cwd plus `xuanling_version` and
 `mcp_contract_version`). Use those two fields to verify that the running server matches the Skill
 generation; the MCP `initialize.serverInfo.version` remains the handshake authority.

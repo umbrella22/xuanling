@@ -10,6 +10,8 @@
 mod capability_contract;
 #[path = "contract/coexistence.rs"]
 mod coexistence;
+#[path = "contract/cross_host_edit_kernel_contract.rs"]
+mod cross_host_edit_kernel_contract;
 #[path = "contract/dependency.rs"]
 mod dependency;
 #[path = "contract/error_contract.rs"]

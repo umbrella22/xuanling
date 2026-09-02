@@ -15,6 +15,7 @@
 
 pub mod change;
 pub mod copy_move_remove;
+pub mod edit_batch;
 pub mod read;
 pub mod search;
 pub mod stat_list;
@@ -24,6 +25,12 @@ pub use change::{
     AppliedMultiChange, ChangeSetState, MultiFileChange, apply_multi as changeset_apply_multi,
     commit as changeset_commit, commit_with_context as changeset_commit_with_context,
     rollback as changeset_rollback, rollback_with_context as changeset_rollback_with_context,
+};
+#[cfg(feature = "test-fixtures")]
+pub use edit_batch::{BatchTestFault, BatchTestFaultGuard, install_batch_test_faults};
+pub use edit_batch::{
+    FsEditBatchEdit, FsEditBatchEditResult, FsEditBatchFile, FsEditBatchFileResult,
+    FsEditBatchRequest, FsEditBatchResult, fs_edit_batch,
 };
 pub use read::{
     ByteResume, FsHashRequest, FsHashResult, FsReadBytesRequest, FsReadBytesResult,
