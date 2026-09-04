@@ -622,6 +622,16 @@ test("replacement bundle installs an explicit same-name filesystem facade", () =
   assert.doesNotMatch(facade, /ctx\.fs\s*=/, "facade must not replace the host filesystem provider");
 });
 
+test("npm distribution describes the DSH replacement facade without legacy alias semantics", () => {
+  const english = readFileSync(path.join(repoRoot, "npm", "README.md"), "utf8");
+  const chinese = readFileSync(path.join(repoRoot, "npm", "README-ZH.md"), "utf8");
+
+  assert.match(english, /Opt-in same-name filesystem replacement facade/);
+  assert.doesNotMatch(english, /Compatibility alias|preserves native filesystem rows/i);
+  assert.match(chinese, /显式启用的同名文件系统 replacement facade/);
+  assert.doesNotMatch(chinese, /兼容 alias|保留原生文件系统工具行/i);
+});
+
 test("the ZCode-only compat shim never leaks into DeepSeek configs", () => {
   const runtimeFiles = [
     ...bundles.map((bundle) => path.join(bundle, "cordis.patch.yml")),

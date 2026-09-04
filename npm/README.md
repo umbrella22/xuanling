@@ -31,7 +31,7 @@ DeepSeek Harness installs these public bundles directly into a profile:
 | `@xuanling-rs/xuanling-dsh-memory@0.4.0` | Complete Memory v2 profile with DSH schema projection |
 | `@xuanling-rs/xuanling-dsh-skills@0.4.0` | File and Memory workflow Skills plus strict overwrite policy |
 | `@xuanling-rs/xuanling-dsh-tools@0.4.0` | Additive full XuanLing catalog |
-| `@xuanling-rs/xuanling-dsh-tools-replace@0.4.0` | Compatibility alias that preserves native filesystem rows and adds the full catalog lazily |
+| `@xuanling-rs/xuanling-dsh-tools-replace@0.4.0` | Opt-in same-name filesystem replacement facade with XuanLing CAS/batch and native host projections |
 
 The three tool bundles depend on the exact stable `@xuanling-rs/xuanling-mcp` version in the
 same DSH profile. The Skills bundle contains no MCP runtime.

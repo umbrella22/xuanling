@@ -26,7 +26,7 @@ DeepSeek Harness 会把以下公开 bundle 直接安装到指定 profile：
 | `@xuanling-rs/xuanling-dsh-memory@0.4.0` | 带 DSH schema projection 的完整 Memory v2 profile |
 | `@xuanling-rs/xuanling-dsh-skills@0.4.0` | 文件与 Memory 工作流 Skill 以及严格 overwrite policy |
 | `@xuanling-rs/xuanling-dsh-tools@0.4.0` | 增量挂载完整 XuanLing catalog |
-| `@xuanling-rs/xuanling-dsh-tools-replace@0.4.0` | 保留原生文件系统工具行并按需增加完整 catalog 的兼容 alias |
+| `@xuanling-rs/xuanling-dsh-tools-replace@0.4.0` | 显式启用的同名文件系统 replacement facade，提供 XuanLing CAS/batch 与宿主原生投影 |
 
 三个工具 bundle 在同一 DSH profile 内精确依赖稳定版 `@xuanling-rs/xuanling-mcp`。Skills bundle 不包含
 MCP runtime。
