@@ -23,6 +23,14 @@ const scenarioMarkers = Object.freeze({
   validEdit: "zcode-fixture:replacement-enabled-valid-edit",
   nativeRestored: "zcode-fixture:replacement-disabled-native-restored",
 });
+const scenarioCallIds = Object.freeze({
+  call_native_edit_denied: "nativeDenied",
+  call_xuanling_overwrite_without_cas: "casDenied",
+  call_xuanling_hash: "validEdit",
+  call_xuanling_edit_with_cas: "validEdit",
+  call_native_read_restored: "nativeRestored",
+  call_native_edit_restored: "nativeRestored",
+});
 
 function sha256(data) {
   return createHash("sha256").update(data).digest("hex");
@@ -143,6 +151,19 @@ function scenarioFor(messages) {
   const serialized = JSON.stringify(messages ?? []);
   for (const [name, marker] of Object.entries(scenarioMarkers)) {
     if (serialized.includes(marker)) return { name, serialized };
+  }
+
+  // ZCode can compact a long tool loop and omit the original user marker.
+  // The fixture-owned call IDs survive that boundary and still bind the
+  // returned tool result to exactly one scenario.
+  for (const message of Array.isArray(messages) ? messages : []) {
+    if (!isRecord(message)) continue;
+    const direct = scenarioCallIds[message.tool_call_id];
+    if (direct !== undefined) return { name: direct, serialized };
+    for (const call of Array.isArray(message.tool_calls) ? message.tool_calls : []) {
+      const fromCall = scenarioCallIds[call?.id];
+      if (fromCall !== undefined) return { name: fromCall, serialized };
+    }
   }
   return undefined;
 }
