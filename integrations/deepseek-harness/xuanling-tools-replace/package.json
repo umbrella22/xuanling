@@ -1,13 +1,13 @@
 {
   "name": "@xuanling-rs/xuanling-dsh-tools-replace",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Opt-in DeepSeek Harness filesystem replacement facade backed by XuanLing MCP with host approval, observation, image, and diff projection.",
   "license": "MIT",
   "private": false,
   "dependencies": {
     "@deepseek-ai/dsh-mcp-client": "^0.1.0-rc.5",
     "@deepseek-ai/dsh-tool-fs": "^0.1.0-rc.5",
-    "@xuanling-rs/xuanling-mcp": "0.5.0"
+    "@xuanling-rs/xuanling-mcp": "0.5.1"
   },
   "files": [
     "LICENSE",

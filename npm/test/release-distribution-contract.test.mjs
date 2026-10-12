@@ -280,6 +280,7 @@ test("release workflow separates default preflight from an explicit no-publish c
     "build-main",
     "build-native",
     "build-dsh",
+    "build-blueprint",
     "assemble-release",
   ]) {
     assert.match(
@@ -288,6 +289,11 @@ test("release workflow separates default preflight from an explicit no-publish c
       `${job} must require an explicit candidate choice during workflow_dispatch`,
     );
   }
+  assert.match(
+    workflowJob(source, "build-blueprint"),
+    /npm run build[\s\S]*npm test/,
+    "Blueprint package tests must run after the build artifact exists",
+  );
   for (const job of [
     "publish",
     "promote",

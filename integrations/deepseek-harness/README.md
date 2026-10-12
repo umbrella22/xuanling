@@ -16,8 +16,8 @@ Install the Memory and Skills bundles into DSH's shipped `web` profile:
 
 ```sh
 dsh plugin --profile web add \
-  @xuanling-rs/xuanling-dsh-memory@0.5.0 \
-  @xuanling-rs/xuanling-dsh-skills@0.5.0
+  @xuanling-rs/xuanling-dsh-memory@0.5.1 \
+  @xuanling-rs/xuanling-dsh-skills@0.5.1
 dsh --profile web --dump-config
 dsh web
 ```
@@ -27,7 +27,7 @@ profile. A new arbitrary profile name is not a drop-in replacement: current
 DSH initializes unknown profiles with `@deepseek-ai/dsh-base` only, without a
 Web or Headless application bundle.
 
-The Memory bundle installs the exact `@xuanling-rs/xuanling-mcp@0.5.0` launcher and native
+The Memory bundle installs the exact `@xuanling-rs/xuanling-mcp@0.5.1` launcher and native
 optional dependency inside the profile. No global npm package, `npx`, or
 install-time binary download is used.
 
@@ -64,7 +64,7 @@ Bundle expressions resolve these values when DSH starts:
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| MCP runtime | Profile-local `@xuanling-rs/xuanling-mcp@0.5.0` | Verified JS launcher and native optional dependency |
+| MCP runtime | Profile-local `@xuanling-rs/xuanling-mcp@0.5.1` | Verified JS launcher and native optional dependency |
 | `XUANLING_WORKSPACE_ROOT` | Required for full-tools bundles; unused by Memory-only | Explicit XuanLing filesystem capability root |
 | Schema adapter | Installed `xuanling-dsh-memory/schema-adapter.mjs` | Projects discovery schemas for DSH |
 | Result adapter | Installed bundle-local `mcp-result-adapter.mjs` (memory is composed into the schema adapter) | Removes only duplicate equivalent text blocks |

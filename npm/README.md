@@ -3,7 +3,7 @@
 English | [Simplified Chinese](README-ZH.md)
 
 This directory contains the npm distribution and release automation for
-XuanLing MCP 0.5.0. A complete release contains eight immutable npm items: one
+XuanLing MCP 0.5.1. A complete release contains eight immutable npm items: one
 stable Node.js launcher, three native variants published under platform-specific
 prerelease versions, and four DeepSeek Harness bundles. The same verified core
 artifacts produce the ZCode marketplace archive.
@@ -17,10 +17,10 @@ registry release set.
 
 | Installed alias | Published version | Platform |
 | --- | --- | --- |
-| `@xuanling-rs/xuanling-mcp` | `0.5.0` | Stable Node.js launcher |
-| `@xuanling-rs/xuanling-mcp-darwin-arm64` | `0.5.0-darwin-arm64` | macOS Apple Silicon |
-| `@xuanling-rs/xuanling-mcp-linux-x64-gnu` | `0.5.0-linux-x64-gnu` | Linux x64, glibc 2.35 or newer |
-| `@xuanling-rs/xuanling-mcp-win32-x64-msvc` | `0.5.0-win32-x64-msvc` | Windows x64 MSVC |
+| `@xuanling-rs/xuanling-mcp` | `0.5.1` | Stable Node.js launcher |
+| `@xuanling-rs/xuanling-mcp-darwin-arm64` | `0.5.1-darwin-arm64` | macOS Apple Silicon |
+| `@xuanling-rs/xuanling-mcp-linux-x64-gnu` | `0.5.1-linux-x64-gnu` | Linux x64, glibc 2.35 or newer |
+| `@xuanling-rs/xuanling-mcp-win32-x64-msvc` | `0.5.1-win32-x64-msvc` | Windows x64 MSVC |
 
 The launcher and native variants are published under the `@xuanling-rs` npm
 organization. The stable package declares unscoped installation aliases as
@@ -33,10 +33,10 @@ DeepSeek Harness installs these public bundles directly into a profile:
 
 | Package | Purpose |
 | --- | --- |
-| `@xuanling-rs/xuanling-dsh-memory@0.5.0` | Complete Memory v2 profile with DSH schema projection |
-| `@xuanling-rs/xuanling-dsh-skills@0.5.0` | File and Memory workflow Skills plus strict overwrite policy |
-| `@xuanling-rs/xuanling-dsh-tools@0.5.0` | Additive full XuanLing catalog |
-| `@xuanling-rs/xuanling-dsh-tools-replace@0.5.0` | Opt-in same-name filesystem replacement facade with XuanLing CAS/batch and native host projections |
+| `@xuanling-rs/xuanling-dsh-memory@0.5.1` | Complete Memory v2 profile with DSH schema projection |
+| `@xuanling-rs/xuanling-dsh-skills@0.5.1` | File and Memory workflow Skills plus strict overwrite policy |
+| `@xuanling-rs/xuanling-dsh-tools@0.5.1` | Additive full XuanLing catalog |
+| `@xuanling-rs/xuanling-dsh-tools-replace@0.5.1` | Opt-in same-name filesystem replacement facade with XuanLing CAS/batch and native host projections |
 
 The three tool bundles depend on the exact stable `@xuanling-rs/xuanling-mcp` version in the
 same DSH profile. The Skills bundle contains no MCP runtime.
@@ -44,7 +44,7 @@ same DSH profile. The Skills bundle contains no MCP runtime.
 ## Installation
 
 ```sh
-npm install --global @xuanling-rs/xuanling-mcp@0.5.0
+npm install --global @xuanling-rs/xuanling-mcp@0.5.1
 xuanling-mcp --workspace-root /absolute/path/to/project
 ```
 
@@ -57,7 +57,7 @@ An MCP host can pin the same release through `npx`:
       "command": "npx",
       "args": [
         "-y",
-        "@xuanling-rs/xuanling-mcp@0.5.0",
+        "@xuanling-rs/xuanling-mcp@0.5.1",
         "--workspace-root",
         "/absolute/path/to/project"
       ]
@@ -81,7 +81,7 @@ The capability contract is documented in the
   provenance at publication, and binds its binary SHA-256 to the source commit.
   The ZCode marketplace archive also receives a GitHub OIDC build-provenance
   attestation before promotion.
-- XuanLing 0.5.0 does not claim a Developer ID or Authenticode publisher
+- XuanLing 0.5.1 does not claim a Developer ID or Authenticode publisher
   signature. Those signatures may be added in a later release, but their
   absence does not change the MCP protocol or package integrity contract.
 - Every native package contains the XuanLing MIT license and generated
@@ -103,7 +103,7 @@ node npm/scripts/pack-dsh-bundles.mjs \
   --commit "$(git rev-parse HEAD)"
 node npm/scripts/verify-dsh-release-set.mjs \
   --root npm/dist/dsh \
-  --version 0.5.0 \
+  --version 0.5.1 \
   --commit "$(git rev-parse HEAD)"
 
 node npm/scripts/generate-third-party-licenses.mjs \

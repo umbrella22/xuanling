@@ -2,10 +2,10 @@
 
 ## 安装
 
-0.5.0插件通过GitHub Release tarball分发。在运行所需能力最新官方频道的明确DSH profile中安装：
+0.5.1插件通过GitHub Release tarball分发。在运行所需能力最新官方频道的明确DSH profile中安装：
 
 ```sh
-dsh plugin --profile web add https://github.com/umbrella22/xuanling/releases/download/xuanling-mcp-v0.5.0/xuanling-rs-xuanling-dsh-blueprint-0.5.0.tgz
+dsh plugin --profile web add https://github.com/umbrella22/xuanling/releases/download/xuanling-mcp-v0.5.1/xuanling-rs-xuanling-dsh-blueprint-0.5.1.tgz
 ```
 
 安装后重启该profile。TeamStage还需要显式启用原生Agent Teams profile。

@@ -4,7 +4,7 @@ All notable release changes are recorded here. XuanLing uses immutable release
 tags and publishes the launcher, native packages, DeepSeek Harness bundles, and
 ZCode projection from the same source commit.
 
-## 0.5.0 - 2026-10-12
+## 0.5.1 - 2026-10-12
 
 ### Added
 
@@ -18,7 +18,9 @@ ZCode projection from the same source commit.
   DSH's composer, drafts, streaming and approval interface across refresh and
   same-profile restart.
 - A Blueprint tarball and file-digest manifest distributed as GitHub Release
-  assets. The existing eight npm items and ZCode projection share version 0.5.0.
+  assets. The existing eight npm items and ZCode projection share version 0.5.1.
+- The release workflow builds the Blueprint artifact before package tests, so
+  packed-peer checks run against the current build.
 
 ### Runtime and Upgrade Notes
 

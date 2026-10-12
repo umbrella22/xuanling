@@ -305,8 +305,8 @@ jobs:
         run: |
           npm run typecheck
           npm run lint
-          npm test
           npm run build
+          npm test
       - name: Pack Blueprint release asset
         run: |
           node npm/scripts/pack-blueprint.mjs \

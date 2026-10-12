@@ -7,11 +7,11 @@ persistent state, resource snapshots, approvals, cancellation and recovery.
 
 ## Installation
 
-The 0.5.0 plugin is distributed as a GitHub Release tarball. Add it to an
+The 0.5.1 plugin is distributed as a GitHub Release tarball. Add it to an
 explicit DSH profile running the latest official channel for its capabilities:
 
 ```sh
-dsh plugin --profile web add https://github.com/umbrella22/xuanling/releases/download/xuanling-mcp-v0.5.0/xuanling-rs-xuanling-dsh-blueprint-0.5.0.tgz
+dsh plugin --profile web add https://github.com/umbrella22/xuanling/releases/download/xuanling-mcp-v0.5.1/xuanling-rs-xuanling-dsh-blueprint-0.5.1.tgz
 ```
 
 Restart that profile after installation. TeamStage additionally requires the
