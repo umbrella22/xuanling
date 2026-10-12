@@ -300,6 +300,13 @@ jobs:
         run: |
           npm ci --prefix integrations/deepseek-harness/xuanling-blueprint --no-audit --no-fund
           npm ci --prefix test/blueprint --no-audit --no-fund
+      - name: Prepare disposable report roots for package contracts
+        run: |
+          mkdir -p \
+            docs/validation/blueprint/current/comfy-interactions/w2 \
+            docs/validation/blueprint/current/comfy-interactions/w3 \
+            docs/validation/blueprint/current/compact-ux/w2 \
+            docs/validation/blueprint/current/host-controls/w2
       - name: Verify and build the optional plugin
         working-directory: integrations/deepseek-harness/xuanling-blueprint
         run: |

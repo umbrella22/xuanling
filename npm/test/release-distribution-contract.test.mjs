@@ -294,6 +294,11 @@ test("release workflow separates default preflight from an explicit no-publish c
     /npm run build[\s\S]*npm test/,
     "Blueprint package tests must run after the build artifact exists",
   );
+  assert.match(
+    workflowJob(source, "build-blueprint"),
+    /mkdir -p[\s\S]*docs\/validation\/blueprint\/current\/(?:comfy-interactions|compact-ux|host-controls)/,
+    "Blueprint package tests must receive disposable physical report roots in a clean checkout",
+  );
   for (const job of [
     "publish",
     "promote",
