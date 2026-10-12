@@ -284,9 +284,44 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  build-blueprint:
+    name: build optional Blueprint and TeamStage asset
+    needs: validate-release
+    if: github.event_name == 'push' || inputs.mode == 'candidate'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Install supported npm CLI
+        run: npm install --global npm@11.6.2
+      - name: Install locked plugin and harness dependencies
+        run: |
+          npm ci --prefix integrations/deepseek-harness/xuanling-blueprint --no-audit --no-fund
+          npm ci --prefix test/blueprint --no-audit --no-fund
+      - name: Verify and build the optional plugin
+        working-directory: integrations/deepseek-harness/xuanling-blueprint
+        run: |
+          npm run typecheck
+          npm run lint
+          npm test
+          npm run build
+      - name: Pack Blueprint release asset
+        run: |
+          node npm/scripts/pack-blueprint.mjs \
+            --out npm/dist/blueprint \
+            --commit "${{ needs.validate-release.outputs.commit }}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: blueprint-release
+          path: npm/dist/blueprint
+          if-no-files-found: error
+          retention-days: 7
+
   assemble-release:
     name: verify complete release set and build ZCode projection
-    needs: [validate-release, build-main, build-native, build-dsh]
+    needs: [validate-release, build-main, build-native, build-dsh, build-blueprint]
     if: github.event_name == 'push' || inputs.mode == 'candidate'
     runs-on: ubuntu-latest
     permissions:

@@ -22,12 +22,20 @@ XuanLing MCP 是面向编码 Agent 的跨平台本地 Model Context Protocol
   `postinstall`，也不远程下载二进制文件。
 - **稳定 MCP 合同**：由 protocol、golden、持久化、重启和跨平台测试套件验证。
 
+## 原生 DSH 蓝图与 TeamStage
+
+可选的[Blueprint插件](integrations/deepseek-harness/xuanling-blueprint/README-ZH.md)
+提供类型化图编辑、持久化图执行与可选原生Agent Teams阶段。
+0.5.0通过GitHub Release提供可安装tarball与文件摘要manifest。
+TeamStage复用原生输入和审批界面，验收结构化输出与实际artifact；
+不确定外部副作用进入`recovery_required`。DSH运行时跟随提供所需能力的最新官方频道。
+
 ## 安装
 
 npm 启动器要求 Node.js 18.17 或更高版本，并为当前平台安装匹配的原生二进制包。
 
 ```sh
-npm install --global @xuanling-rs/xuanling-mcp@0.3.2
+npm install --global @xuanling-rs/xuanling-mcp@0.5.0
 xuanling-mcp --version
 ```
 
@@ -40,7 +48,7 @@ MCP Client 也可以通过 `npx` 固定同一版本，无需全局安装：
       "command": "npx",
       "args": [
         "-y",
-        "@xuanling-rs/xuanling-mcp@0.3.2",
+        "@xuanling-rs/xuanling-mcp@0.5.0",
         "--workspace-root",
         "/absolute/path/to/project",
         "--tool-profile",

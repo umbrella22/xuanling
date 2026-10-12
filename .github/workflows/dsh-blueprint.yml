@@ -1,0 +1,139 @@
+name: dsh-blueprint
+
+# Current takeover plan: deterministic regression and authentic runner OS only.
+# Real provider, interactive browser, packed lifecycle and complete multi-OS
+# acceptance require explicit fresh evidence; this job does not imply them.
+# No publish, push, user profiles or repository key/ access.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "integrations/deepseek-harness/xuanling-blueprint/**"
+      - "test/blueprint/**"
+      - ".github/workflows/dsh-blueprint.yml"
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  verify:
+    name: blueprint gates (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      BP_PLAN_ID: dsh-blueprint-takeover-v1
+      BP_CI_REPORT_DIR: ${{ github.workspace }}/docs/validation/blueprint/current/takeover-ci/${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Guard the working baseline (tracked diff must be empty)
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: Install plugin dev dependencies
+        working-directory: integrations/deepseek-harness/xuanling-blueprint
+        run: npm ci --no-audit --no-fund
+
+      - name: Install isolated test harness dependencies
+        working-directory: test/blueprint
+        run: npm ci --no-audit --no-fund
+
+      - name: N-STATIC typecheck
+        working-directory: integrations/deepseek-harness/xuanling-blueprint
+        run: npm run typecheck
+
+      - name: N-STATIC lint
+        working-directory: integrations/deepseek-harness/xuanling-blueprint
+        run: npm run lint
+
+      - name: N-BUILD
+        working-directory: integrations/deepseek-harness/xuanling-blueprint
+        run: npm run build
+
+      - name: N-FOUNDATION
+        working-directory: integrations/deepseek-harness/xuanling-blueprint
+        run: node scripts/verify.mjs --plan-id "$BP_PLAN_ID" --report-dir "$BP_CI_REPORT_DIR/suites" --suite foundation
+
+      - name: N-RED (expected-red evidence; never a feature green)
+        working-directory: integrations/deepseek-harness/xuanling-blueprint
+        run: node scripts/verify.mjs --plan-id "$BP_PLAN_ID" --report-dir "$BP_CI_REPORT_DIR/suites" --suite red-oracles
+
+      - name: N-DEFINITION + N-RESOURCES + N-SECURITY (all scopes)
+        working-directory: integrations/deepseek-harness/xuanling-blueprint
+        run: |
+          node scripts/verify.mjs --plan-id "$BP_PLAN_ID" --report-dir "$BP_CI_REPORT_DIR/suites" --suite definition
+          node scripts/verify.mjs --plan-id "$BP_PLAN_ID" --report-dir "$BP_CI_REPORT_DIR/suites" --suite resources
+          node scripts/verify.mjs --plan-id "$BP_PLAN_ID" --report-dir "$BP_CI_REPORT_DIR/suites" --suite security --scope all
+
+      - name: N-RUNTIME + N-RECOVERY + N-CRITICAL (three consecutive passes)
+        working-directory: integrations/deepseek-harness/xuanling-blueprint
+        run: |
+          node scripts/verify.mjs --plan-id "$BP_PLAN_ID" --report-dir "$BP_CI_REPORT_DIR/suites" --suite runtime
+          node scripts/verify.mjs --plan-id "$BP_PLAN_ID" --report-dir "$BP_CI_REPORT_DIR/suites" --suite recovery --scope all
+          node scripts/verify.mjs --plan-id "$BP_PLAN_ID" --report-dir "$BP_CI_REPORT_DIR/suites" --suite critical --scope all --repeat 3
+
+      - name: N-PORTABILITY + N-API (all)
+        working-directory: integrations/deepseek-harness/xuanling-blueprint
+        run: |
+          node scripts/verify.mjs --plan-id "$BP_PLAN_ID" --report-dir "$BP_CI_REPORT_DIR/suites" --suite portability
+          node scripts/verify.mjs --plan-id "$BP_PLAN_ID" --report-dir "$BP_CI_REPORT_DIR/suites" --suite api --scope all
+
+      - name: N-PLATFORM (real OS identity)
+        working-directory: integrations/deepseek-harness/xuanling-blueprint
+        run: node scripts/verify.mjs --plan-id "$BP_PLAN_ID" --report-dir "$BP_CI_REPORT_DIR/suites" --suite platform
+
+      - name: Acceptance and live-runner source regression (synthetic, not live)
+        working-directory: integrations/deepseek-harness/xuanling-blueprint
+        run: node --experimental-transform-types --test test/takeover/acceptance.test.mjs test/live/journey.test.mjs
+
+      - name: N-LIVE keyless oracle (exact typed not-run, never blanket nonzero)
+        working-directory: integrations/deepseek-harness/xuanling-blueprint
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict'
+          import { spawnSync } from 'node:child_process'
+          import { readFileSync } from 'node:fs'
+          import { join } from 'node:path'
+          const reportDir = join(process.env.BP_CI_REPORT_DIR, 'keyless-live')
+          const env = { ...process.env, BP_LIVE_PROVIDER_KEY: '', BP_LIVE_PROVIDER_BASE_URL: '', BP_LIVE_PROVIDER_MODEL: '' }
+          const child = spawnSync(process.execPath, ['scripts/verify.mjs', '--plan-id', process.env.BP_PLAN_ID, '--report-dir', reportDir, '--suite', 'live'], { env, encoding: 'utf8' })
+          assert.equal(child.error, undefined)
+          assert.equal(child.signal, null)
+          assert.equal(child.status, 1)
+          const report = JSON.parse(readFileSync(join(reportDir, 'w7.live-report.json'), 'utf8'))
+          assert.equal(report.plan_id, process.env.BP_PLAN_ID)
+          assert.equal(report.suite, 'live')
+          assert.equal(report.passed, false)
+          assert.equal(report.clean_acceptance_count, 0)
+          assert.equal(report.runs.length, 1)
+          const run = report.runs[0]
+          assert.equal(run.passed, false)
+          assert.equal(run.results.length, 1)
+          assert.equal(run.results[0].id, 'L1')
+          assert.equal(run.results[0].status, 'not-run')
+          assert.equal(run.results[0].reason_code, 'LIVE_CONFIGURATION_MISSING')
+          assert.deepEqual(report.evidence_fingerprint_after, report.evidence_fingerprint)
+          assert.deepEqual(run.evidence_fingerprint_after, run.evidence_fingerprint)
+          console.log('Keyless oracle confirmed: LIVE_CONFIGURATION_MISSING; real live remains NOT-RUN')
+          JS
+
+      - name: Record OS marker for platform evidence
+        run: node -e "console.log('platform evidence:', process.platform, process.arch, process.version)"
+
+      - name: Upload verification reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blueprint-verify-${{ matrix.os }}
+          path: ${{ env.BP_CI_REPORT_DIR }}/
+          if-no-files-found: error

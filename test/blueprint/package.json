@@ -1,0 +1,19 @@
+{
+  "name": "@xuanling-rs/blueprint-test-harness",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Isolated probe and verification workspace for the DSH blueprint plugin plan. Not a published package and not part of the npm runtime.",
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.2.1-alpha.2",
+    "@deepseek-ai/dsh-storage-sqlite": "0.2.1-alpha.2"
+  },
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.0",
+    "playwright": "^1.63.0"
+  }
+}

@@ -16,6 +16,12 @@ not import this tree at runtime.
 | `host-integration/fixtures/skill-routing` | Shared DSH and ZCode Skill-routing cases. |
 | `host-integration/verify-*.mjs` | Deterministic projection, cost, routing, and real-binary verifiers used by the current host-efficiency plan. |
 | `release` | Repository-promotion and immutable-release fixtures. |
+| `blueprint` | Runnable DSH blueprint harness, capability collectors, and fixtures. |
+
+New blueprint reports default to `docs/validation/blueprint/current`, retaining
+their plan and phase subdirectories. Historical proofs are stored under
+`docs/validation/blueprint/archives` with manifests of original paths and hashes;
+historical seals do not establish acceptance of the current checkout.
 
 Historical filesystem A/B/C evaluation, the standalone Memory retrieval
 evaluation, host dogfooding workspaces, database snapshots, reports, and their

@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "code-review",
+  "name": "代码审查",
+  "resources": {
+    "reviewer": { "kind": "agent", "path": "lib/agents/reviewer.md" },
+    "reviewSkill": { "kind": "skill", "source": { "kind": "shared", "rootId": "user-agents-skills", "path": "sample" } },
+    "resultSchema": { "kind": "schema", "path": "lib/schemas/review-result.json" },
+    "repoTools": { "kind": "mcp", "bindingId": "repo-readonly" }
+  },
+  "graph": {
+    "nodes": [
+      { "id": "input", "kind": "input", "outputs": { "request": "string" } },
+      {
+        "id": "review",
+        "kind": "agentTask",
+        "agentRef": "reviewer",
+        "skillRefs": ["reviewSkill"],
+        "toolsetRefs": ["repoTools"],
+        "outputSchemaRef": "resultSchema",
+        "inputs": { "input": "string" },
+        "outputs": { "result": "json" }
+      },
+      { "id": "result", "kind": "output", "inputs": { "value": "json" } }
+    ],
+    "edges": [
+      { "kind": "data", "from": "input.request", "to": "review.input" },
+      { "kind": "data", "from": "review.result", "to": "result.value" }
+    ]
+  },
+  "presentation": { "nodes": { "review": { "x": 380, "y": 160 } } },
+  "metadata": { "example": true }
+}

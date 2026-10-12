@@ -4,6 +4,7 @@ import path from "node:path";
 import { expectedOptionalDependencies } from "../packages/xuanling-mcp/lib/targets.js";
 import {
   MAIN_PACKAGE_DIR,
+  REPO_ROOT,
   readJson,
   readWorkspaceLicense,
   readWorkspaceVersion,
@@ -32,6 +33,18 @@ assert.deepEqual(
   expectedOptionalDependencies(workspaceVersion),
   "npm platform aliases must match the release version and target map",
 );
+
+for (const directory of [
+  "npm",
+  ...["xuanling-memory", "xuanling-skills", "xuanling-tools", "xuanling-tools-replace", "xuanling-blueprint"]
+    .map((name) => `integrations/deepseek-harness/${name}`),
+  ...["xuanling-mcp", "xuanling-mcp-replace"]
+    .map((name) => `integrations/zcode-plugin/plugins/${name}/.zcode-plugin`),
+]) {
+  const filename = directory.endsWith(".zcode-plugin") ? "plugin.json" : "package.json";
+  const manifest = await readJson(path.join(REPO_ROOT, directory, filename));
+  assert.equal(manifest.version, workspaceVersion, `${directory}: release version must match Cargo`);
+}
 
 const expectedVersion = process.env.XUANLING_VERSION;
 if (expectedVersion && expectedVersion !== workspaceVersion) {

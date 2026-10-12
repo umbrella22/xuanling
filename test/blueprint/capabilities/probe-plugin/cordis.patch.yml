@@ -1,0 +1,7 @@
+# W0.2 capability probe patch: inserts the probe service from this package.
+# The row name is the package root specifier; the default export is the
+# Cordis service class (see templates/decoration and host-plugin.md).
+- insert:
+    - id: blueprint-probe
+      name: '@xuanling-rs/blueprint-probe'
+      config: {}

@@ -4,6 +4,39 @@ All notable release changes are recorded here. XuanLing uses immutable release
 tags and publishes the launcher, native packages, DeepSeek Harness bundles, and
 ZCode projection from the same source commit.
 
+## 0.5.0 - 2026-10-12
+
+### Added
+
+- An optional native DSH Blueprint plugin with typed graph editing, frozen
+  resources, durable Runs and Attempts, scoped Agents, structured output,
+  human decisions, cancellation and recovery.
+- Optional `agentTask.teamStage` execution through DSH Agent Teams, with one
+  native task, exact Lead/member bindings, task CAS, member evidence and
+  physical artifact verification before settling the original Attempt.
+- Read-only conversation views and native member navigation that preserve
+  DSH's composer, drafts, streaming and approval interface across refresh and
+  same-profile restart.
+- A Blueprint tarball and file-digest manifest distributed as GitHub Release
+  assets. The existing eight npm items and ZCode projection share version 0.5.0.
+
+### Runtime and Upgrade Notes
+
+- DSH support follows the latest official channel providing the required
+  capabilities. Every upgrade and acceptance run resolves the current exact
+  package/profile tuple. Breaking upstream changes are supported; older DSH
+  runtimes, compatibility shims, downgrades and old-profile migrations are not.
+- Blueprint does not add a private default execution deadline. Explicit caller
+  budgets and native DSH provider/tool cancellation policies still apply.
+- Unknown external effects require recovery rather than automatic replay.
+  Cancellation drains the full stage member set and preserves unrelated tasks.
+- The generic MCP contract remains 3 and the persisted Memory contract remains
+  2. XuanLing RunRecord legacy reads and backup/restore remain supported.
+- Real TeamStage acceptance covers macOS/native Edge/GLM single-member
+  execution. Installed multi-member/fork/cancellation/direct/PTC checks use
+  deterministic models; they do not establish real provider or browser
+  acceptance on other platforms.
+
 ## 0.3.2 - 2026-08-31
 
 This patch release hardens Memory startup after the `0.3.1` live-host

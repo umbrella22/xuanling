@@ -1,0 +1,40 @@
+{
+  "name": "@xuanling-rs/blueprint-probe",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "W0.2 external capability probe: proves bundle patch, client module, hand-written typert Remote and platform singletons outside the DSH workspace.",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./typert": "./typert.host.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "typert.host.js",
+    "cordis.patch.yml",
+    "locale/en.json",
+    "locale/zh.json",
+    "icon.svg"
+  ],
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "platform": "web",
+      "inject": ["@deepseek-ai/dsh-client-ui-sidebar"]
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-typert-protocol": "*",
+    "zod": "*"
+  },
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "license": "MIT"
+}

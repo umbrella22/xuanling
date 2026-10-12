@@ -15,6 +15,11 @@
 | `host-integration/fixtures/skill-routing` | DSH 与 ZCode 共用的 Skill 路由用例。 |
 | `host-integration/verify-*.mjs` | 当前宿主效率计划使用的投影、成本、路由和真实 binary 确定性 verifier。 |
 | `release` | 仓库 promotion 与不可变发布 fixture。 |
+| `blueprint` | 可运行的 DSH 蓝图 harness、capability collector 与 fixture。 |
+
+新蓝图报告默认写入 `docs/validation/blueprint/current`，保留各 plan 与阶段子目录。
+历史证据存放在 `docs/validation/blueprint/archives`，manifest 记录原路径与哈希；
+历史密封不证明当前 checkout 已通过验收。
 
 历史 filesystem A/B/C evaluation、独立 Memory retrieval evaluation、宿主 dogfooding workspace、
 database snapshot、报告及其 live-only overlay 已在对应验收 Wave 关闭后移除。其结论保留在相关

@@ -10,3 +10,6 @@ npm/node_modules/
 *.orig
 .fastembed_cache/
 docs/*
+docs/
+# Local provider credentials are never release inputs.
+/key/
