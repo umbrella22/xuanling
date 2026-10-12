@@ -23,7 +23,7 @@ export async function getCases(helpers) {
       const reportPath = join(reportDir, 'w0.2-probe-report.json')
       const planId = helpers.planId ?? 'dsh-blueprint-plugin-v1'
       if (!existsSync(join(packageRoot, 'lib', 'index.js'))) {
-        throw new Error('lib missing — run `npm run build` first (build absence is a harness failure)')
+        throw new Error('lib missing — run `pnpm run build` first (build absence is a harness failure)')
       }
       const res = spawnSync(process.execPath, [
         join(probeDir, 'capabilities', 'probe.mjs'),

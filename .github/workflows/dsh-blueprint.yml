@@ -31,6 +31,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v5.0.0
+        with:
+          package_json_file: integrations/deepseek-harness/xuanling-blueprint/package.json
+
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -42,23 +46,23 @@ jobs:
 
       - name: Install plugin dev dependencies
         working-directory: integrations/deepseek-harness/xuanling-blueprint
-        run: npm ci --no-audit --no-fund
+        run: pnpm install --frozen-lockfile
 
       - name: Install isolated test harness dependencies
         working-directory: test/blueprint
-        run: npm ci --no-audit --no-fund
+        run: pnpm install --frozen-lockfile
 
       - name: N-STATIC typecheck
         working-directory: integrations/deepseek-harness/xuanling-blueprint
-        run: npm run typecheck
+        run: pnpm run typecheck
 
       - name: N-STATIC lint
         working-directory: integrations/deepseek-harness/xuanling-blueprint
-        run: npm run lint
+        run: pnpm run lint
 
       - name: N-BUILD
         working-directory: integrations/deepseek-harness/xuanling-blueprint
-        run: npm run build
+        run: pnpm run build
 
       - name: N-FOUNDATION
         working-directory: integrations/deepseek-harness/xuanling-blueprint

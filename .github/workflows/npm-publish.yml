@@ -101,6 +101,9 @@ jobs:
     environment: npmjs
     steps:
       - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v5.0.0
+        with:
+          package_json_file: integrations/deepseek-harness/xuanling-blueprint/package.json
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
@@ -291,6 +294,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v5.0.0
+        with:
+          package_json_file: integrations/deepseek-harness/xuanling-blueprint/package.json
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
@@ -298,8 +304,8 @@ jobs:
         run: npm install --global npm@11.6.2
       - name: Install locked plugin and harness dependencies
         run: |
-          npm ci --prefix integrations/deepseek-harness/xuanling-blueprint --no-audit --no-fund
-          npm ci --prefix test/blueprint --no-audit --no-fund
+          pnpm --dir integrations/deepseek-harness/xuanling-blueprint install --frozen-lockfile
+          pnpm --dir test/blueprint install --frozen-lockfile
       - name: Prepare disposable report roots for package contracts
         run: |
           mkdir -p \
@@ -310,10 +316,10 @@ jobs:
       - name: Verify and build the optional plugin
         working-directory: integrations/deepseek-harness/xuanling-blueprint
         run: |
-          npm run typecheck
-          npm run lint
-          npm run build
-          npm test
+          pnpm run typecheck
+          pnpm run lint
+          pnpm run build
+          pnpm test
       - name: Pack Blueprint release asset
         run: |
           node npm/scripts/pack-blueprint.mjs \
@@ -351,6 +357,10 @@ jobs:
         with:
           name: dsh-bundles
           path: npm/dsh-release
+      - uses: actions/download-artifact@v8
+        with:
+          name: blueprint-release
+          path: npm/blueprint-release
       - name: Verify all core release trust and DSH artifacts
         run: |
           node npm/scripts/verify-release-set.mjs \
@@ -360,6 +370,10 @@ jobs:
             --require-release-trust
           node npm/scripts/verify-dsh-release-set.mjs \
             --root npm/dsh-release \
+            --version "${{ needs.validate-release.outputs.version }}" \
+            --commit "${{ needs.validate-release.outputs.commit }}"
+          node npm/scripts/verify-blueprint-release.mjs \
+            --root npm/blueprint-release \
             --version "${{ needs.validate-release.outputs.version }}" \
             --commit "${{ needs.validate-release.outputs.commit }}"
       - name: Generate and verify immutable ZCode marketplace artifact
@@ -429,6 +443,10 @@ jobs:
           path: npm/dsh-release
       - uses: actions/download-artifact@v8
         with:
+          name: blueprint-release
+          path: npm/blueprint-release
+      - uses: actions/download-artifact@v8
+        with:
           name: zcode-marketplace
           path: npm/zcode-release
       - name: Reverify exact release bytes before publishing
@@ -445,6 +463,10 @@ jobs:
             --require-release-trust
           node npm/scripts/verify-dsh-release-set.mjs \
             --root npm/dsh-release \
+            --version "${{ needs.validate-release.outputs.version }}" \
+            --commit "${{ needs.validate-release.outputs.commit }}"
+          node npm/scripts/verify-blueprint-release.mjs \
+            --root npm/blueprint-release \
             --version "${{ needs.validate-release.outputs.version }}" \
             --commit "${{ needs.validate-release.outputs.commit }}"
           node npm/scripts/verify-zcode-marketplace.mjs \
@@ -477,12 +499,21 @@ jobs:
               --manifest "npm/dsh-release/$PACKAGE/$PACKAGE.pack.json" \
               --tag latest
           done
-      - name: Reconcile all eight scoped immutable registry items
+      - name: Publish scoped Blueprint plugin
+        run: |
+          set -euo pipefail
+          test "$(node -p "require('./npm/blueprint-release/blueprint.pack.json').name")" = "@xuanling-rs/xuanling-dsh-blueprint"
+          node npm/scripts/publish-idempotent.mjs \
+            --manifest npm/blueprint-release/blueprint.pack.json \
+            --tag latest
+      - name: Reconcile all nine scoped immutable registry items
         run: |
           node npm/scripts/verify-published-release.mjs \
             --core-root npm/release \
             --dsh-root npm/dsh-release \
+            --blueprint-root npm/blueprint-release \
             --version "${{ needs.validate-release.outputs.version }}"
+          echo "Expected 9 release items verified"
 
   promote:
     name: directly promote verified ZCode marketplace
@@ -529,6 +560,10 @@ jobs:
           path: npm/dsh-release
       - uses: actions/download-artifact@v8
         with:
+          name: blueprint-release
+          path: npm/blueprint-release
+      - uses: actions/download-artifact@v8
+        with:
           name: zcode-marketplace
           path: npm/zcode-release
       - name: Reconcile registry and ZCode artifact before promotion
@@ -541,6 +576,7 @@ jobs:
           node npm/scripts/verify-published-release.mjs \
             --core-root npm/release \
             --dsh-root npm/dsh-release \
+            --blueprint-root npm/blueprint-release \
             --version "${{ needs.validate-release.outputs.version }}"
           node npm/scripts/verify-zcode-marketplace.mjs \
             --root npm/zcode-release/marketplace \

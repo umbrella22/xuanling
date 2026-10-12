@@ -3,24 +3,24 @@
 English | [Simplified Chinese](README-ZH.md)
 
 This directory contains the npm distribution and release automation for
-XuanLing MCP 0.5.1. A complete release contains eight immutable npm items: one
+XuanLing MCP 0.5.2. A complete release contains nine immutable npm items: one
 stable Node.js launcher, three native variants published under platform-specific
-prerelease versions, and four DeepSeek Harness bundles. The same verified core
-artifacts produce the ZCode marketplace archive.
+prerelease versions, four DeepSeek Harness bundles, and the Blueprint/TeamStage
+plugin. The same verified core artifacts produce the ZCode marketplace archive.
 
 The optional [Blueprint/TeamStage plugin](../integrations/deepseek-harness/xuanling-blueprint/README.md)
-is also built from the release commit and shipped as a GitHub Release tarball
-with `blueprint.pack.json`. Its npm package name is not part of the eight-item
-registry release set.
+is built from the release commit, published as
+`@xuanling-rs/xuanling-dsh-blueprint`, and shipped as a GitHub Release tarball
+with `blueprint.pack.json`.
 
 ## Package Set
 
 | Installed alias | Published version | Platform |
 | --- | --- | --- |
-| `@xuanling-rs/xuanling-mcp` | `0.5.1` | Stable Node.js launcher |
-| `@xuanling-rs/xuanling-mcp-darwin-arm64` | `0.5.1-darwin-arm64` | macOS Apple Silicon |
-| `@xuanling-rs/xuanling-mcp-linux-x64-gnu` | `0.5.1-linux-x64-gnu` | Linux x64, glibc 2.35 or newer |
-| `@xuanling-rs/xuanling-mcp-win32-x64-msvc` | `0.5.1-win32-x64-msvc` | Windows x64 MSVC |
+| `@xuanling-rs/xuanling-mcp` | `0.5.2` | Stable Node.js launcher |
+| `@xuanling-rs/xuanling-mcp-darwin-arm64` | `0.5.2-darwin-arm64` | macOS Apple Silicon |
+| `@xuanling-rs/xuanling-mcp-linux-x64-gnu` | `0.5.2-linux-x64-gnu` | Linux x64, glibc 2.35 or newer |
+| `@xuanling-rs/xuanling-mcp-win32-x64-msvc` | `0.5.2-win32-x64-msvc` | Windows x64 MSVC |
 
 The launcher and native variants are published under the `@xuanling-rs` npm
 organization. The stable package declares unscoped installation aliases as
@@ -33,10 +33,11 @@ DeepSeek Harness installs these public bundles directly into a profile:
 
 | Package | Purpose |
 | --- | --- |
-| `@xuanling-rs/xuanling-dsh-memory@0.5.1` | Complete Memory v2 profile with DSH schema projection |
-| `@xuanling-rs/xuanling-dsh-skills@0.5.1` | File and Memory workflow Skills plus strict overwrite policy |
-| `@xuanling-rs/xuanling-dsh-tools@0.5.1` | Additive full XuanLing catalog |
-| `@xuanling-rs/xuanling-dsh-tools-replace@0.5.1` | Opt-in same-name filesystem replacement facade with XuanLing CAS/batch and native host projections |
+| `@xuanling-rs/xuanling-dsh-memory@0.5.2` | Complete Memory v2 profile with DSH schema projection |
+| `@xuanling-rs/xuanling-dsh-skills@0.5.2` | File and Memory workflow Skills plus strict overwrite policy |
+| `@xuanling-rs/xuanling-dsh-tools@0.5.2` | Additive full XuanLing catalog |
+| `@xuanling-rs/xuanling-dsh-tools-replace@0.5.2` | Opt-in same-name filesystem replacement facade with XuanLing CAS/batch and native host projections |
+| `@xuanling-rs/xuanling-dsh-blueprint@0.5.2` | Optional typed Blueprint editor and native TeamStage execution |
 
 The three tool bundles depend on the exact stable `@xuanling-rs/xuanling-mcp` version in the
 same DSH profile. The Skills bundle contains no MCP runtime.
@@ -44,7 +45,7 @@ same DSH profile. The Skills bundle contains no MCP runtime.
 ## Installation
 
 ```sh
-npm install --global @xuanling-rs/xuanling-mcp@0.5.1
+npm install --global @xuanling-rs/xuanling-mcp@0.5.2
 xuanling-mcp --workspace-root /absolute/path/to/project
 ```
 
@@ -57,7 +58,7 @@ An MCP host can pin the same release through `npx`:
       "command": "npx",
       "args": [
         "-y",
-        "@xuanling-rs/xuanling-mcp@0.5.1",
+        "@xuanling-rs/xuanling-mcp@0.5.2",
         "--workspace-root",
         "/absolute/path/to/project"
       ]
@@ -68,6 +69,17 @@ An MCP host can pin the same release through `npx`:
 
 The capability contract is documented in the
 [MCP integration guide](../docs/guides/xuanling-mcp-integration.md).
+
+Install the optional Blueprint and TeamStage plugin with the repository's
+pnpm-managed package flow:
+
+```sh
+pnpm add --save-exact @xuanling-rs/xuanling-dsh-blueprint@0.5.2
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.5.2
+```
+
+Restart the selected DSH profile after installation. TeamStage still requires
+the native Agent Teams profile to be enabled explicitly.
 
 ## Distribution Guarantees
 
@@ -81,7 +93,7 @@ The capability contract is documented in the
   provenance at publication, and binds its binary SHA-256 to the source commit.
   The ZCode marketplace archive also receives a GitHub OIDC build-provenance
   attestation before promotion.
-- XuanLing 0.5.1 does not claim a Developer ID or Authenticode publisher
+- XuanLing 0.5.2 does not claim a Developer ID or Authenticode publisher
   signature. Those signatures may be added in a later release, but their
   absence does not change the MCP protocol or package integrity contract.
 - Every native package contains the XuanLing MIT license and generated
@@ -98,12 +110,19 @@ npm --prefix npm run check
 npm --prefix npm run check:docs
 npm --prefix npm test
 
+pnpm --dir integrations/deepseek-harness/xuanling-blueprint install --frozen-lockfile
+pnpm --dir test/blueprint install --frozen-lockfile
+pnpm --dir integrations/deepseek-harness/xuanling-blueprint run typecheck
+pnpm --dir integrations/deepseek-harness/xuanling-blueprint run lint
+pnpm --dir integrations/deepseek-harness/xuanling-blueprint run build
+pnpm --dir integrations/deepseek-harness/xuanling-blueprint test
+
 node npm/scripts/pack-dsh-bundles.mjs \
   --out npm/dist/dsh \
   --commit "$(git rev-parse HEAD)"
 node npm/scripts/verify-dsh-release-set.mjs \
   --root npm/dist/dsh \
-  --version 0.5.1 \
+  --version 0.5.2 \
   --commit "$(git rev-parse HEAD)"
 
 node npm/scripts/generate-third-party-licenses.mjs \
@@ -150,8 +169,9 @@ release requires:
 1. npm metadata, tests, Node syntax checks, and `git diff --check` to pass.
 2. Locked release binaries, third-party notices, package metadata, tarball
    contents, and integrity checks to pass on all three platforms.
-3. `verify-release-set.mjs` and `verify-dsh-release-set.mjs` to observe all
-   eight npm items from the same commit.
+3. `verify-release-set.mjs`, `verify-dsh-release-set.mjs`, and
+   `verify-blueprint-release.mjs` to observe all nine npm items from the same
+   commit.
 4. The generated ZCode tree and archive to pass exact file, release-trust
    metadata, package hash, source commit, deterministic digest, and GitHub
    artifact-attestation checks.
@@ -165,9 +185,9 @@ release requires:
 7. A stable tag named `xuanling-mcp-v<version>` to trigger
    [npm-publish.yml](../.github/workflows/npm-publish.yml).
 
-The publish workflow publishes three native versions, the stable launcher, and
-the four DSH bundles in that order. It then reconciles all eight registry
-integrities before checking out `umbrella22/xuanling-zcode-marketplace` with
+The publish workflow publishes three native versions, the stable launcher, the
+four DSH bundles, and Blueprint in that order. It then reconciles all nine
+registry integrities before checking out `umbrella22/xuanling-zcode-marketplace` with
 the Environment credential. The verified ZCode tree is committed and `main`
 plus `xuanling-mcp-v<version>` are pushed atomically. A matching existing tag
 is an idempotent no-op; any integrity or tree mismatch is a hard failure. Local
@@ -175,10 +195,10 @@ is an idempotent no-op; any integrity or tree mismatch is a hard failure. Local
 
 ### Trusted Publishing
 
-All eight package names already exist and the release workflow uses npm Trusted
+All nine package names already exist and the release workflow uses npm Trusted
 Publishing through the `npmjs` GitHub environment. No long-lived npm token or
 bootstrap secret is required. Configure package-level Trusted Publishing for
-each scoped package with:
+each scoped package, including Blueprint, with:
 
 ```text
 GitHub owner: umbrella22

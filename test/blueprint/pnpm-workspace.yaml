@@ -1,0 +1,11 @@
+packages:
+  - '.'
+
+# Keep the isolated harness on the same reviewed DSH build-script policy as
+# the Blueprint package. Test setup must remain reproducible under frozen pnpm.
+allowBuilds:
+  '@deepseek-ai/dsh-subprocess-local': true
+  '@google/genai': false
+  koffi: true
+  node-pty: true
+  protobufjs: false

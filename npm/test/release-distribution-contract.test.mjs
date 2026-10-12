@@ -291,8 +291,13 @@ test("release workflow separates default preflight from an explicit no-publish c
   }
   assert.match(
     workflowJob(source, "build-blueprint"),
-    /npm run build[\s\S]*npm test/,
-    "Blueprint package tests must run after the build artifact exists",
+    /pnpm run build[\s\S]*pnpm test/,
+    "Blueprint package tests must run through the pinned pnpm manager after the build artifact exists",
+  );
+  assert.match(
+    workflowJob(source, "build-blueprint"),
+    /pnpm --dir integrations\/deepseek-harness\/xuanling-blueprint install --frozen-lockfile[\s\S]*pnpm --dir test\/blueprint install --frozen-lockfile/,
+    "Blueprint and its isolated harness must use immutable pnpm lockfiles",
   );
   assert.match(
     workflowJob(source, "build-blueprint"),
@@ -323,17 +328,22 @@ test("release workflow publishes the complete ordered npm set", () => {
   const nativePublish = source.indexOf("Publish scoped native variants");
   const launcherPublish = source.indexOf("Publish scoped stable launcher");
   const dshPublish = source.indexOf("Publish scoped DSH bundles");
-  assert.ok(nativePublish !== -1 && launcherPublish !== -1 && dshPublish !== -1);
-  assert.ok(nativePublish < launcherPublish && launcherPublish < dshPublish);
+  const blueprintPublish = source.indexOf("Publish scoped Blueprint plugin");
+  assert.ok(nativePublish !== -1 && launcherPublish !== -1 && dshPublish !== -1 && blueprintPublish !== -1);
+  assert.ok(nativePublish < launcherPublish && launcherPublish < dshPublish && dshPublish < blueprintPublish);
   assert.match(source, /check-release-prerequisites\.mjs/);
   for (const name of [
     "xuanling-dsh-memory",
     "xuanling-dsh-tools",
     "xuanling-dsh-tools-replace",
     "xuanling-dsh-skills",
+    "xuanling-dsh-blueprint",
   ]) {
     assert.match(source, new RegExp(name));
   }
+  assert.match(source, /verify-blueprint-release\.mjs/);
+  assert.match(source, /--blueprint-root npm\/blueprint-release/);
+  assert.match(source, /Expected 9 release items/);
 });
 
 test("promotion is gated on the complete registry set and zcode-packer permission", () => {

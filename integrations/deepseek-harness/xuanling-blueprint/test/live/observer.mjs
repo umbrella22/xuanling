@@ -32,6 +32,13 @@ export function apply(ctx) {
     const item = record(agent)
     if (item) {
       item.requestSeen = true
+      // `agent/request` is the public AgentLoop admission boundary. The
+      // `isAgentLoopRequest()` marker is process-local, so a pnpm profile can
+      // legitimately resolve another dsh-llm instance for the observer even
+      // when the runtime itself is using the reviewed DSH tuple. Keep the
+      // public event as the authoritative loop fact and use the marker as an
+      // additive stream check below.
+      item.loopRequestSeen = true
       const aborted = () => { item.requestAborted = true; flush() }
       if (signal.aborted) aborted()
       else signal.addEventListener('abort', aborted, { once: true })
@@ -53,7 +60,7 @@ export function apply(ctx) {
     // Only attribute AgentLoop-marked calls to the current public initiator.
     const agent = ctx.get('agents')?.currentInitiator()
     const item = agent && record(agent)
-    if (item && isAgentLoopRequest(options)) { item.loopRequestSeen = true; flush() }
+    if (item && (isAgentLoopRequest(options) || item.requestSeen)) { item.loopRequestSeen = true; flush() }
     for await (const chunk of next()) {
       if (item && item.loopRequestSeen && chunk.type === 'text-delta' && chunk.text.length > 0) { item.responseSeen = true; flush() }
       yield chunk

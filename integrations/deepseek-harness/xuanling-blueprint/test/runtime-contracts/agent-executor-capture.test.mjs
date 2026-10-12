@@ -3,8 +3,10 @@
  * Uses the existing W1 public scope/factory fixture, not a new A helper. */
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { hasPnpmImporterDependency, readPnpmLock } from '../package/pnpm-lock.mjs'
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { captureAgentModelSelection } from '../../src/host/agent-executor.ts'
 import { harness, directSpec, contentTool, executeTool } from './agent-fixtures.mjs'
 
@@ -80,14 +82,12 @@ test('C-03 source provenance: compat body is unchanged; full pinned MIT notice a
   assert.ok(licenseOffset >= 0, 'C-03: the full license, not merely an MIT label, must be present')
   assert.equal(hash(Buffer.from(notice.slice(licenseOffset))), 'ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be')
   const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'))
-  const lock = JSON.parse(readFileSync(new URL('../../package-lock.json', import.meta.url), 'utf8'))
+  const lock = readPnpmLock(fileURLToPath(new URL('../../', import.meta.url)))
   assert.ok(pkg.files.includes('THIRD-PARTY-NOTICES.md'), 'C-03: packed candidate includes attribution/license')
   assert.equal(pkg.peerDependencies['@deepseek-ai/dsh-tools'], '0.2.1-alpha.2')
-  assert.deepEqual(lock.packages[''].peerDependencies, pkg.peerDependencies)
-  assert.equal(lock.packages['node_modules/@deepseek-ai/dsh-tools'].version, '0.2.1-alpha.2')
+  assert.equal(hasPnpmImporterDependency(lock, 'devDependencies', '@deepseek-ai/dsh-tools', '0.2.1-alpha.2'), true)
   assert.equal(Object.hasOwn(pkg.dependencies ?? {}, '@deepseek-ai/dsh-tools'), false,
     'C-03: the packed plugin relies on the host peer, not a private production tools runtime')
-  assert.equal(lock.packages[''].devDependencies['@deepseek-ai/dsh-tools'], pkg.devDependencies['@deepseek-ai/dsh-tools'])
-  assert.equal(lock.packages['node_modules/@deepseek-ai/dsh-tools'].dev, true,
+  assert.equal(hasPnpmImporterDependency(lock, 'devDependencies', '@deepseek-ai/dsh-tools', pkg.devDependencies['@deepseek-ai/dsh-tools']), true,
     'C-03: the explicitly declared local test runtime is a development dependency')
 })

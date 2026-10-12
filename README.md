@@ -30,10 +30,16 @@ silently become canonical state.
 
 The optional [Blueprint plugin](integrations/deepseek-harness/xuanling-blueprint/README.md)
 provides a typed graph editor, durable graph execution and optional native
-Agent Teams stages. Version 0.5.1 includes an installable GitHub Release tarball
-and a digest manifest. TeamStage preserves the native composer and approval UI,
+Agent Teams stages. Version 0.5.2 includes an installable GitHub Release tarball
+and a digest manifest, plus the pnpm-installable
+`@xuanling-rs/xuanling-dsh-blueprint@0.5.2` package. TeamStage preserves the native composer and approval UI,
 verifies structured output and physical artifacts, and records uncertain effects
 as recovery-required. DSH runtime support follows its latest capability channel.
+
+```sh
+pnpm add --save-exact @xuanling-rs/xuanling-dsh-blueprint@0.5.2
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.5.2
+```
 
 ## Installation
 
@@ -41,7 +47,7 @@ The npm launcher requires Node.js 18.17 or newer and installs the matching
 native binary for the current platform.
 
 ```sh
-npm install --global @xuanling-rs/xuanling-mcp@0.5.1
+npm install --global @xuanling-rs/xuanling-mcp@0.5.2
 xuanling-mcp --version
 ```
 
@@ -54,7 +60,7 @@ An MCP client can pin the same version without a global installation:
       "command": "npx",
       "args": [
         "-y",
-        "@xuanling-rs/xuanling-mcp@0.5.1",
+        "@xuanling-rs/xuanling-mcp@0.5.2",
         "--workspace-root",
         "/absolute/path/to/project",
         "--tool-profile",

@@ -9,6 +9,7 @@ const PACKAGE_NAMES = Object.freeze([
   "@xuanling-rs/xuanling-dsh-skills",
   "@xuanling-rs/xuanling-dsh-tools",
   "@xuanling-rs/xuanling-dsh-tools-replace",
+  "@xuanling-rs/xuanling-dsh-blueprint",
 ]);
 
 const args = parseArgs(process.argv.slice(2));

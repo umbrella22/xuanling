@@ -2,15 +2,21 @@
 
 ## 安装
 
-0.5.1插件通过GitHub Release tarball分发。在运行所需能力最新官方频道的明确DSH profile中安装：
+0.5.2 插件发布到 npm，同时作为带摘要清单的 tarball 附加到 GitHub Release。使用 pnpm 安装精确版本：
 
 ```sh
-dsh plugin --profile web add https://github.com/umbrella22/xuanling/releases/download/xuanling-mcp-v0.5.1/xuanling-rs-xuanling-dsh-blueprint-0.5.1.tgz
+pnpm add --save-exact @xuanling-rs/xuanling-dsh-blueprint@0.5.2
+```
+
+在运行所需能力最新官方频道的明确 DSH profile 中，也可以直接安装这个 package：
+
+```sh
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.5.2
 ```
 
 安装后重启该profile。TeamStage还需要显式启用原生Agent Teams profile。
 发行资产包含`blueprint.pack.json`，记录source commit与每个打包文件的SHA-256。
-本发行版没有发布Blueprint的npm package名称。
+同一不可变 package 会由 CI 与 npm registry 的 integrity 重新核对。
 
 [English](README.md)
 
@@ -306,9 +312,9 @@ fixture 翻译函数、静态渲染或单独截图不能证明原生生命周期
 在插件目录运行：
 
 ```sh
-npm run typecheck
-npm run lint
-npm run build
+pnpm run typecheck
+pnpm run lint
+pnpm run build
 node --experimental-transform-types --test test/takeover/acceptance.test.mjs test/live/journey.test.mjs
 node scripts/verify.mjs --plan-id dsh-blueprint-takeover-v1 --report-dir <fresh-evidence-dir> --suite critical --scope all --repeat 3
 node scripts/verify.mjs --plan-id dsh-blueprint-takeover-v1 --report-dir <fresh-evidence-dir> --suite live

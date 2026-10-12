@@ -16,7 +16,7 @@ Facade 不替换 `ctx.fs`。它通过该服务解析目标，把成功的 XuanLi
 CAS 冲突；继续前必须重新读取或取 hash。Facade 不暴露任何可绕过这些宿主策略的原始 XuanLing
 mutation 名称。
 
-Profile 内的 `@xuanling-rs/xuanling-mcp@0.5.1` launcher 由 bundle 自带 result adapter 包装。启动 DSH
+Profile 内的 `@xuanling-rs/xuanling-mcp@0.5.2` launcher 由 bundle 自带 result adapter 包装。启动 DSH
 前必须把 `XUANLING_WORKSPACE_ROOT` 设为已确认的绝对 workspace。缺少 root、官方 MCP bridge、原生
 图片工具或必需的 XuanLing definition 时，facade 会拒绝启动。
 

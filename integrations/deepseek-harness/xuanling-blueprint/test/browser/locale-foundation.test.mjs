@@ -6,6 +6,7 @@ import { stripTypeScriptTypes } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import test from 'node:test'
+import { hasPnpmImporterDependency, readPnpmLock } from '../package/pnpm-lock.mjs'
 import { fileURLToPath } from 'node:url'
 import { RUN_STATES, ATTEMPT_STATES } from '../../src/persistence/records.ts'
 import { defaultAriaLabelConfig } from '@xyflow/system'
@@ -95,12 +96,11 @@ test('C-01 locale/framework imports erase fully from the browser bootstrap runti
   assert.equal(locales.includes('@deepseek-ai/dsh-client-ui-slots'), false, 'NAMESPACE_AUGMENTATION_IS_TYPE_ONLY')
   assert.equal(bootstrap.includes('@deepseek-ai/dsh-client-locale/client'), false, 'NO_SECOND_LOCALE_RUNTIME')
   const manifest = JSON.parse(readFileSync(resolve(packageRoot, 'package.json'), 'utf8'))
-  const lock = JSON.parse(readFileSync(resolve(packageRoot, 'package-lock.json'), 'utf8'))
+  const lock = readPnpmLock(packageRoot)
   for (const name of ['@deepseek-ai/dsh-client-locale', '@deepseek-ai/dsh-client-ui-slots']) {
     assert.equal(manifest.devDependencies[name], '0.2.1-alpha.2')
     assert.equal(manifest.dependencies?.[name], undefined, 'FRAMEWORK_TYPES_STAY_DEV_ONLY')
-    assert.equal(lock.packages[''].devDependencies[name], manifest.devDependencies[name])
-    assert.equal(lock.packages[`node_modules/${name}`].dev, true)
+    assert.equal(hasPnpmImporterDependency(lock, 'devDependencies', name, manifest.devDependencies[name]), true)
   }
 })
 

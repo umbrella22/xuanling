@@ -2,22 +2,24 @@
 
 [English](README.md) | 简体中文
 
-本目录维护 XuanLing MCP 0.5.1 的 npm 分发与发布自动化。完整发行版包含八个不可变 npm
-item：一个稳定的 Node.js 启动器、三个使用平台 prerelease 版本的原生变体，以及四个
-DeepSeek Harness bundle。同一组经过验证的 core artifact 还会生成 ZCode marketplace archive。
+本目录维护 XuanLing MCP 0.5.2 的 npm 分发与发布自动化。完整发行版包含九个不可变 npm
+item：一个稳定的 Node.js 启动器、三个使用平台 prerelease 版本的原生变体、四个
+DeepSeek Harness bundle，以及 Blueprint/TeamStage 插件。同一组经过验证的 core artifact
+还会生成 ZCode marketplace archive。
 
 可选的 [Blueprint/TeamStage 插件](../integrations/deepseek-harness/xuanling-blueprint/README-ZH.md)
-也从同一 release commit 构建，以 GitHub Release 压缩包和 `blueprint.pack.json` 分发。
-它的 npm package 名称不属于上述八项 registry 发布集合。
+也从同一 release commit 构建，发布为
+`@xuanling-rs/xuanling-dsh-blueprint`，并以 GitHub Release 压缩包和
+`blueprint.pack.json` 分发。
 
 ## Package 集合
 
 | 安装别名 | 发布版本 | 平台 |
 | --- | --- | --- |
-| `@xuanling-rs/xuanling-mcp` | `0.5.1` | 稳定 Node.js 启动器 |
-| `@xuanling-rs/xuanling-mcp-darwin-arm64` | `0.5.1-darwin-arm64` | macOS Apple Silicon |
-| `@xuanling-rs/xuanling-mcp-linux-x64-gnu` | `0.5.1-linux-x64-gnu` | Linux x64，glibc 2.35 或更高版本 |
-| `@xuanling-rs/xuanling-mcp-win32-x64-msvc` | `0.5.1-win32-x64-msvc` | Windows x64 MSVC |
+| `@xuanling-rs/xuanling-mcp` | `0.5.2` | 稳定 Node.js 启动器 |
+| `@xuanling-rs/xuanling-mcp-darwin-arm64` | `0.5.2-darwin-arm64` | macOS Apple Silicon |
+| `@xuanling-rs/xuanling-mcp-linux-x64-gnu` | `0.5.2-linux-x64-gnu` | Linux x64，glibc 2.35 或更高版本 |
+| `@xuanling-rs/xuanling-mcp-win32-x64-msvc` | `0.5.2-win32-x64-msvc` | Windows x64 MSVC |
 
 启动器与原生变体都发布在 `@xuanling-rs` npm organization 下。稳定 package 通过 optional
 dependency 的 npm alias 引用原生变体，npm 根据 `os`、`cpu` 和 `libc` metadata 选择兼容版本。本发行版
@@ -27,10 +29,11 @@ DeepSeek Harness 会把以下公开 bundle 直接安装到指定 profile：
 
 | Package | 作用 |
 | --- | --- |
-| `@xuanling-rs/xuanling-dsh-memory@0.5.1` | 带 DSH schema projection 的完整 Memory v2 profile |
-| `@xuanling-rs/xuanling-dsh-skills@0.5.1` | 文件与 Memory 工作流 Skill 以及严格 overwrite policy |
-| `@xuanling-rs/xuanling-dsh-tools@0.5.1` | 增量挂载完整 XuanLing catalog |
-| `@xuanling-rs/xuanling-dsh-tools-replace@0.5.1` | 显式启用的同名文件系统 replacement facade，提供 XuanLing CAS/batch 与宿主原生投影 |
+| `@xuanling-rs/xuanling-dsh-memory@0.5.2` | 带 DSH schema projection 的完整 Memory v2 profile |
+| `@xuanling-rs/xuanling-dsh-skills@0.5.2` | 文件与 Memory 工作流 Skill 以及严格 overwrite policy |
+| `@xuanling-rs/xuanling-dsh-tools@0.5.2` | 增量挂载完整 XuanLing catalog |
+| `@xuanling-rs/xuanling-dsh-tools-replace@0.5.2` | 显式启用的同名文件系统 replacement facade，提供 XuanLing CAS/batch 与宿主原生投影 |
+| `@xuanling-rs/xuanling-dsh-blueprint@0.5.2` | 可选 typed Blueprint 编辑器与原生 TeamStage 执行 |
 
 三个工具 bundle 在同一 DSH profile 内精确依赖稳定版 `@xuanling-rs/xuanling-mcp`。Skills bundle 不包含
 MCP runtime。
@@ -38,7 +41,7 @@ MCP runtime。
 ## 安装
 
 ```sh
-npm install --global @xuanling-rs/xuanling-mcp@0.5.1
+npm install --global @xuanling-rs/xuanling-mcp@0.5.2
 xuanling-mcp --workspace-root /absolute/path/to/project
 ```
 
@@ -51,7 +54,7 @@ MCP Host 也可以通过 `npx` 固定同一发行版本：
       "command": "npx",
       "args": [
         "-y",
-        "@xuanling-rs/xuanling-mcp@0.5.1",
+        "@xuanling-rs/xuanling-mcp@0.5.2",
         "--workspace-root",
         "/absolute/path/to/project"
       ]
@@ -62,6 +65,15 @@ MCP Host 也可以通过 `npx` 固定同一发行版本：
 
 完整 capability 合同见 [MCP 集成指南](../docs/guides/xuanling-mcp-integration.md)。
 
+可选 Blueprint 与 TeamStage 使用仓库统一的 pnpm package flow 安装：
+
+```sh
+pnpm add --save-exact @xuanling-rs/xuanling-dsh-blueprint@0.5.2
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.5.2
+```
+
+安装后重启所选 DSH profile。TeamStage 仍需显式启用原生 Agent Teams profile。
+
 ## 分发保证
 
 - 安装过程不运行 `postinstall`，不编译 Rust，也不从远程 URL 下载二进制文件。
@@ -71,7 +83,7 @@ MCP Host 也可以通过 `npx` 固定同一发行版本：
 - 每个原生 package 都记录显式 release-trust 状态，发布时强制生成 npm provenance，并用
   source commit 与 binary SHA-256 绑定构建结果。ZCode marketplace archive 在 promotion 前还会
   生成 GitHub OIDC build-provenance attestation。
-- XuanLing 0.5.1 不声明 Developer ID 或 Authenticode 发布者签名。后续版本可以增加这些签名，
+- XuanLing 0.5.2 不声明 Developer ID 或 Authenticode 发布者签名。后续版本可以增加这些签名，
   但缺少平台发布者证书不改变 MCP 协议或 package 完整性合同。
 - 每个原生 package 都包含 XuanLing MIT 许可证和生成的第三方 notices。
 - 启动器 package 同时包含相互匹配的英文与简体中文 README。
@@ -85,12 +97,19 @@ npm --prefix npm run check
 npm --prefix npm run check:docs
 npm --prefix npm test
 
+pnpm --dir integrations/deepseek-harness/xuanling-blueprint install --frozen-lockfile
+pnpm --dir test/blueprint install --frozen-lockfile
+pnpm --dir integrations/deepseek-harness/xuanling-blueprint run typecheck
+pnpm --dir integrations/deepseek-harness/xuanling-blueprint run lint
+pnpm --dir integrations/deepseek-harness/xuanling-blueprint run build
+pnpm --dir integrations/deepseek-harness/xuanling-blueprint test
+
 node npm/scripts/pack-dsh-bundles.mjs \
   --out npm/dist/dsh \
   --commit "$(git rev-parse HEAD)"
 node npm/scripts/verify-dsh-release-set.mjs \
   --root npm/dist/dsh \
-  --version 0.5.1 \
+  --version 0.5.2 \
   --commit "$(git rev-parse HEAD)"
 
 node npm/scripts/generate-third-party-licenses.mjs \
@@ -134,8 +153,8 @@ CI 在三个支持平台分别构建并验证启动器与原生 tarball。安装
 1. npm metadata、测试、Node syntax check 与 `git diff --check` 全部通过。
 2. 三个平台的 locked release binary、第三方 notices、package metadata、tarball 内容和
    integrity 检查全部通过。
-3. `verify-release-set.mjs` 与 `verify-dsh-release-set.mjs` 观察到来自同一 commit 的八个
-   npm item。
+3. `verify-release-set.mjs`、`verify-dsh-release-set.mjs` 与
+   `verify-blueprint-release.mjs` 观察到来自同一 commit 的九个 npm item。
 4. 生成的 ZCode tree/archive 通过精确文件、release-trust metadata、package hash、source commit、
    确定性 digest 与 GitHub artifact attestation 校验。
 5. release commit 已进入 `origin/main`；GitHub `zcode-packer` Environment 中的
@@ -146,17 +165,17 @@ CI 在三个支持平台分别构建并验证启动器与原生 tarball。安装
 7. 创建稳定 tag `xuanling-mcp-v<version>`，触发
    [npm-publish.yml](../.github/workflows/npm-publish.yml)。
 
-发布 workflow 按顺序发布三个原生版本、稳定 launcher 和四个 DSH bundle。八项 registry
-integrity 全部对账后，workflow 使用 Environment credential checkout
+发布 workflow 按顺序发布三个原生版本、稳定 launcher、四个 DSH bundle 和 Blueprint。九项
+registry integrity 全部对账后，workflow 使用 Environment credential checkout
 `umbrella22/xuanling-zcode-marketplace`，提交经过验证的 ZCode tree，并以一次原子 push 更新
 `main` 与 `xuanling-mcp-v<version>`。已存在且 tree 相同的 tag 会幂等跳过；任何 integrity 或
 tree 冲突都会硬失败。本地执行 `npm publish` 不属于正式发布路径。
 
 ### Trusted Publishing
 
-八个 package 名称都已经存在，正式 workflow 通过 `npmjs` GitHub environment 使用 npm Trusted
-Publishing 发布。不需要长期 npm token 或 bootstrap secret。请为八个 scoped package 逐个配置
-package-level Trusted Publishing：
+九个 package 名称都已经存在，正式 workflow 通过 `npmjs` GitHub environment 使用 npm Trusted
+Publishing 发布。不需要长期 npm token 或 bootstrap secret。请为每个 scoped package（包括
+Blueprint）配置 package-level Trusted Publishing：
 
 ```text
 GitHub owner: umbrella22

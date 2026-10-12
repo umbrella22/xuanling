@@ -4,6 +4,27 @@ All notable release changes are recorded here. XuanLing uses immutable release
 tags and publishes the launcher, native packages, DeepSeek Harness bundles, and
 ZCode projection from the same source commit.
 
+## 0.5.2 - 2026-10-13
+
+### Changed
+
+- The Blueprint/TeamStage package is a first-class npm release item at
+  `@xuanling-rs/xuanling-dsh-blueprint@0.5.2`, while its GitHub Release tarball
+  and digest manifest remain available for offline or audited installation.
+- Blueprint and its isolated verification harness are managed by
+  `pnpm@11.28.5` with immutable `pnpm-lock.yaml` installs in CI. The former
+  npm lockfiles are no longer part of the package or test surface.
+- The npm publish workflow builds, verifies, publishes, and reconciles all
+  nine registry items through the `npmjs` Trusted Publisher environment.
+
+### Runtime and Upgrade Notes
+
+- DSH support follows the latest official capability tuple only. Upstream
+  breaking changes are allowed and accepted; older DSH runtimes, compatibility
+  shims, downgrades, and old-profile migrations remain unsupported.
+- The previously occupied `0.5.1` Blueprint npm version is immutable. This
+  release uses `0.5.2` so the registry bytes and release receipt cannot drift.
+
 ## 0.5.1 - 2026-10-12
 
 ### Added

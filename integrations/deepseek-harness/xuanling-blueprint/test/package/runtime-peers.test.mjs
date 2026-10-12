@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { hasPnpmImporterDependency, readPnpmLock } from './pnpm-lock.mjs'
 
 const PACKAGE_ROOT = fileURLToPath(new URL('../../', import.meta.url))
 const VERSION = '0.2.1-alpha.2'
@@ -38,13 +39,12 @@ const external = name => name.startsWith('@deepseek-ai/') || name === 'zod'
 const packageName = name => name.startsWith('@') ? name.split('/').slice(0, 2).join('/') : name
 
 test('all six public runtime peers have fixed required declarations and matching lock metadata', () => {
-  const manifest = json(join(PACKAGE_ROOT, 'package.json')), lock = json(join(PACKAGE_ROOT, 'package-lock.json'))
+  const manifest = json(join(PACKAGE_ROOT, 'package.json')), lock = readPnpmLock(PACKAGE_ROOT)
   assert.deepEqual(REQUIRED.filter(name => manifest.peerDependencies[name] !== VERSION), [], 'Missing fixed public runtime peers')
   for (const name of REQUIRED) {
     assert.notEqual(manifest.peerDependenciesMeta?.[name]?.optional, true)
-    assert.equal(lock.packages[`node_modules/${name}`].version, VERSION)
+    assert.equal(hasPnpmImporterDependency(lock, 'devDependencies', name, VERSION), true, `${name}: pnpm importer version drift`)
   }
-  assert.deepEqual(lock.packages[''].peerDependencies, manifest.peerDependencies)
 })
 
 test('fresh packed host imports and its static/dynamic externals have published peer coverage', t => {

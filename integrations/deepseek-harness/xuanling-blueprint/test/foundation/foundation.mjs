@@ -50,7 +50,7 @@ export async function getCases(helpers) {
     id: 'F5', title: 'built lib exposes the service and typert wire surface', expect: 'pass',
     run: async () => {
       if (!existsSync(libIndex) || !existsSync(libTypert)) {
-        throw new Error('lib/index.js or lib/typert.host.js missing — run `npm run build` first (build absence is a harness failure, not test evidence)')
+        throw new Error('lib/index.js or lib/typert.host.js missing — run `pnpm run build` first (build absence is a harness failure, not test evidence)')
       }
       const mod = await import(libIndex)
       const typert = await import(libTypert)

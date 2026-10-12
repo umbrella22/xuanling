@@ -20,16 +20,6 @@ export function validateInstalledDshTuple(tuple, rows, { requireIntegrity = fals
 }
 
 export function installedDshInventory(root) {
-  const lockPath = join(root, 'package-lock.json')
-  if (existsSync(lockPath)) {
-    const lock = JSON.parse(readFileSync(lockPath, 'utf8'))
-    return Object.entries(lock.packages).flatMap(([path, locked]) => {
-      if (!/(?:^|\/)node_modules\/@deepseek-ai\/dsh[^/]*$/.test(path)) return []
-      const bytes = readFileSync(join(root, path, 'package.json')), manifest = JSON.parse(bytes)
-      ensure(manifest.version === locked.version, 'HOST_DSH_VERSION_MISMATCH')
-      return [{ name: manifest.name, version: manifest.version, integrity: locked.integrity, path, manifest_sha256: hash(bytes) }]
-    })
-  }
   const scopes = [join(root, 'node_modules/@deepseek-ai')]
   const pnpm = join(root, 'node_modules/.pnpm')
   if (existsSync(pnpm)) for (const entry of readdirSync(pnpm, { withFileTypes: true })) {

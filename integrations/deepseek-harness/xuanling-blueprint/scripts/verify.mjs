@@ -145,7 +145,7 @@ export function captureEvidenceFingerprint({ packageRoot = PACKAGE_ROOT, repoRoo
   // arbitrary secret files. Nested configuration is covered by config/.
   if (existsSync(packageRoot)) {
     for (const item of readdirSync(packageRoot, { withFileTypes: true })) {
-      if (/^(?:package(?:-lock)?\.json|(?:pnpm-lock|cordis\.patch)\.ya?ml|yarn\.lock|(?:.+\.)?config\.(?:json|[cm]?js|ts)|tsconfig(?:\.[^.]+)?\.json|\.eslintrc(?:\..+)?|eslint\.config\.[cm]?js)$/.test(item.name)) {
+      if (/^(?:package\.json|pnpm-lock\.ya?ml|pnpm-workspace\.ya?ml|cordis\.patch\.ya?ml|yarn\.lock|(?:.+\.)?config\.(?:json|[cm]?js|ts)|tsconfig(?:\.[^.]+)?\.json|\.eslintrc(?:\..+)?|eslint\.config\.[cm]?js)$/.test(item.name)) {
         source.push(...collect(join(packageRoot, item.name), `plugin/${item.name}`))
       }
     }

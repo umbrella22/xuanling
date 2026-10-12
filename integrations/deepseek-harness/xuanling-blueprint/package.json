@@ -1,11 +1,16 @@
 {
   "name": "@xuanling-rs/xuanling-dsh-blueprint",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Native DeepSeek Harness blueprint editor and durable graph execution with scoped agents, structured output, optional TeamStage, cancellation and recovery.",
   "license": "MIT",
   "private": false,
   "type": "module",
   "main": "./lib/index.js",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "registry": "https://registry.npmjs.org"
+  },
   "exports": {
     ".": "./lib/index.js",
     "./client": "./lib/client.js",
@@ -128,5 +133,6 @@
     "url": "git+https://github.com/umbrella22/xuanling.git",
     "directory": "integrations/deepseek-harness/xuanling-blueprint"
   },
-  "homepage": "https://github.com/umbrella22/xuanling/tree/main/integrations/deepseek-harness/xuanling-blueprint"
+  "homepage": "https://github.com/umbrella22/xuanling/tree/main/integrations/deepseek-harness/xuanling-blueprint",
+  "packageManager": "pnpm@11.28.5"
 }

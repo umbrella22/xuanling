@@ -7,17 +7,24 @@ persistent state, resource snapshots, approvals, cancellation and recovery.
 
 ## Installation
 
-The 0.5.1 plugin is distributed as a GitHub Release tarball. Add it to an
-explicit DSH profile running the latest official channel for its capabilities:
+The 0.5.2 plugin is published to npm and is also attached to the GitHub
+Release as a digest-recorded tarball. Install the exact package with pnpm:
 
 ```sh
-dsh plugin --profile web add https://github.com/umbrella22/xuanling/releases/download/xuanling-mcp-v0.5.1/xuanling-rs-xuanling-dsh-blueprint-0.5.1.tgz
+pnpm add --save-exact @xuanling-rs/xuanling-dsh-blueprint@0.5.2
+```
+
+To add it to an explicit DSH profile running the latest official channel for
+its capabilities, use the package specifier directly:
+
+```sh
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.5.2
 ```
 
 Restart that profile after installation. TeamStage additionally requires the
 native Agent Teams profile to be enabled explicitly. The release includes
 `blueprint.pack.json` with the source commit and SHA-256 for every packaged
-file. The Blueprint npm package name is not published by this release.
+file; the same immutable package is reconciled against npm by CI.
 
 ## Runtime contract
 
@@ -447,9 +454,9 @@ this scope does not complete the takeover plan's provider or platform gates.
 From the plugin directory:
 
 ```sh
-npm run typecheck
-npm run lint
-npm run build
+pnpm run typecheck
+pnpm run lint
+pnpm run build
 node --experimental-transform-types --test test/takeover/acceptance.test.mjs test/live/journey.test.mjs
 node scripts/verify.mjs --plan-id dsh-blueprint-takeover-v1 --report-dir <fresh-evidence-dir> --suite critical --scope all --repeat 3
 node scripts/verify.mjs --plan-id dsh-blueprint-takeover-v1 --report-dir <fresh-evidence-dir> --suite live

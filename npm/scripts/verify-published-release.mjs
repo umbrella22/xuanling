@@ -13,6 +13,7 @@ const DSH_PACKAGES = DSH_BUNDLES;
 const args = parseArgs(process.argv.slice(2));
 const coreRoot = path.resolve(requiredArg(args, "core-root"));
 const dshRoot = path.resolve(requiredArg(args, "dsh-root"));
+const blueprintRoot = path.resolve(requiredArg(args, "blueprint-root"));
 const version = requiredArg(args, "version");
 const registry = args.registry ?? "https://registry.npmjs.org";
 if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error(`Invalid release version: ${version}`);
@@ -30,6 +31,7 @@ const releaseItems = [
     path: path.join(dshRoot, id, `${id}.pack.json`),
     version,
   })),
+  { path: path.join(blueprintRoot, "blueprint.pack.json"), version },
 ];
 const verified = [];
 for (const item of releaseItems) {
@@ -52,5 +54,5 @@ for (const item of releaseItems) {
   }
   verified.push({ integrity: decision.integrity, specifier });
 }
-if (verified.length !== 8) throw new Error(`Expected 8 release items, verified ${verified.length}`);
+if (verified.length !== 9) throw new Error(`Expected 9 release items, verified ${verified.length}`);
 console.log(stableJson({ registry, verified }).trim());

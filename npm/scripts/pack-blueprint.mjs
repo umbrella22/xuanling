@@ -39,7 +39,7 @@ try {
     name: packed.name, version: packed.version, filename: packed.filename, integrity: packed.integrity,
     shasum: packed.shasum, size: packed.size, unpackedSize: packed.unpackedSize, source_commit: commit,
     sha256: digest(await readFile(path.join(output, packed.filename))), files, file_inventory: inventory,
-    distribution: "GitHub Release asset", lifecycle_scripts: false,
+    distribution: "GitHub Release asset and npm registry", lifecycle_scripts: false,
   };
   await writeFile(path.join(output, "blueprint.pack.json"), stableJson(receipt), { flag: "wx" });
   console.log(stableJson({ filename: packed.filename, version: packed.version, files: files.length, sha256: receipt.sha256 }).trim());
