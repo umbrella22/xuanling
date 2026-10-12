@@ -1,0 +1,76 @@
+name: xuanling-blueprint-npm-bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Existing XuanLing release version to bootstrap"
+        required: true
+        default: "0.5.1"
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: xuanling-blueprint-npm-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: bootstrap Blueprint package
+    runs-on: ubuntu-latest
+    environment: npmjs
+    env:
+      NPM_BOOTSTRAP_TOKEN: \${{ secrets.NPM_BOOTSTRAP_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+      - name: Install supported npm CLI
+        run: npm install --global npm@11.6.2
+      - name: Download and verify the immutable release asset
+        env:
+          GH_TOKEN: \${{ github.token }}
+          VERSION: \${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          TAG="xuanling-mcp-v$VERSION"
+          mkdir -p "$RUNNER_TEMP/blueprint"
+          gh release download "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "xuanling-rs-xuanling-dsh-blueprint-$VERSION.tgz" \
+            --pattern "blueprint.pack.json" \
+            --dir "$RUNNER_TEMP/blueprint"
+          node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+          const manifest = JSON.parse(await readFile(process.env.RUNNER_TEMP + "/blueprint/blueprint.pack.json", "utf8"));
+          const version = process.env.VERSION;
+          if (manifest.name !== "@xuanling-rs/xuanling-dsh-blueprint") throw new Error("unexpected Blueprint package name");
+          if (manifest.version !== version) throw new Error("release asset version mismatch");
+          if (manifest.source_commit !== "7d2bef74e45b3fe02dc59ab6051464307222c112") throw new Error("bootstrap is limited to the verified 0.5.1 source commit");
+          if (manifest.filename !== "xuanling-rs-xuanling-dsh-blueprint-" + version + ".tgz") throw new Error("unexpected Blueprint filename");
+          console.log(JSON.stringify({ name: manifest.name, version: manifest.version, source_commit: manifest.source_commit, sha256: manifest.sha256 }));
+          NODE
+          EXPECTED=$(node --input-type=module -e 'import { readFile } from "node:fs/promises"; const m=JSON.parse(await readFile(process.env.RUNNER_TEMP + "/blueprint/blueprint.pack.json","utf8")); process.stdout.write(m.sha256 + "  " + process.env.RUNNER_TEMP + "/blueprint/" + m.filename)')
+          printf '%s\n' "$EXPECTED" | sha256sum --check --status -
+      - name: Configure one-time bootstrap authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$NPM_BOOTSTRAP_TOKEN"
+          printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_BOOTSTRAP_TOKEN" > "$RUNNER_TEMP/npmrc"
+          chmod 600 "$RUNNER_TEMP/npmrc"
+          echo "NPM_CONFIG_USERCONFIG=$RUNNER_TEMP/npmrc" >> "$GITHUB_ENV"
+      - name: Publish and reconcile the exact Blueprint tarball
+        env:
+          VERSION: \${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          node npm/scripts/publish-idempotent.mjs \
+            --manifest "$RUNNER_TEMP/blueprint/blueprint.pack.json" \
+            --tag latest
+          npm view "@xuanling-rs/xuanling-dsh-blueprint@$VERSION" version dist.integrity --json --registry https://registry.npmjs.org
