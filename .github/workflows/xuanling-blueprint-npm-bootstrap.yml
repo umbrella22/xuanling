@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: npmjs
     env:
-      NPM_BOOTSTRAP_TOKEN: \${{ secrets.NPM_BOOTSTRAP_TOKEN }}
+      NPM_BOOTSTRAP_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -34,8 +34,8 @@ jobs:
         run: npm install --global npm@11.6.2
       - name: Download and verify the immutable release asset
         env:
-          GH_TOKEN: \${{ github.token }}
-          VERSION: \${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           TAG="xuanling-mcp-v$VERSION"
@@ -67,7 +67,7 @@ jobs:
           echo "NPM_CONFIG_USERCONFIG=$RUNNER_TEMP/npmrc" >> "$GITHUB_ENV"
       - name: Publish and reconcile the exact Blueprint tarball
         env:
-          VERSION: \${{ inputs.version }}
+          VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           node npm/scripts/publish-idempotent.mjs \
