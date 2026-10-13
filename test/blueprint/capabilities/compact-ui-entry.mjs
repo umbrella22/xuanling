@@ -8,7 +8,7 @@ export const COMPACT_PLAN_ID = 'dsh-blueprint-compact-ux-v1'
 export const COMFY_PLAN_ID = 'dsh-blueprint-comfy-interactions-v1'
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
 const REPORTS = join(ROOT, 'docs/validation/blueprint/current')
-export const MORE_ACTION_GROUPS = Object.freeze({ 'export-blueprint': 'files', 'export-legacy': 'files', 'import-blueprint': 'files',
+export const MORE_ACTION_GROUPS = Object.freeze({ 'export-blueprint': 'files', 'import-blueprint': 'files',
   'motion-toggle': 'view', 'toggle-minimap': 'view', 'check-run': 'tools', 'refresh-library': 'tools', shortcuts: 'tools' })
 export const OBJECT_COMMAND_GROUPS = Object.freeze({ 'color-default': 'appearance', 'color-blue': 'appearance', 'color-green': 'appearance',
   'color-amber': 'appearance', 'color-red': 'appearance', 'color-purple': 'appearance', 'align-left': 'layout', 'align-right': 'layout',

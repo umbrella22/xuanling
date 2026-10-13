@@ -29,7 +29,7 @@ export const UX_CASES = Object.freeze([
   ['UX-ICONS', 'Public high frequency buttons have local SVG, accessible names and 40px targets'],
   ['UX-TOOLTIP', 'Trusted hover and focus expose readable tooltip name and shortcut'],
   ['UX-DISABLED', 'Disabled public actions retain ARIA and a readable reason without execution'],
-  ['UX-BLUEPRINT', 'Exactly one visible configured blueprint selector remains in the top toolbar; panel toggles are absent and library/inspector remain mounted'],
+  ['UX-BLUEPRINT', 'Exactly one visible configured blueprint selector remains in the top toolbar; side handles are available and library/inspector remain mounted'],
   ['UX-MORE', 'Files view and tools public submenus expose every original low frequency action'],
   ['UX-MENU', 'Node appearance and multi-selection layout submenus open through public pointer inputs'],
   ['UX-FOCUS', 'Public menu Right Left Escape and bounded navigation restore actual initiator focus'],
@@ -111,9 +111,9 @@ export const HOST_STYLE_TOKENS = Object.freeze({
 })
 export function validateMountedControlPanes(f) {
   ensure(f?.picker?.count === 1 && f.picker.visible === true && f.picker.inToolbar === true
-    && text(f.picker.name) && Array.isArray(f.toggles) && f.toggles.length === 0
+    && text(f.picker.name) && same(f.toggles, ['toggle-library', 'toggle-inspector'])
     && ['library', 'inspector'].every(id => f[id]?.count === 1 && f[id].mounted === true && f[id].visible === true && rectValid(f[id].rect))
-    && rectValid(f.bounds), 'host layout picker/toggle absence/always-mounted pane geometry missing')
+    && rectValid(f.bounds), 'host layout picker/side handles/always-mounted pane geometry missing')
   return true
 }
 export function validateHostControlFacts(c) {
@@ -395,9 +395,9 @@ export function validateCompactCase(c) {
       && a.tooltipVisible && a.tooltip.includes(a.reason)) && f.executionRequests === 0, 'disabled ARIA/reason or no-execution witness missing')
     validateRetentionFacts(f)
   } else if (c.id === 'UX-BLUEPRINT') {
-    ensure(f.count === 1 && f.inToolbar === true && f.visible === true && Array.isArray(f.toggles) && f.toggles.length === 0
+    ensure(f.count === 1 && f.inToolbar === true && f.visible === true && same(f.toggles, ['toggle-library', 'toggle-inspector'])
       && ['library', 'inspector'].every(id => f[id]?.count === 1 && f[id].mounted === true && f[id].visible === true)
-      && !Object.hasOwn(f, 'libraryHidden') && !Object.hasOwn(f, 'visibleWithLibraryHidden') && text(f.name), 'unique top blueprint selector/toggle absence/always-mounted facts missing')
+      && !Object.hasOwn(f, 'libraryHidden') && !Object.hasOwn(f, 'visibleWithLibraryHidden') && text(f.name), 'unique top blueprint selector/side handles/always-mounted facts missing')
   } else if (c.id === 'UX-MORE') {
     ensure(f.actions?.length === Object.keys(MORE_ACTION_GROUPS).length && Object.entries(MORE_ACTION_GROUPS).every(([id, group]) =>
       f.actions.some(a => a.id === id && a.group === group && a.visible && text(a.name) && typeof a.disabled === 'boolean'

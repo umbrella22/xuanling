@@ -163,7 +163,7 @@ export async function arrange({ page, gateway, root, mode }) {
     return { sessionId, plainSessionId, blueprintId: BLUEPRINT_ID, definitionPath }
   }
   const nonce = `conversation-nonce-${randomUUID()}`, inputJson = JSON.stringify({ nonce })
-  await prompt(gateway, sessionId, `Use the native blueprint_list tool, then blueprint_start exactly once for blueprintId ${BLUEPRINT_ID}, using the documentRevision returned by the list and this exact inputJson: ${inputJson}. Do not invent the revision or source/call/session identities. Then call blueprint_inspect with the returned runId. Finish with a short acknowledgement; no other tools.`)
+  await prompt(gateway, sessionId, `Use the native blueprint_list tool, then blueprint_start exactly once for blueprintId ${BLUEPRINT_ID}, using the documentRevision returned by the list and this exact input JSON value: ${inputJson}. Do not invent the revision or source/call/session identities. Then call blueprint_inspect with the returned runId. Finish with a short acknowledgement; no other tools.`)
   const bound = await waitForFixture(() => gateway.call('blueprint/inspectSession', { args: { sessionId } }), value => {
     if (value?.status !== 'bound') return false
     ensure(!['failed', 'cancelled', 'timed_out', 'recovery_required'].includes(value.selected.run.state), 'FIXTURE_CHILD_EXECUTION_FAILED')

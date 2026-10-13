@@ -36,7 +36,7 @@ export const UI_ASSERTIONS = Object.freeze([
   'CI-REROUTE-ADD', 'CI-REROUTE-MOVE', 'CI-REROUTE-DELETE', 'CI-PIN', 'CI-COLLAPSE', 'CI-RENAME', 'CI-RESIZE', 'CI-COLOR',
   'CI-GROUP', 'CI-GROUP-RENAME', 'CI-GROUP-MOVE', 'CI-GROUP-COPY', 'CI-GROUP-FIT', 'CI-UNGROUP', 'CI-ALIGN', 'CI-DISTRIBUTE',
   'CI-VIEWPORT-PREFERENCES', 'CI-VIEWPORT-SWITCH', 'CI-VIEWPORT-RELOAD', 'CI-TYPING', 'CI-IME', 'CI-CAS',
-  ...repeated('CI-SAVE-LOAD'), 'CI-ARCHIVE-DOWNLOAD', 'CI-IMPORT-LOCK', 'CI-ARCHIVE-EMPTY', 'CI-ARCHIVE-NONEMPTY', 'CI-LEGACY',
+  ...repeated('CI-SAVE-LOAD'), 'CI-ARCHIVE-DOWNLOAD', 'CI-IMPORT-LOCK', 'CI-ARCHIVE-EMPTY', 'CI-ARCHIVE-NONEMPTY', 'CI-CURRENT-EXPORT',
   'CI-THEMES', 'CI-ZERO-PROVIDER',
 ])
 export const REQUIRED_ASSERTIONS = Object.freeze([...new Set([...HOST_ASSERTIONS, ...BROWSER_ASSERTIONS, ...UI_ASSERTIONS])])
@@ -1071,7 +1071,7 @@ export async function runCanvasJourney(page, assert, api) {
     before = await doc(); await node(page, 'source').locator('.bp-node-title').dblclick()
     await page.locator(SELECTORS.rename).waitFor({ state: 'visible' }); await page.locator(SELECTORS.renameInput).fill(' 标题.中文 🐳 '); await action(page, 'rename-apply').click(); await settle(page); after = await doc()
     check('CI-RENAME', 'double-click title rename preserves raw Unicode/spaces and writes only presentation title', after.presentation.nodes.source.title === ' 标题.中文 🐳 ' && same(before.graph, after.graph) && !Object.hasOwn(after.graph.nodes.find(n => n.id === 'source'), 'name'))
-    // Keep this presentation for real save/load and legacy export later.
+    // Keep this presentation for real save/load and current export later.
     const beforeRename = before
     before = after; await selectNodes(page, ['source'])
     const resizer = node(page, 'source').locator('[data-bp-resize="source"] .react-flow__resize-control.handle').last()
@@ -1412,16 +1412,10 @@ export async function runCanvasJourney(page, assert, api) {
     await page.keyboard.press('Escape')
     check('CI-ARCHIVE-NONEMPTY', 'UI disables nonempty target and authoritative Host rejects replay with package unchanged', disabledNonempty && nonemptyResponse.body?.result?.error?.code === 'blueprint/import-failed' && same(imported, value(await realApi('loadDefinition', { blueprintId: 'comfy-empty' }), 'nonempty package unchanged')))
 
-    await choose(page, 'comfy-edit'); const extended = await doc()
-    await preparePublicAction(page, 'export-legacy')
-    const legacyEvent = page.waitForEvent('download'); await action(page, 'export-legacy').click(); const legacyDownload = await legacyEvent
-    const legacyPath = join(dir, 'legacy-definition.json'); await legacyDownload.saveAs(legacyPath); ensure(await legacyDownload.failure() === null, 'legacy download failed')
-    const legacy = JSON.parse(readFileSync(legacyPath, 'utf8'))
-    const oldPresentation = structuredClone(extended.presentation); delete oldPresentation.edges
-    for (const n of Object.values(oldPresentation.nodes)) for (const key of ['title', 'collapsed', 'pinned', 'width', 'height', 'color']) delete n[key]
-    const validLegacy = await realApi('validate', { definitionJson: JSON.stringify(legacy) })
-    check('CI-LEGACY', 'real legacy JSON download strips only optional presentation extensions and Host still validates graph/resources/metadata', same(legacy.graph, extended.graph) && same(legacy.resources, extended.resources) && same(legacy.metadata, extended.metadata) && same(legacy.presentation, oldPresentation) && validLegacy.body?.result?.ok === true && !Object.hasOwn(legacy, 'archiveBase64'))
-    receipt.downloads.push({ kind: 'legacy', path: legacyPath, sha256: sha256(readFileSync(legacyPath)), provenance: 'actual Playwright definition JSON download; not a portable lib archive' })
+    await choose(page, 'comfy-edit')
+    await preparePublicAction(page, 'export-blueprint')
+    check('CI-CURRENT-EXPORT', 'only the current portable archive export is offered', await action(page, 'export-blueprint').count() === 1 && await action(page, 'export-legacy').count() === 0)
+    await page.keyboard.press('Escape')
     const stable = value(await realApi('loadDefinition', { blueprintId: 'comfy-edit' }), 'theme canonical baseline')
     for (const locale of ['zh', 'en']) for (const scheme of ['light', 'dark']) {
       await setNativeLocale(page, locale); await setNativeTheme(page, scheme)
@@ -1587,8 +1581,8 @@ export function validateComfyReport(report, context) {
   for (const method of ['loadDefinition', 'saveDefinition', 'exportDefinition', 'importDefinition', 'listDefinitions', 'validate']) ensure(ui.rpc.some(r => r.method === method && r.ok === true), `real Host ${method} success missing`)
   for (const [method, code] of [['saveDefinition', 'blueprint/revision-conflict'], ['importDefinition', 'blueprint/import-failed']]) ensure(ui.rpc.some(r => r.method === method && r.ok === false && r.code === code), `typed negative Host ${method} evidence missing`)
   ensure(Array.isArray(ui.requests) && !ui.requests.some(r => ['startRun', 'hostProbe'].includes(r.method)) && !ui.rpc.some(r => ['startRun', 'hostProbe'].includes(r.method)), 'W2 must not dispatch provider-capable commands')
-  ensure(ui.downloads?.length === 2 && new Set(ui.downloads.map(d => d.kind)).size === 2, 'archive/legacy download evidence missing')
-  for (const d of ui.downloads) ensure(['archive', 'legacy'].includes(d.kind) && realFile(reportDir, d.path) && d.sha256 === sha256(readFileSync(d.path)) && d.provenance?.startsWith('actual Playwright'), 'download hash/provenance/missing file')
+  ensure(ui.downloads?.length === 1 && ui.downloads[0].kind === 'archive', 'current archive download evidence missing')
+  for (const d of ui.downloads) ensure(d.kind === 'archive' && realFile(reportDir, d.path) && d.sha256 === sha256(readFileSync(d.path)) && d.provenance?.startsWith('actual Playwright'), 'download hash/provenance/missing file')
   ensure(ui.fixtureRotation?.sameConfiguredId === 'comfy-empty' && ui.fixtureRotation.archiveIdRewritten === false && ui.fixtureRotation.userData === false, 'same-ID empty archive fixture identity missing')
   ensure(ui.fixtureRotation.source === join(report.environment.temp_root, 'blueprints/comfy-empty') && confined(report.environment.temp_root, ui.fixtureRotation.backup), 'archive filesystem rotation escapes disposable probe fixture')
   return { ok: true, original, assertions: report.assertions.length, mountedCases: cases.size }

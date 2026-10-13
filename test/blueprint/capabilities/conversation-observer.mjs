@@ -18,9 +18,9 @@ export function createConversationObserver(ctx, { isAgentLoopRequest, flush, has
     }
     let inputJson
     if (event.type === 'tool/call' && event.data.name === 'blueprint_start') {
-      try { inputJson = JSON.parse(event.data.arguments).inputJson } catch { /* invalid arguments have no input authority */ }
+      try { inputJson = JSON.stringify(JSON.parse(event.data.arguments).input) } catch { /* invalid arguments have no input authority */ }
     }
-    if (event.type === 'tool/call' && ['blueprint_start', 'blueprint_list', 'blueprint_inspect', 'write'].includes(event.data.name))
+    if (event.type === 'tool/call' && ['blueprint_describe', 'blueprint_validate', 'blueprint_create', 'blueprint_preflight', 'blueprint_start', 'blueprint_list', 'blueprint_inspect', 'write'].includes(event.data.name))
       facts.toolCalls.push({ name: event.data.name, callId: event.data.callId, turn: event.data.turn, callSeq: event.seq, resultSeq: null,
         callLogged: true, resultLogged: false, ok: false,
         ...(hash && typeof inputJson === 'string' ? { inputSha256: hash(inputJson) } : {}) })
@@ -63,7 +63,7 @@ export function createConversationObserver(ctx, { isAgentLoopRequest, flush, has
   }, { prepend: true })
   ctx.on('tools/result', (exec, result) => {
     const facts = records.get(exec.agent)
-    if (facts && ['blueprint_start', 'blueprint_list', 'blueprint_inspect', 'write'].includes(exec.name)) {
+    if (facts && ['blueprint_describe', 'blueprint_validate', 'blueprint_create', 'blueprint_preflight', 'blueprint_start', 'blueprint_list', 'blueprint_inspect', 'write'].includes(exec.name)) {
       const call = facts.toolCalls.findLast(item => item.callId === exec.callId && item.name === exec.name)
       if (call) { call.pipelineIsError = result.isError; call.pipelineResultObserved = result.isError === false }
       publish()

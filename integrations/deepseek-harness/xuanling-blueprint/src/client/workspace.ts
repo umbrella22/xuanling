@@ -1,17 +1,18 @@
 /** Executable editing/session model shared by the production panel and source contracts. */
 import { readHostDefinition } from './document.ts'
 import type { BlueprintDefinition } from '../definition/types.ts'
+import { viewportKey } from './viewport-state.ts'
 import { GraphEditor } from './graph-editor.ts'
-import { legacyDefinition } from './clipboard.ts'
 import { BlueprintClientModel } from './model.ts'
 import { BlueprintRemoteError } from './remote.ts'
 import { BLUEPRINT_INVOCATIONS } from '../typert-descriptors.ts'
 import type { PreflightRunValue } from './remote.ts'
-import type { CatalogValue, DefinitionDocument, HostLink } from './remote.ts'
+import type { CatalogValue, DefinitionDocument, HostLink, HostResourceCatalogEntry } from './remote.ts'
 import type { WorkspaceNotice } from './view-contract.ts'
 
 export interface DraftStorage { getItem(key: string): string | null; setItem(key: string, value: string): void }
 export const draftKey = (blueprintId: string): string => `xuanling-blueprint:draft:${encodeURIComponent(blueprintId)}`
+export const newDraftKey = 'xuanling-blueprint:new-draft'
 export const runBindingKey = (blueprintId: string): string => `xuanling-blueprint:recent-run:${encodeURIComponent(blueprintId)}`
 export function isEditingTarget(target: unknown): boolean {
   const element = target as { tagName?: string; isContentEditable?: boolean; closest?: (selector: string) => unknown } | null
@@ -61,8 +62,12 @@ export class BlueprintWorkspace {
   readonly model = new BlueprintClientModel()
   editor = new GraphEditor()
   catalog: CatalogValue['definitions'] = []
+  resourceCatalog: HostResourceCatalogEntry[] = []
+  resourceCatalogState: 'loading' | 'current' | 'unavailable' = 'loading'
   document: DefinitionDocument | null = null
   blueprintId: string | null = null
+  private creation: { requestId: string; submittedJson?: string } | undefined
+  get isNewDraft(): boolean { return this.creation !== undefined }
   private boundRunId: string | null = null
   notice: WorkspaceNotice = { key: 'status.loading' }
   busy = false
@@ -97,6 +102,7 @@ export class BlueprintWorkspace {
   private unsubscribeEditor: (() => void) | undefined
   private readonly listeners = new Set<() => void>()
   private readonly decisions = new Map<string, string>()
+  private deletion: { blueprintId: string; revision: string; requestId: string } | undefined
   private pendingStart: { signature: string; requestId: string } | undefined
   constructor(readonly host: HostLink | undefined, readonly storage?: DraftStorage) { this.model.subscribe(() => this.emit()) }
   subscribe(listener: () => void): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener) } }
@@ -127,14 +133,16 @@ export class BlueprintWorkspace {
     switch (notice.key) {
       case 'status.loading': return 'Loading configured library…'
       case 'status.hostUnavailable': return 'Host link unavailable in this context.'
-      case 'status.chooseBlueprint': return 'Choose a configured blueprint.'
+      case 'status.chooseBlueprint': return 'Choose a blueprint or create a new draft.'
       case 'status.noDefinitions': return 'No configured blueprints. Ask the host operator to configure an ID.'
       case 'status.loadingDocument': return 'Loading host document…'
       case 'status.loaded': return 'Loaded host document.'
       case 'status.newDocument': return 'New configured document; save before running.'
+      case 'status.newDraft': return 'New draft; first save creates a blueprint.'
       case 'status.draftRestored': return 'Restored local document draft.'
       case 'status.draftStale': return 'Host document changed; old layout draft was not applied.'
       case 'status.draftInvalid': return 'Invalid local draft ignored; host document retained.'
+      case 'status.deleted': return 'Blueprint deleted; run history retained.'
       case 'status.saved': return 'Saved host document.'
       case 'status.runAdmitted': return `Run admitted: ${notice.params.state}.`
       case 'status.recentRunUnavailable': return 'Recent run binding unavailable; the durable run remains on the host.'
@@ -166,13 +174,80 @@ export class BlueprintWorkspace {
   }
   private persistDraft(): void {
     if (!this.blueprintId || !this.storage || this.restoring) return
-    try { this.storage.setItem(draftKey(this.blueprintId), JSON.stringify({ documentRevision: this.document?.documentRevision ?? null, definitionJson: JSON.stringify(this.editor.exportDefinition()), layout: this.editor.exportLayout() })) }
+    try {
+      if (this.creation) this.storage.setItem(newDraftKey, JSON.stringify({ ...this.creation, definitionJson: JSON.stringify(this.editor.exportDefinition()) }))
+      else this.storage.setItem(draftKey(this.blueprintId), JSON.stringify({ documentRevision: this.document?.documentRevision ?? null, definitionJson: JSON.stringify(this.editor.exportDefinition()), layout: this.editor.exportLayout() }))
+    }
     catch { this.notice = { key: 'status.draftUnavailable' } }
   }
-  async initialize(): Promise<void> {
+  newDraft(name = 'Untitled blueprint'): void {
+    this.generation++; this.invalidateCheck()
+    this.creation = { requestId: crypto.randomUUID() }
+    this.blueprintId = `draft-${this.creation.requestId}`
+    this.document = null; this.runId = null; this.model.reset()
+    this.pendingStart = undefined; this.decisions.clear(); this.checkBinding = undefined
+    this.input = '{}'
+    this.install({ schemaVersion: 1, id: this.blueprintId, name, resources: {}, graph: { nodes: [], edges: [] } })
+    this.baselineJson = JSON.stringify(this.editor.exportDefinition()); this.baselineSemantics = ''
+    this.notice = { key: 'status.newDraft' }
+    this.persistDraft(); this.emit()
+  }
+  async initialize(draftName = 'Untitled blueprint'): Promise<void> {
     if (!this.host) { this.notice = { key: 'status.hostUnavailable' }; this.emit(); return }
-    try { this.catalog = (await this.host.listDefinitions()).definitions; this.notice = { key: this.catalog.length ? 'status.chooseBlueprint' : 'status.noDefinitions' } }
+    const generation = this.generation
+    try {
+      await this.refreshResources()
+      const catalog = (await this.host.listDefinitions()).definitions
+      if (generation !== this.generation) return
+      this.catalog = catalog
+      if (!this.blueprintId) {
+        let restored = false
+        try {
+          const raw = this.storage?.getItem(newDraftKey)
+          if (raw) {
+            const draft = JSON.parse(raw) as { requestId?: unknown; definitionJson?: unknown; submittedJson?: unknown } | null
+            if (draft !== null && (typeof draft?.requestId !== 'string' || typeof draft?.definitionJson !== 'string')) throw new Error('Invalid local draft')
+            if (draft && typeof draft.requestId === 'string' && typeof draft.definitionJson === 'string') {
+              const id = `draft-${draft.requestId}`
+              const validation = await this.host.validate(draft.definitionJson)
+              if (generation !== this.generation) return
+              if (validation.ok !== true) throw new Error('Draft was not accepted by host validator')
+              const definition = readHostDefinition(draft.definitionJson, id)
+              if (draft.submittedJson !== undefined) {
+                if (typeof draft.submittedJson !== 'string') throw new Error('Invalid pending creation')
+                readHostDefinition(draft.submittedJson, id)
+              }
+              this.creation = { requestId: draft.requestId, ...(typeof draft.submittedJson === 'string' ? { submittedJson: draft.submittedJson } : {}) }
+              this.blueprintId = id; this.install(definition); this.baselineJson = ''; this.baselineSemantics = ''
+              this.notice = { key: 'status.draftRestored' }; restored = true
+            }
+          }
+        } catch {
+          if (generation !== this.generation) return
+          this.notice = { key: 'status.draftInvalid' }
+          this.emit(); return
+        }
+        if (!restored) {
+          if (!catalog.length) this.newDraft(draftName)
+          else this.notice = { key: 'status.chooseBlueprint' }
+        }
+      }
+    }
     catch (error) { this.notice = errorNotice(error) }
+    this.emit()
+  }
+  /** Directory observations never alter the saved definition or resource grants. */
+  async refreshResources(): Promise<void> {
+    if (!this.host?.listResources) { this.resourceCatalogState = 'unavailable'; this.emit(); return }
+    this.resourceCatalogState = 'loading'; this.emit()
+    try {
+      const { resources } = await this.host.listResources()
+      this.resourceCatalog = resources
+      this.resourceCatalogState = 'current'
+    } catch {
+      this.resourceCatalog = []
+      this.resourceCatalogState = 'unavailable'
+    }
     this.emit()
   }
   async load(blueprintId: string): Promise<void> {
@@ -180,6 +255,7 @@ export class BlueprintWorkspace {
     const catalog = this.catalog.find(d => d.blueprintId === blueprintId)
     if (!catalog) throw new Error('Blueprint not in configured catalog')
     const generation = ++this.generation
+    this.creation = undefined
     this.invalidateCheck()
     // Invalidate at navigation, not after the network read. No cancel/overlay can
     // refer to the previous package while the next document is still loading.
@@ -237,42 +313,82 @@ export class BlueprintWorkspace {
   }
   async save(): Promise<DefinitionDocument> {
     if (!this.host || !this.blueprintId) throw new Error('No configured definition loaded')
-    const id = this.blueprintId
+    let id = this.blueprintId
     const generation = this.generation
-    const submitted = JSON.stringify(this.editor.exportDefinition())
-    const doc = await this.host.saveDefinition(id, submitted, this.document?.documentRevision ?? null)
-    if (doc.blueprintId !== id) throw new Error('Unrelated save response')
+    const creation = this.creation
+    let submitted = JSON.stringify(this.editor.exportDefinition())
+    let doc: DefinitionDocument
+    if (creation) {
+      if (!this.host.createDefinition) throw new BlueprintRemoteError('blueprint/capability-unavailable')
+      creation.submittedJson ??= submitted
+      this.persistDraft()
+      try { doc = await this.host.createDefinition(creation.requestId, creation.submittedJson) }
+      catch (error) {
+        // Rejected definitions have no durable creation; allow correction. An
+        // uncertain transport/write outcome must keep the exact retry payload.
+        if (errorCode(error) === 'blueprint/definition-invalid') { delete creation.submittedJson; this.persistDraft() }
+        throw error
+      }
+    } else doc = await this.host.saveDefinition(id, submitted, this.document?.documentRevision ?? null)
     if (generation !== this.generation) throw new Error('Document changed while saving')
+    if (creation) {
+      const current = this.editor.exportDefinition()
+      readHostDefinition(doc.definitionJson, doc.blueprintId)
+      id = doc.blueprintId
+      submitted = JSON.stringify({ ...JSON.parse(creation.submittedJson!), id })
+      this.blueprintId = id; this.creation = undefined
+      this.install({ ...current, id })
+      try { this.storage?.setItem(newDraftKey, 'null') } catch { /* The saved host document remains authoritative. */ }
+    } else if (doc.blueprintId !== id) throw new Error('Unrelated save response')
     const accepted = readHostDefinition(doc.definitionJson, id)
     if (this.document?.documentRevision !== doc.documentRevision) this.invalidateCheck()
     this.document = doc
     this.baselineJson = JSON.stringify(GraphEditor.fromDefinition(accepted).exportDefinition())
     this.baselineSemantics = definitionSemantics(accepted)
+    const item = { blueprintId: id, name: accepted.name, documentRevision: doc.documentRevision, semanticRevision: doc.semanticRevision }
+    this.catalog = [...this.catalog.filter(entry => entry.blueprintId !== id), item]
     if (JSON.stringify(this.editor.exportDefinition()) === submitted) this.install(accepted)
     this.persistDraft()
     this.notice = { key: 'status.saved' }
     this.emit()
     return doc
   }
+  /** The UI confirms discarding edits. Deletion never saves the dirty buffer. */
+  async deleteCurrent(draftName = 'Untitled blueprint'): Promise<void> {
+    const id = this.blueprintId
+    if (!id) throw new BlueprintRemoteError('blueprint/definition-not-found')
+    const generation = this.generation
+    if (!this.creation) {
+      if (!this.host?.deleteDefinition || !this.document) throw new BlueprintRemoteError('blueprint/capability-unavailable')
+      const revision = this.document.documentRevision
+      if (this.deletion?.blueprintId !== id || this.deletion.revision !== revision) this.deletion = { blueprintId: id, revision, requestId: crypto.randomUUID() }
+      const result = await this.host.deleteDefinition(id, revision, this.deletion.requestId)
+      if (result.blueprintId !== id || result.deleted !== true) throw new BlueprintRemoteError('blueprint/dto-invalid')
+      this.catalog = this.catalog.filter(entry => entry.blueprintId !== id)
+    }
+    // Clear only the deleted identity, including when navigation won the race.
+    try {
+      for (const key of [draftKey(id), viewportKey(id), runBindingKey(id)]) this.storage?.setItem(key, '')
+      if (this.creation && generation === this.generation) this.storage?.setItem(newDraftKey, 'null')
+    } catch { /* Host deletion is durable even when local storage is unavailable. */ }
+    if (generation === this.generation) {
+      this.newDraft(draftName)
+      this.notice = { key: 'status.deleted' }
+    }
+    this.emit()
+  }
   /** Saved package closure comes from the existing Host API, never browser files. */
   async exportArchive() {
     if (!this.host?.exportDefinition || !this.blueprintId) throw new BlueprintRemoteError('blueprint/capability-unavailable')
-    const generation = this.generation; const id = this.blueprintId
+    const generation = this.generation
     if (this.dirty || !this.document) await this.save()
-    if (generation !== this.generation || id !== this.blueprintId || this.dirty) throw new BlueprintRemoteError('blueprint/document-stale')
+    const id = this.blueprintId!
+    if (generation !== this.generation || this.dirty) throw new BlueprintRemoteError('blueprint/document-stale')
     const revision = this.document?.documentRevision
     const archive = await this.host.exportDefinition(id)
     if (generation !== this.generation || id !== this.blueprintId || this.dirty || revision !== this.document?.documentRevision) throw new BlueprintRemoteError('blueprint/document-stale')
     if (archive.blueprintId !== id) throw new BlueprintRemoteError('blueprint/dto-invalid')
     return archive
-  }
-  /** Explicit old reader rollback document. It contains no resource file bytes. */
-  async exportLegacy(): Promise<{ blueprintId: string; definitionJson: string }> {
-    const generation = this.generation; const id = this.blueprintId
-    if (!id) throw new BlueprintRemoteError('blueprint/capability-unavailable')
-    if (this.dirty || !this.document) await this.save()
-    if (generation !== this.generation || id !== this.blueprintId || this.dirty) throw new BlueprintRemoteError('blueprint/document-stale')
-    return { blueprintId: id, definitionJson: JSON.stringify(legacyDefinition(this.editor.exportDefinition()), null, 2) }
   }
   /** Confirmation is UI-owned; only configured empty targets are eligible.
    * Host performs the authoritative nonempty/path/ID/closure checks again. */
@@ -308,11 +424,12 @@ export class BlueprintWorkspace {
     const inputJson = this.inputJson
     const epoch = this.checkEpoch
     const revisionBeforeSave = this.document?.documentRevision
-    const semantics = definitionSemantics(this.editor.exportDefinition())
+    const beforeSave = this.editor.exportDefinition()
     try { JSON.parse(inputJson) } catch { throw new InvalidRunInputError() }
     const document = await this.save()
     // save may change the revision (and invalidate older reports), but edits,
     // input changes or navigation while it was in flight must not be captured.
+    const semantics = definitionSemantics({ ...beforeSave, id: document.blueprintId })
     if (read !== this.checkRead || generation !== this.generation || this.dirty
       || inputJson !== this.inputJson || semantics !== definitionSemantics(this.editor.exportDefinition())
       || this.checkEpoch !== epoch + (revisionBeforeSave !== document.documentRevision ? 1 : 0)) {

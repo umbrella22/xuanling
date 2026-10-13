@@ -153,7 +153,7 @@ function fixture(locale = 'en', options = {}) {
       assert.equal(opts.exact, role === 'dialog' || role === 'button' ? true : undefined)
       if (role === 'dialog') return locator(() => dialogs.filter(value => value.name === opts.name), { role, ...opts })
       if (role === 'combobox') {
-        assert.equal(opts.name, 'Configured blueprint')
+        assert.equal(opts.name, 'Blueprint library')
         return locator(() => [{ role, visible: panelVisible }], { role, ...opts })
       }
       assert.equal(role, 'button')

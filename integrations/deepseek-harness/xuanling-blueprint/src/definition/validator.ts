@@ -63,16 +63,49 @@ export function validateDefinition(definition: BlueprintDefinition): void {
   // Resource refs: unique implicit by object keys; per-kind rules.
   for (const [refId, ref] of Object.entries(definition.resources)) {
     const pointer = `/resources/${refId}`
+    const host = ref.source?.kind === 'host'
+    if (ref.format !== undefined && (ref.format === 'agent-preset' && ref.kind !== 'agent'
+      || ref.format === 'mcp-definition' && ref.kind !== 'mcp')) {
+      issues.push({ code: 'invalid-value', message: 'resource format does not match kind', pointer: `${pointer}/format` })
+    }
+    if (ref.source?.kind === 'host') {
+      if (typeof ref.source.id !== 'string' || ref.source.id.trim().length === 0) {
+        issues.push({ code: 'invalid-value', message: 'host resource requires a nonblank source.id', pointer: `${pointer}/source/id` })
+      }
+      if (ref.path !== undefined) {
+        issues.push({ code: 'invalid-value', message: 'host resource must not carry a package path', pointer: `${pointer}/path` })
+      }
+      if (ref.format !== undefined) {
+        issues.push({ code: 'invalid-value', message: 'host resource must not carry a package artifact format', pointer: `${pointer}/format` })
+      }
+      if (ref.kind !== 'mcp' && ref.bindingId !== undefined) {
+        issues.push({ code: 'invalid-value', message: `${ref.kind} host resource must not carry bindingId`, pointer: `${pointer}/bindingId` })
+      }
+      if (ref.kind !== 'agent' && ref.kind !== 'skill' && ref.kind !== 'mcp') {
+        issues.push({ code: 'invalid-value', message: `host source is not supported for ${ref.kind} resources`, pointer: `${pointer}/source` })
+      }
+    }
     if (ref.kind === 'mcp') {
       if (typeof ref.bindingId !== 'string' || ref.bindingId.length === 0) {
         issues.push({ code: 'invalid-value', message: 'mcp resource requires bindingId (capability role)', pointer })
       }
-      if (ref.path !== undefined || ref.source !== undefined) {
-        issues.push({ code: 'invalid-value', message: 'mcp resource must not carry path/source', pointer })
+      if (ref.format === 'mcp-definition') {
+        if (typeof ref.path !== 'string' || !pathPattern.test(ref.path) || ref.path.split('/').includes('..')) {
+          issues.push({ code: 'path-invalid', message: 'mcp-definition requires a portable relative artifact path', pointer: `${pointer}/path` })
+        }
+        if (ref.source !== undefined) {
+          issues.push({ code: 'invalid-value', message: 'packaged mcp-definition must not carry a source', pointer: `${pointer}/source` })
+        }
+      } else if (ref.path !== undefined) {
+        issues.push({ code: 'invalid-value', message: 'mcp resource must not carry a package path', pointer: `${pointer}/path` })
+      }
+      if (ref.source !== undefined && ref.source.kind !== 'host') {
+        issues.push({ code: 'invalid-value', message: 'mcp resource source must be host when present', pointer: `${pointer}/source` })
       }
       continue
     }
     if (ref.kind === 'skill') {
+      if (host) continue
       if (ref.source?.kind === 'shared') {
         if (ref.path !== undefined) issues.push({ code: 'invalid-value', message: 'shared skill uses source, not package path', pointer })
         continue
@@ -86,6 +119,7 @@ export function validateDefinition(definition: BlueprintDefinition): void {
       issues.push({ code: 'invalid-value', message: 'skill resource requires either shared source or package path', pointer })
       continue
     }
+    if (ref.kind === 'agent' && host) continue
     // agent/prompt/schema/script/subflow: package-relative path required.
     if (typeof ref.path !== 'string' || !pathPattern.test(ref.path) || ref.path.split('/').includes('..')) {
       issues.push({ code: 'path-invalid', message: `${ref.kind} resource requires a portable relative path (no "..", no absolute)`, pointer })
@@ -100,6 +134,9 @@ export function validateDefinition(definition: BlueprintDefinition): void {
   let teamStageSeen = false
   for (const [index, node] of definition.graph.nodes.entries()) {
     const pointer = `/graph/nodes/${index}`
+    if (node.modelSelection !== undefined && node.kind !== 'agentTask') {
+      issues.push({ code: 'invalid-value', message: 'modelSelection belongs to agentTask only', pointer: `${pointer}/modelSelection` })
+    }
     if (nodeById.has(node.id)) {
       issues.push({ code: 'duplicate-id', message: `node id "${node.id}" is duplicated`, pointer: `${pointer}/id` })
     }

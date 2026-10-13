@@ -1,7 +1,6 @@
-# XuanLing Blueprint host service (W1.1): one inserted row mounting the
-# package root; the default export is the BlueprintService Cordis service.
-# The service currently reports capability-unavailable for all business
-# methods except ping.
+# Native blueprint editor and Host-managed library. Empty config supports
+# draft creation and a durable runtime under the profile data directory.
+# Executing Agent/tool nodes requires their declared resources and Host bindings.
 - insert:
     - id: xuanling-blueprint
       name: '@xuanling-rs/xuanling-dsh-blueprint'

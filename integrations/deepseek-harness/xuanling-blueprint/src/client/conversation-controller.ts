@@ -90,11 +90,16 @@ export class ConversationController {
 
   /** Mount/cleanup only change local observation ownership, never Host execution. */
   resume(): void { this.connected = true }
-  pause(): void { this.connected = false; this.epoch++; this.markStale() }
+  pause(): void {
+    this.connected = false
+    this.epoch++
+    this.pending = null
+    if (this.snapshot.value?.status === 'bound') this.publish({ connection: 'stale' })
+  }
   markStale(): void {
     this.epoch++
     this.pending = null
-    this.publish({ connection: this.snapshot.value ? 'stale' : 'unavailable' })
+    this.publish({ connection: this.snapshot.value?.status === 'bound' ? 'stale' : 'unavailable' })
   }
 
   /** A slow read must settle before polling again; explicit refresh/selection may supersede it. */
@@ -155,7 +160,7 @@ export class ConversationController {
     } catch (error) {
       if (epoch !== this.epoch || !this.connected) return
       // Unknown transport errors carry no raw body, path, prompt or secret into the view.
-      this.publish({ connection: this.snapshot.value ? 'stale' : 'unavailable',
+      this.publish({ connection: this.snapshot.value?.status === 'bound' ? 'stale' : 'unavailable',
         errorCode: error instanceof BlueprintRemoteError ? error.code : 'blueprint/remote-failed' })
     } finally {
       if (this.pending === epoch) this.pending = null

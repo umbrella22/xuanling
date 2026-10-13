@@ -462,7 +462,7 @@ test('C-08 host and remote select one unchanged strict descriptor/codec source',
   assert.equal(TYPERT.invocations, BLUEPRINT_INVOCATIONS, 'host cannot fork the descriptor array')
   assert.equal(TYPERT_REMOTE.descriptors, BLUEPRINT_INVOCATIONS, 'client cannot fork the descriptor array')
   assert.deepEqual(Object.keys(TYPERT_REMOTE).sort(), ['descriptors', 'package'], 'client contribution has no host implementation')
-  const methods = ['ping', 'listDefinitions', 'loadDefinition', 'saveDefinition', 'validate', 'preflightRun', 'startRun', 'startSessionRun', 'startTeamStage', 'inspectSession', 'inspectRun', 'cancelRun', 'cancelTeamStage', 'acceptTeamStageOutput', 'decide', 'hostProbe', 'mcpProbe', 'exportDefinition', 'importDefinition']
+  const methods = ['ping', 'listDefinitions', 'listResources', 'loadDefinition', 'deleteDefinition', 'createDefinition', 'saveDefinition', 'validate', 'preflightRun', 'startRun', 'startSessionRun', 'startTeamStage', 'inspectSession', 'inspectRun', 'cancelRun', 'cancelTeamStage', 'acceptTeamStageOutput', 'decide', 'hostProbe', 'mcpProbe', 'exportDefinition', 'importDefinition']
   assert.deepEqual(BLUEPRINT_INVOCATIONS.map(d => d.method), methods)
   for (const d of BLUEPRINT_INVOCATIONS) {
     assert.equal(d.id, `${BLUEPRINT_PACKAGE}#blueprint/${d.method}`)

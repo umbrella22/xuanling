@@ -74,7 +74,7 @@ test('C-04 NodeInspector uses actual React props/hooks, legal structured fields 
   const f = fixture(); t.after(f.off)
   const props = f.props('en')
   const html = renderToStaticMarkup(React.createElement(NodeInspector, props))
-  assert.ok(html.includes('data-bp-json="options"'))
+  assert.ok(html.includes('data-bp-json-editor="true"'))
   const tree = f.render()
   assert.equal(find(tree, 'data-bp-field', 'agentRef').props.value, 'Agent_A1')
   assert.equal(find(tree, 'data-bp-field', 'outputSchemaRef').props.value, 'Schema_A1')
@@ -143,7 +143,7 @@ test('C-04 advanced input/output JSON handles awkward valid ports and applies on
   const ports = { 'awkward.port [中文]': ' raw:type / 中文 ', '': 'string' }
   for (const field of ['inputs', 'outputs']) {
     const textarea = find(f.render(), 'data-bp-json', field)
-    textarea.props.onChange(event(JSON.stringify(ports)))
+    textarea.props.onChange(JSON.stringify(ports))
     find(f.render(), 'data-bp-json', field).props.onBlur(event(JSON.stringify(ports)))
     assert.deepEqual(hostRoundtrip(f.editor).graph.nodes[0][field], ports)
   }
@@ -165,7 +165,7 @@ test('C-04 malformed JSON and invalid field shapes retain definition/history and
     ['options', JSON.stringify({ id: 'task', kind: 'agentTask', prompt: 'unsupported prompt' }), 'inspector.invalidJson'],
   ]) {
     const area = find(f.render(), 'data-bp-json', field)
-    area.props.onChange(event(text))
+    area.props.onChange(text)
     find(f.render(), 'data-bp-json', field).props.onBlur(event(text))
     assert.equal(find(f.render(), 'data-bp-json', field).props.value, text)
     assert.equal(f.session.getSnapshot().notice.key, expectedKey)
@@ -190,7 +190,7 @@ test('C-04 options onBlur and explicit Apply are compatible without duplicate hi
   const f = fixture(); t.after(f.off)
   const before = JSON.stringify(f.editor.exportDefinition())
   const text = JSON.stringify({ id: 'task', kind: 'agentTask', outputs: { 'new.port / 中文': 'string' } })
-  find(f.render(), 'data-bp-json', 'options').props.onChange(event(text))
+  find(f.render(), 'data-bp-json', 'options').props.onChange(text)
   find(f.render(), 'data-bp-json', 'options').props.onBlur(event(text))
   const after = JSON.stringify(f.editor.exportDefinition())
   find(f.render(), 'data-bp-action', 'apply-node-options').props.onClick()
@@ -204,7 +204,7 @@ test('C-04 options onBlur and explicit Apply are compatible without duplicate hi
 test('C-04 unfinished full options JSON patches only fields edited relative to its base, preserving newer structured edits', t => {
   const f = fixture(); t.after(f.off)
   const candidate = { ...f.editor.exportDefinition().graph.nodes[0], outputs: { 'edited.port': 'string' } }
-  find(f.render(), 'data-bp-json', 'options').props.onChange(event(JSON.stringify(candidate)))
+  find(f.render(), 'data-bp-json', 'options').props.onChange(JSON.stringify(candidate))
   find(f.render(), 'data-bp-field', 'agentRef').props.onChange(event('Agent_B2'))
   find(f.render(), 'data-bp-action', 'apply-node-options').props.onClick()
   const result = hostRoundtrip(f.editor)
@@ -216,7 +216,7 @@ test('C-04 unfinished full options JSON patches only fields edited relative to i
 test('C-02/C-04 zh/en view updates preserve ALL unfinished JSON/port buffers, keys, definition, history and selection', t => {
   const f = fixture(); t.after(f.off)
   f.editor.setSelection(['task'])
-  for (const field of ['inputs', 'outputs', 'options']) find(f.render(), 'data-bp-json', field).props.onChange(event(`{ unfinished ${field} / 中文`))
+  for (const field of ['inputs', 'outputs', 'options']) find(f.render(), 'data-bp-json', field).props.onChange(`{ unfinished ${field} / 中文`)
   find(f.render(), 'data-bp-field', 'inputs.name').props.onChange(event(' pending 用户.port '))
   find(f.render(), 'data-bp-field', 'outputs.type').props.onChange(event(' unfinished / 用户.type '))
   const snapshot = f.session.getSnapshot()
@@ -242,7 +242,7 @@ test('C-04 pristine buffers follow Undo/Redo; external updates do not discard an
   const f = fixture(); t.after(f.off)
   find(f.render(), 'data-bp-field', 'agentRef').props.onChange(event('Agent_B2'))
   assert.equal(JSON.parse(f.session.getSnapshot().json.options).agentRef, 'Agent_B2')
-  find(f.render(), 'data-bp-json', 'inputs').props.onChange(event('{ unfinished'))
+  find(f.render(), 'data-bp-json', 'inputs').props.onChange('{ unfinished')
   f.editor.undo()
   assert.equal(JSON.parse(f.session.getSnapshot().json.options).agentRef, 'Agent_A1')
   assert.equal(f.session.getSnapshot().json.inputs, '{ unfinished')
@@ -296,7 +296,7 @@ test('C-04 declaration shape preflight is not Host validation: dangling refs sti
 test('C-04 prototype-looking port keys remain own client data; Host codec behavior is explicit', t => {
   const f = fixture(); t.after(f.off)
   const text = '{"__proto__":"string","constructor":"string","中文.port":"wire / exact"}'
-  find(f.render(), 'data-bp-json', 'outputs').props.onChange(event(text))
+  find(f.render(), 'data-bp-json', 'outputs').props.onChange(text)
   find(f.render(), 'data-bp-json', 'outputs').props.onBlur(event(text))
   const exported = f.editor.exportDefinition().graph.nodes[0].outputs
   assert.equal(Object.hasOwn(exported, '__proto__'), true)
@@ -315,7 +315,7 @@ test('C-02/C-04 locale updates preserve dirty saved semantics, selection and non
   f.editor.undo()
   f.editor.setSelection(['task'])
   assert.equal(f.editor.canUndo, true); assert.equal(f.editor.canRedo, true)
-  for (const field of ['inputs', 'outputs', 'options']) find(f.render(), 'data-bp-json', field).props.onChange(event(`unfinished ${field}`))
+  for (const field of ['inputs', 'outputs', 'options']) find(f.render(), 'data-bp-json', field).props.onChange(`unfinished ${field}`)
   const before = JSON.stringify(f.editor.exportDefinition())
   const snapshot = f.session.getSnapshot()
   for (const language of ['zh', 'en', 'zh']) {
@@ -354,7 +354,7 @@ test('C-04 session subscription disposes editor listeners and separate editor id
   f.editor.updateNode('task', { agentRef: 'Agent_B2' })
   assert.equal(emissions, 0)
   assert.equal(f.session.getSnapshot(), before)
-  find(f.render(), 'data-bp-json', 'options').props.onChange(event('{ unfinished / original'))
+  find(f.render(), 'data-bp-json', 'options').props.onChange('{ unfinished / original')
   const replacement = fixture(); t.after(replacement.off)
   assert.notEqual(replacement.editor, f.editor)
   assert.notEqual(replacement.session.getSnapshot().json.options, f.session.getSnapshot().json.options)

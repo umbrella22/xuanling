@@ -4,6 +4,74 @@ All notable release changes are recorded here. XuanLing uses immutable release
 tags and publishes the launcher, native packages, DeepSeek Harness bundles, and
 ZCode projection from the same source commit.
 
+## 0.6.0 - 2026-10-14
+
+### Added
+
+- Blueprint libraries can create durable definitions from an empty library.
+  New drafts receive Host-assigned IDs on first save, with idempotent creation
+  and revision checks. Native Agents can use `blueprint_describe`,
+  `blueprint_validate`, `blueprint_create` and `blueprint_preflight` to prepare
+  complete definitions and declared resource files before explicit execution.
+- Agent, Skill and MCP selectors show current DSH resources first, followed by
+  blueprint resources. Host Agent presets retain structured composition, Skills
+  capture their complete directories, and MCP bindings retain exact tool identities.
+- Ordinary Agent tasks can select a provider, model and optional reasoning effort
+  in the Inspector. Explicit selection overrides the DSH default; each Attempt
+  freezes the final route and resources before dispatch and records safe diagnostics.
+- Custom Host resources travel in portable ZIPs: Agent presets and MCP definitions
+  use typed artifacts, and Skills include their supporting files. Only verified
+  official DSH builtins omit resource bodies. Credentials and machine-specific
+  values become destination binding requirements; import validates artifacts
+  without activating plugins or connecting MCP servers, and re-export preserves
+  those requirements.
+
+### Changed
+
+- Canvas editing adds drag-to-create nodes, collapsible library/Inspector panes,
+  proportional corner resizing and clearer resource labels. Inspector port rows
+  and resource/model controls support the save, check, run and inspect workflow.
+- Advanced node JSON, resource JSON and Run inputs use a JSON editor with syntax
+  highlighting, error locations, indentation, formatting and independent undo/redo.
+  Formatting does not save or run. Blueprint deletion requires confirmation and
+  preserves existing Run history without cancelling active Runs.
+- Source input/output ports are checked during preflight; generated downstream
+  values remain subject to runtime type validation. Unsupported TeamStage Agent
+  preset resources are rejected before execution.
+- The bilingual Blueprint README now starts with installation and practical
+  canvas/native-Agent steps, including resource selection, model routing, results
+  and complete ZIP migration. Legacy downgrade export is no longer offered.
+- Cargo, the npm launcher/native aliases, all five DSH packages and both ZCode
+  plugin manifests use the same `0.6.0` release version.
+
+### Fixed
+
+- Ordinary conversations without a linked blueprint show a neutral empty view.
+  Switching views does not turn that empty state into a stale failure; switching
+  sessions does not display the previous session's error. Real read/offline
+  failures remain distinct, retain confirmed bound snapshots and support refresh.
+- Portable Host artifacts reject credential-bearing URL variants and API key
+  aliases while preserving ordinary non-secret configuration. Imported artifacts
+  retain complete binding requirements when exported again.
+- JSON editor keyboard bindings support indentation, undo/redo and focus escape
+  without losing ordinary typing or IME input.
+- Blueprint ping and typed capability errors report the release version, with
+  the release version check also guarding the runtime constant against drift.
+
+### Runtime and Upgrade Notes
+
+- Native `blueprint_preflight` and `blueprint_start` accept `input` as a JSON value.
+  Model-facing callers using the former `inputJson` string argument must migrate;
+  browser RPC continues to use JSON text. Creation and inspection do not start Runs.
+- DSH support still follows the latest official capability channel. TeamStage
+  remains optional, requires an explicitly enabled native Team profile and source
+  Lead, and retains its separate member/model contract. Ordinary Agent acceptance
+  does not establish TeamStage or other-platform/provider acceptance.
+- The generic MCP contract remains `3`, the persisted Memory contract remains `2`,
+  and this release does not add a Memory database migration. Existing RunRecord
+  legacy reads and backup/restore remain supported; unknown external effects
+  require reviewed recovery rather than automatic replay.
+
 ## 0.5.2 - 2026-10-13
 
 ### Changed

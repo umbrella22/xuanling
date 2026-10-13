@@ -11,6 +11,7 @@ import {
   type BlueprintDefinition,
   type GraphEdge,
   type GraphNode,
+  type ModelSelection,
   type Presentation,
   type ResourceRef,
   type ValidationIssue,
@@ -27,12 +28,25 @@ const rootIdPattern = /^[a-z][a-z0-9_-]*$/
 const resourceRefSchema = z.object({
   kind: z.enum(['agent', 'prompt', 'skill', 'schema', 'script', 'mcp', 'subflow']),
   path: z.string().optional(),
-  source: z.object({
-    kind: z.literal('shared'),
-    rootId: z.string().regex(rootIdPattern),
-    path: z.string().min(1),
-  }).optional(),
+  source: z.discriminatedUnion('kind', [
+    z.object({
+      kind: z.literal('shared'),
+      rootId: z.string().regex(rootIdPattern),
+      path: z.string().min(1),
+    }).strict(),
+    z.object({
+      kind: z.literal('host'),
+      id: z.string().refine(value => value.trim().length > 0, { message: 'host resource id must be nonblank' }),
+    }).strict(),
+  ]).optional(),
   bindingId: z.string().regex(idPattern).optional(),
+  format: z.enum(['agent-preset', 'mcp-definition']).optional(),
+}).strict()
+
+const modelSelectionSchema = z.object({
+  provider: z.string().refine(value => value.trim().length > 0, { message: 'provider must be nonblank' }),
+  model: z.string().refine(value => value.trim().length > 0, { message: 'model must be nonblank' }),
+  reasoningEffort: z.string().refine(value => value.trim().length > 0, { message: 'reasoningEffort must be nonblank' }).optional(),
 }).strict()
 
 // Native Team requiredText checks trimmed length. Validate that boundary while
@@ -61,6 +75,7 @@ const nodeSchema = z.object({
   skillRefs: z.array(z.string().regex(idPattern)).optional(),
   toolsetRefs: z.array(z.string().regex(idPattern)).optional(),
   toolAllowlist: z.array(z.string().min(1)).optional(),
+  modelSelection: modelSelectionSchema.optional(),
   condition: z.object({
     inputPort: z.string().min(1), trueBranch: z.string().regex(idPattern), falseBranch: z.string().regex(idPattern),
   }).strict().optional(),
@@ -173,5 +188,5 @@ export function decodeDefinition(text: string): BlueprintDefinition {
   return candidate
 }
 
-export { idPattern, pathPattern, resourceRefSchema, nodeSchema, edgeSchema, presentationSchema }
-export type { GraphEdge, GraphNode, Presentation, ResourceRef }
+export { definitionSchema, idPattern, pathPattern, resourceRefSchema, nodeSchema, edgeSchema, presentationSchema, modelSelectionSchema }
+export type { GraphEdge, GraphNode, ModelSelection, Presentation, ResourceRef }

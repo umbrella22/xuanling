@@ -16,6 +16,8 @@ const paths: Record<string, string> = {
   delete: 'M3 6h18M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7', pin: 'm9 3 10 10-5 1-4 4-4-4 4-4Zm1 15-6 4',
   collapse: 'M4 5h16v14H4Zm4 7h8', expand: 'M4 5h16v14H4Zm4 7h8m-4-4v8', chevron: 'm9 5 7 7-7 7',
   check: 'm5 12 4 4L19 6', refresh: 'M20 8a9 9 0 0 0-15-3L3 8m0-5v5h5m-4 8a9 9 0 0 0 15 3l2-3m0 5v-5h-5',
+  'chevron-left': 'm15 5-7 7 7 7',
+  grip: 'M6 9h.01M12 9h.01M18 9h.01M6 15h.01M12 15h.01M18 15h.01',
   import: 'M4 15v6h16v-6M12 3v12m-5-5 5 5 5-5', export: 'M4 15v6h16v-6M12 15V3m-5 5 5-5 5 5',
   keyboard: 'M2 5h20v14H2Zm4 4h.01m4 0h.01m4 0h.01m4 0h.01M6 13h.01m4 0h.01m4 0h.01m4 0h.01M8 16h8',
   minimap: 'M3 4h18v16H3Zm3 3h6v5H6Zm9 7h3v3h-3', motion: 'M3 12h3l3-8 6 16 3-8h3',

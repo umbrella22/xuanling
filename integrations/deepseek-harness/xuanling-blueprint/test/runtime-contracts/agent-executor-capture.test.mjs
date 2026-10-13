@@ -80,7 +80,7 @@ test('C-03 source provenance: compat body is unchanged; full pinned MIT notice a
   assert.ok(notice.includes('Copyright (c) 2026 DeepSeek'))
   const licenseOffset = notice.indexOf('MIT License\n')
   assert.ok(licenseOffset >= 0, 'C-03: the full license, not merely an MIT label, must be present')
-  assert.equal(hash(Buffer.from(notice.slice(licenseOffset))), 'ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be')
+  assert.equal(hash(Buffer.from(notice.slice(licenseOffset, notice.indexOf('\n\n\n## CodeMirror') + 1))), 'ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be')
   const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'))
   const lock = readPnpmLock(fileURLToPath(new URL('../../', import.meta.url)))
   assert.ok(pkg.files.includes('THIRD-PARTY-NOTICES.md'), 'C-03: packed candidate includes attribution/license')

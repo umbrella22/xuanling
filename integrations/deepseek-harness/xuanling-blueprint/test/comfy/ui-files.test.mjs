@@ -30,14 +30,14 @@ test('C09 remote exposes existing Host archive methods with receiver and DTO che
   namespace.importDefinition = async () => ({ ok: false, error: { code: 'blueprint/import-target-nonempty' } })
   await assert.rejects(host.importDefinition('flow', 'UEs='), error => error.code === 'blueprint/import-target-nonempty')
 })
-test('C09 dirty archive export first saves captured ID/CAS; legacy strips only new presentation and excludes bytes', async () => {
+test('C09 dirty archive export first saves captured ID/CAS; current format retains every presentation field', async () => {
   const { workspace: w, calls } = await fixture()
   w.editor.patchPresentation(['a'], { title: 'raw title', collapsed: true, pinned: true, width: 300, height: 250, color: 'blue' })
   const value = await w.exportArchive(); assert.deepEqual(value, archive('flow')); assert.deepEqual(calls, [['save', 'flow', 'v1'], ['export', 'flow']])
-  const current = w.editor.exportDefinition(), legacy = JSON.parse((await w.exportLegacy()).definitionJson)
-  assert.deepEqual(legacy.graph, current.graph); assert.deepEqual(legacy.resources, current.resources)
-  assert.deepEqual(legacy.presentation.nodes.a, { x: 1, y: 2 }); assert.equal(w.dirty, false)
-  assert.deepEqual(calls, [['save', 'flow', 'v1'], ['export', 'flow']], 'legacy is definition JSON; no ZIP/lib read')
+  const current = w.editor.exportDefinition()
+  assert.deepEqual(current.presentation.nodes.a, { x: 1, y: 2, title: 'raw title', collapsed: true, pinned: true, width: 300, height: 250, color: 'blue' })
+  assert.equal(w.dirty, false)
+  assert.equal('exportLegacy' in w, false)
 })
 test('C09 export refuses CAS failure and never asks for archive on unaccepted save', async () => {
   const { workspace: w, host, calls } = await fixture()

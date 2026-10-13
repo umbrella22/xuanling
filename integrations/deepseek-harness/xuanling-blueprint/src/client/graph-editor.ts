@@ -244,6 +244,12 @@ export class GraphEditor {
     this.transaction(() => { group.label = label })
   }
 
+  renameDefinition(name: string): void {
+    if (!this.definition) throw new EditorCommandError('no-definition')
+    if (this.definition.name === name) return
+    this.transaction(() => { this.definition!.name = name })
+  }
+
   moveGroup(id: string, dx: number, dy: number): void {
     const group = this.groups.find(g => g.id === id)
     if (!group) throw new EditorCommandError('stale-selection')

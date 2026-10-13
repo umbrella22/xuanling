@@ -22,7 +22,7 @@ or other external writer invalidates the next CAS; reread or rehash before
 continuing. The facade never exposes raw XuanLing mutation names that could
 bypass these host policies.
 
-The profile-local `@xuanling-rs/xuanling-mcp@0.5.2` launcher is wrapped by the
+The profile-local `@xuanling-rs/xuanling-mcp@0.6.0` launcher is wrapped by the
 bundle result adapter. Set `XUANLING_WORKSPACE_ROOT` to the confirmed absolute
 workspace before DSH starts. The facade fails startup when the root, official
 MCP bridge, native image tool, or required XuanLing definitions are missing.

@@ -861,7 +861,7 @@ function synthetic(t) {
   }
   const rpc = ['loadDefinition', 'saveDefinition', 'exportDefinition', 'importDefinition', 'listDefinitions', 'validate'].map(method => ({ method, status: 200, ok: true, code: null, provenance: 'real DSH gateway', at: iso(started + 500) }))
   for (const [method, code] of [['saveDefinition', 'blueprint/revision-conflict'], ['importDefinition', 'blueprint/import-failed']]) rpc.push({ method, code, ok: false, status: 200, provenance: 'real DSH gateway', at: iso(started + 500) })
-  const downloads = ['archive', 'legacy'].map(kind => { const path = join(dir, `synthetic-${kind}`); writeFileSync(path, `SYNTHETIC ${kind}`); return { kind, path, sha256: sha256(readFileSync(path)), provenance: 'actual Playwright synthetic validator input; not live evidence' } })
+  const downloads = ['archive'].map(kind => { const path = join(dir, `synthetic-${kind}`); writeFileSync(path, `SYNTHETIC ${kind}`); return { kind, path, sha256: sha256(readFileSync(path)), provenance: 'actual Playwright synthetic validator input; not live evidence' } })
   const ui = { planId: PLAN_ID, wave: 'W2', startedAt: iso(started), finishedAt: iso(finished), keyRead: false, providerCalls: 0, providerEvidence: false, nativeClipboardEvidence: false,
     transportFixtures: [], clipboardSeams: [{ kind: 'disposable-page-permission-and-late-result', scope: 'UI-only', osClipboardRead: false, osClipboardWrite: false }],
     cases, themes, rpc, downloads, requests: [], trustedEvents: { pointerdown: 10, pointerup: 10, keydown: 10, wheel: 1, compositionstart: 1 }, untrustedEvents: 0,

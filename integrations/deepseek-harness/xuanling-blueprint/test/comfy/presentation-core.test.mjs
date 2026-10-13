@@ -30,10 +30,9 @@ test('C07 presentation references match whole triples including kind and raw end
   }
 })
 
-test('C07 old/new definition, editor layout, document revision and legacy rollback roundtrip', async () => {
+test('C07 old/new definition, editor layout, document revision roundtrip', async () => {
   const { GraphEditor, editorNodeDisplayTitle } = await import('../../src/client/graph-editor.ts')
   const { documentRevisions } = await import('../../src/definition/document.ts')
-  const { legacyDefinition } = await import('../../src/client/clipboard.ts')
   const d = base(); d.metadata = { exact: ['用户', { raw: 'kept' }] }; d.resources.extra = { kind: 'agent', path: 'lib/agent.md' }
   d.presentation = { nodes: { a: { x: 0.5, y: -2 }, b: { x: 50, y: 60 } }, groups: [{ id: 'g', label: '组', nodeIds: ['a', 'b'] }] }
   assert.deepEqual(decodeDefinition(JSON.stringify(d)), d)
@@ -47,8 +46,8 @@ test('C07 old/new definition, editor layout, document revision and legacy rollba
   assert.deepEqual(reload.exportDefinition(), after); assert.notEqual(reload.edges[0].id, editor.edges[0].id)
   assert.equal(editorNodeDisplayTitle(reload.nodes[0], 0, () => 'translated'), '用户 . 🪷')
   assert.equal(Object.hasOwn(after.graph.nodes[0], 'name'), false)
-  const legacy = legacyDefinition(after); assert.deepEqual(legacy.graph, d.graph); assert.deepEqual(legacy.resources, d.resources); assert.deepEqual(legacy.metadata, d.metadata)
-  assert.deepEqual(legacy.presentation, before.presentation); assert.deepEqual(after.presentation.nodes.a.title, '用户 . 🪷')
+  assert.deepEqual(after.graph, d.graph); assert.deepEqual(after.resources, d.resources); assert.deepEqual(after.metadata, d.metadata)
+  assert.deepEqual(after.presentation.nodes.a.title, '用户 . 🪷')
 })
 
 test('C07 adding presentation validation preserves legacy Host control-edge semantics', () => {

@@ -11,7 +11,12 @@ const object = z.strictObject
 const text = () => z.string()
 const id = () => z.string().min(1)
 const document = () => object({ blueprintId: id(), definitionJson: text(), documentRevision: id(), semanticRevision: id(), layoutRevision: id() })
-const resultSymbols: Record<string, string> = { hostProbe: 'HostProbeEvidence', mcpProbe: 'McpProbeEvidence', exportDefinition: 'ExportValue', importDefinition: 'ImportValue', loadDefinition: 'DefinitionDocument', saveDefinition: 'DefinitionDocument', startTeamStage: 'TeamStageActionView', cancelTeamStage: 'TeamStageActionView', acceptTeamStageOutput: 'TeamStageActionView' }
+const resourceCatalogEntry = () => object({
+  id: id(), kind: z.enum(['agent', 'skill', 'mcp']), displayName: text(), description: text(),
+  source: z.literal('dsh'), availability: z.enum(['available', 'unavailable']), bindingId: text().optional(),
+  provenance: z.enum(['builtin', 'custom', 'unknown']),
+})
+const resultSymbols: Record<string, string> = { hostProbe: 'HostProbeEvidence', mcpProbe: 'McpProbeEvidence', exportDefinition: 'ExportValue', importDefinition: 'ImportValue', loadDefinition: 'DefinitionDocument', createDefinition: 'DefinitionDocument', saveDefinition: 'DefinitionDocument', startTeamStage: 'TeamStageActionView', cancelTeamStage: 'TeamStageActionView', acceptTeamStageOutput: 'TeamStageActionView' }
 const symbol = (method: string) => method[0]!.toUpperCase() + method.slice(1)
 const invocation = (method: string, args: (() => z.ZodType) | undefined, result: () => z.ZodType) => ({
   id: `${BLUEPRINT_PACKAGE}#blueprint/${method}`,
@@ -26,7 +31,10 @@ const invocation = (method: string, args: (() => z.ZodType) | undefined, result:
 export const BLUEPRINT_INVOCATIONS = [
     invocation('ping', undefined, () => object({ status: z.literal('ok'), service: text(), version: text() })),
     invocation('listDefinitions', undefined, () => object({ definitions: z.array(object({ blueprintId: id(), name: text(), documentRevision: text().nullable(), semanticRevision: text().nullable() })) })),
+    invocation('listResources', undefined, () => object({ resources: z.array(resourceCatalogEntry()) })),
     invocation('loadDefinition', () => object({ blueprintId: id() }), document),
+    invocation('deleteDefinition', () => object({ blueprintId: id(), expectedRevision: id(), requestId: id() }), () => object({ blueprintId: id(), deleted: z.literal(true) })),
+    invocation('createDefinition', () => object({ requestId: id(), definitionJson: text() }), document),
     invocation('saveDefinition', () => object({ blueprintId: id(), definitionJson: text(), expectedRevision: text().nullable() }), document),
     invocation('validate', () => object({ definitionJson: text() }), () => object({ ok: z.literal(true), semanticRevision: text() })),
     invocation('preflightRun', () => object({ blueprintId: id(), expectedRevision: id(), inputJson: text() }), () => object({

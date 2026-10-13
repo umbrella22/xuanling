@@ -43,8 +43,8 @@ export function semanticProjection(definition: BlueprintDefinition): unknown {
 
 function collectResourceFiles(definition: BlueprintDefinition, rootDir: string, files: Map<string, string>, issues: string[]): void {
   for (const [refId, ref] of Object.entries(definition.resources)) {
-    if (ref.source?.kind === 'shared') continue // shared skills are resolved per attempt (W2.2), not frozen in the definition
-    if (ref.kind === 'mcp') continue
+    if (ref.source?.kind === 'shared' || ref.source?.kind === 'host') continue // external resources are resolved per attempt, not frozen in the package
+    if (ref.kind === 'mcp' && ref.format !== 'mcp-definition') continue
     if (typeof ref.path !== 'string') continue
     const absolute = resolve(rootDir, ref.path)
     const rel = relative(rootDir, absolute)

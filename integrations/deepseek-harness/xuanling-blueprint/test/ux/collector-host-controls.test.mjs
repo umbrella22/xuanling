@@ -48,7 +48,7 @@ function retainedState() {
 }
 const retained = () => { const before = retainedState(); return { before, after: structuredClone(before) } }
 const panes = () => ({ bounds: { ...box, right: 1700, bottom: 1100, width: 1400, height: 1000 },
-  picker: { count: 1, inToolbar: true, visible: true, name: 'Configured blueprint' }, toggles: [],
+  picker: { count: 1, inToolbar: true, visible: true, name: 'Blueprint library' }, toggles: ['toggle-library', 'toggle-inspector'],
   library: { count: 1, mounted: true, visible: true, rect: { ...box } }, inspector: { count: 1, mounted: true, visible: true, rect: { ...box } } })
 // Fixed oracle inputs use contract token names and separate color values. They
 // do not call a production style helper to generate their expected output.
@@ -126,7 +126,7 @@ for (const [name, mutate] of [
 ]) test(`HC-FOCUS rejects ${name}`, () => { const c = hostFacts('HC-FOCUS'); mutate(c.facts.themes[0]); assert.throws(() => compact.validateHostControlFacts(c)) })
 for (const [name, mutate] of [
   ['host collapse missing', t => { t.sidebar.openCollapsed = false }], ['host click untrusted', t => { t.sidebar.events[0].trusted = false }],
-  ['plugin toggle retained', t => { t.sidebar.collapsed.toggles = ['toggle-library'] }], ['library unmounted by host', t => { t.sidebar.collapsed.library.mounted = false }],
+  ['inspector handle missing', t => { t.sidebar.collapsed.toggles = ['toggle-library'] }], ['library unmounted by host', t => { t.sidebar.collapsed.library.mounted = false }],
   ['inspector hidden by host', t => { t.sidebar.after.inspector.visible = false }], ['picker duplicated', t => { t.sidebar.collapsed.picker.count = 2 }],
   ['geometry omitted', t => { delete t.sidebar.before.bounds }], ['collapsed state missing', t => { delete t.sidebar.stateCollapsed }],
   ['host collapse input changed', t => { t.sidebar.stateCollapsed.inputJson = '{}' }],

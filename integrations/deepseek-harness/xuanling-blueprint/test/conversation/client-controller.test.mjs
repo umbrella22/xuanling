@@ -178,6 +178,54 @@ test('unbound, legacy Attempt and missing host never invent lineage, Attempt ID 
   assert.equal(missing.getSnapshot().value, null)
 })
 
+test('ordinary unbound tab cleanup keeps a neutral snapshot and invalidates late reads', async () => {
+  const { controller, calls } = controlled()
+  const read = controller.refresh(); calls[0].resolve({ status: 'unbound', sessionId: 'source' }); await read
+  const accepted = controller.getSnapshot()
+  const late = controller.refresh()
+  controller.pause()
+  assert.equal(controller.getSnapshot().connection, 'connected', 'normal tab cleanup is not a failed read')
+  assert.equal(controller.getSnapshot().errorCode, null)
+  calls[1].reject(new Error('late unavailable')); await late
+  assert.equal(controller.getSnapshot().value, accepted.value)
+  assert.equal(controller.getSnapshot().connection, 'connected')
+  controller.resume()
+  const again = controller.poll(); calls[2].resolve({ status: 'unbound', sessionId: 'source' }); await again
+  assert.equal(controller.getSnapshot().connection, 'connected')
+  assert.equal(controller.getSnapshot().value.status, 'unbound')
+})
+
+test('unbound offline or failed reads remain unavailable and successful empty retries clear the error', async () => {
+  const { controller, calls } = controlled()
+  const read = controller.refresh(); calls[0].resolve({ status: 'unbound', sessionId: 'source' }); await read
+  controller.markStale()
+  assert.equal(controller.getSnapshot().connection, 'unavailable', 'an empty DTO is not a retained graph')
+  const failed = controller.refresh(); calls[1].reject(new Error('PRIVATE_ERROR_SENTINEL')); await failed
+  assert.equal(controller.getSnapshot().connection, 'unavailable')
+  assert.equal(controller.getSnapshot().errorCode, 'blueprint/remote-failed')
+  assert.equal(JSON.stringify(controller.getSnapshot()).includes('PRIVATE_ERROR_SENTINEL'), false)
+  const retry = controller.refresh(); calls[2].resolve({ status: 'unbound', sessionId: 'source' }); await retry
+  assert.equal(controller.getSnapshot().connection, 'connected')
+  assert.equal(controller.getSnapshot().errorCode, null)
+})
+
+test('missing capability, malformed DTO and remote failure never become an ordinary unbound result', async () => {
+  for (const [namespace, expected] of [
+    [undefined, 'blueprint/host-unavailable'],
+    [{}, 'blueprint/capability-unavailable'],
+    [{ inspectSession: async () => ({ ok: true, value: { status: 'unbound', sessionId: 'other' } }) }, 'blueprint/dto-invalid'],
+    [{ inspectSession: async () => ({ ok: true, value: { status: 'unbound', sessionId: 'source', runs: [] } }) }, 'blueprint/dto-invalid'],
+    [{ inspectSession: async () => ({ ok: false, error: { code: 'blueprint/durability-failed', raw: 'PRIVATE_ERROR_SENTINEL' } }) }, 'blueprint/durability-failed'],
+  ]) {
+    const controller = new ConversationController(resolveConversationHost({ get: () => namespace }), 'source')
+    await controller.refresh()
+    assert.equal(controller.getSnapshot().connection, 'unavailable')
+    assert.equal(controller.getSnapshot().errorCode, expected)
+    assert.equal(controller.getSnapshot().value, null)
+    assert.equal(JSON.stringify(controller.getSnapshot()).includes('PRIVATE_ERROR_SENTINEL'), false)
+  }
+})
+
 test('frozen XYFlow uses saved positions, exact dotted handles, canonical focus set and static stale/reduced/hidden states', async () => {
   const good = value()
   const before = structuredClone(good)

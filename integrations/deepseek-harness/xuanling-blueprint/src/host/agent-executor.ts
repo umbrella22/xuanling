@@ -1,6 +1,6 @@
 /** One scoped public Agent per Attempt. Quiescence is not successful completion:
  * only a durable turn/end from this dispatch decides the outcome. */
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import type { AgentCancelCause, Session } from '@deepseek-ai/dsh-session'
 import type { ModelSelection } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
@@ -9,6 +9,7 @@ import { assertObjectJsonSchema, validateJsonSchemaValue, type ObjectJsonSchema,
 import { attachStructuredRuntime, STRUCTURED_OUTPUT_TOOL, type StructuredAttachment } from './dsh-structured-compat.ts'
 import { nativeSessionLineage, type NativeSourceParent } from '../conversation/native-session-lineage.ts'
 import type { RunSource } from '../conversation/contracts.ts'
+import { validatePackagedPreset, type PackagedPreset, type HostAgentComposition } from '../portability/host-resources.ts'
 
 export interface SkillSnapshotInput { name: string; content: string; digest: string }
 export interface AgentExecutionSpec {
@@ -17,6 +18,11 @@ export interface AgentExecutionSpec {
   source?: RunSource
   sourceParent?: NativeSourceParent
   agentMd: string; skills: SkillSnapshotInput[]; input: string; cwd: string
+  /** Host-owned DSH preset identity. It is passed as metadata to the fresh
+   * Attempt Agent; an existing live Agent is never reused. */
+  agentPreset?: string
+  agentComposition?: PackagedPreset
+  hostAgentComposition?: HostAgentComposition
   timeoutMs?: number
   signal?: AbortSignal
   /** Omitted means no business tools. Transport never grants business rights. */
@@ -163,13 +169,37 @@ export class BlueprintAgentExecutor {
       // Keep ownership on the plugin context. Durable parentage does not make
       // a source conversation view or its Agent the execution lifecycle owner.
       const options = { sessionId, meta: { cwd: spec.cwd, origin: 'subagent',
+        ...(spec.agentPreset === undefined ? {} : { agentPreset: spec.agentPreset }),
         ...lineage === undefined ? {} : { parentSession: lineage.parentSessionId } }, setup, signal,
         ...agentOptions === undefined ? {} : { agentOptions } }
-      const creation = Promise.resolve().then(() => {
+      const creation = Promise.resolve().then(async () => {
         signal.throwIfAborted()
-        if (this.registry.create) return this.registry.create(options)
-        if (this.registry.createAgent) return this.registry.createAgent(this.ownerCtx, options)
-        throw new AgentCompositionUnsupportedError('missing factory')
+        let disposePreset: (() => Promise<void>) | undefined
+        try {
+          if (spec.agentComposition !== undefined || spec.hostAgentComposition !== undefined) {
+            const portable = spec.agentComposition === undefined ? undefined : validatePackagedPreset(structuredClone(spec.agentComposition))
+            if (portable !== undefined && portable.requiredBindings.length > 0) throw new AgentCompositionUnsupportedError('packaged preset bindings unavailable')
+            const composition = portable ?? structuredClone(spec.hostAgentComposition!)
+            const presets = this.ownerCtx.get('agentPresets') as { register?(definition: { id: string; plugins: Array<Record<string, unknown>> }): Promise<() => Promise<void>> } | undefined
+            if (typeof presets?.register !== 'function') throw new AgentCompositionUnsupportedError('preset registry unavailable')
+            const digest = createHash('sha256').update(JSON.stringify(composition.plugins)).digest('hex')
+            const presetId = `bp-preset-${digest.slice(0, 16)}-${randomUUID().slice(0, 8)}`
+            disposePreset = await presets.register({ id: presetId, plugins: composition.plugins })
+            options.meta.agentPreset = presetId
+            signal.throwIfAborted()
+          }
+          const created = this.registry.create ? await this.registry.create(options)
+            : this.registry.createAgent ? await this.registry.createAgent(this.ownerCtx, options)
+              : (() => { throw new AgentCompositionUnsupportedError('missing factory') })()
+          if (disposePreset === undefined) return created
+          const release = disposePreset
+          return { agent: created.agent, async dispose() {
+            try { await created.dispose() } finally { await release() }
+          } }
+        } catch (error) {
+          await disposePreset?.()
+          throw error
+        }
       })
       let onAbort: (() => void) | undefined
       const aborted = new Promise<undefined>(resolve => {

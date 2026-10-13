@@ -7,10 +7,12 @@ export interface ViewMessageParams {
   'status.loadingDocument': undefined
   'status.loaded': undefined
   'status.newDocument': undefined
+  'status.newDraft': undefined
   'status.draftRestored': undefined
   'status.draftStale': undefined
   'status.draftInvalid': undefined
   'status.saved': undefined
+  'status.deleted': undefined
   'status.runAdmitted': { state: string }
   'status.recentRunUnavailable': undefined
   'status.draftUnavailable': undefined

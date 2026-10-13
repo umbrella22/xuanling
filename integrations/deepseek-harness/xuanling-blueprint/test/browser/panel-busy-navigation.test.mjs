@@ -80,7 +80,7 @@ function publicTree(f, id) {
   if (findAll(current, n => n.props['data-bp-action'] === id).length) return current
   let entry = findAll(current, n => n.props.overlay?.kind === 'more-menu')[0]
   if (!entry) { one(current, n => n.props['data-bp-action'] === 'more-actions').props.onClick(); entry = one(f.render(), n => n.props.overlay?.kind === 'more-menu') }
-  const group = ['export-blueprint', 'export-legacy', 'import-blueprint'].includes(id) ? 'files' : ['motion-toggle', 'toggle-minimap'].includes(id) ? 'view' : 'tools'
+  const group = ['export-blueprint', 'import-blueprint'].includes(id) ? 'files' : ['motion-toggle', 'toggle-minimap'].includes(id) ? 'view' : 'tools'
   if (f.publicMenu?.key !== entry.props.key) f.publicMenu = { key: entry.props.key, states: [], refs: [], cursor: 0, refCursor: 0 }
   const state = f.publicMenu
   const React = { createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }), Fragment: 'fragment',
@@ -94,7 +94,7 @@ function publicAction(tree, id) {
   return one(publicTree(seat.active, id), n => n.type === 'button' && n.props['data-bp-action'] === id)
 }
 const specs = [
-  ['Configured blueprint', tree => one(tree, n => n.type === 'select' && n.props['aria-label'] === 'Configured blueprint')],
+  ['Blueprint library', tree => one(tree, n => n.type === 'select' && n.props['aria-label'] === 'Blueprint library')],
   ['Refresh library', tree => publicAction(tree, 'refresh-library')],
   ['Inspect input', tree => one(tree, n => n.type === 'input' && n.props['aria-label'] === 'Inspect run ID')],
   ['Inspect submit', tree => one(tree, n => n.type === 'button' && n.props['data-bp-action'] === 'inspect-run')],

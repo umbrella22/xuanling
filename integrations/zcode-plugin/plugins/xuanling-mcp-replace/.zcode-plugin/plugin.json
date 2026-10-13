@@ -1,6 +1,6 @@
 {
   "name": "xuanling-mcp-replace",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "Opt-in XuanLing filesystem replacement for ZCode with native-tool denial and mandatory mutation CAS.",
   "author": {
     "name": "umbrella22 and XuanLing contributors",

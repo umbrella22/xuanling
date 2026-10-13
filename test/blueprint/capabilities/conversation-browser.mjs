@@ -232,10 +232,46 @@ export async function runConversationBrowser({ page, gateway, fixture, profile, 
         definitionChanged: true }, await screenshot(page, reportDir, 'frozen-graph'))
     } finally { writeFileSync(scene.definitionPath, original, { mode: 0o600 }) }
 
-    const plain = await view(scene.plainSessionId), plainHost = await inspect(scene.plainSessionId)
+    await view(scene.plainSessionId)
+    const emptyCopies = [
+      '当前对话未关联蓝图，暂无实时蓝图可显示。',
+      'This conversation has no linked blueprint. No live blueprint is available to display.',
+    ]
+    const unavailableCopies = [
+      '暂时无法加载实时蓝图，请稍后刷新。',
+      'Unable to load the live blueprint right now. Try refreshing shortly.',
+    ]
+    const readEmptyState = () => page.locator(CONVERSATION_ROOT).evaluate(root => ({
+      sessionId: root.getAttribute('data-bp-session'), connection: root.getAttribute('data-bp-connection'),
+      runId: root.getAttribute('data-bp-run-id'),
+      status: root.querySelector('[role="status"]')?.textContent,
+      empty: root.querySelector('.bp-conversation-empty')?.textContent,
+      nodes: root.querySelectorAll('[data-bp-node]').length,
+    }))
+    const neutralEmpty = value => value.sessionId === scene.plainSessionId && value.connection === 'connected'
+      && emptyCopies.includes(value.empty) && !value.runId && value.nodes === 0
+    const plainCopy = await poll(readEmptyState, neutralEmpty, 'EVIDENCE_PLAIN_EMPTY_COPY')
+    const switches = [], plainMutationCount = native.mutations()
+    for (let ordinal = 1; ordinal <= 10; ordinal++) {
+      await selectTab(page, CHAT_TAB)
+      await selectTab(page, BLUEPRINT_TAB)
+      const firstFrame = await readEmptyState()
+      ensure(['loading', 'connected'].includes(firstFrame.connection), 'EVIDENCE_PLAIN_REMOUNT_FALSE_ERROR')
+      const settled = await poll(readEmptyState, neutralEmpty, 'EVIDENCE_PLAIN_REMOUNT_NOT_NEUTRAL')
+      switches.push({ ordinal, firstConnection: firstFrame.connection, settledConnection: settled.connection })
+    }
+    const offline = {}
+    try {
+      await page.context().setOffline(true)
+      offline.empty = await poll(readEmptyState, value => value.connection === 'unavailable'
+        && unavailableCopies.includes(value.empty), 'EVIDENCE_PLAIN_OFFLINE_FALSE_EMPTY')
+    } finally { await page.context().setOffline(false) }
+    offline.emptyRecovered = await poll(readEmptyState, neutralEmpty, 'EVIDENCE_PLAIN_ONLINE_NOT_NEUTRAL')
+    const plain = await page.evaluate(conversationDomProbe), plainHost = await inspect(scene.plainSessionId)
     ensure(plainHost.status === 'unbound' && plain.sessionId === scene.plainSessionId && !plain.runId && plain.nodes.length === 0 && plain.attempts.length === 0, 'EVIDENCE_PLAIN_SESSION_BOUND')
+    ensure(native.mutations() === plainMutationCount, 'EVIDENCE_PLAIN_OBSERVATION_MUTATED')
     add('plain-unbound', { sessionId: scene.plainSessionId, sourceSessionId: scene.sessionId, hostStatus: plainHost.status,
-      dom: plain }, await screenshot(page, reportDir, 'plain-unbound'))
+      dom: plain, copy: plainCopy, switches, offline, mutationDelta: native.mutations() - plainMutationCount }, await screenshot(page, reportDir, 'plain-unbound'))
     if (mode === 'live') {
       const linked = await inspect(scene.sessionId)
       const source = linked.selected?.source

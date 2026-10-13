@@ -1,5 +1,5 @@
 /** Declaration-only clipboard. No file, runtime, or system clipboard access. */
-import type { BlueprintDefinition, GraphEdge, GraphNode, Presentation, ResourceRef } from '../definition/types.ts'
+import type { GraphEdge, GraphNode, Presentation, ResourceRef } from '../definition/types.ts'
 
 export interface ClipboardFragment {
   version: 1
@@ -127,12 +127,21 @@ export function validateResourceReferences(nodes: GraphNode[], resources: Record
 }
 
 function checkResource(raw: unknown, at: string): void {
-  const r = shape(raw, ['kind', 'path', 'source', 'bindingId'], ['kind'], at)
+  const r = shape(raw, ['kind', 'path', 'source', 'bindingId', 'format'], ['kind'], at)
   if (!['agent', 'prompt', 'skill', 'schema', 'script', 'mcp', 'subflow'].includes(r.kind as string)) fail(`${at}/kind`)
   if (Object.hasOwn(r, 'bindingId')) string(r.bindingId, `${at}/bindingId`, true)
-  if (r.kind === 'mcp') {
+  if (Object.hasOwn(r, 'format') && !(r.kind === 'agent' && r.format === 'agent-preset' || r.kind === 'mcp' && r.format === 'mcp-definition')) fail(`${at}/format`)
+  if (typeof r.source === 'object' && r.source !== null && 'kind' in r.source && r.source.kind === 'host') {
+    if (!['agent', 'skill', 'mcp'].includes(r.kind as string) || Object.hasOwn(r, 'path') || Object.hasOwn(r, 'format') || r.kind !== 'mcp' && Object.hasOwn(r, 'bindingId')) fail(at)
+    const s = shape(r.source, ['kind', 'id'], ['kind', 'id'], `${at}/source`)
+    string(s.id, `${at}/source/id`)
+    if (!(s.id as string).trim()) fail(`${at}/source/id`)
+  } else if (r.kind === 'mcp') {
     string(r.bindingId, `${at}/bindingId`, true)
-    if (Object.hasOwn(r, 'path') || Object.hasOwn(r, 'source')) fail(at)
+    if (Object.hasOwn(r, 'source')) fail(at)
+    if (r.format === 'mcp-definition') {
+      if (typeof r.path !== 'string' || !pathPattern.test(r.path) || r.path.split('/').includes('..')) fail(`${at}/path`)
+    } else if (Object.hasOwn(r, 'path')) fail(at)
   } else if (r.kind === 'skill' && Object.hasOwn(r, 'source')) {
     if (Object.hasOwn(r, 'path')) fail(at)
     const s = shape(r.source, ['kind', 'rootId', 'path'], ['kind', 'rootId', 'path'], `${at}/source`)
@@ -143,9 +152,17 @@ function checkResource(raw: unknown, at: string): void {
   }
 }
 function checkNode(raw: unknown, at: string): GraphNode {
-  const n = shape(raw, ['id', 'kind', 'outputs', 'inputs', 'agentRef', 'skillRefs', 'toolsetRefs', 'toolAllowlist', 'condition', 'outputSchemaRef', 'join', 'branches', 'budget', 'subflowRef'], ['id', 'kind'], at)
+  const n = shape(raw, ['id', 'kind', 'outputs', 'inputs', 'agentRef', 'skillRefs', 'toolsetRefs', 'toolAllowlist', 'condition', 'outputSchemaRef', 'join', 'branches', 'budget', 'subflowRef', 'modelSelection'], ['id', 'kind'], at)
   string(n.id, `${at}/id`, true)
   if (!kinds.includes(n.kind as string)) fail(`${at}/kind`)
+  if (Object.hasOwn(n, 'modelSelection')) {
+    if (n.kind !== 'agentTask') fail(`${at}/modelSelection`)
+    const route = shape(n.modelSelection, ['provider', 'model', 'reasoningEffort'], ['provider', 'model'], `${at}/modelSelection`)
+    for (const field of ['provider', 'model', 'reasoningEffort']) if (Object.hasOwn(route, field)) {
+      string(route[field], `${at}/modelSelection/${field}`)
+      if (!(route[field] as string).trim()) fail(`${at}/modelSelection/${field}`)
+    }
+  }
   for (const key of ['outputs', 'inputs']) if (Object.hasOwn(n, key)) {
     for (const [port, type] of Object.entries(record(n[key], `${at}/${key}`))) {
       // Port names are raw keys: Unicode and embedded dots are preserved.
@@ -228,17 +245,4 @@ export function decodeClipboard(input: unknown): ClipboardFragment {
     if (error instanceof ClipboardError) throw error
     throw new ClipboardError('/')
   }
-}
-
-/** Explicit old-reader rollback document; resource closure remains the Host's job. */
-export function legacyDefinition(definition: BlueprintDefinition): BlueprintDefinition {
-  const result = structuredClone(definition)
-  if (result.presentation) {
-    delete result.presentation.edges
-    for (const node of Object.values(result.presentation.nodes)) {
-      delete node.title; delete node.collapsed; delete node.pinned
-      delete node.width; delete node.height; delete node.color
-    }
-  }
-  return result
 }

@@ -13,14 +13,15 @@ import { BUILTIN_NODE_CATALOG, nodeKindTitle, searchBuiltinNodes } from './node-
 import type { BuiltinNodeKind } from './node-catalog.ts'
 import { connectionNotice } from './view-contract.ts'
 import { renderAttemptDiagnostics } from './diagnostics.ts'
+import { JsonEditor } from './json-editor.ts'
 import { NodeInspector } from './inspector.ts'
-import { executableNodeIds, flowAriaLabels, presentationGroupFrames, resourceKindTitle, runStateTitle } from './presentation.ts'
+import { executableNodeIds, flowAriaLabels, presentationGroupFrames, resourceDisplayName, resourceKindTitle, runStateTitle } from './presentation.ts'
 import { flowEdgeEndpoints } from './flow-geometry.ts'
 import { applyCanvasNodeChanges, applyCanvasEdgeSelection, CanvasInteractions, pointerPosition } from './flow-interactions.ts'
 import { installCanvasStyles } from './styles.ts'
 import { projectRuntimeMotion } from './runtime-motion.ts'
 import type { NodeMotion, EdgeMotion } from './runtime-motion.ts'
-import { placePaletteNode, paletteNodeShape } from './node-placement.ts'
+import { placePaletteNode, paletteNodeShape, PALETTE_NODE_FOOTPRINT } from './node-placement.ts'
 import type { PaletteReservation } from './node-placement.ts'
 export type { HostLink } from './remote.ts'
 import { resolveCanvasShortcut, commandDisabledReason, contextCommands } from './command-policy.ts'
@@ -38,6 +39,7 @@ import { blueprintIcon } from './icons.ts'
 const h = React.createElement
 // XYFlow shifts the reconnect center by this radius, beyond the port's 15px hit inset.
 const RECONNECT_ANCHOR_RADIUS = 24
+const PALETTE_DRAG_TYPE = 'application/x-xuanling-blueprint-node'
 const EDITABLE_KINDS = new Set<string>(BUILTIN_NODE_CATALOG.map(p => p.kind))
 interface NodeData extends Record<string, unknown> {
   label: string
@@ -88,12 +90,16 @@ const BlueprintNode = React.memo(function BlueprintNode({ id, data, selected }: 
   return h('div', { className: `bp-node${selected ? ' bp-node-selected' : ''}`, 'data-bp-node': id, 'data-bp-kind': data.kind,
     'data-bp-raw-state': data.runtime.state, 'data-bp-motion': data.runtime.motion, 'data-bp-relation': data.runtime.relation,
     'data-bp-pinned': String(!!data.presentation.pinned), 'data-bp-collapsed': String(!!data.presentation.collapsed), 'data-bp-color': data.presentation.color ?? 'default',
-    style: { width: '100%', minHeight: data.minHeight } },
+    style: { width: '100%', height: '100%', minHeight: data.minHeight } },
     data.runtime.motion === 'pulse' && h('div', { className: 'bp-node-emphasis', 'aria-hidden': true }),
-    h('div', { 'data-bp-resize': id, 'aria-label': t('interaction.resize') }, h(NodeResizer, { nodeId: id, isVisible: selected && data.editable && !data.presentation.pinned,
+    h('div', { 'data-bp-resize': id, 'aria-label': t('interaction.resize') }, ...[false, true].map(corners => h(NodeResizer, { key: corners ? 'corners' : 'edges', nodeId: id, isVisible: selected && data.editable && !data.presentation.pinned,
+      // Edges change one axis; corners keep the initial ratio and opposite anchor.
+      keepAspectRatio: corners, ...(corners ? { lineStyle: { display: 'none' } } : { handleStyle: { display: 'none' } }),
       minWidth: 220, minHeight: data.minHeight, shouldResize: () => data.editable && !data.presentation.pinned,
-      onResizeStart: data.onResizeStart, onResize: (_event, params) => data.onResize(params), onResizeEnd: event => data.onResizeEnd(pointerPosition(event)) })),
-    h('div', { className: 'bp-node-title', onDoubleClick: (event: React.MouseEvent) => { event.stopPropagation(); data.onRename() } }, h('span', { className: 'bp-kind' }, data.kindTitle), h('strong', null, data.label)),
+      onResizeStart: data.onResizeStart, onResize: (_event, params) => data.onResize(params), onResizeEnd: event => data.onResizeEnd(pointerPosition(event)) }))),
+    h('div', { className: 'bp-node-title', title: data.editable && !data.presentation.pinned ? t('interaction.dragNode') : undefined, onDoubleClick: (event: React.MouseEvent) => { event.stopPropagation(); data.onRename() } },
+      h('span', { className: 'bp-node-grip', 'aria-hidden': true }, blueprintIcon(React, 'grip')),
+      h('span', { className: 'bp-kind' }, data.kindTitle), h('strong', null, data.label)),
     h('div', { className: 'bp-node-summary', title: t('resource.availabilityUnchecked') }, data.summary),
     h('div', { className: 'bp-node-state', 'data-bp-node-state': id }, data.state),
     !EDITABLE_KINDS.has(data.kind) && h('div', { className: 'bp-node-note' }, t('node.importedKind', { kind: data.kind })),
@@ -171,13 +177,12 @@ function portOf(editor: GraphEditor, nodeId: string, handle: string | null | und
 }
 interface PanelNotice { key: BlueprintLocaleKey; params?: Record<string, unknown> }
 /** Resource JSON draft identity is the resource/editor, never locale or JSON content. */
-function ResourceJsonField({ label, value, onApply }: { label: string; value: ResourceRef; onApply: (text: string) => void }) {
+function ResourceJsonField({ label, value, onApply, t, disabled }: { label: string; value: ResourceRef; onApply: (text: string) => void; t: BlueprintLocaleProps['t']; disabled: boolean }) {
   const source = JSON.stringify(value, null, 2)
   const [text, setText] = React.useState(source)
   React.useEffect(() => setText(source), [source])
-  return h('label', { className: 'bp-field' }, h('span', null, label), h('textarea', { value: text, className: 'nodrag nowheel', rows: 3, 'aria-label': label,
-    onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => setText(e.currentTarget.value),
-    onBlur: (e: React.FocusEvent<HTMLTextAreaElement>) => { if (e.currentTarget.value !== source) onApply(e.currentTarget.value) } }))
+  return h('label', { className: 'bp-field' }, h('span', null, label), h(JsonEditor, { value: text, rows: 3, label, t, disabled, onChange: setText,
+    onBlur: text => { if (text !== source) onApply(text) } }))
 }
 export interface PanelEnvironment { React?: typeof React; hostLink: HostLink | undefined; storage: DraftStorage | undefined }
 export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType<BlueprintLocaleProps> {
@@ -191,6 +196,11 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
     const [overlay, setOverlay] = React.useState<CanvasOverlay | null>(null)
     const [tooltip, setTooltip] = React.useState<TooltipContent | null>(null)
     const [spacePan, setSpacePan] = React.useState(false)
+    const [libraryCollapsed, setLibraryCollapsed] = React.useState(false)
+    const [inspectorCollapsed, setInspectorCollapsed] = React.useState(false)
+    const [sidebarId] = React.useState(() => `bp-sidebar-${crypto.randomUUID()}`)
+    const [paletteOver, setPaletteOver] = React.useState(false)
+    const paletteDrag = React.useRef<{ kind: BuiltinNodeKind; editor: GraphEditor; epoch: number } | null>(null)
     const composing = React.useRef(false)
     const focusBeforeOverlay = React.useRef<HTMLElement | null>(null)
     const overlayEpoch = React.useRef(0)
@@ -223,6 +233,18 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
     }, [])
     const flow = useReactFlow<CanvasNode>()
     const rootRef = React.useRef<HTMLDivElement>(null)
+    React.useEffect(() => {
+      const root = rootRef.current
+      if (!root) return
+      let narrow = false
+      const observer = new ResizeObserver(entries => {
+        const next = entries[0]!.contentRect.width <= 780
+        if (next && !narrow) { setLibraryCollapsed(true); setInspectorCollapsed(true) }
+        narrow = next
+      })
+      observer.observe(root)
+      return () => observer.disconnect()
+    }, [])
     const wheelHandler = React.useRef<((event: React.WheelEvent | WheelEvent) => void) | null>(null)
     React.useEffect(() => {
       // React delegates wheel through a passive listener. Native capture must run
@@ -234,7 +256,7 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
       return () => window.removeEventListener('wheel', listener, true)
     }, [])
     const placementRef = React.useRef<{ editor: GraphEditor; reservations: Map<string, PaletteReservation> } | null>(null)
-    React.useEffect(() => { installCanvasStyles(); const off = workspace.subscribe(() => setTick(n => n + 1)); void workspace.initialize(); return off }, [workspace])
+    React.useEffect(() => { installCanvasStyles(); const off = workspace.subscribe(() => setTick(n => n + 1)); void workspace.initialize(t('document.newName')); return off }, [workspace])
     React.useEffect(() => {
       if (!workspace.runId) return
       const timer = setInterval(() => { if (!workspace.busy) void workspace.inspect().catch(() => {}) }, 750)
@@ -344,14 +366,15 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
     const executableNodes: FlowNode[] = editor.nodes.map((n, index) => {
       const runtime = motion.nodes[index]!
       const state = runtime.state
-      const summary = [n.definition?.agentRef, ...(n.definition?.skillRefs ?? []), ...(n.definition?.toolsetRefs ?? []), n.definition?.outputSchemaRef, n.definition?.subflowRef].filter(ref => ref !== undefined).join(' · ')
+      const summary = [n.definition?.agentRef, ...(n.definition?.skillRefs ?? []), ...(n.definition?.toolsetRefs ?? []), n.definition?.outputSchemaRef, n.definition?.subflowRef].filter(ref => ref !== undefined)
+        .map(id => resourceDisplayName(id, definition?.resources[id], workspace.resourceCatalog)).join(' · ')
       const label = editorNodeDisplayTitle(n, index, t)
       const measured = measurements.get(n.id)
       const gesture = interactions.gesture
       const dragPosition = gesture?.kind === 'drag' && !gesture.clone && gesture.positions.has(n.id) ? { x: n.x + gesture.dx, y: n.y + gesture.dy } : undefined
       const resize = gesture?.kind === 'resize' && gesture.nodeId === n.id ? gesture : undefined
       const size = resize?.size ?? n.presentation
-      const minHeight = 100 + 40 * (Math.max(Object.keys(n.inputs).length, Object.keys(n.outputs).length) + Math.max(1, n.definition?.branches?.length ?? 0))
+      const minHeight = 103 + 40 * (Math.max(Object.keys(n.inputs).length, Object.keys(n.outputs).length) + Math.max(1, n.definition?.branches?.length ?? 0))
       return { draggable: editable && !n.presentation?.pinned, connectable: editable, style: { width: Math.max(220, size?.width ?? 220), ...(size?.height ? { height: Math.max(minHeight, size.height) } : {}) }, ...(measured ? { measured } : {}), id: n.id, type: 'blueprint', dragHandle: '.bp-node-title', position: resize?.position ?? dragPosition ?? { x: n.x, y: n.y }, selected: editor.selection.has(n.id), ariaLabel: label,
         data: { label, kind: n.kind, kindTitle: nodeKindTitle(n.kind, t), inputs: n.inputs, outputs: n.outputs, summary: summary || t('node.noResourceBinding'), runtime,
           state: state === 'idle' ? t('node.notRunning') : state === 'unknown' ? t('node.unknownState') : runStateTitle(state, t), branches: n.definition?.branches ?? [], t,
@@ -407,10 +430,10 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
       if (typeof (parsed as ResourceRef).kind !== 'string') { setNotice({ key: 'resource.kindRequired' }); return }
       callback(parsed as ResourceRef); setNotice({ key: 'inspector.editApplied' })
     }
-    const add = (kind: BuiltinNodeKind) => {
+    const add = (kind: BuiltinNodeKind, position?: XY) => {
       if (!definition || !editable) return
       if (placementRef.current?.editor !== editor) placementRef.current = { editor, reservations: new Map() }
-      const placement = placePaletteNode(rootRef.current, flow, editor.nodes, placementRef.current.reservations)
+      const placement = position ? { ok: true as const, position, footprint: PALETTE_NODE_FOOTPRINT } : placePaletteNode(rootRef.current, flow, editor.nodes, placementRef.current.reservations)
       if (!placement.ok) { setNotice({ key: placement.reason === 'no-space' ? 'canvas.noSpace' : 'canvas.measurementsPending' }); return }
       setNotice(null)
       const id = `n-${crypto.randomUUID()}`
@@ -423,6 +446,21 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
         outputs: behavior ? behavior.outputs ?? {} : kind === 'output' ? {} : { result: 'string' } })
       placementRef.current.reservations.set(n.id, { shape: paletteNodeShape(n), footprint: placement.footprint })
       editor.toggleSelect(n.id, false); setSelected(n.id)
+    }
+    const canDropPalette = () => editable && paletteDrag.current?.editor === workspace.editor && paletteDrag.current.epoch === navigationEpoch.current
+    const endPaletteDrag = () => { paletteDrag.current = null; setPaletteOver(false) }
+    const sidebarToggle = (side: 'library' | 'inspector', collapsed: boolean, toggle: () => void) => {
+      const label = t(`sidebar.${side}.${collapsed ? 'expand' : 'collapse'}`)
+      return h('div', { className: `bp-sidebar-rail bp-sidebar-rail-${side}` }, h('button', {
+        type: 'button', className: 'bp-sidebar-toggle', 'data-bp-action': `toggle-${side}`, 'aria-label': label, title: label,
+        'aria-expanded': !collapsed, 'aria-controls': `${sidebarId}-${side}`, onClick: () => {
+          setTooltip(null)
+          if (collapsed && rootRef.current && rootRef.current.clientWidth <= 780) {
+            if (side === 'library') setInspectorCollapsed(true); else setLibraryCollapsed(true)
+          }
+          toggle()
+        },
+      }, blueprintIcon(React, (side === 'library') === collapsed ? 'chevron' : 'chevron-left')))
     }
     const targetGroup = overlay?.kind === 'context-menu' && overlay.surface === 'group' ? editor.groups.find(g => g.id === overlay.targetId) : undefined
     const commandFacts = (canvasFocused = true): CommandFacts => {
@@ -535,8 +573,6 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
       }, () => openOverlay({ kind: 'import', screen: screenPosition() }), 'Ctrl / ⌘ O'),
       moreAction('export-blueprint', 'files', 'interaction.export-blueprint', 'export', () => hostReason() ?? (!workspace.host?.exportDefinition ? 'compact.exportUnavailable' : null),
         () => perform(async () => { const archive = await workspace.exportArchive(); downloadBlueprint(archiveBytes(archive.archiveBase64), `${archive.blueprintId}.zip`, 'application/zip') })),
-      moreAction('export-legacy', 'files', 'interaction.export-legacy', 'export', hostReason,
-        () => perform(async () => { const legacy = await workspace.exportLegacy(); downloadBlueprint(legacy.definitionJson, `${legacy.blueprintId}-legacy.json`, 'application/json') })),
       moreAction('motion-toggle', 'view', 'interaction.motion-toggle', 'motion', () => null, () => updatePrefs({ motion: preferences.current.state.motion === 'on' ? 'off' : 'on' }), undefined, prefs.motion === 'on'),
       moreAction('toggle-minimap', 'view', 'compact.minimap', 'minimap', () => null, () => updatePrefs({ minimap: !preferences.current.state.minimap }), 'M', prefs.minimap),
       moreAction('check-run', 'tools', 'preflight.check', 'check', hostReason, () => perform(() => workspace.checkRun())),
@@ -582,8 +618,25 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
                 })
               })
             } },
-          h('option', { value: '', disabled: true }, t('library.chooseId')), ...workspace.catalog.map(d => h('option', { value: d.blueprintId, key: d.blueprintId }, `${d.name} · ${d.blueprintId}`)))),
-        h('span', { className: 'bp-revision', 'data-bp-dirty': String(workspace.dirty) }, t(workspace.dirty ? 'document.unsaved' : workspace.document ? 'document.saved' : 'document.none')),
+          h('option', { value: '', disabled: true }, t('library.chooseId')),
+          workspace.isNewDraft && h('option', { value: workspace.blueprintId! }, t('document.newDraft')),
+          ...workspace.catalog.map(d => h('option', { value: d.blueprintId, key: d.blueprintId }, `${d.name} · ${d.blueprintId}`)))),
+        h('button', { type: 'button', 'data-bp-action': 'new-blueprint', disabled: workspace.busy, onClick: () => {
+          if (workspace.busy || composing.current || workspace.dirty && !window.confirm(t('document.newConfirm'))) return
+          navigationEpoch.current++; closeOverlay(); setNotice(null); setSelected(null); setSelectedEdges([])
+          workspace.newDraft(t('document.newName'))
+        } }, t('action.newBlueprint')),
+        h('button', { type: 'button', 'data-bp-action': 'delete-blueprint', disabled: workspace.busy || !workspace.blueprintId || !workspace.isNewDraft && !workspace.document, onClick: () => {
+          if (workspace.busy || composing.current || !window.confirm(t(workspace.isNewDraft ? 'document.deleteDraftConfirm' : 'document.deleteConfirm', { name: workspace.definition?.name ?? '' }))) return
+          const epoch = ++navigationEpoch.current
+          closeOverlay()
+          perform(async () => {
+            await workspace.deleteCurrent(t('document.newName'))
+            if (epoch !== navigationEpoch.current) return
+            setNotice(null); setSelected(null); setSelectedEdges([])
+          })
+        } }, t('action.deleteBlueprint')),
+        h('span', { className: 'bp-revision', 'data-bp-dirty': String(workspace.dirty) }, t(workspace.dirty ? 'document.unsaved' : workspace.isNewDraft ? 'document.newDraft' : workspace.document ? 'document.saved' : 'document.none')),
         h('div', { className: 'bp-toolbar-actions' },
           h('div', { className: 'bp-toolbar-group', 'data-bp-toolbar-group': 'history', role: 'group', 'aria-label': t('action.undo') + ' / ' + t('action.redo') + ' / ' + t('action.save') },
           chrome({ action: 'undo', labelKey: 'action.undo', icon: 'undo', shortcut: 'Ctrl / ⌘ Z', reason: editReason() ?? (!editor.canUndo ? 'interaction.disabled.history-unavailable' : null), onClick: () => dispatch('undo') }),
@@ -603,8 +656,11 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
             }
           } })))),
       h('div', { className: 'bp-body' },
-        h('aside', { className: 'bp-library', 'aria-label': t('library.ariaLabel') },
+        h('aside', { className: 'bp-library', id: `${sidebarId}-library`, hidden: libraryCollapsed, 'aria-label': t('library.ariaLabel') },
+          definition && h('label', { className: 'bp-field' }, t('document.name'), h('input', { 'aria-label': t('document.name'), value: definition.name,
+            disabled: !editable, onChange: (event: React.ChangeEvent<HTMLInputElement>) => guarded(() => editor.renameDefinition(event.target.value)) })),
           h('h2', null, t('palette.title')), h('input', { 'data-bp-palette-search': true, 'aria-label': t('palette.search'), placeholder: t('palette.placeholder'), value: query, onChange: (e: React.ChangeEvent<HTMLInputElement>) => setQuery(e.target.value) }),
+          h('p', { className: 'bp-help bp-palette-hint' }, t('palette.dragHint')),
           ...palette.map(p => {
             const label = t('palette.add', { title: t(p.titleKey) }), disabled = !definition || !editable
             const show = (event: React.SyntheticEvent<HTMLElement>) => setTooltip({ action: `add-${p.kind}`, labelKey: p.descriptionKey, reason: editReason(), anchor: event.currentTarget })
@@ -612,15 +668,35 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
             return h('span', { key: p.kind, className: 'bp-palette-anchor', tabIndex: disabled ? 0 : undefined, role: disabled ? 'group' : undefined,
               'aria-label': disabled ? `${label} · ${reason(editReason())}` : undefined, onMouseEnter: show, onMouseLeave: () => setTooltip(null), onFocus: show, onBlur: () => setTooltip(null) },
               h('button', { type: 'button', className: 'bp-palette-entry', 'data-bp-action': `add-${p.kind}`, 'aria-label': label,
-                'aria-describedby': `bp-tooltip-add-${p.kind}`, onClick: () => { setTooltip(null); guarded(() => add(p.kind)) }, disabled }, blueprintIcon(React, p.kind), h('strong', null, t(p.titleKey))))
+                'aria-describedby': `bp-tooltip-add-${p.kind}`, draggable: !disabled,
+                onDragStart: (event: React.DragEvent) => {
+                  if (!editable) { event.preventDefault(); return }
+                  setTooltip(null); paletteDrag.current = { kind: p.kind, editor, epoch: navigationEpoch.current }
+                  event.dataTransfer.effectAllowed = 'copy'; event.dataTransfer.setData(PALETTE_DRAG_TYPE, p.kind)
+                }, onDragEnd: endPaletteDrag,
+                // Pointer users choose a drop point. Native keyboard/AT activation
+                // retains the visible-space placement path without requiring a mouse.
+                onClick: (event: React.MouseEvent) => { setTooltip(null); if (!event?.detail) guarded(() => add(p.kind)) }, disabled }, blueprintIcon(React, p.kind), h('strong', null, t(p.titleKey))))
           }),
           !palette.length && h('p', { className: 'bp-help' }, t('palette.noMatches')),
           h('section', { 'data-bp-section': 'resources' }, h('h2', null, t('resource.title')), ...Object.entries(definition?.resources ?? {}).map(([id, ref]) => h('details', { key: id, 'data-bp-resource': id },
-            h('summary', null, `${id} · ${resourceKindTitle(ref.kind, t)}`), h('p', { className: 'bp-help' }, ref.source?.kind === 'shared' ? t('resource.shared', { rootId: ref.source.rootId }) : t('resource.package')),
-            h(ResourceJsonField, { key: `${workspace.blueprintId}-${id}`, label: t('resource.edit', { id }), value: ref, onApply: text => parseResource(text, parsed => guarded(() => editor.updateResource(id, parsed))) }))),
+            h('summary', null, `${resourceDisplayName(id, ref, workspace.resourceCatalog)} · ${resourceKindTitle(ref.kind, t)}`), h('p', { className: 'bp-help' }, ref.source?.kind === 'host' ? `${t('resource.host')} · ${ref.source.id}` : ref.source?.kind === 'shared' ? t('resource.shared', { rootId: ref.source.rootId }) : t('resource.package')),
+            h(ResourceJsonField, { key: `${workspace.blueprintId}-${id}`, label: t('resource.edit', { id }), value: ref, t, disabled: !editable, onApply: text => parseResource(text, parsed => guarded(() => editor.updateResource(id, parsed))) }))),
             h('details', null, h('summary', null, t('resource.add')), h('form', { key: workspace.blueprintId, onSubmit: (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault(); const form = new FormData(e.currentTarget); const id = String(form.get('id')); if (!id || Object.hasOwn(definition?.resources ?? {}, id)) { setNotice({ key: 'resource.uniqueIdRequired' }); return } parseResource(String(form.get('ref')), ref => guarded(() => editor.updateResource(id, ref))) } },
-              h('input', { name: 'id', placeholder: t('resource.logicalId'), 'aria-label': t('resource.newId'), required: true }), h('textarea', { name: 'ref', 'aria-label': t('resource.newJson'), defaultValue: '{"kind":"agent","path":"lib/agents/agent.md"}' }), h('button', { type: 'submit' }, t('resource.add')))))),
-        h('main', { className: 'bp-canvas', 'data-bp-canvas': 'surface', 'data-bp-overlay': overlayEligible ? 'eligible' : 'suppressed', tabIndex: 0, 'aria-label': t('canvas.ariaLabel'),
+              h('input', { name: 'id', placeholder: t('resource.logicalId'), 'aria-label': t('resource.newId'), required: true }), h(JsonEditor, { name: 'ref', label: t('resource.newJson'), t, disabled: !editable, defaultValue: '{"kind":"agent","path":"lib/agents/agent.md"}' }), h('button', { type: 'submit' }, t('resource.add')))))),
+        sidebarToggle('library', libraryCollapsed, () => setLibraryCollapsed(value => !value)),
+        h('main', { className: 'bp-canvas', 'data-bp-canvas': 'surface', 'data-bp-palette-over': String(paletteOver), 'data-bp-overlay': overlayEligible ? 'eligible' : 'suppressed', tabIndex: 0, 'aria-label': t('canvas.ariaLabel'),
+          onDragOver: (event: React.DragEvent) => { if (canDropPalette()) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; setPaletteOver(true) } },
+          onDragLeave: (event: React.DragEvent) => { if (!event.currentTarget.contains(event.relatedTarget as globalThis.Node | null)) setPaletteOver(false) },
+          onDrop: (event: React.DragEvent) => {
+            const drag = paletteDrag.current
+            if (drag && canDropPalette() && event.dataTransfer.getData(PALETTE_DRAG_TYPE) === drag.kind) {
+              event.preventDefault(); event.stopPropagation()
+              const position = flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }, { snapToGrid: false })
+              guarded(() => add(drag.kind, position))
+            }
+            endPaletteDrag()
+          },
           onWheelCapture: event => wheelHandler.current?.(event),
           onDoubleClick: (event: React.MouseEvent) => { if (!(event.target as HTMLElement).closest?.('.react-flow__node,.react-flow__edge,.react-flow__controls,.react-flow__minimap')) { event.preventDefault(); openSearch({ x: event.clientX, y: event.clientY }) } } },
           h(ReactFlow<CanvasNode>, { nodes, edges, nodeTypes, edgeTypes, ariaLabelConfig: flowAriaLabels(t), minZoom: 0.1, maxZoom: 3, fitView: false, fitViewOptions: { padding: 0.2 }, deleteKeyCode: null, panOnDrag: spacePan || prefs.mode === 'pan' ? [0, 1] : [1], panActivationKeyCode: 'Space', selectionOnDrag: prefs.mode === 'select' && !spacePan, selectionKeyCode: 'Shift', multiSelectionKeyCode: ['Meta', 'Control'], zoomOnScroll: true, panOnScroll: false, zoomOnPinch: true, zoomOnDoubleClick: false, nodesDraggable: editable, nodesConnectable: editable, edgesReconnectable: editable, reconnectRadius: RECONNECT_ANCHOR_RADIUS, autoPanOnConnect: true, autoPanOnNodeDrag: true, onlyRenderVisibleElements: false,
@@ -691,9 +767,10 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
             },
           }, h(Background, { gap: 24, size: 1 }), h(Controls, { showInteractive: false }), prefs.minimap && h(MiniMap, { pannable: true, zoomable: true, nodeColor: 'var(--bp-muted)', nodeClassName: n => n.type === 'presentationGroup' ? 'bp-minimap-group' : '' })),
           !definition && h('div', { className: 'bp-empty' }, h('strong', null, t('canvas.chooseBlueprint')), h('p', null, t('canvas.emptyHelp')))),
-        h('aside', { className: 'bp-inspector', 'aria-label': t('inspector.ariaLabel') }, h('h2', null, t('inspector.title')),
-          selectedNode ? h('section', null, h('h3', null, selectedNode.id), h('p', { className: 'bp-help' }, nodeKindTitle(selectedNode.kind, t)),
-            h('fieldset', { className: 'bp-inspector-guard', disabled: !editable }, h(NodeInspector, { key: selectedNode.id, node: selectedNode, editor, resources: definition?.resources ?? {}, t }))) : h('p', { className: 'bp-help' }, t('inspector.selectNode')),
+        sidebarToggle('inspector', inspectorCollapsed, () => setInspectorCollapsed(value => !value)),
+        h('aside', { className: 'bp-inspector', id: `${sidebarId}-inspector`, hidden: inspectorCollapsed, 'aria-label': t('inspector.ariaLabel') }, h('h2', null, t('inspector.title')),
+          selectedNode ? h('section', null, h('h3', null, editorNodeDisplayTitle(selectedNode, editor.nodes.indexOf(selectedNode), t)), h('p', { className: 'bp-node-id', title: selectedNode.id }, selectedNode.id), h('p', { className: 'bp-help' }, nodeKindTitle(selectedNode.kind, t)),
+            h('fieldset', { className: 'bp-inspector-guard', disabled: !editable }, h(NodeInspector, { key: selectedNode.id, node: selectedNode, disabled: !editable, editor, resources: definition?.resources ?? {}, resourceCatalog: workspace.resourceCatalog, t }))) : h('p', { className: 'bp-help' }, t('inspector.selectNode')),
           h('details', { 'data-bp-section': 'preflight', 'data-bp-disclosure': 'preflight', 'data-bp-preflight': workspace.preflight?.status ?? 'none' },
             h('summary', { 'data-bp-disclosure-toggle': 'preflight' }, h('strong', null, t('preflight.title')), h('span', { 'data-bp-summary-state': workspace.preflight?.status ?? 'none' }, t(`preflight.${workspace.preflight?.status ?? 'none'}`)),
               preflightWarningCount > 0 && h('small', { 'data-bp-summary-warning': 'warning', 'data-bp-preflight-warning-count': preflightWarningCount }, `${t('preflight.warning')} · ${preflightWarningCount}`)),
@@ -702,7 +779,7 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
             h('ul', null, ...(workspace.preflight?.report?.checks ?? []).map((check, index) => h('li', { key: index, 'data-bp-check-status': check.status },
               h('strong', null, t(`preflight.${check.status}`)), ' · ', check.code, ...[check.nodeId, check.resourceId, check.toolName].filter(value => value !== undefined).map(value => ` · ${value}`))))),
           h('details', { 'data-bp-section': 'run', 'data-bp-disclosure': 'run' }, h('summary', { 'data-bp-disclosure-toggle': 'run' }, h('strong', null, t('run.title')), h('span', { 'data-bp-summary-state': snapshot?.state ?? 'none' }, snapshot ? `${snapshot.runId} · ${runStateTitle(snapshot.state, t)}` : t(env.hostLink ? 'run.none' : 'status.hostUnavailable')), workspace.model.connectionState === 'stale' && h('small', null, t('run.stale')),
-              ...[...new Set((snapshot?.attempts ?? []).filter(attempt => ['waiting_input', 'failed', 'timed_out', 'recovery_required'].includes(attempt.state)).map(attempt => attempt.state))].map(state => h('small', { key: state, 'data-bp-summary-warning': state }, runStateTitle(state, t)))), h('label', { className: 'bp-field' }, t('run.inputJson'), h('textarea', { 'data-bp-run-input': true, 'aria-label': t('run.inputJson'), value: workspace.inputJson, onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => { workspace.inputJson = e.target.value; setTick(n => n + 1) }, rows: 3 })),
+              ...[...new Set((snapshot?.attempts ?? []).filter(attempt => ['waiting_input', 'failed', 'timed_out', 'recovery_required'].includes(attempt.state)).map(attempt => attempt.state))].map(state => h('small', { key: state, 'data-bp-summary-warning': state }, runStateTitle(state, t)))), h('label', { className: 'bp-field' }, t('run.inputJson'), h(JsonEditor, { key: workspace.blueprintId, 'data-bp-run-input': true, label: t('run.inputJson'), t, value: workspace.inputJson, onChange: text => { workspace.inputJson = text }, rows: 3 })),
             h('form', { key: workspace.blueprintId, onSubmit: (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault(); const id = String(new FormData(e.currentTarget).get('runId')); if (id) { workspace.runId = id; perform(() => workspace.inspect()) } } }, h('input', { name: 'runId', 'aria-label': t('run.inspectId'), disabled: workspace.busy, placeholder: t('run.existingId') }), h('button', { type: 'submit', 'data-bp-action': 'inspect-run', disabled: workspace.busy }, t('run.inspectReconnect'))),
             h('p', { 'data-bp-run': snapshot?.state ?? 'none' }, snapshot ? `${snapshot.runId} · ${runStateTitle(snapshot.state, t)}` : t(env.hostLink ? 'run.none' : 'status.hostUnavailable')),
             snapshot && h('p', { className: 'bp-run-revision', 'data-bp-run-revision': snapshot.definitionRevision }, h('span', null, t('run.definitionRevision')), ' · ', snapshot.definitionRevision),

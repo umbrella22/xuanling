@@ -113,6 +113,17 @@ async function drive(h, runId) {
   assert.deepEqual(h.agentCalls, [])
   return await h.handle.store.get(runId)
 }
+async function rejectAdmissionAndDriveExisting(h, input, code) {
+  const document = await h.service.loadDefinition({ blueprintId: h.definition.id })
+  const args = { blueprintId: document.blueprintId, expectedRevision: document.documentRevision, inputJson: json(input) }
+  const report = await h.service.preflightRun(args)
+  assert.equal(report.canStart, false)
+  assert.ok(report.checks.some(check => check.code === code && check.status === 'block'))
+  await assert.rejects(h.service.startRun({ ...args, requestId: randomUUID() }), { code: 'blueprint/preflight-blocked' })
+  const { runId } = await h.handle.store.createRun({ scope: 'run', requestId: randomUUID(), payloadFingerprint: digest(document.definitionJson + args.inputJson) }, document.semanticRevision, document.definitionJson, args.inputJson)
+  await h.service.driveRun(h.handle, runId, h.definition)
+  return { record: await h.handle.store.get(runId) }
+}
 function attemptOf(record, nodeId, message = 'required durable Attempt must exist') {
   const attempt = record.attempts.findLast(attempt => attempt.nodeId === nodeId)
   assert.ok(attempt, `${nodeId}: ${message}`)
@@ -193,7 +204,7 @@ for (const [label, input] of [
 ]) {
   test(`C-05 strict predicate: ${label} persists condition-input-invalid without dispatching downstream`, async t => {
     const h = await fixture(t, conditionGraph())
-    const { record } = await publicStart(h, input)
+    const { record } = await rejectAdmissionAndDriveExisting(h, input, 'condition-input-invalid')
     await rejected(h, record, 'choose', 'condition-input-invalid')
     assert.equal(record.attempts.length, 1)
     assert.equal(record.attempts.some(attempt => attempt.state === 'waiting_input'), false)
@@ -300,7 +311,7 @@ test('C-06 typed binding: wrong actual string port value creates binding-invalid
 for (const [label, input, code] of [['missing', {}, 'input-missing'], ['wrong type', { value: 1 }, 'input-invalid']]) {
   test(`C-06 typed input ${label}: failed Attempt survives restart with static errorCode`, async t => {
     const h = await fixture(t, graph([{ id: 'source', kind: 'input', inputs: { value: 'string' }, outputs: { value: 'string' } }]))
-    const { record } = await publicStart(h, input)
+    const { record } = await rejectAdmissionAndDriveExisting(h, input, code)
     await rejected(h, record, 'source', code)
     const before = structuredClone(record)
     await h.reopen()

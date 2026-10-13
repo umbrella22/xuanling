@@ -1,15 +1,24 @@
 /** Read-only admission checks. A report is an observation, never an authority
  * token: the driver resolves capabilities again and scoped Tools enforce them. */
+import { NodeValueError, validateNodeInputs, structuralOutputs } from './node-values.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import { assertObjectJsonSchema } from '@deepseek-ai/dsh-tools'
 import type { BlueprintDefinition, GraphNode } from '../definition/types.ts'
 import type { DefinitionPackage } from '../definition/persist.ts'
 import { resolveResource, type SkillRoot } from '../resources/resolver.ts'
 import { snapshotDirectory } from '../resources/snapshotter.ts'
+import { createHostResourceProvider } from '../resources/runtime-snapshots.ts'
+import { validatePackagedPreset, validatePackagedMcp, packagedPresetModulesAvailable } from '../portability/host-resources.ts'
 import { teamDriverCapability, type TeamProviders } from '../teamstage/driver-admission.ts'
 
 export interface ToolBinding { tools: string[] }
 export type ToolBindings = Record<string, ToolBinding>
+/** DSH-owned capability probes. These are observations only; the runtime
+ * resolves the same identity again before dispatch. */
+export interface HostResourceProbe {
+  getAgentPreset?(id: string): Promise<unknown | undefined>
+  getSkill?(id: string, options: { cwd: string }): Promise<{ content?: unknown } | undefined>
+}
 export interface PreflightRunArgs { blueprintId: string; expectedRevision: string; inputJson: string }
 export interface PreflightCheck {
   code: string
@@ -38,7 +47,16 @@ export function resolveEffectiveToolNames(ctx: Context, definition: BlueprintDef
   const union = new Set<string>()
   for (const id of node.toolsetRefs ?? []) {
     const ref = definition.resources[id]
-    if (!ref || ref.kind !== 'mcp' || !ref.bindingId || !Object.hasOwn(bindings, ref.bindingId)) throw new ToolBindingUnavailableError()
+    if (!ref || ref.kind !== 'mcp' || !ref.bindingId) throw new ToolBindingUnavailableError()
+    const source = ref.source
+    if (source?.kind === 'host' || ref.format === 'mcp-definition') {
+      const name = source?.kind === 'host' ? source.id : ref.bindingId
+      if (!exactName(name) || !name.startsWith('mcp__') || ref.bindingId !== name || !tools.get(name)
+        || typeof tools.schemas !== 'function' || !tools.schemas().some(schema => schema.name === name)) throw new ToolBindingUnavailableError()
+      union.add(name)
+      continue
+    }
+    if (!Object.hasOwn(bindings, ref.bindingId)) throw new ToolBindingUnavailableError()
     const binding = bindings[ref.bindingId]
     if (!binding || !Array.isArray(binding.tools)) throw new ToolBindingUnavailableError()
     for (const name of binding.tools) {
@@ -54,9 +72,24 @@ export function resolveEffectiveToolNames(ctx: Context, definition: BlueprintDef
 }
 
 export async function collectPreflight(ctx: Context, snapshot: DefinitionPackage, definition: BlueprintDefinition, options: {
-  toolBindings?: ToolBindings; skillRoots: SkillRoot[]; teamProviders?: TeamProviders
+  toolBindings?: ToolBindings; skillRoots: SkillRoot[]; teamProviders?: TeamProviders; input?: unknown; hostResources?: HostResourceProbe
 }): Promise<PreflightRunValue> {
   const checks: PreflightCheck[] = []
+  const hostResources = options.hostResources ?? createHostResourceProvider(ctx)
+  // Only source nodes without data dependencies consume the initial input.
+  // Generated downstream values stay under the driver's runtime checks.
+  if (Object.hasOwn(options, 'input')) {
+    for (const node of definition.graph.nodes) {
+      if (definition.graph.edges.some(edge => edge.kind === 'data' && edge.to.startsWith(`${node.id}.`))) continue
+      try {
+        validateNodeInputs(node, options.input, new Set())
+        if (node.kind === 'input' || node.kind === 'output' || node.kind === 'join' && node.join !== 'any') structuralOutputs(node, options.input, new Set())
+      } catch (error) {
+        if (!(error instanceof NodeValueError)) throw error
+        checks.push({ code: error.code, status: 'block', nodeId: node.id })
+      }
+    }
+  }
   const registry = ctx.get('agents') as { create?: unknown; createAgent?: unknown } | undefined
   const factoryReady = typeof registry?.create === 'function' || typeof registry?.createAgent === 'function'
   const tools = ctx.get('tools')
@@ -67,7 +100,28 @@ export async function collectPreflight(ctx: Context, snapshot: DefinitionPackage
       status: tools && typeof tools.get === 'function' && typeof tools.restrict === 'function' && typeof tools.guard === 'function' ? 'pass' : 'block' })
   }
   for (const [resourceId, ref] of Object.entries(definition.resources)) {
-    if (ref.kind === 'mcp') continue // capability checks belong to declaring nodes
+    const source = ref.source
+    if (source?.kind === 'host') {
+      const hostId = source.id
+      try {
+        if (typeof hostId !== 'string') throw new Error('host-resource-provider-unavailable')
+        if (ref.kind === 'agent') {
+          if (hostResources.getAgentPreset === undefined || await hostResources.getAgentPreset(hostId) === undefined) throw new Error('host-agent-unavailable')
+        } else if (ref.kind === 'skill') {
+          if (hostResources.getSkill === undefined || typeof (await hostResources.getSkill(hostId, { cwd: process.cwd() }))?.content !== 'string') throw new Error('host-skill-unavailable')
+        } else if (ref.kind === 'mcp') {
+          const registry = ctx.get('tools')
+          if (!exactName(hostId) || !hostId.startsWith('mcp__') || ref.bindingId !== hostId
+            || !registry || typeof registry.get !== 'function' || !registry.get(hostId)
+            || typeof registry.schemas !== 'function' || !registry.schemas().some(schema => schema.name === hostId)) throw new Error('host-mcp-unavailable')
+        } else throw new Error('host-resource-kind-unavailable')
+        checks.push({ code: 'host-resource-ready', status: 'pass', resourceId })
+      } catch {
+        checks.push({ code: 'host-resource-unavailable', status: 'block', resourceId })
+      }
+      continue
+    }
+    if (ref.kind === 'mcp' && ref.format !== 'mcp-definition') continue // capability checks belong to declaring nodes
     try {
       if (ref.source?.kind === 'shared') {
         const resolved = await resolveResource(resourceId, { kind: ref.kind, source: ref.source }, { blueprintRoot: '', roots: options.skillRoots })
@@ -75,7 +129,7 @@ export async function collectPreflight(ctx: Context, snapshot: DefinitionPackage
         const files = snapshotDirectory(resolved.skillDir, { kind: 'shared-skill', rootId: resolved.rootId, skillDir: resolved.skillDir, skillName: resolved.skillName }).files
         if (!files.some(file => file.path === 'SKILL.md')) throw new Error('unavailable')
       } else {
-        const path = ref.path
+        const path = ref.path ?? (ref.source?.kind === 'package' ? ref.source.path : undefined)
         if (!path) throw new Error('unavailable')
         if (ref.kind === 'skill') {
           if (!snapshot.files.has(`${path}/SKILL.md`)) throw new Error('unavailable')
@@ -83,6 +137,14 @@ export async function collectPreflight(ctx: Context, snapshot: DefinitionPackage
           const bytes = snapshot.files.get(path)
           if (!bytes) throw new Error('unavailable')
           if (ref.kind === 'schema') assertObjectJsonSchema(JSON.parse(bytes.toString('utf8')))
+          if (ref.format === 'agent-preset') {
+            const preset = validatePackagedPreset(JSON.parse(bytes.toString('utf8')))
+            if (preset.requiredBindings.length > 0) throw new Error('preset-binding-unavailable')
+            const registry = ctx.get('agentPresets') as { register?: unknown } | undefined
+            if (typeof registry?.register !== 'function') throw new Error('preset-registry-unavailable')
+            if (!packagedPresetModulesAvailable(ctx, preset)) throw new Error('preset-module-unavailable')
+          }
+          if (ref.format === 'mcp-definition') validatePackagedMcp(JSON.parse(bytes.toString('utf8')))
         }
       }
       checks.push({ code: 'resource-ready', status: 'pass', resourceId })
@@ -103,12 +165,24 @@ export async function collectPreflight(ctx: Context, snapshot: DefinitionPackage
     }
     let executorReady = true
     if (node.teamStage !== undefined) {
+      const teamAgents = [node.agentRef, ...node.teamStage.members.map(member => member.agentRef)].filter((id): id is string => id !== undefined)
+      if (teamAgents.some(id => definition.resources[id]?.source?.kind === 'host')) {
+        checks.push({ code: 'teamstage-host-agent-unavailable', status: 'block', nodeId: node.id })
+        executorReady = false
+      }
+      if (teamAgents.some(id => definition.resources[id]?.format === 'agent-preset')) {
+        checks.push({ code: 'teamstage-packaged-agent-unavailable', status: 'block', nodeId: node.id })
+        executorReady = false
+      }
       const unavailable = teamDriverCapability(ctx, node, options.teamProviders)
       checks.push({ code: unavailable ?? 'teamstage-executor-ready', status: unavailable ? 'block' : 'pass', nodeId: node.id })
-      executorReady = unavailable === undefined
+      executorReady = executorReady && unavailable === undefined
     }
     if (executorReady) checks.push({ code: 'node-executor-ready', status: 'pass', nodeId: node.id })
     if (node.kind !== 'agentTask') continue
+    if (node.modelSelection !== undefined) {
+      checks.push({ code: node.teamStage === undefined ? 'model-route-declared' : 'teamstage-model-route-unavailable', status: node.teamStage === undefined ? 'info' : 'block', nodeId: node.id })
+    }
     for (const resourceId of node.skillRefs ?? []) {
       if (!Object.hasOwn(definition.resources, resourceId)) checks.push({ code: 'resource-unavailable', status: 'block', nodeId: node.id, resourceId })
     }

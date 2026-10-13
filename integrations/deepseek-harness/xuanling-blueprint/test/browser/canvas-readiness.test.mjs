@@ -82,6 +82,7 @@ function projectionFixture(definition = canvasDefinitions().find(d => d.id === '
     }, count: async () => selector === '[data-bp-action="add-agentTask"]' ? 0 : root.querySelectorAll(selector).length,
     last: () => locator(selector, true), getAttribute: async name => (last ? renderedNodes().at(-1) : renderedNodes()[0]).getAttribute(name),
     evaluate: async fn => evaluate(fn, undefined, root),
+    press: async key => { assert.equal(key, 'Enter'); await locator(selector, last).click() },
     click: async () => {
       const kind = selector.match(/data-bp-action="add-(input|output)"/)?.[1]
       if (!kind) throw new Error(`unsupported projection action ${selector}`)
@@ -91,7 +92,7 @@ function projectionFixture(definition = canvasDefinitions().find(d => d.id === '
     } }
   }
   const page = { on: () => {}, locator, getByRole: (role, { name }) => {
-    if (role === 'combobox' && name === 'Configured blueprint') return { selectOption: async id => assert.equal(id, definition.id) }
+    if (role === 'combobox' && name === 'Blueprint library') return { selectOption: async id => assert.equal(id, definition.id) }
     if (role === 'textbox' && name === 'Search nodes') return { fill: async () => {} }
     throw new Error(`unsupported projection role ${role}/${name}`)
   }, waitForFunction: async (fn, arg, ...options) => {

@@ -57,8 +57,8 @@ export async function getCases(helpers) {
       const { default: assert } = await import('node:assert/strict')
       const methods = typert.TYPERT.invocations.map(i => i.method).sort()
       const expected = [
-        'cancelRun', 'decide', 'exportDefinition', 'hostProbe', 'importDefinition', 'inspectRun',
-        'listDefinitions', 'loadDefinition', 'mcpProbe', 'ping', 'preflightRun', 'saveDefinition', 'startRun', 'validate',
+        'acceptTeamStageOutput', 'cancelRun', 'cancelTeamStage', 'createDefinition', 'decide', 'deleteDefinition', 'exportDefinition', 'hostProbe', 'importDefinition', 'inspectRun', 'inspectSession',
+        'listDefinitions', 'listResources', 'loadDefinition', 'mcpProbe', 'ping', 'preflightRun', 'saveDefinition', 'startRun', 'startSessionRun', 'startTeamStage', 'validate',
       ]
       assert.equal(typeof mod.default, 'function', 'built service default export must be a function')
       assert.equal(typert.TYPERT.face, 'host', 'built wire descriptor must expose the host face')
@@ -77,7 +77,7 @@ export async function getCases(helpers) {
       const mod = await import(libIndex)
       const service = new mod.default(new Context())
       const value = await service.ping()
-      return value?.status === 'ok' && value?.service === '@xuanling-rs/xuanling-dsh-blueprint' && value?.version === '0.0.1'
+      return value?.status === 'ok' && value?.service === '@xuanling-rs/xuanling-dsh-blueprint' && value?.version === '0.6.0'
     },
   })
 

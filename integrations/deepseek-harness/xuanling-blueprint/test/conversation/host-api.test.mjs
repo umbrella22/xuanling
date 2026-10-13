@@ -53,7 +53,7 @@ test('host: native tools expose catalog revision, authoritative caller/turn, rep
   const doc = await h.save(definition())
   const catalog = value(await h.tool('blueprint_list'))
   assert.deepEqual(catalog.definitions, [{ blueprintId: doc.blueprintId, name: 'Runtime contracts', documentRevision: doc.documentRevision }])
-  const args = { blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, inputJson: '{}' }
+  const args = { blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, input: {} }
   assert.deepEqual(callerSource(h.service.ctx, { agent: h.caller, callId: ToolCallId('native-call') }), { sessionId: h.caller.id, kind: 'tool', callId: 'native-call', turn: 7 })
   const started = value(await h.tool('blueprint_start', args))
   const replay = value(await h.tool('blueprint_start', args))
@@ -70,14 +70,14 @@ test('host: native tools expose catalog revision, authoritative caller/turn, rep
   const spoof = await h.tool('blueprint_start', { ...args, source: { sessionId: 'forged' } }, h.caller, 'forged-call')
   assert.equal(spoof.isError, true); assert.equal(spoof.error.info.code, 'INVALID_ARGS')
   assert.equal((await records(h)).length, 1)
-  const changed = await h.tool('blueprint_start', { ...args, inputJson: '{"changed":true}' })
+  const changed = await h.tool('blueprint_start', { ...args, input: { changed: true } })
   assert.equal(changed.isError, true); assert.equal(changed.error.info.code, 'COMMAND_CONFLICT')
   assert.equal((await records(h)).length, 1)
 })
 
 test('host: native missing/stale/forged caller and subagent recursion reject, Host guard still controls execution', async t => {
   const h = await liveHarness(t)
-  const doc = await h.save(definition()), args = { blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, inputJson: '{}' }
+  const doc = await h.save(definition()), args = { blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, input: {} }
   const noCaller = await h.nativeTools.execute({ name: 'blueprint_start', arguments: args, callId: ToolCallId('missing'), signal: new AbortController().signal })
   assert.equal(noCaller.isError, true); assert.equal(noCaller.error.info.code, 'session-unavailable')
   const forged = await h.tool('blueprint_start', args, { ...h.caller }, 'forged')
@@ -87,7 +87,7 @@ test('host: native missing/stale/forged caller and subagent recursion reject, Ho
   const child = await h.add('child-caller', 'subagent')
   const nested = await h.tool('blueprint_start', args, child, 'nested')
   assert.equal(nested.isError, true); assert.equal(nested.error.info.code, 'nested-run-unavailable')
-  await assert.rejects(() => h.service.startSessionRun({ ...args, requestId: 'nested-ui', sessionId: child.id }), code('blueprint/nested-run-unavailable'))
+  await assert.rejects(() => h.service.startSessionRun({ blueprintId: args.blueprintId, expectedRevision: args.expectedRevision, inputJson: JSON.stringify(args.input), requestId: 'nested-ui', sessionId: child.id }), code('blueprint/nested-run-unavailable'))
   const disposeGuard = h.nativeTools.guard(() => 'HOST_DENIAL_SECRET_SENTINEL')
   const denied = await h.tool('blueprint_start', args, h.caller, 'denied')
   assert.equal(denied.isError, true)
@@ -356,7 +356,7 @@ test('host: existing group and routed-edge presentation fields round-trip throug
 
 test('host: model-facing failures expose only static codes, no raw dependency error or forged source/path', async t => {
   const h = await liveHarness(t)
-  const doc = await h.save(definition()), args = { blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, inputJson: '{}' }
+  const doc = await h.save(definition()), args = { blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, input: {} }
   t.mock.method(h.service, 'listDefinitions', async () => { throw new Error('RAW_PROVIDER_SECRET /private/user/location') })
   const failed = await h.tool('blueprint_list')
   assert.equal(failed.isError, true)
@@ -375,10 +375,10 @@ test('host: model-facing failures expose only static codes, no raw dependency er
 test('host: UI/tool command-key collision cannot rebind source kind; same native call in a later turn conflicts', async t => {
   const h = await liveHarness(t)
   const doc = await h.save(definition())
-  const args = { blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, inputJson: '{}' }
+  const args = { blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, input: {} }
   const callId = 'collision-call'
   const toolRequestId = `blueprint-tool-${createHash('sha256').update(JSON.stringify([h.caller.id, callId])).digest('hex')}`
-  await h.service.startSessionRun({ ...args, sessionId: h.caller.id, requestId: toolRequestId })
+  await h.service.startSessionRun({ blueprintId: args.blueprintId, expectedRevision: args.expectedRevision, inputJson: JSON.stringify(args.input), sessionId: h.caller.id, requestId: toolRequestId })
   const conflict = await h.tool('blueprint_start', args, h.caller, callId)
   assert.equal(conflict.isError, true); assert.equal(conflict.error.info.code, 'COMMAND_CONFLICT')
   const started = value(await h.tool('blueprint_start', args, h.caller, 'turn-call'))

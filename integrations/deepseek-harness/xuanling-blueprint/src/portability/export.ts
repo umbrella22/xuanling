@@ -16,6 +16,8 @@ import { admitResources } from '../security/resource-admission.ts'
 import { writeZip, type ZipEntryInput } from './zip.ts'
 import { ExportDependencyMissingError, PortabilityConflictError, SensitiveExportBlockedError } from './errors.ts'
 import type { PortabilityManifest } from './manifest.ts'
+import { hostExportKey, validatePackagedMcp, validatePackagedPreset, type HostExportResources } from './host-resources.ts'
+import { admitSnapshotPaths } from '../security/resource-admission.ts'
 
 export interface SharedRootBinding {
   rootId: string
@@ -28,6 +30,9 @@ export interface ExportOptions {
   /** Host-side secret scan hook; runs over every packaged text file. */
   scanForSecrets?: (text: string) => string[]
   exportedAt?: string
+  /** Server-side provenance and frozen safe custom artifacts, resolved only
+   * for this explicit export. Absence never authorizes omitting a Host ref. */
+  hostResources?: HostExportResources
 }
 
 export interface ExportResult {
@@ -82,6 +87,10 @@ export function exportBlueprint(rootDir: string, options: ExportOptions): Export
   const materializedSkills: Record<string, string> = {}
   const runDependencies: string[] = []
   const requiredBindings: string[] = []
+  const hostResources: Array<{ kind: 'agent' | 'skill' | 'mcp'; id: string }> = []
+  const addRequiredBinding = (binding: string): void => {
+    if (!requiredBindings.includes(binding)) requiredBindings.push(binding)
+  }
 
   // Package resources (+ subflow definition closures, one level per declared
   // subflow ref; recursion is bounded by the definition's own reference graph).
@@ -89,8 +98,47 @@ export function exportBlueprint(rootDir: string, options: ExportOptions): Export
   const visitDefinition = (def: BlueprintDefinition, defRoot: string, defPrefix: string, depth: number): void => {
     if (depth > 8) throw new PortabilityConflictError('subflow nesting exceeds the supported depth')
     for (const [refId, ref] of Object.entries(def.resources)) {
-      if (ref.kind === 'mcp') {
-        if (typeof ref.bindingId === 'string' && !requiredBindings.includes(ref.bindingId)) requiredBindings.push(ref.bindingId)
+      const source = ref.source
+      if (source?.kind === 'host') {
+        const id = source.id
+        if (typeof id !== 'string' || id.length === 0) throw new PortabilityConflictError(`Host resource ${refId} has no stable identity`)
+        if (ref.kind !== 'agent' && ref.kind !== 'skill' && ref.kind !== 'mcp') throw new PortabilityConflictError(`Host resource ${refId} has unsupported kind`)
+        const resolved = options.hostResources?.get(hostExportKey(ref.kind, id))
+        if (resolved === undefined) throw new ExportDependencyMissingError(refId, 'Host export provenance unavailable')
+        if (resolved.provenance === 'builtin') {
+          if (!hostResources.some(row => row.kind === ref.kind && row.id === id)) hostResources.push({ kind: ref.kind, id })
+          if (ref.kind === 'mcp' && ref.bindingId && !requiredBindings.includes(ref.bindingId)) requiredBindings.push(ref.bindingId)
+          continue
+        }
+        if (resolved.kind !== ref.kind) throw new PortabilityConflictError('Host export resource kind mismatch')
+        const stem = defPrefix === '' ? `lib/host-resources/${refId}` : `${defPrefix}/lib/host-resources/${refId}`
+        if (resolved.kind === 'skill') {
+          if (admitSnapshotPaths(resolved.files.map(file => file.path)).length) throw new PortabilityConflictError('Host Skill paths rejected')
+          for (const file of resolved.files) {
+            const path = `${stem}/${file.path}`
+            if (files.has(path)) throw new PortabilityConflictError('Host Skill archive path collision')
+            files.set(path, { path, bytes: file.bytes })
+          }
+          delete ref.source
+          ref.path = `lib/host-resources/${refId}`
+          materializedSkills[refId] = stem
+        } else {
+          const path = `${stem}.json`
+          const artifact = resolved.kind === 'agent'
+            ? validatePackagedPreset(resolved.preset)
+            : validatePackagedMcp(resolved.definition)
+          if (files.has(path)) throw new PortabilityConflictError('Host artifact archive path collision')
+          files.set(path, { path, bytes: Buffer.from(`${JSON.stringify(artifact, null, 2)}\n`) })
+          delete ref.source
+          ref.path = `lib/host-resources/${refId}.json`
+          ref.format = resolved.kind === 'agent' ? 'agent-preset' : 'mcp-definition'
+          for (const field of artifact.requiredBindings) addRequiredBinding(`${refId}:${field}`)
+          if (resolved.kind === 'mcp' && ref.bindingId) addRequiredBinding(ref.bindingId)
+        }
+        continue
+      }
+      if (ref.kind === 'mcp' && ref.format !== 'mcp-definition') {
+        if (typeof ref.bindingId === 'string') addRequiredBinding(ref.bindingId)
         continue
       }
       if (ref.source?.kind === 'shared') {
@@ -109,19 +157,20 @@ export function exportBlueprint(rootDir: string, options: ExportOptions): Export
           files.set(file.path, file)
         }
         materializedSkills[refId] = target
-        const packagedRef = packaged.resources[refId]!
+        const packagedRef = ref
         delete (packagedRef as { source?: unknown }).source
         packagedRef.kind = 'skill'
         packagedRef.path = target
         continue
       }
-      if (typeof ref.path !== 'string') continue
-      const absolute = join(defRoot, ref.path)
+      const path = ref.path ?? (ref.source?.kind === 'package' ? ref.source.path : undefined)
+      if (typeof path !== 'string') continue
+      const absolute = join(defRoot, path)
       if (!existsSync(absolute)) {
-        throw new ExportDependencyMissingError(refId, `package file missing: ${ref.path}`)
+        throw new ExportDependencyMissingError(refId, `package file missing: ${path}`)
       }
       const stat = statSync(absolute)
-      const prefixed = defPrefix === '' ? ref.path : `${defPrefix}/${ref.path}`
+      const prefixed = defPrefix === '' ? path : `${defPrefix}/${path}`
       if (stat.isDirectory()) {
         for (const file of walkTree(absolute, prefixed)) {
           if (files.has(file.path)) throw new PortabilityConflictError(`duplicate packaged path ${file.path}`)
@@ -129,7 +178,23 @@ export function exportBlueprint(rootDir: string, options: ExportOptions): Export
         }
       } else {
         if (files.has(prefixed)) throw new PortabilityConflictError(`duplicate packaged path ${prefixed}`)
-        files.set(prefixed, { path: prefixed, bytes: readFileSync(absolute) })
+        const bytes = readFileSync(absolute)
+        files.set(prefixed, { path: prefixed, bytes })
+        // Imported Host artifacts are ordinary package files. Reconstruct the
+        // manifest requirements from their validated contents so an
+        // export->import->export cycle preserves destination bindings.
+        if (ref.format === 'agent-preset' || ref.format === 'mcp-definition') {
+          let artifact: ReturnType<typeof validatePackagedPreset> | ReturnType<typeof validatePackagedMcp>
+          try {
+            artifact = ref.format === 'agent-preset'
+              ? validatePackagedPreset(JSON.parse(bytes.toString('utf8')))
+              : validatePackagedMcp(JSON.parse(bytes.toString('utf8')))
+          } catch {
+            throw new PortabilityConflictError(`packaged ${ref.format} artifact is invalid (${prefixed})`)
+          }
+          for (const field of artifact.requiredBindings) addRequiredBinding(`${refId}:${field}`)
+          if (ref.format === 'mcp-definition' && typeof ref.bindingId === 'string') addRequiredBinding(ref.bindingId)
+        }
       }
       packagePaths.add(prefixed)
       if (ref.kind === 'script') {
@@ -139,19 +204,20 @@ export function exportBlueprint(rootDir: string, options: ExportOptions): Export
   }
 
   // Root definition first, then declared subflows packaged under lib/subflows/<id>/.
-  visitDefinition(definition, root, '', 0)
+  visitDefinition(packaged, root, '', 0)
   for (const [refId, ref] of Object.entries(definition.resources)) {
-    if (ref.kind !== 'subflow' || typeof ref.path !== 'string') continue
-    const subflowRoot = join(root, ref.path)
+    const path = ref.path ?? (ref.source?.kind === 'package' ? ref.source.path : undefined)
+    if (ref.kind !== 'subflow' || typeof path !== 'string') continue
+    const subflowRoot = join(root, path)
     const subflowJson = join(subflowRoot, 'blueprint.json')
     if (!existsSync(subflowJson)) {
-      throw new ExportDependencyMissingError(refId, `subflow has no blueprint.json: ${ref.path}`)
+      throw new ExportDependencyMissingError(refId, `subflow has no blueprint.json: ${path}`)
     }
     const subDefinition = decodeDefinition(readFileSync(subflowJson, 'utf8'))
     // The subflow definition travels as its own blueprint.json inside the package.
-    const subDefPath = `${ref.path}/blueprint.json`
-    files.set(subDefPath, { path: subDefPath, bytes: readFileSync(subflowJson) })
-    visitDefinition(subDefinition, subflowRoot, ref.path, 1)
+    const subDefPath = `${path}/blueprint.json`
+    visitDefinition(subDefinition, subflowRoot, path, 1)
+    files.set(subDefPath, { path: subDefPath, bytes: Buffer.from(`${JSON.stringify(subDefinition, null, 2)}\n`) })
   }
 
   // The rewritten root definition is the package's entry file.
@@ -180,6 +246,7 @@ export function exportBlueprint(rootDir: string, options: ExportOptions): Export
     semanticRevision: revision.semantic,
     files: manifestFiles,
     requiredBindings,
+    ...(hostResources.length === 0 ? {} : { hostResources }),
     runDependencies,
     closureDigest,
     exportedAt: options.exportedAt ?? new Date().toISOString(),

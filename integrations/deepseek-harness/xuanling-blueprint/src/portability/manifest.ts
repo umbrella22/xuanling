@@ -11,6 +11,9 @@ export interface PortabilityManifest {
   files: Record<string, string>
   /** MCP binding roles the imported blueprint needs at run time. */
   requiredBindings: string[]
+  /** Host-owned identities required at import/run time. Bodies and machine
+   * paths are intentionally absent; DSH resolves these identities locally. */
+  hostResources?: Array<{ kind: 'agent' | 'skill' | 'mcp'; id: string }>
   /** Declared external run dependencies (not bundled). */
   runDependencies: string[]
   /** Digest over the sorted (path, digest) pairs — the closure identity. */

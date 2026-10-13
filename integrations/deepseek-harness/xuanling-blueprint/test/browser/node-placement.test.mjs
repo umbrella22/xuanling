@@ -284,3 +284,72 @@ test('fallback silhouette has current BlueprintNode/styles rendering provenance 
     assertVisible(f, node)
   }
 })
+
+function paletteDragEvent(x = 0, y = 0) {
+  const values = new Map()
+  return { clientX: x, clientY: y, preventDefault() {}, stopPropagation() {}, dataTransfer: {
+    setData: (key, value) => values.set(key, value), getData: key => values.get(key) ?? '',
+  } }
+}
+
+test('palette pointer clicks do not add; a drop uses the exact pan/zoom converted location once and is one Undo', async () => {
+  const f = await panelFixture(), editor = f.workspace.editor
+  const before = editor.exportDefinition(), count = editor.nodes.length
+  const entry = () => find(f.render(), el => el.props['data-bp-action'] === 'add-agentTask')
+  entry().props.onClick({ detail: 1 })
+  assert.equal(editor.nodes.length, count, 'pointer activation must not create at an unrelated location')
+  assert.equal(entry().props.draggable, true)
+  const point = { x: 371.25, y: 210.5 }, screen = f.toScreen(point), event = paletteDragEvent(screen.x, screen.y)
+  entry().props.onDragStart(event)
+  const surface = find(f.render(), el => el.props['data-bp-canvas'] === 'surface')
+  surface.props.onDragOver(event)
+  assert.equal(event.dataTransfer.dropEffect, 'copy')
+  surface.props.onDrop(event)
+  const node = editor.nodes.at(-1)
+  assert.equal(node.kind, 'agentTask'); assert.equal(editor.nodes.length, count + 1)
+  assert.ok(Math.abs(node.x - point.x) < 1e-8 && Math.abs(node.y - point.y) < 1e-8)
+  assertExistingUnchanged(f, before)
+  assert.deepEqual(f.viewportMutations, [])
+  surface.props.onDrop(event)
+  assert.equal(editor.nodes.length, count + 1, 'a repeated drop cannot replay the creation')
+  editor.undo(); assert.deepEqual(editor.exportDefinition(), before)
+  editor.redo(); assert.equal(editor.nodes.at(-1).id, node.id)
+})
+
+test('palette drag cancellation, foreign drops, busy workspace and switched editor never create nodes', async () => {
+  const f = await panelFixture()
+  const entry = () => find(f.render(), el => el.props['data-bp-action'] === 'add-input')
+  const surface = () => find(f.render(), el => el.props['data-bp-canvas'] === 'surface')
+  const before = f.workspace.editor.exportDefinition(), event = paletteDragEvent(700, 300)
+  surface().props.onDrop(event)
+  assert.deepEqual(f.workspace.editor.exportDefinition(), before)
+  entry().props.onDragStart(event); entry().props.onDragEnd(); surface().props.onDrop(event)
+  assert.deepEqual(f.workspace.editor.exportDefinition(), before)
+  entry().props.onDragStart(event); f.workspace.busy = true; surface().props.onDrop(event)
+  assert.deepEqual(f.workspace.editor.exportDefinition(), before)
+  f.workspace.busy = false
+  entry().props.onDragStart(event)
+  f.workspace.newDraft('Drag isolation')
+  surface().props.onDrop(event)
+  assert.equal(f.workspace.editor.nodes.length, 0)
+})
+
+test('sidebar handles hide rather than unmount editor forms, and leave definition and history unchanged', async () => {
+  const f = await panelFixture(), editor = f.workspace.editor
+  const before = editor.exportDefinition(), history = [editor.canUndo, editor.canRedo]
+  for (const side of ['library', 'inspector']) {
+    const toggle = () => find(f.render(), el => el.props['data-bp-action'] === `toggle-${side}`)
+    const aside = () => find(f.render(), el => el.props.className === `bp-${side}`)
+    assert.equal(toggle().props['aria-expanded'], true)
+    toggle().props.onClick()
+    assert.equal(aside().props.hidden, true)
+    assert.equal(toggle().props['aria-expanded'], false)
+    assert.equal(toggle().props['aria-controls'], aside().props.id)
+    toggle().props.onClick()
+    assert.equal(aside().props.hidden, false)
+  }
+  assert.deepEqual([editor.canUndo, editor.canRedo], history)
+  assert.deepEqual(editor.exportDefinition(), before)
+  editor.undo()
+  assert.equal(editor.edges.length, before.graph.edges.length - 1, 'Undo still targets the prior connection, not pane visibility')
+})

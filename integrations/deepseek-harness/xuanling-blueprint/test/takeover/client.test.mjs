@@ -91,7 +91,7 @@ test('C-09 drag-undo: one completed drag restores the pre-gesture coordinates', 
 test('C-09 import layout: production initialization keeps restored coordinates instead of undoing them', async () => {
   const layout = { nodes: { worker: { x: 640, y: 360 } }, groups: [] }; const reads = []
   const f = await loaded({ storage: { getItem(key) { reads.push(key); return JSON.stringify({ documentRevision: 'document-1', layout }) }, setItem() { assert.fail('initialization must not rewrite draft') } } })
-  assert.deepEqual(reads, [draftKey(definition.id), runBindingKey(definition.id)]); assert.deepEqual(f.workspace.editor.exportLayout().nodes.worker, layout.nodes.worker, 'LAYOUT_INITIALIZATION_PRESERVED'); assert.equal(f.workspace.editor.canUndo, false)
+  assert.deepEqual(reads, ['xuanling-blueprint:new-draft', draftKey(definition.id), runBindingKey(definition.id)]); assert.deepEqual(f.workspace.editor.exportLayout().nodes.worker, layout.nodes.worker, 'LAYOUT_INITIALIZATION_PRESERVED'); assert.equal(f.workspace.editor.canUndo, false)
 })
 test('C-08 client entry: a real remote.blueprint namespace is recognized as the host link', async t => {
   const f = fixture(); const requested = []; let registered; let mounts = 0
@@ -176,7 +176,7 @@ test('C-08 failed CAS preserves draft and never starts; retry inspect is read-on
 })
 test('C-09 drafts are ID-scoped, outdated layout never overwrites newer host document', async () => {
   const keys=[]; const f=await loaded({ storage:{ getItem(key){keys.push(key);return JSON.stringify({documentRevision:'old',layout:{nodes:{worker:{x:999,y:999}}}})},setItem(){} } })
-  assert.deepEqual(f.workspace.editor.exportLayout().nodes.worker,{x:120,y:80}); assert.match(f.workspace.status,/not applied/); assert.notEqual(draftKey('a/b'),draftKey('a%2Fb')); assert.deepEqual(keys,[draftKey(definition.id),runBindingKey(definition.id)])
+  assert.deepEqual(f.workspace.editor.exportLayout().nodes.worker,{x:120,y:80}); assert.match(f.workspace.status,/not applied/); assert.notEqual(draftKey('a/b'),draftKey('a%2Fb')); assert.deepEqual(keys,['xuanling-blueprint:new-draft',draftKey(definition.id),runBindingKey(definition.id)])
 })
 test('C-09 delete/undo and resource/node options keep existing semantic and metadata fields', () => {
   const e=GraphEditor.fromDefinition(definition); e.updateNode('worker',{skillRefs:[],toolsetRefs:[]}); e.updateResource('worker',{...definition.resources.worker}); e.toggleSelect('worker',false); e.removeSelected(); assert.equal(e.nodes.length,2); assert.equal(e.edges.length,0); e.undo(); const exported=e.exportDefinition(); validateDefinition(decodeDefinition(JSON.stringify(exported))); assert.equal(exported.graph.nodes[1].agentRef,'worker'); assert.deepEqual(exported.metadata,definition.metadata)

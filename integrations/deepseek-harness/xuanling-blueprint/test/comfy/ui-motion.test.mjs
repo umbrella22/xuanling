@@ -16,7 +16,7 @@ seat.react = {
   useEffect(fn, deps) { const f = seat.active, i = f.effectCursor++; const prev = f.effects[i]; if (!prev || !deps || deps.some((v, j) => !Object.is(v, prev.deps?.[j]))) f.pending.set(i, { fn, deps }) },
 }
 const dataUrl = code => `data:text/javascript,${encodeURIComponent(code)}`
-const react = dataUrl(`export default globalThis[Symbol.for('blueprint.comfy.motion-ui')].react; export const createElement=globalThis[Symbol.for('blueprint.comfy.motion-ui')].react.createElement`)
+const react = dataUrl(`export default globalThis[Symbol.for('blueprint.comfy.motion-ui')].react; export const { useEffect, useRef, useState } = globalThis[Symbol.for('blueprint.comfy.motion-ui')].react; export const createElement=globalThis[Symbol.for('blueprint.comfy.motion-ui')].react.createElement`)
 const flow = dataUrl(`export const useReactFlow=()=>globalThis[Symbol.for('blueprint.comfy.motion-ui')].active.flow;
 export const Position={Left:'left',Right:'right'},MarkerType={ArrowClosed:'arrowclosed'};
 export const ReactFlow='flow',ReactFlowProvider='provider',Background='background',Controls='controls',MiniMap='minimap',Handle='handle',NodeResizer='resizer',BaseEdge='base-edge';
@@ -75,7 +75,7 @@ function publicTree(f, id) {
   if (all(current, n => n.props['data-bp-action'] === id).length) return current
   let entry = all(current, n => n.props.overlay?.kind === 'more-menu')[0]
   if (!entry) { one(current, n => n.props['data-bp-action'] === 'more-actions').props.onClick(); entry = one(f.render(), n => n.props.overlay?.kind === 'more-menu') }
-  const group = ['export-blueprint', 'export-legacy', 'import-blueprint'].includes(id) ? 'files' : ['motion-toggle', 'toggle-minimap'].includes(id) ? 'view' : 'tools'
+  const group = ['export-blueprint', 'import-blueprint'].includes(id) ? 'files' : ['motion-toggle', 'toggle-minimap'].includes(id) ? 'view' : 'tools'
   if (f.publicMenu?.key !== entry.props.key) f.publicMenu = { key: entry.props.key, states: [], refs: [], cursor: 0, refCursor: 0 }
   const state = f.publicMenu
   const React = { createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }), Fragment: 'fragment',

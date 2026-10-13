@@ -13,7 +13,7 @@ const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 // These are DSH's real shared runtime seeds. Zod is not a seed: its browser
 // codecs must be bundled; React Flow is likewise a bundled npm dependency.
 const sharedExternals = ['react', 'react/jsx-runtime', 'react/jsx-dev-runtime', 'react-dom', 'react-dom/client']
-const bundledDependencies = ['@xyflow/react', 'zod']
+const bundledDependencies = ['@xyflow/react', 'zod', '@codemirror/state', '@codemirror/view', '@codemirror/commands', '@codemirror/language', '@codemirror/lang-json']
 const unsupportedChains = graph => graph.chains.filter(chain =>
   !sharedExternals.includes(chain.at(-1)) && !bundledDependencies.includes(chain.at(-1)))
 function runtimeGraph(entry) {

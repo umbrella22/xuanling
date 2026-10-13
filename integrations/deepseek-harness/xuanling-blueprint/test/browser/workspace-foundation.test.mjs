@@ -115,7 +115,8 @@ test('C-02 absent host/catalog/document and storage failures have distinct stabl
   const empty = fixture()
   empty.host.listDefinitions = async () => ({ definitions: [] })
   await empty.workspace.initialize()
-  assert.deepEqual(empty.workspace.notice, { key: 'status.noDefinitions' })
+  assert.deepEqual(empty.workspace.notice, { key: 'status.newDraft' })
+  assert.ok(empty.workspace.definition)
   empty.host.listDefinitions = async () => { throw new BlueprintRemoteError('blueprint/capability-unavailable') }
   await empty.workspace.initialize()
   assert.deepEqual(empty.workspace.notice, { key: 'status.error', params: { code: 'blueprint/capability-unavailable' } })

@@ -154,6 +154,7 @@ export function ConversationBlueprintView({ controller, sessionId, t, inspectCal
 
   // Guard the render before effect cleanup when the host replaces the scope.
   const value = snapshot.sessionId === sessionId ? snapshot.value : null
+  const connection = snapshot.sessionId === sessionId ? snapshot.connection : 'loading'
   const bound = value?.status === 'bound' ? value : null
   const graph = projectFrozenCanvas(snapshot.sessionId === sessionId ? snapshot : { ...snapshot, value: null }, reducedMotion, visible)
   const nodes: DisplayFlowNode[] = [...graph.groups.map(node => ({ ...node, data: { ...node.data, t } })),
@@ -167,14 +168,14 @@ export function ConversationBlueprintView({ controller, sessionId, t, inspectCal
   const button = (key: BlueprintLocaleKey, icon: string, onClick: () => void, disabled = false) => React.createElement('button', {
     type: 'button', className: 'bp-icon-button', 'aria-label': t(key), title: t(key), onClick, disabled,
   }, blueprintIcon(React, icon))
-  const status = snapshot.connection === 'stale' ? 'conversation.stale'
-    : snapshot.connection === 'unavailable' ? 'conversation.unavailable'
+  const status = connection === 'stale' ? 'conversation.stale'
+    : connection === 'unavailable' ? 'conversation.unavailable'
       : value?.status === 'unbound' ? 'conversation.unbound'
         : value === null ? 'conversation.loading' : 'conversation.connected'
   return React.createElement('section', { className: 'bp-workspace bp-conversation',
     'aria-label': t('conversation.ariaLabel'), 'data-bp-conversation': 'root', 'data-bp-session': sessionId,
     'data-bp-run-id': bound?.selected.run.runId ?? '', 'data-bp-frozen-revision': bound?.selected.run.definitionRevision ?? '',
-    'data-bp-connection': snapshot.connection,
+    'data-bp-connection': connection,
   }, React.createElement('header', { className: 'bp-toolbar' },
     React.createElement('select', { className: 'bp-conversation-run', 'aria-label': t('conversation.runSelector'),
       value: bound?.selected.run.runId ?? '', disabled: !bound,
@@ -222,5 +223,5 @@ export function ConversationBlueprintView({ controller, sessionId, t, inspectCal
         onClick: () => { if (attempt.attemptId) { controller.selectAttempt(attempt.attemptId); fit([attempt.nodeId]) } },
       }, t('run.attempt', { nodeId: attempt.nodeId, attempt: attempt.attempt, state: displayState(attempt.state, t) }),
       React.createElement('small', null, attempt.attemptId ?? t('conversation.legacyAttempt'))))))
-    : React.createElement('div', { className: 'bp-conversation-empty' }, t(value?.status === 'unbound' ? 'conversation.unboundHelp' : status)))
+    : React.createElement('div', { className: 'bp-conversation-empty' }, t(status === 'conversation.unbound' ? 'conversation.unboundHelp' : status)))
 }

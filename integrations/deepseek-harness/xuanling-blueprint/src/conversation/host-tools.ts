@@ -1,6 +1,8 @@
 /** Optional native Tools registrations. Caller identity is supplied by the
  * host execution carrier; it never appears in model-authored parameters. */
 import { z } from 'zod'
+import { candidateCodec, type AuthoringCandidate } from '../definition/authoring.ts'
+import type { PreflightRunArgs, PreflightRunValue } from '../host/preflight.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import { HarnessError } from '@deepseek-ai/dsh-llm'
 import { SessionId, type Session } from '@deepseek-ai/dsh-session'
@@ -11,6 +13,10 @@ import { inspectSessionCodec, runAdmissionCodec, type InspectSessionArgs, type I
 export interface ConversationToolService {
   listDefinitions(): Promise<{ definitions: Array<{ blueprintId: string; name: string; documentRevision: string | null; semanticRevision: string | null }> }>
   inspectSession(args: InspectSessionArgs): Promise<InspectSessionValue>
+  describeBlueprint(blueprintId?: string): Promise<unknown>
+  validateBlueprint(candidate: AuthoringCandidate): Promise<unknown>
+  createBlueprint(candidate: AuthoringCandidate, requestId: string, source: RunSource, signal?: AbortSignal): Promise<unknown>
+  preflightRun(args: PreflightRunArgs): Promise<PreflightRunValue>
 }
 export interface ToolStartArgs { blueprintId: string; expectedRevision: string; inputJson: string }
 
@@ -35,7 +41,7 @@ export function callerSource(ctx: Context, exec: ToolRunContext): RunSource {
     ...(boundary === undefined || boundary.openTurnStartSeq === null ? {} : { turn: boundary.lastTurn }) }
 }
 
-const toolStartArgs = z.strictObject({ blueprintId: z.string().min(1), expectedRevision: z.string().min(1), inputJson: z.string() })
+const toolStartArgs = z.strictObject({ blueprintId: z.string().min(1), expectedRevision: z.string().min(1), input: z.json() })
 const toolInspectArgs = z.strictObject({ runId: z.string().min(1).optional() })
 function strictToolArgs<T>(codec: z.ZodType<T>, args: unknown): T {
   const parsed = codec.safeParse(args)
@@ -67,14 +73,15 @@ export function mapTeamStageError(error: unknown): string {
 async function toolResult<T>(operation: () => Promise<T>): Promise<T> {
   try { return await operation() } catch (error) {
     const code = (error as { code?: unknown })?.code
-    const allowed = ['session-unavailable', 'nested-run-unavailable', 'blueprint/definition-not-found', 'blueprint/definition-invalid',
+    const allowed = ['blueprint/definition-deleted', 'blueprint/library-state-invalid', 'blueprint/library-busy', 'blueprint/capability-unavailable', 'blueprint/definition-write-failed', 'session-unavailable', 'nested-run-unavailable', 'blueprint/definition-not-found', 'blueprint/definition-invalid',
       'blueprint/revision-conflict', 'blueprint/preflight-blocked', 'blueprint/durability-failed', 'blueprint/run-not-found',
       'blueprint/team-unavailable', 'blueprint/team-identity-unavailable', 'blueprint/team-stage-conflict',
       'blueprint/team-task-conflict', 'blueprint/team-output-rejected', 'COMMAND_CONFLICT', 'gateway/bad-request', 'INVALID_ARGS']
     const safe = typeof code === 'string' && allowed.includes(code) ? code
       : (code === 'TEAM_STAGE_CONFLICT' || code === 'TEAM_TASK_CONFLICT' || code === 'TEAM_OUTPUT_REJECTED' || code === 'TEAM_UNAVAILABLE' || code === 'TEAM_IDENTITY_UNAVAILABLE' || code === 'DURABILITY_FAILED' || code === 'RUN_NOT_FOUND'
         ? mapTeamStageError(error) : 'blueprint/tool-failed')
-    throw new HarnessError(safe, safe)
+    const hint = safe === 'blueprint/capability-unavailable' ? 'Open the plugin in a file-based DSH profile or configure its runtimeRoot.' : undefined
+    throw new HarnessError(hint ? `${safe}: ${hint}` : safe, safe)
   }
 }
 
@@ -85,6 +92,40 @@ export function installConversationTools(ctx: Context, service: ConversationTool
     scoped.effect(() => {
       const removers: Array<() => void> = []
       try {
+        const jsonOutput = { schema: { type: 'json' as const }, render: renderJson }
+        const candidateParameters = {
+          definition: { type: 'json' as const, required: true as const },
+          files: { type: 'array' as const, required: true as const, items: { type: 'object' as const, additionalProperties: false as const, properties: {
+            path: { type: 'string' as const, required: true as const }, text: { type: 'string' as const, required: true as const },
+          } } },
+        }
+        removers.push(scoped.tools.register(defineTool({ name: 'blueprint_describe',
+          description: 'Read the current blueprint schema, executable node kinds, declared-resource creation example and available tool bindings. With blueprintId, read that saved graph, revision and input contract. Call this before creating or starting a blueprint.',
+          parameters: { blueprintId: { type: 'string' } }, output: jsonOutput,
+          execute: args => toolResult(async () => JSON.parse(JSON.stringify(await service.describeBlueprint(strictToolArgs(z.strictObject({ blueprintId: z.string().min(1).optional() }), args).blueprintId)))),
+        })))
+        removers.push(scoped.tools.register(defineTool({ name: 'blueprint_validate',
+          description: 'Validate a candidate definition and all its declared text resource files without saving or running. Returns safe issue codes and JSON pointers. Get the current schema and example with blueprint_describe.',
+          parameters: candidateParameters, output: jsonOutput,
+          execute: args => toolResult(async () => JSON.parse(JSON.stringify(await service.validateBlueprint(strictToolArgs(candidateCodec, args))))),
+        })))
+        removers.push(scoped.tools.register(defineTool({ name: 'blueprint_create',
+          description: 'Save a complete new blueprint and its declared resource text files atomically. Does not run it. Use a stable requestId for retries; changing the payload requires a new requestId. Validate first, then preflight the returned ID/revision.',
+          parameters: { ...candidateParameters, requestId: { type: 'string', required: true } }, output: jsonOutput,
+          execute: (args, exec) => toolResult(async () => {
+            exec.signal.throwIfAborted()
+            const parsed = strictToolArgs(candidateCodec.extend({ requestId: z.string().min(1) }), args)
+            return JSON.parse(JSON.stringify(await service.createBlueprint({ definition: parsed.definition, files: parsed.files }, parsed.requestId, callerSource(ctx, exec), exec.signal)))
+          }),
+        })))
+        removers.push(scoped.tools.register(defineTool({ name: 'blueprint_preflight',
+          description: 'Read-only checks for a saved blueprint revision and JSON input. Returns blocking node/resource/tool checks. Fix blocks before blueprint_start; Host permissions and dynamic outputs are still checked at runtime.',
+          parameters: { blueprintId: { type: 'string', required: true }, expectedRevision: { type: 'string', required: true }, input: { type: 'json', required: true } }, output: jsonOutput,
+          execute: args => toolResult(async () => {
+            const parsed = strictToolArgs(toolStartArgs, args)
+            return JSON.parse(JSON.stringify(await service.preflightRun({ blueprintId: parsed.blueprintId, expectedRevision: parsed.expectedRevision, inputJson: JSON.stringify(parsed.input) })))
+          }),
+        })))
         removers.push(scoped.tools.register(defineTool({ name: 'blueprint_list', description: 'List configured blueprints and their current document revision for an explicit blueprint_start.',
           parameters: {}, output: { schema: { type: 'object', additionalProperties: false, properties: {
             definitions: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: {
@@ -94,12 +135,12 @@ export function installConversationTools(ctx: Context, service: ConversationTool
           } }, render: renderJson },
           execute: args => toolResult(async () => { strictToolArgs(z.strictObject({}), args); return { definitions: (await service.listDefinitions()).definitions.map(({ blueprintId, name, documentRevision }) => ({ blueprintId, name, documentRevision })) } }),
         })))
-        removers.push(scoped.tools.register(defineTool({ name: 'blueprint_start', description: 'Explicitly start a configured blueprint from this root conversation using the document revision returned by blueprint_list.',
-          parameters: { blueprintId: { type: 'string', required: true }, expectedRevision: { type: 'string', required: true }, inputJson: { type: 'string', required: true } },
+        removers.push(scoped.tools.register(defineTool({ name: 'blueprint_start', description: 'Explicitly start a saved blueprint after blueprint_describe and blueprint_preflight. Use its current document revision and a JSON input value. Input never creates agents or nodes.',
+          parameters: { blueprintId: { type: 'string', required: true }, expectedRevision: { type: 'string', required: true }, input: { type: 'json', required: true } },
           output: { schema: { type: 'object', additionalProperties: false, properties: {
             runId: { type: 'string', required: true }, semanticRevision: { type: 'string', required: true }, state: { type: 'string', required: true }, replayed: { type: 'boolean', required: true },
           } }, render: renderJson },
-          execute: (args, exec) => toolResult(async () => { exec.signal.throwIfAborted(); return runAdmissionCodec().parse(await start(strictToolArgs(toolStartArgs, args), callerSource(ctx, exec))) }),
+          execute: (args, exec) => toolResult(async () => { exec.signal.throwIfAborted(); const parsed = strictToolArgs(toolStartArgs, args); return runAdmissionCodec().parse(await start({ blueprintId: parsed.blueprintId, expectedRevision: parsed.expectedRevision, inputJson: JSON.stringify(parsed.input) }, callerSource(ctx, exec))) }),
         })))
         removers.push(scoped.tools.register(defineTool({ name: 'blueprint_inspect', description: 'Read only the frozen blueprint Run associated with this conversation. Optionally select a Run belonging to this session.',
           parameters: { runId: { type: 'string' } },

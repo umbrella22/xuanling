@@ -55,7 +55,7 @@ function publicTree(f, id) {
     useRef(initial) { return state.refs[state.refCursor++] ??= { current: initial } }, useEffect() {} }
   const render = () => { state.cursor = state.refCursor = 0; return entry.type({ ...entry.props, React }) }
   if (!context) {
-    const group = ['export-blueprint', 'export-legacy', 'import-blueprint'].includes(id) ? 'files' : ['motion-toggle', 'toggle-minimap'].includes(id) ? 'view' : 'tools'
+    const group = ['export-blueprint', 'import-blueprint'].includes(id) ? 'files' : ['motion-toggle', 'toggle-minimap'].includes(id) ? 'view' : 'tools'
     one(render(), n => n.props['data-bp-menu-group'] === group).props.onClick()
   }
   return render()
@@ -201,7 +201,7 @@ test('palette searches both language aliases and kinds, retains query/Run-input 
     const palette = all(f.render(), n => n.props.className === 'bp-palette-entry')
     assert.equal(palette.length, 1); assert.equal(palette[0].props['data-bp-action'], `add-${kind}`)
   }
-  one(f.render(), n => Object.hasOwn(n.props, 'data-bp-run-input')).props.onChange({ target: { value: '{invalid user buffer' } })
+  one(f.render(), n => Object.hasOwn(n.props, 'data-bp-run-input')).props.onChange('{invalid user buffer')
   f.dict = zh
   assert.equal(search().props.value, 'output')
   assert.equal(one(f.render(), n => Object.hasOwn(n.props, 'data-bp-run-input')).props.value, '{invalid user buffer')

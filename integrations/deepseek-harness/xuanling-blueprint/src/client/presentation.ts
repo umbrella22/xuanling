@@ -2,9 +2,16 @@
 import type { AriaLabelConfig } from '@xyflow/react'
 import type { EditorGroup, EditorNode } from './graph-editor.ts'
 import type { BlueprintLocaleProps } from './locales.ts'
+import type { ResourceRef } from '../definition/types.ts'
+import type { HostResourceCatalogEntry } from './remote.ts'
 import { PALETTE_NODE_FOOTPRINT } from './node-placement.ts'
 
 type Translator = BlueprintLocaleProps['t']
+export function resourceDisplayName(refId: string, ref: ResourceRef | undefined, catalog: readonly HostResourceCatalogEntry[] = []): string {
+  const source = ref?.source
+  if (ref === undefined || source?.kind !== 'host') return refId
+  return catalog.find(row => row.source === 'dsh' && row.kind === ref.kind && row.id === source.id)?.displayName ?? source.id
+}
 export function runStateTitle(state: string, t: Translator): string {
   switch (state) {
     case 'queued': return t('state.queued')

@@ -89,6 +89,17 @@ async function start(h, input, requestId = randomUUID()) {
   assert.deepEqual(JSON.parse(record.definitionJson), JSON.parse(document.definitionJson))
   return { args, document, admission, record, preflightCanStart: report.canStart }
 }
+async function rejectAdmissionAndDriveExisting(h, input, code) {
+  const document = await h.service.loadDefinition({ blueprintId: h.definition.id })
+  const args = { blueprintId: document.blueprintId, expectedRevision: document.documentRevision, inputJson: json(input) }
+  const report = await h.service.preflightRun(args)
+  assert.equal(report.canStart, false)
+  assert.ok(report.checks.some(check => check.code === code && check.status === 'block'))
+  await assert.rejects(h.service.startRun({ ...args, requestId: randomUUID() }), { code: 'blueprint/preflight-blocked' })
+  const { runId } = await h.handle.store.createRun({ scope: 'run', requestId: randomUUID(), payloadFingerprint: createHash('sha256').update(document.definitionJson + args.inputJson).digest('hex') }, document.semanticRevision, document.definitionJson, args.inputJson)
+  await h.service.driveRun(h.handle, runId, h.definition)
+  return { record: await h.handle.store.get(runId) }
+}
 function attempt(record, nodeId) {
   const value = record.attempts.findLast(item => item.nodeId === nodeId)
   assert.ok(value, `${nodeId}: durable Attempt must exist, never dereference an absent result`)
@@ -225,7 +236,7 @@ test('C-06 nominal selected parent missing output: durable binding-missing, neve
 })
 test('C-06 nominal missing input is not an undefined JSON value authorization', async t => {
   const h = await fixture(t, graph([{ id: 'source', kind: 'input', inputs: { payload: nominal }, outputs: { payload: nominal } }]))
-  const { record } = await start(h, {})
+  const { record } = await rejectAdmissionAndDriveExisting(h, {}, 'input-missing')
   await rejected(h, record, 'source', 'input-missing')
 })
 for (const destination of ['OtherDomainPayload', 'domainpayload']) {
@@ -250,7 +261,7 @@ for (const [type, invalid] of [['string', 7], ['number', '7'], ['boolean', 'fals
     test(`C-06 builtin ${type} ${location}: nominal compatibility does not admit a mismatched primitive`, async t => {
       const node = { id: 'source', kind: 'input', ...(location === 'input' ? { inputs: { payload: type } } : {}), outputs: { payload: type } }
       const h = await fixture(t, graph([node]))
-      const { record } = await start(h, { payload: invalid })
+      const { record } = await rejectAdmissionAndDriveExisting(h, { payload: invalid }, `${location}-invalid`)
       await rejected(h, record, 'source', `${location}-invalid`)
     })
   }
@@ -270,7 +281,7 @@ for (const invalid of ['true', 1, null, {}, []]) {
       { id: 'yesPath', kind: 'output' }, { id: 'noPath', kind: 'output' },
     ], [{ kind: 'control', from: 'choose@yes', to: 'yesPath' }, { kind: 'control', from: 'choose@no', to: 'noPath' }])
     const h = await fixture(t, definition)
-    const { record } = await start(h, { predicate: invalid })
+    const { record } = await rejectAdmissionAndDriveExisting(h, { predicate: invalid }, 'condition-input-invalid')
     await rejected(h, record, 'choose', 'condition-input-invalid')
     assert.equal(record.attempts.some(item => item.nodeId === 'yesPath' || item.nodeId === 'noPath'), false)
   })

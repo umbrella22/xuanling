@@ -48,7 +48,7 @@ export default defineConfig({
       footer: `return module.exports; } });`,
       dts: false,
       clean: false,
-      minify: false,
+      minify: true,
     },
   ],
   lint: {

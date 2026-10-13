@@ -14,7 +14,7 @@ seat.react = {
   useMemo: fn => fn(), useCallback: fn => fn, useEffect() {},
 }
 const dataUrl = code => `data:text/javascript,${encodeURIComponent(code)}`
-const react = dataUrl(`export default globalThis[Symbol.for('blueprint.comfy.ui')].react; export const createElement=globalThis[Symbol.for('blueprint.comfy.ui')].react.createElement`)
+const react = dataUrl(`export default globalThis[Symbol.for('blueprint.comfy.ui')].react; export const { useEffect, useRef, useState } = globalThis[Symbol.for('blueprint.comfy.ui')].react; export const createElement=globalThis[Symbol.for('blueprint.comfy.ui')].react.createElement`)
 const flow = dataUrl(`export const useReactFlow=()=>globalThis[Symbol.for('blueprint.comfy.ui')].active.flow;
 export const Position={Left:'left',Right:'right'},MarkerType={ArrowClosed:'arrowclosed'};
 export const ReactFlow='flow',ReactFlowProvider='provider',Background='background',Controls='controls',MiniMap='minimap',Handle='handle',NodeResizer='resizer',BaseEdge='base-edge';
@@ -38,7 +38,7 @@ function publicTree(f, id) {
   if (all(current, n => n.props['data-bp-action'] === id).length) return current
   let entry = all(current, n => n.props.overlay?.kind === 'more-menu')[0]
   if (!entry) { one(current, n => n.props['data-bp-action'] === 'more-actions').props.onClick(); entry = one(f.render(), n => n.props.overlay?.kind === 'more-menu') }
-  const group = ['export-blueprint', 'export-legacy', 'import-blueprint'].includes(id) ? 'files' : ['motion-toggle', 'toggle-minimap'].includes(id) ? 'view' : 'tools'
+  const group = ['export-blueprint', 'import-blueprint'].includes(id) ? 'files' : ['motion-toggle', 'toggle-minimap'].includes(id) ? 'view' : 'tools'
   if (f.publicMenu?.key !== entry.props.key) f.publicMenu = { key: entry.props.key, states: [], refs: [], cursor: 0, refCursor: 0 }
   const state = f.publicMenu
   const React = { createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }), Fragment: 'fragment',
@@ -67,7 +67,7 @@ async function fixture({ viewportRaw, load = true } = {}) {
 }
 test('W2 panel actually exposes frozen toolbar and gesture entrypoints', async () => {
   const f = await fixture()
-  for (const id of ['mode-pan', 'mode-select', 'motion-toggle', 'shortcuts', 'export-blueprint', 'export-legacy', 'import-blueprint']) {
+  for (const id of ['mode-pan', 'mode-select', 'motion-toggle', 'shortcuts', 'export-blueprint', 'import-blueprint']) {
     assert.equal(all(publicTree(f, id), n => n.props['data-bp-action'] === id).length, 1, `W2_UI_ACTION_MISSING:${id}`)
   }
   for (const name of ['onPaneContextMenu', 'onNodeContextMenu', 'onEdgeContextMenu', 'onReconnect', 'onReconnectStart', 'onReconnectEnd', 'onMoveEnd']) assert.equal(typeof flowOf(f).props[name], 'function', name)
@@ -524,7 +524,11 @@ test('C06 actual NodeResizer callback reads D3 sourceEvent and cancels outside r
   }
   const renderer = () => {
     const flow = flowOf(f), node = flow.props.nodes.find(n => n.id === 'a')
-    return one(flow.props.nodeTypes.blueprint({ id: node.id, data: node.data, selected: true }), n => n.type === 'resizer')
+    const controls = all(flow.props.nodeTypes.blueprint({ id: node.id, data: node.data, selected: true }), n => n.type === 'resizer')
+    assert.equal(controls.length, 2)
+    assert.equal(controls[0].props.keepAspectRatio, false); assert.equal(controls[0].props.handleStyle.display, 'none')
+    assert.equal(controls[1].props.keepAspectRatio, true); assert.equal(controls[1].props.lineStyle.display, 'none')
+    return controls[1]
   }
   let resizer = renderer(); resizer.props.onResizeStart(); resizer.props.onResize({}, { x: 50, y: 50, width: 340, height: 260 })
   resizer.props.onResizeEnd({ sourceEvent: { clientX: 700, clientY: 500 } }); assert.deepEqual(editor.exportDefinition(), before); assert.equal(editor.canUndo, false)
@@ -540,14 +544,22 @@ test('compact C01 actual toolbar exposes accessible SVG controls and keeps low-f
     assert.ok(control.props['aria-label'], `C01_ACCESSIBLE_NAME:${id}`)
     assert.equal(all(control, n => n.type === 'svg' && n.props['aria-hidden'] === true).length, 1, `C01_SVG_CONTROL:${id}`)
   }
-  for (const id of ['check-run', 'export-blueprint', 'export-legacy', 'import-blueprint', 'motion-toggle', 'shortcuts', 'refresh-library']) assert.equal(all(header, n => n.props['data-bp-action'] === id).length, 0, `C03_MOVED_TO_MORE:${id}`)
+  for (const id of ['check-run', 'export-blueprint', 'import-blueprint', 'motion-toggle', 'shortcuts', 'refresh-library']) assert.equal(all(header, n => n.props['data-bp-action'] === id).length, 0, `C03_MOVED_TO_MORE:${id}`)
 })
-test('host controls C01 actual Panel has no plugin pane toggles and keeps both panes and top selector without resetting editor/input/viewport', async () => {
+test('host controls C01 side handles toggle pane visibility while retaining panes, selector, editor, input and viewport', async () => {
   const f = await fixture(), editor = f.workspace.editor
   f.workspace.inputJson = '{"raw":"retain"}'
   const stored = [...f.values], before = editor.exportDefinition()
   const tree = f.render(), selector = one(tree, n => n.props['data-bp-select'] === 'blueprint')
-  for (const id of ['toggle-library', 'toggle-inspector']) assert.equal(all(tree, n => n.props['data-bp-action'] === id).length, 0, `HOST_CONTROLS_PLUGIN_TOGGLE_MUST_BE_REMOVED:${id}`)
+  for (const side of ['library', 'inspector']) {
+    const toggle = () => one(f.render(), n => n.props['data-bp-action'] === `toggle-${side}`)
+    assert.equal(all(one(tree, n => n.type === 'header'), n => n.props['data-bp-action'] === `toggle-${side}`).length, 0, 'handles belong at the side, not in the toolbar')
+    toggle().props.onClick()
+    assert.equal(one(f.render(), n => n.props.className === `bp-${side}`).props.hidden, true)
+    assert.equal(toggle().props['aria-expanded'], false)
+    toggle().props.onClick()
+    assert.equal(one(f.render(), n => n.props.className === `bp-${side}`).props.hidden, false)
+  }
   for (const className of ['bp-library', 'bp-inspector']) assert.equal(one(tree, n => n.props.className === className).type, 'aside', `HOST_CONTROLS_PANE_MUST_STAY_MOUNTED:${className}`)
   assert.equal(all(one(tree, n => n.type === 'header'), n => n === selector).length, 1, 'C02_SELECTOR_IN_TOP_CHROME')
   assert.equal(f.workspace.editor, editor); assert.equal(f.workspace.inputJson, '{"raw":"retain"}')
@@ -558,7 +570,7 @@ test('host controls C01 both panes stay mounted in empty, busy, locked and mode-
   const panes = () => {
     const tree = f.render()
     for (const className of ['bp-library', 'bp-inspector']) assert.equal(one(tree, n => n.props.className === className).type, 'aside')
-    for (const id of ['toggle-library', 'toggle-inspector']) assert.equal(all(tree, n => n.props['data-bp-action'] === id).length, 0, `HOST_CONTROLS_PLUGIN_TOGGLE_MUST_BE_REMOVED:${id}`)
+    for (const id of ['toggle-library', 'toggle-inspector']) assert.equal(all(tree, n => n.props['data-bp-action'] === id).length, 1, `SIDEBAR_HANDLE_AVAILABLE:${id}`)
   }
   panes(); await f.workspace.load('flow'); panes()
   const editor = f.workspace.editor, stored = [...f.values], before = editor.exportDefinition()

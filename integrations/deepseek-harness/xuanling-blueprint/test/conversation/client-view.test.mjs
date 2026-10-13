@@ -244,8 +244,66 @@ test('unbound has no synthetic nodes; unavailable reads retain an explicit refre
   assert.equal(tree.props['data-bp-run-id'], '')
   assert.equal(one(tree, node => node.type === 'select').props.disabled, true)
   f.setResponse(() => { throw new Error('raw-provider-error') }); await f.controller.refresh()
-  assert.equal(one(f.render(), node => node.props.role === 'status').children[0], en['conversation.stale'])
+  assert.equal(one(f.render(), node => node.props.role === 'status').children[0], en['conversation.unavailable'])
   assert.equal(one(f.render(), node => node.props['aria-label'] === en['conversation.refresh']).props.disabled, false)
+})
+
+test('ordinary conversation empty state is neutral in both locales before and after a normal tab remount', async () => {
+  for (const [dict, expected] of [[zh, '当前对话未关联蓝图，暂无实时蓝图可显示。'], [en, 'This conversation has no linked blueprint. No live blueprint is available to display.']]) {
+    const f = fixture(dict)
+    f.setResponse({ status: 'unbound', sessionId: 'source' }); await f.controller.refresh()
+    for (const remount of [false, true]) {
+      if (remount) { f.controller.pause(); f.controller.resume() }
+      const tree = f.render()
+      assert.equal(tree.props['data-bp-connection'], 'connected')
+      assert.equal(one(tree, node => node.props.className === 'bp-conversation-empty').children[0], expected)
+      assert.equal(one(tree, node => node.props.role === 'status').children[0], dict['conversation.unbound'])
+      assert.equal(all(tree, node => node.type === 'flow').length, 0)
+    }
+  }
+})
+
+test('new session render hides previous session failure until its own read settles', async () => {
+  const f = fixture()
+  f.setResponse(() => { throw new Error('old transport failure') }); await f.controller.refresh()
+  f.props.sessionId = 'new-ordinary'
+  const pending = f.render()
+  assert.equal(pending.props['data-bp-connection'], 'loading')
+  assert.equal(one(pending, node => node.props.role === 'status').children[0], en['conversation.loading'])
+  assert.equal(one(pending, node => node.props.className === 'bp-conversation-empty').children[0], en['conversation.loading'])
+  f.controller.setSession('new-ordinary')
+  f.setResponse({ status: 'unbound', sessionId: 'new-ordinary' }); await f.controller.refresh()
+  assert.equal(one(f.render(), node => node.props.role === 'status').children[0], en['conversation.unbound'])
+})
+
+test('a real failure after an empty read displays loading failure instead of successful empty copy', async () => {
+  for (const dict of [zh, en]) {
+    const f = fixture(dict)
+    f.setResponse({ status: 'unbound', sessionId: 'source' }); await f.controller.refresh()
+    f.setResponse(() => { throw new Error('PRIVATE_ERROR_SENTINEL') }); await f.controller.refresh()
+    const tree = f.render()
+    assert.equal(tree.props['data-bp-connection'], 'unavailable')
+    assert.equal(one(tree, node => node.props.className === 'bp-conversation-empty').children[0], dict['conversation.unavailable'])
+    assert.equal(one(tree, node => node.props.role === 'status').children[0], dict['conversation.unavailable'])
+    assert.equal(JSON.stringify(tree).includes('PRIVATE_ERROR_SENTINEL'), false)
+    f.setResponse({ status: 'unbound', sessionId: 'source' }); await f.controller.refresh()
+    assert.equal(one(f.render(), node => node.props.className === 'bp-conversation-empty').children[0], dict['conversation.unboundHelp'])
+  }
+})
+
+test('bound read failures retain the same frozen graph and stop its live activity', async () => {
+  const f = fixture()
+  await f.controller.refresh()
+  const previous = f.controller.getSnapshot().value
+  f.setResponse(() => { throw new Error('PRIVATE_ERROR_SENTINEL') }); await f.controller.refresh()
+  assert.equal(f.controller.getSnapshot().value, previous)
+  const tree = f.render(), flow = one(tree, node => node.type === 'flow')
+  assert.equal(tree.props['data-bp-connection'], 'stale')
+  assert.equal(tree.props['data-bp-run-id'], previous.selected.run.runId)
+  assert.equal(tree.props['data-bp-frozen-revision'], previous.selected.run.definitionRevision)
+  assert.ok(flow.props.nodes.every(node => node.data.motion !== 'pulse'))
+  assert.equal(all(tree, node => node.props.className === 'bp-conversation-empty').length, 0)
+  assert.equal(JSON.stringify(tree).includes('PRIVATE_ERROR_SENTINEL'), false)
 })
 
 test('bound empty graphs keep an empty initial fit while explicit focus remains attempt-scoped', async () => {

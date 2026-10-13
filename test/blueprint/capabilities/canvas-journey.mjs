@@ -31,7 +31,7 @@ async function choose(page, id, expectedNodes) {
   await action(page, 'refresh-library').waitFor({ state: 'visible' })
   await page.waitForFunction(() => !document.querySelector('[data-bp-action="refresh-library"]').disabled)
   await closePublicMore(page)
-  await page.getByRole('combobox', { name: 'Configured blueprint' }).selectOption(id)
+  await page.getByRole('combobox', { name: 'Blueprint library' }).selectOption(id)
   await checkCount(page, '[data-bp-node]', expectedNodes)
   await page.waitForFunction(() => !document.querySelector('[data-bp-action="save-layout"]').disabled)
 }
@@ -194,14 +194,14 @@ export async function runCanvasJourney(page, assert, api) {
   let graph = await waitForCanvasGraph(page, canonicalGraph, { handles: connectionHandles })
   const css = await cssEvidence(page, assert)
   const search = page.getByRole('textbox', { name: 'Search nodes', exact: true })
-  await search.fill('input'); await action(page, 'add-input').click()
+  await search.fill('input'); await action(page, 'add-input').press('Enter')
   const withInput = await waitForCanvasGraph(page, graph, { addedNodeKind: 'input', handles: connectionHandles })
   const newInput = withInput.nodes.find(n => !graph.nodes.some(previous => previous.id === n.id)).id
   graph = withInput
-  await search.fill('output'); await action(page, 'add-output').click()
+  await search.fill('output'); await action(page, 'add-output').press('Enter')
   graph = await waitForCanvasGraph(page, graph, { addedNodeKind: 'output', handles: connectionHandles })
   const countAfterAdd = await nodes(page).count()
-  assert('P6e', 'palette search and real pointer Add create supported nodes in the actual DSH canvas', countAfterAdd === 5 && await action(page, 'add-agentTask').count() === 0, `3 -> ${countAfterAdd}`)
+  assert('P6e', 'palette search and native keyboard activation create supported nodes in the actual DSH canvas', countAfterAdd === 5 && await action(page, 'add-agentTask').count() === 0, `3 -> ${countAfterAdd}`)
   await search.fill('')
   graph = await waitForCanvasGraph(page, graph, { handles: connectionHandles })
   const beforeEdges = canonicalGraph.edges.length
@@ -292,7 +292,7 @@ export async function runCanvasJourney(page, assert, api) {
   assert('B-VIEWPORT', 'genuine pane pan, wheel zoom and fit controls change viewport without editing graph', initialViewport !== afterPan && afterPan !== afterZoom && await nodes(page).count() === keyboardCount, JSON.stringify({ initialViewport, afterPan, afterZoom }))
 
   // Agent/Skill/toolset options are document facts; preserve every field.
-  await search.fill('agent'); await action(page, 'add-agentTask').click(); await search.fill('')
+  await search.fill('agent'); await action(page, 'add-agentTask').press('Enter'); await search.fill('')
   const withAgent = await waitForCanvasGraph(page, graph, { addedNodeKind: 'agentTask' })
   const agentId = withAgent.nodes.find(n => !graph.nodes.some(previous => previous.id === n.id)).id
   await page.getByRole('combobox', { name: 'Agent binding', exact: true }).selectOption('a')
@@ -406,7 +406,7 @@ export async function measureCanvasPerformance(page, assert, fixture, api) {
   // page boot, installation time, or a fabricated timeout. Two rAFs provide a
   // paint completion upper bound; MutationObserver discovers the complete DOM.
   await page.evaluate(() => {
-    const select = document.querySelector('[aria-label="Configured blueprint"]')
+    const select = document.querySelector('[aria-label="Blueprint library"]')
     window.__bpPerf = { samples: [], loadStart: null, loadMs: null }
     select.addEventListener('change', () => {
       if (select.value !== 'canvas-performance') return

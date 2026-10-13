@@ -1,14 +1,18 @@
 /** Client-only editing drafts. The Host remains the authority on Save. */
+import { JsonEditor } from './json-editor.ts'
 import { createElement as h, useMemo, useSyncExternalStore } from 'react'
 import type { ChangeEvent } from 'react'
 import type { GraphNode, ResourceRef } from '../definition/types.ts'
+import type { HostResourceCatalogEntry } from './remote.ts'
 import type { EditorNode, GraphEditor } from './graph-editor.ts'
 import type { BlueprintLocaleProps } from './locales.ts'
 
 export interface NodeInspectorProps {
   node: EditorNode
+  disabled?: boolean
   editor: GraphEditor
   resources: Record<string, ResourceRef>
+  resourceCatalog?: readonly HostResourceCatalogEntry[]
   t: BlueprintLocaleProps['t']
 }
 
@@ -26,9 +30,10 @@ export interface InspectorSnapshot {
   json: Record<JsonField, string>
   rows: Record<PortField, InspectorPortRow[]>
   notice: InspectorNotice | null
+  modelRoute: { explicit: boolean; provider: string; model: string; reasoningEffort: string }
 }
 
-const optionKeys = ['inputs', 'outputs', 'agentRef', 'skillRefs', 'toolsetRefs', 'outputSchemaRef', 'join', 'branches', 'budget', 'subflowRef', 'condition', 'toolAllowlist'] as const satisfies readonly OptionKey[]
+const optionKeys = ['inputs', 'outputs', 'agentRef', 'skillRefs', 'toolsetRefs', 'outputSchemaRef', 'join', 'branches', 'budget', 'subflowRef', 'condition', 'toolAllowlist', 'modelSelection'] as const satisfies readonly OptionKey[]
 function object(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -64,6 +69,9 @@ function validOption(key: typeof optionKeys[number], value: unknown): boolean {
     case 'join': return value === 'all' || value === 'any'
     case 'budget': return object(value) && Object.keys(value).every(key => key === 'maxIterations' || key === 'maxDurationMs')
       && Number.isInteger(value.maxIterations) && Number.isInteger(value.maxDurationMs)
+    case 'modelSelection': return object(value) && Object.keys(value).every(key => ['provider', 'model', 'reasoningEffort'].includes(key))
+      && ['provider', 'model'].every(key => typeof value[key] === 'string' && (value[key] as string).trim().length > 0)
+      && (value.reasoningEffort === undefined || typeof value.reasoningEffort === 'string' && value.reasoningEffort.trim().length > 0)
   }
 }
 
@@ -98,6 +106,34 @@ export function applyInspectorPatch(editor: GraphEditor, nodeId: string, patch: 
 export function referenceMembership(refs: readonly string[], ref: string, checked: boolean): string[] {
   return checked ? (refs.includes(ref) ? [...refs] : [...refs, ref]) : refs.filter(item => item !== ref)
 }
+
+interface ResourceChoice { key: string; refId?: string; host?: HostResourceCatalogEntry; label: string; unavailable: boolean }
+/** Host identities remain opaque. Generated definition keys encode bytes instead of sanitizing identities. */
+export function hostResourceRefId(entry: Pick<HostResourceCatalogEntry, 'kind' | 'id'>, resources: Record<string, ResourceRef>): string {
+  const existing = Object.entries(resources).find(([, ref]) => ref.kind === entry.kind && ref.source?.kind === 'host' && ref.source.id === entry.id)
+  if (existing) return existing[0]
+  const identityBytes = new TextEncoder().encode(entry.id)
+  const base = `dsh-${entry.kind}-${Array.from(identityBytes, byte => byte.toString(16).padStart(2, '0')).join('')}`
+  let key = base
+  for (let index = 2; Object.hasOwn(resources, key); index++) key = `${base}-${index}`
+  return key
+}
+function resourceChoices(resources: Record<string, ResourceRef>, catalog: readonly HostResourceCatalogEntry[], kind: ResourceRef['kind'], t: BlueprintLocaleProps['t']): ResourceChoice[] {
+  const consumed = new Set<string>()
+  const choices: ResourceChoice[] = catalog.filter(entry => entry.kind === kind).map(entry => {
+    const refId = Object.entries(resources).find(([, ref]) => ref.kind === kind && ref.source?.kind === 'host' && ref.source.id === entry.id)?.[0]
+    if (refId) consumed.add(refId)
+    return { key: refId ?? `host:${entry.kind}:${entry.id}`, ...(refId ? { refId } : {}), host: entry,
+      label: `${entry.displayName} · ${t('resource.host')}${entry.availability === 'unavailable' ? ` · ${t('resource.unavailable')}` : ''}`, unavailable: entry.availability === 'unavailable' }
+  })
+  for (const [refId, ref] of Object.entries(resources)) {
+    if (ref.kind !== kind || consumed.has(refId)) continue
+    const host = ref.source?.kind === 'host'
+    const label = kind === 'skill' ? `Skill · ${refId}` : kind === 'mcp' ? `MCP · ${refId}` : refId
+    choices.push({ key: refId, refId, label: `${label}${host ? ` · ${t('resource.host')} · ${t('resource.unavailable')}` : ''}`, unavailable: host })
+  }
+  return choices
+}
 function issueNotice(issue: InspectorIssue): InspectorNotice {
   if (issue === 'invalid-json') return { key: 'inspector.invalidJsonRetained' }
   if (issue === 'port-types-required') return { key: 'inspector.portTypesRequired' }
@@ -115,6 +151,7 @@ export class InspectorSession {
   private listeners = new Set<() => void>()
   private unsubscribeEditor: (() => void) | undefined
   private observed: GraphNode
+  private modelDirty = false
 
   constructor(private readonly editor: GraphEditor, readonly nodeId: string) {
     const node = editor.nodes.find(item => item.id === nodeId)
@@ -124,6 +161,7 @@ export class InspectorSession {
     this.snapshot = {
       json: { inputs: this.serialize(node.inputs), outputs: this.serialize(node.outputs), options: this.serialize(this.observed) },
       rows: { inputs: this.portRows(node.inputs), outputs: this.portRows(node.outputs) }, notice: null,
+      modelRoute: this.modelRoute(this.observed),
     }
   }
 
@@ -139,6 +177,10 @@ export class InspectorSession {
   }
   currentNode(): EditorNode | undefined { return this.editor.nodes.find(item => item.id === this.nodeId) }
   private serialize(value: unknown): string { return JSON.stringify(value, null, 2) }
+  private modelRoute(node: GraphNode): InspectorSnapshot['modelRoute'] {
+    const route = node.modelSelection
+    return { explicit: route !== undefined, provider: route?.provider ?? '', model: route?.model ?? '', reasoningEffort: route?.reasoningEffort ?? '' }
+  }
   private portRows(value: Record<string, string>, previous: InspectorPortRow[] = []): InspectorPortRow[] {
     return Object.entries(value).map(([name, type], index) => ({ id: previous[index]?.id ?? ++this.rowSequence, name, type }))
   }
@@ -159,7 +201,7 @@ export class InspectorSession {
       if (!this.jsonDirty.has(field)) { json[field] = this.serialize(value); this.jsonBase[field] = structuredClone(value) }
       if (field !== 'options' && !this.rowsDirty.has(field) && !equivalent(rows[field].map(row => [row.name, row.type]), Object.entries(node[field]))) rows[field] = this.portRows(node[field], rows[field])
     }
-    this.publish({ ...this.snapshot, json, rows })
+    this.publish({ ...this.snapshot, json, rows, modelRoute: this.modelDirty ? this.snapshot.modelRoute : this.modelRoute(options) })
   }
 
   setJson(field: JsonField, text: string): void {
@@ -183,6 +225,38 @@ export class InspectorSession {
     this.refresh()
     this.publish({ ...this.snapshot, notice: result.ok ? { key: 'inspector.editApplied' } : issueNotice(result.issue) })
     return result
+  }
+  bindResource(field: 'agentRef' | 'outputSchemaRef' | 'skillRefs' | 'toolsetRefs', choice: ResourceChoice, checked = true): void {
+    const current = this.currentNode()
+    if (!current) return
+    this.editor.transaction(() => {
+      let refId = choice.refId
+      if (!refId && choice.host) {
+        const resources = this.editor.exportDefinition().resources
+        refId = hostResourceRefId(choice.host, resources)
+        const source = { kind: 'host' as const, id: choice.host.id }
+        this.editor.updateResource(refId, { kind: choice.host.kind, source, ...(choice.host.kind === 'mcp' ? { bindingId: choice.host.bindingId ?? choice.host.id } : {}) })
+      }
+      if (!refId) return
+      if (field === 'skillRefs' || field === 'toolsetRefs') this.patch({ [field]: referenceMembership(graphNode(current)[field] ?? [], refId, checked) })
+      else this.patch({ [field]: refId })
+    })
+  }
+  setModelRoute(field: 'provider' | 'model' | 'reasoningEffort', value: string): void {
+    this.modelDirty = true
+    this.publish({ ...this.snapshot, modelRoute: { ...this.snapshot.modelRoute, [field]: value } })
+  }
+  setExplicitModel(explicit: boolean): void {
+    this.modelDirty = explicit
+    this.publish({ ...this.snapshot, modelRoute: { ...this.snapshot.modelRoute, explicit } })
+    if (!explicit) this.patch({ modelSelection: undefined })
+  }
+  applyModelRoute(): void {
+    const route = this.snapshot.modelRoute
+    if (!route.explicit) return
+    const modelSelection = { provider: route.provider, model: route.model, ...(route.reasoningEffort ? { reasoningEffort: route.reasoningEffort } : {}) }
+    const result = this.patch({ modelSelection })
+    if (result.ok) this.modelDirty = false
   }
   applyJson(field: JsonField): void {
     const node = this.currentNode()
@@ -211,32 +285,35 @@ export class InspectorSession {
   }
 }
 
-export function NodeInspector({ node, editor, resources, t }: NodeInspectorProps) {
+export function NodeInspector({ node, editor, resources, resourceCatalog, t, disabled = false }: NodeInspectorProps) {
   const session = useMemo(() => new InspectorSession(editor, node.id), [editor, node.id])
   const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot)
-  return renderNodeInspector({ node, editor, resources, t }, session, snapshot)
+  return renderNodeInspector({ node, editor, resources, ...(resourceCatalog ? { resourceCatalog } : {}), t, disabled }, session, snapshot)
 }
 
 /** The same real React props/handlers used by the component, exposed for tests. */
-export function renderNodeInspector({ node: suppliedNode, resources, t }: NodeInspectorProps, session: InspectorSession, snapshot: InspectorSnapshot) {
+export function renderNodeInspector({ node: suppliedNode, resources, resourceCatalog = [], t, disabled = false }: NodeInspectorProps, session: InspectorSession, snapshot: InspectorSnapshot) {
   const node = session.currentNode() ?? suppliedNode
   const definition = graphNode(node)
   const select = (field: 'agentRef' | 'outputSchemaRef', kind: ResourceRef['kind'], label: 'inspector.agentBinding' | 'inspector.outputSchemaBinding', placeholder: 'inspector.selectAgent' | 'inspector.selectOutputSchema') => {
     const value = definition[field] ?? ''
-    const refs = Object.entries(resources).filter(([, resource]) => resource.kind === kind).map(([ref]) => ref)
-    if (value && !refs.includes(value)) refs.push(value)
+    const choices = resourceChoices(resources, resourceCatalog, kind, t)
+    if (value && !choices.some(choice => choice.refId === value)) choices.push({ key: value, refId: value, label: value, unavailable: true })
     return h('label', { key: field, className: 'bp-field' }, t(label),
-      h('select', { 'data-bp-field': field, value, onChange: (event: ChangeEvent<HTMLSelectElement>) => session.patch({ [field]: event.currentTarget.value || undefined }) },
-        h('option', { value: '' }, t(placeholder)), ...refs.map(ref => h('option', { key: ref, value: ref }, ref))))
+      h('select', { 'data-bp-field': field, value, onChange: (event: ChangeEvent<HTMLSelectElement>) => {
+        const choice = choices.find(choice => choice.key === event.currentTarget.value)
+        if (choice) session.bindResource(field, choice)
+        else session.patch({ [field]: undefined })
+      } }, h('option', { value: '' }, t(placeholder)), ...choices.map(choice => h('option', { key: choice.key, value: choice.key, disabled: choice.unavailable && choice.refId !== value }, choice.label))))
   }
   const references = (field: 'skillRefs' | 'toolsetRefs', kind: ResourceRef['kind'], label: 'inspector.skillBindings' | 'inspector.toolsetBindings') => {
     const values = definition[field] ?? []
-    const refs = Object.entries(resources).filter(([, resource]) => resource.kind === kind).map(([ref]) => ref)
-    for (const ref of values) if (!refs.includes(ref)) refs.push(ref)
-    return h('fieldset', { key: field, className: 'bp-resource-bindings' }, h('legend', null, t(label)), ...refs.map(ref => h('label', { key: ref },
-      h('input', { type: 'checkbox', 'data-bp-field': field, 'data-bp-ref': ref, checked: values.includes(ref),
-        onChange: (event: ChangeEvent<HTMLInputElement>) => session.patch({ [field]: referenceMembership(graphNode(session.currentNode() ?? node)[field] ?? [], ref, event.currentTarget.checked) }) }),
-      field === 'skillRefs' ? t('resource.skillBinding', { id: ref }) : `${t('resource.kind.mcp')} · ${ref}`)))
+    const choices = resourceChoices(resources, resourceCatalog, kind, t)
+    for (const ref of values) if (!choices.some(choice => choice.refId === ref)) choices.push({ key: ref, refId: ref, label: ref, unavailable: true })
+    return h('fieldset', { key: field, className: 'bp-resource-bindings' }, h('legend', null, t(label)),
+      !choices.length && h('p', { className: 'bp-help bp-binding-empty' }, t('inspector.noResources')), ...choices.map(choice => h('label', { key: choice.key },
+      h('input', { type: 'checkbox', 'data-bp-field': field, 'data-bp-ref': choice.key, checked: choice.refId !== undefined && values.includes(choice.refId), disabled: choice.unavailable && (choice.refId === undefined || !values.includes(choice.refId)),
+        onChange: (event: ChangeEvent<HTMLInputElement>) => session.bindResource(field, choice, event.currentTarget.checked) }), choice.label)))
   }
   const portEditor = (field: PortField) => {
     const direction = field === 'inputs' ? 'input' : 'output'
@@ -245,9 +322,11 @@ export function renderNodeInspector({ node: suppliedNode, resources, t }: NodeIn
         ...(['name', 'type'] as const).map(property => h('label', { key: property }, t(property === 'name' ? 'inspector.portName' : 'inspector.portType'),
           h('input', { 'data-bp-field': `${field}.${property}`, 'data-bp-port-row': row.id, value: row[property],
             onChange: (event: ChangeEvent<HTMLInputElement>) => session.setPort(field, row.id, property, event.currentTarget.value) }))),
-        h('button', { type: 'button', 'data-bp-action': `remove-${direction}-port`, 'data-bp-port-row': row.id, onClick: () => session.removePort(field, row.id) }, t('inspector.removePort')))),
-      h('button', { type: 'button', 'data-bp-action': `add-${direction}-port`, onClick: () => session.addPort(field) }, t('inspector.addPort')),
-      h('button', { type: 'button', 'data-bp-action': `apply-${direction}-ports`, onClick: () => session.applyPorts(field) }, t('inspector.applyPorts')))
+        h('button', { type: 'button', className: 'bp-port-remove', 'aria-label': `${t('inspector.removePort')} ${row.name}`, title: t('inspector.removePort'), 'data-bp-action': `remove-${direction}-port`, 'data-bp-port-row': row.id, onClick: () => session.removePort(field, row.id) },
+          h('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true }, h('path', { d: 'M3 6h18M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7' }))))),
+      h('div', { className: 'bp-port-actions' },
+        h('button', { type: 'button', 'data-bp-action': `add-${direction}-port`, onClick: () => session.addPort(field) }, t('inspector.addPort')),
+        h('button', { type: 'button', 'data-bp-action': `apply-${direction}-ports`, onClick: () => session.applyPorts(field) }, t('inspector.applyPorts'))))
   }
   return h('div', { className: 'bp-node-inspector', 'data-bp-node-inspector': node.id },
     node.kind === 'condition' && h('fieldset', { 'data-bp-condition': true }, h('legend', null, t('inspector.condition')),
@@ -264,13 +343,20 @@ export function renderNodeInspector({ node: suppliedNode, resources, t }: NodeIn
       onChange: () => session.patch({ join: 'all' }) }, h('option', { value: 'all' }, t('inspector.joinAll')),
       definition.join === 'any' && h('option', { value: 'any', disabled: true }, t('inspector.joinAnyUnavailable')))),
     select('agentRef', 'agent', 'inspector.agentBinding', 'inspector.selectAgent'),
+    node.kind === 'agentTask' && definition.teamStage === undefined && h('fieldset', { className: 'bp-model-route', 'data-bp-model-route': true }, h('legend', null, t('inspector.modelRoute')),
+      h('label', null, h('select', { 'data-bp-field': 'model-mode', 'aria-label': t('inspector.modelRoute'), value: snapshot.modelRoute.explicit ? 'explicit' : 'default', onChange: (event: ChangeEvent<HTMLSelectElement>) => session.setExplicitModel(event.currentTarget.value === 'explicit') },
+        h('option', { value: 'default' }, t('inspector.hostModelDefault')), h('option', { value: 'explicit' }, t('inspector.explicitModel')))),
+      snapshot.modelRoute.explicit && h('div', { className: 'bp-model-fields' },
+        ...(['provider', 'model', 'reasoningEffort'] as const).map(field => h('label', { key: field, className: 'bp-field' }, t(field === 'provider' ? 'inspector.modelProvider' : field === 'model' ? 'inspector.modelName' : 'inspector.reasoningEffort'),
+          h('input', { 'data-bp-field': `modelSelection.${field}`, value: snapshot.modelRoute[field], onChange: (event: ChangeEvent<HTMLInputElement>) => session.setModelRoute(field, event.currentTarget.value) }))),
+        h('button', { type: 'button', 'data-bp-action': 'apply-model-route', onClick: () => session.applyModelRoute() }, t('inspector.applyNodeOptions')))),
     references('skillRefs', 'skill', 'inspector.skillBindings'), references('toolsetRefs', 'mcp', 'inspector.toolsetBindings'),
     select('outputSchemaRef', 'schema', 'inspector.outputSchemaBinding', 'inspector.selectOutputSchema'),
     h('p', { className: 'bp-muted' }, t('resource.availabilityUnchecked')), portEditor('inputs'), portEditor('outputs'),
     h('details', { key: 'advanced' }, h('summary', { 'data-bp-inspector-advanced': true }, t('inspector.advanced')),
       ...(['inputs', 'outputs', 'options'] as const).map(field => h('label', { key: field }, t(field === 'options' ? 'inspector.nodeOptions' : field === 'inputs' ? 'inspector.inputPorts' : 'inspector.outputPorts'),
-        h('textarea', { key: `json-${field}`, 'data-bp-json': field, value: snapshot.json[field], rows: field === 'options' ? 8 : 3,
-          onChange: (event: ChangeEvent<HTMLTextAreaElement>) => session.setJson(field, event.currentTarget.value), onBlur: () => session.applyJson(field) }))),
+        h(JsonEditor, { key: `json-${field}`, 'data-bp-json': field, label: t(field === 'options' ? 'inspector.nodeOptions' : field === 'inputs' ? 'inspector.inputPorts' : 'inspector.outputPorts'), t, disabled, value: snapshot.json[field], rows: field === 'options' ? 8 : 3,
+          onChange: text => session.setJson(field, text), onBlur: () => session.applyJson(field) }))),
       h('button', { type: 'button', 'data-bp-action': 'apply-node-options', onClick: () => session.applyJson('options') }, t('inspector.applyNodeOptions'))),
     snapshot.notice ? h('p', { role: 'status', 'data-bp-inspector-notice': snapshot.notice.key }, t(snapshot.notice.key, 'params' in snapshot.notice ? snapshot.notice.params : undefined)) : null)
 }

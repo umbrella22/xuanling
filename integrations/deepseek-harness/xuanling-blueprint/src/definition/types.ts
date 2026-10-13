@@ -23,16 +23,25 @@ export interface PackageSource {
   path: string
 }
 
-export type ResourceSource = SharedSkillSource | PackageSource
+/** A resource owned by the active DSH host. `id` is a stable registry identity,
+ * never a filesystem path or a serialized provider configuration. */
+export interface HostResourceSource {
+  kind: 'host'
+  id: string
+}
+
+export type ResourceSource = SharedSkillSource | PackageSource | HostResourceSource
 
 export interface ResourceRef {
   kind: ResourceKind
   /** Package-relative path for package resources (agents/prompts/schemas/scripts/subflows). */
   path?: string
-  /** Shared source (skills only in v1). */
+  /** Shared skill origin or explicit DSH-owned agent/skill/MCP identity. */
   source?: ResourceSource
   /** MCP capability role; maps to host-configured server/tool scope. */
   bindingId?: string
+  /** Structured portable artifact; absent retains ordinary resource behavior. */
+  format?: 'agent-preset' | 'mcp-definition'
 }
 
 export type NodeKind = 'input' | 'output' | 'agentTask' | 'toolCall' | 'scriptCall' | 'condition' | 'join' | 'humanDecision' | 'subflow' | 'iteration'
@@ -61,6 +70,8 @@ export interface GraphNode {
   toolsetRefs?: string[]
   /** Optional narrowing of the declared Host binding union. */
   toolAllowlist?: string[]
+  /** Explicit per-node model route. Omitted means the host default is captured. */
+  modelSelection?: ModelSelection
   outputSchemaRef?: string
   /** One native Team task and declared members; never inferred from metadata. */
   teamStage?: TeamStageConfig
@@ -74,6 +85,13 @@ export interface GraphNode {
   budget?: { maxIterations: number; maxDurationMs: number }
   /** Subflow reference (subflow nodes). */
   subflowRef?: string
+}
+
+/** Public, non-secret model route selected for one agent task. */
+export interface ModelSelection {
+  provider: string
+  model: string
+  reasoningEffort?: string
 }
 
 export type EdgeKind = 'data' | 'control'

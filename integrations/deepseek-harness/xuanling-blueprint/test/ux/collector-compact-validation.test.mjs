@@ -37,7 +37,7 @@ function caseInput(id) {
     'UX-ICONS': () => ({ buttons: buttons() }),
     'UX-TOOLTIP': () => ({ tooltips: ['hover', 'focus'].map(kind => ({ kind, role: 'tooltip', visible: true, name: 'Save', text: 'Save Ctrl S', shortcut: 'Ctrl S' })) }),
     'UX-DISABLED': () => ({ ...retained(), actions: [{ disabled: true, ariaDisabled: 'true', name: 'Undo', reason: 'No history', tooltipVisible: true, tooltip: 'Undo No history' }], executionRequests: 0 }),
-    'UX-BLUEPRINT': () => ({ count: 1, inToolbar: true, visible: true, toggles: [], library: { count: 1, mounted: true, visible: true }, inspector: { count: 1, mounted: true, visible: true }, name: 'Configured blueprint' }),
+    'UX-BLUEPRINT': () => ({ count: 1, inToolbar: true, visible: true, toggles: ['toggle-library', 'toggle-inspector'], library: { count: 1, mounted: true, visible: true }, inspector: { count: 1, mounted: true, visible: true }, name: 'Blueprint library' }),
     'UX-MORE': () => ({ actions: Object.entries(MORE_ACTION_GROUPS).map(([id, group]) => ({ id, group, visible: true, name: id, disabled: false, ariaDisabled: 'false' })), groups: ['files', 'view', 'tools'].map(id => ({ id, haspopup: 'menu', expanded: 'true', role: 'menu' })) }),
     'UX-MENU': () => ({ groups: ['appearance', 'layout'].map(id => ({ id, haspopup: 'menu', expanded: 'true', role: 'menu', visible: true })),
       commands: Object.entries(OBJECT_COMMAND_GROUPS).map(([command, group]) => ({ command, group, visible: true, name: command, disabled: false, ariaDisabled: 'false' })) }),

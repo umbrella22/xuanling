@@ -13,6 +13,7 @@ import { decodeDefinition, validateDefinition } from '../definition/index.ts'
 import { ImportConflictError, PortabilityConflictError } from './errors.ts'
 import { readZip } from './zip.ts'
 import type { PortabilityManifest } from './manifest.ts'
+import { validatePackagedPreset, validatePackagedMcp } from './host-resources.ts'
 
 export interface ImportResult {
   targetDir: string
@@ -62,6 +63,15 @@ export function importBlueprint(archive: Buffer, targetDir: string, options: { a
   // Structural validation of the definition BEFORE anything touches disk.
   const definition = decodeDefinition(definitionEntry.data.toString('utf8'))
   validateDefinition(definition)
+  for (const ref of Object.values(definition.resources)) {
+    if (ref.format === undefined) continue
+    const artifact = ref.path === undefined ? undefined : byName.get(ref.path)
+    if (artifact === undefined) throw new PortabilityConflictError('packaged Host artifact missing')
+    let value: unknown
+    try { value = JSON.parse(artifact.data.toString('utf8')) } catch { throw new PortabilityConflictError('packaged Host artifact JSON rejected') }
+    if (ref.format === 'agent-preset') validatePackagedPreset(value)
+    else validatePackagedMcp(value)
+  }
   if (definition.id !== manifest.blueprintId) {
     throw new PortabilityConflictError(`blueprint id "${definition.id}" does not match manifest "${manifest.blueprintId}"`)
   }

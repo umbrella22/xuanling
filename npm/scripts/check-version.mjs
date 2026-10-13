@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { expectedOptionalDependencies } from "../packages/xuanling-mcp/lib/targets.js";
@@ -45,6 +46,16 @@ for (const directory of [
   const manifest = await readJson(path.join(REPO_ROOT, directory, filename));
   assert.equal(manifest.version, workspaceVersion, `${directory}: release version must match Cargo`);
 }
+
+const blueprintSource = await readFile(
+  path.join(REPO_ROOT, "integrations/deepseek-harness/xuanling-blueprint/src/index.ts"),
+  "utf8",
+);
+assert.equal(
+  blueprintSource.match(/^export const PLUGIN_VERSION = ['"]([^'"]+)['"]$/m)?.[1],
+  workspaceVersion,
+  "Blueprint runtime version must match the release version",
+);
 
 const expectedVersion = process.env.XUANLING_VERSION;
 if (expectedVersion && expectedVersion !== workspaceVersion) {

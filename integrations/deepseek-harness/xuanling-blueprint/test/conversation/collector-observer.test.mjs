@@ -78,7 +78,7 @@ test('tool lineage joins logged call/result with public pipeline identity withou
 })
 test('installed native result message joins only its real tool identity; missing error flag cannot mean successful write', () => {
   const h = observerHarness(), session = { id: h.agent.id }, emit = h.hooks.get('session/event')
-  emit(session, { type: 'tool/call', seq: 1, data: { name: 'blueprint_start', callId: 'start-unit', turn: 0, arguments: JSON.stringify({ inputJson: '{"nonce":"unit-hidden-nonce"}' }) } })
+  emit(session, { type: 'tool/call', seq: 1, data: { name: 'blueprint_start', callId: 'start-unit', turn: 0, arguments: JSON.stringify({ input: { nonce: 'unit-hidden-nonce' } }) } })
   assert.equal(h.latest().toolCalls[0].inputSha256, sha256('{"nonce":"unit-hidden-nonce"}'))
   assert.ok(!JSON.stringify(h.snapshots).includes('unit-hidden-nonce'))
   emit(session, { type: 'tool/call', seq: 2, data: { name: 'write', callId: 'write-unit', turn: 1, arguments: 'unit hidden native arguments' } })

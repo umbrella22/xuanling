@@ -11,8 +11,13 @@ export {
   type BlueprintDefinition,
   type GraphEdge,
   type GraphNode,
+  type HostResourceSource,
+  type ModelSelection,
+  type PackageSource,
   type Presentation,
   type ResourceRef,
+  type ResourceSource,
+  type SharedSkillSource,
   type ValidationIssue,
   type ValidationIssueCode,
 } from './types.ts'

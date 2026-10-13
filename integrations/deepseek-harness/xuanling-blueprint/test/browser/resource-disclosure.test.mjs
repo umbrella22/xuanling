@@ -44,7 +44,8 @@ after(async () => {
 })
 
 const resourceSummary = () => page.locator('[data-bp-section="resources"] summary').filter({ hasText: /^Add resource$/ })
-const resourceInput = name => page.getByRole('textbox', { name, exact: true, includeHidden: true })
+// SSR proves disclosure and the deferred editor mount; W6 hydrates and edits JSON.
+const resourceInput = name => page.getByRole(name === 'New resource JSON' ? 'group' : 'textbox', { name, exact: true, includeHidden: true })
 
 function locatorFromCommand(command) {
   // Execute only a whitelisted, trusted repository locator expression. Reading
@@ -103,7 +104,7 @@ async function clickAndObserveDisclosure(locator, submit) {
   assert.deepEqual(await page.evaluate(() => window.__bpResourceDisclosureEvents),
     [{ type: 'pointerdown', trusted: true }, { type: 'click', trusted: true }])
   for (const name of ['New resource ID', 'New resource JSON']) {
-    assert.equal(await page.getByRole('textbox', { name, exact: true }).count(), 1)
+    assert.equal(await resourceInput(name).count(), 1)
     assert.equal(await resourceInput(name).isVisible(), true, `${name} becomes visible after native disclosure`)
   }
   const button = locatorFromCommand(submit)

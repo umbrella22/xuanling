@@ -20,6 +20,18 @@ export interface DefinitionDocument {
 export interface CatalogValue {
   definitions: Array<{ blueprintId: string; name: string; documentRevision: string | null; semanticRevision: string | null }>
 }
+export type HostResourceKind = 'agent' | 'skill' | 'mcp'
+export interface HostResourceCatalogEntry {
+  id: string
+  kind: HostResourceKind
+  displayName: string
+  description: string
+  source: 'dsh'
+  availability: 'available' | 'unavailable'
+  provenance: 'builtin' | 'custom' | 'unknown'
+  bindingId?: string
+}
+export interface ResourceCatalogValue { resources: HostResourceCatalogEntry[] }
 export interface RunAdmission { runId: string; semanticRevision: string; state: string; replayed: boolean }
 export interface BlueprintArchive { blueprintId: string; closureDigest: string; files: number; archiveSha256: string; archiveBase64: string; requiredBindings: string[] }
 export interface BlueprintImport { blueprintId: string; filesWritten: number; closureDigest: string }
@@ -31,7 +43,10 @@ export class BlueprintRemoteError extends Error {
 }
 export interface HostLink {
   listDefinitions(): Promise<CatalogValue>
+  listResources?(): Promise<ResourceCatalogValue>
   loadDefinition(blueprintId: string): Promise<DefinitionDocument>
+  createDefinition?(requestId: string, definitionJson: string): Promise<DefinitionDocument>
+  deleteDefinition?(blueprintId: string, expectedRevision: string, requestId: string): Promise<{ blueprintId: string; deleted: true }>
   saveDefinition(blueprintId: string, definitionJson: string, expectedRevision: string | null): Promise<DefinitionDocument>
   validate(definitionJson: string): Promise<{ ok: true; semanticRevision: string }>
   preflightRun(blueprintId: string, expectedRevision: string, inputJson: string): Promise<PreflightRunValue>
@@ -56,7 +71,7 @@ export function resolveBlueprintHost(context: { get?: (key: string) => unknown }
     const result = args === undefined ? await fn.call(namespace) : await fn.call(namespace, args)
     if (!result || typeof result !== 'object' || Array.isArray(result) || typeof result.ok !== 'boolean') throw new BlueprintRemoteError('blueprint/dto-invalid')
     if (!result.ok) throw new BlueprintRemoteError(typeof result.error?.code === 'string' ? result.error.code : 'blueprint/remote-failed')
-    if (method === 'preflightRun' || method === 'inspectRun' || method === 'exportDefinition' || method === 'importDefinition'
+    if (method === 'deleteDefinition' || method === 'createDefinition' || method === 'preflightRun' || method === 'inspectRun' || method === 'exportDefinition' || method === 'importDefinition' || method === 'listResources'
       || method === 'startTeamStage' || method === 'cancelTeamStage' || method === 'acceptTeamStageOutput') {
       const descriptor = BLUEPRINT_INVOCATIONS.find(item => item.method === method)!
       const parsed = descriptor.result.create().safeParse(result.value)
@@ -67,9 +82,12 @@ export function resolveBlueprintHost(context: { get?: (key: string) => unknown }
   }
   return {
     listDefinitions: () => invoke('listDefinitions'),
+    listResources: () => invoke('listResources'),
     exportDefinition: blueprintId => invoke('exportDefinition', { blueprintId }),
     importDefinition: (blueprintId, archiveBase64) => invoke('importDefinition', { blueprintId, archiveBase64 }),
     loadDefinition: blueprintId => invoke('loadDefinition', { blueprintId }),
+    createDefinition: (requestId, definitionJson) => invoke('createDefinition', { requestId, definitionJson }),
+    deleteDefinition: (blueprintId, expectedRevision, requestId) => invoke('deleteDefinition', { blueprintId, expectedRevision, requestId }),
     saveDefinition: (blueprintId, definitionJson, expectedRevision) => invoke('saveDefinition', { blueprintId, definitionJson, expectedRevision }),
     validate: definitionJson => invoke('validate', { definitionJson }),
     preflightRun: (blueprintId, expectedRevision, inputJson) => invoke('preflightRun', { blueprintId, expectedRevision, inputJson }),
