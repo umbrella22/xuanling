@@ -17,6 +17,9 @@ test('public Team graph collector guards live mode before fixture fallback in a 
   assert.equal(child.signal, null)
   assert.equal(child.status, 1)
   assert.deepEqual(JSON.parse(child.stdout), {
-    status: 'not_run', failure: 'LIVE_TEAM_CONFIGURATION_MISSING', key_read: false, provider_calls: 0,
+    status: 'not_run',
+    failure: 'LIVE_TEAM_CONFIGURATION_MISSING',
+    key_read: false,
+    provider_calls: 0
   })
 })

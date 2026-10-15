@@ -20,30 +20,49 @@ async function liveHarness(t, options = {}) {
   // boundary is scripted using the existing public create fixture.
   t.mock.method(h.ctx.agents, 'create', h.host.registry.create.bind(h.host.registry))
   const projectionFiber = await h.ctx.plugin(SessionProjections)
-  h.ctx.sessionProjections.register({ key: 'turnBoundary', stateVersion: 1,
+  h.ctx.sessionProjections.register({
+    key: 'turnBoundary',
+    stateVersion: 1,
     init: () => ({ lastTurn: 0, openTurnStartSeq: null }),
-    apply: (state, event) => event.type === 'turn/start' ? { lastTurn: event.data.turn, openTurnStartSeq: event.seq } : state,
+    apply: (state, event) => (event.type === 'turn/start' ? { lastTurn: event.data.turn, openTurnStartSeq: event.seq } : state)
   })
   const add = async (id, origin) => {
     id = SessionId(id)
     const session = Session.create(id, [], { id, version: SESSION_FORMAT_VERSION, createdAt: Date.now(), isSeeded: false, ...(origin ? { origin } : {}) })
     const agent = { id, session, status: 'running', whenIdle: () => Promise.resolve(), cancel() {} }
-    const scope = createScope(h.ctx, agent); agent.ctx = scope.ctx
+    const scope = createScope(h.ctx, agent)
+    agent.ctx = scope.ctx
     const unregister = await h.ctx.agents.register(agent)
     session.append('turn/start', { turn: 7 })
-    t.after(async () => { await unregister(); await scope.dispose() })
+    t.after(async () => {
+      await unregister()
+      await scope.dispose()
+    })
     return agent
   }
   const caller = await add('root-caller')
-  t.after(async () => { await projectionFiber.dispose(); await registryFiber.dispose() })
-  const tool = (name, args = {}, agent = caller, callId = 'native-call') => h.nativeTools.execute({
-    name, arguments: args, callId: ToolCallId(callId), ...(agent === undefined ? {} : { agent }), signal: new AbortController().signal,
+  t.after(async () => {
+    await projectionFiber.dispose()
+    await registryFiber.dispose()
   })
+  const tool = (name, args = {}, agent = caller, callId = 'native-call') =>
+    h.nativeTools.execute({
+      name,
+      arguments: args,
+      callId: ToolCallId(callId),
+      ...(agent === undefined ? {} : { agent }),
+      signal: new AbortController().signal
+    })
   return { ...h, add, caller, tool }
 }
 function value(result) {
   assert.equal(result.isError, false, JSON.stringify(result))
-  return JSON.parse(result.content.filter(block => block.type === 'text').map(block => block.text).join('\n'))
+  return JSON.parse(
+    result.content
+      .filter(block => block.type === 'text')
+      .map(block => block.text)
+      .join('\n')
+  )
 }
 const code = expected => error => error.code === expected
 const codec = method => TYPERT.invocations.find(invocation => invocation.method === method)
@@ -54,10 +73,16 @@ test('host: native tools expose catalog revision, authoritative caller/turn, rep
   const catalog = value(await h.tool('blueprint_list'))
   assert.deepEqual(catalog.definitions, [{ blueprintId: doc.blueprintId, name: 'Runtime contracts', documentRevision: doc.documentRevision }])
   const args = { blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, input: {} }
-  assert.deepEqual(callerSource(h.service.ctx, { agent: h.caller, callId: ToolCallId('native-call') }), { sessionId: h.caller.id, kind: 'tool', callId: 'native-call', turn: 7 })
+  assert.deepEqual(callerSource(h.service.ctx, { agent: h.caller, callId: ToolCallId('native-call') }), {
+    sessionId: h.caller.id,
+    kind: 'tool',
+    callId: 'native-call',
+    turn: 7
+  })
   const started = value(await h.tool('blueprint_start', args))
   const replay = value(await h.tool('blueprint_start', args))
-  assert.equal(replay.runId, started.runId); assert.equal(replay.replayed, true)
+  assert.equal(replay.runId, started.runId)
+  assert.equal(replay.replayed, true)
   await drain(h)
   assert.equal(h.host.calls.length, 1)
   const saved = (await records(h))[0]
@@ -65,29 +90,52 @@ test('host: native tools expose catalog revision, authoritative caller/turn, rep
   assert.equal(saved.blueprintId, doc.blueprintId)
   assert.equal(saved.attempts[0].sessionId, h.host.calls[0].options.sessionId)
   const inspected = value(await h.tool('blueprint_inspect'))
-  assert.equal(inspected.status, 'bound'); assert.equal(inspected.selected.run.runId, started.runId)
+  assert.equal(inspected.status, 'bound')
+  assert.equal(inspected.selected.run.runId, started.runId)
   assert.equal(inspectSessionCodec().safeParse(inspected).success, true)
   const spoof = await h.tool('blueprint_start', { ...args, source: { sessionId: 'forged' } }, h.caller, 'forged-call')
-  assert.equal(spoof.isError, true); assert.equal(spoof.error.info.code, 'INVALID_ARGS')
+  assert.equal(spoof.isError, true)
+  assert.equal(spoof.error.info.code, 'INVALID_ARGS')
   assert.equal((await records(h)).length, 1)
   const changed = await h.tool('blueprint_start', { ...args, input: { changed: true } })
-  assert.equal(changed.isError, true); assert.equal(changed.error.info.code, 'COMMAND_CONFLICT')
+  assert.equal(changed.isError, true)
+  assert.equal(changed.error.info.code, 'COMMAND_CONFLICT')
   assert.equal((await records(h)).length, 1)
 })
 
 test('host: native missing/stale/forged caller and subagent recursion reject, Host guard still controls execution', async t => {
   const h = await liveHarness(t)
-  const doc = await h.save(definition()), args = { blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, input: {} }
-  const noCaller = await h.nativeTools.execute({ name: 'blueprint_start', arguments: args, callId: ToolCallId('missing'), signal: new AbortController().signal })
-  assert.equal(noCaller.isError, true); assert.equal(noCaller.error.info.code, 'session-unavailable')
+  const doc = await h.save(definition()),
+    args = { blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, input: {} }
+  const noCaller = await h.nativeTools.execute({
+    name: 'blueprint_start',
+    arguments: args,
+    callId: ToolCallId('missing'),
+    signal: new AbortController().signal
+  })
+  assert.equal(noCaller.isError, true)
+  assert.equal(noCaller.error.info.code, 'session-unavailable')
   const forged = await h.tool('blueprint_start', args, { ...h.caller }, 'forged')
-  assert.equal(forged.isError, true); assert.equal(forged.error.info.code, 'session-unavailable')
+  assert.equal(forged.isError, true)
+  assert.equal(forged.error.info.code, 'session-unavailable')
   const stale = await h.tool('blueprint_start', args, { ...h.caller, id: SessionId('stale'), session: Session.create(SessionId('stale')) }, 'stale')
-  assert.equal(stale.isError, true); assert.equal(stale.error.info.code, 'session-unavailable')
+  assert.equal(stale.isError, true)
+  assert.equal(stale.error.info.code, 'session-unavailable')
   const child = await h.add('child-caller', 'subagent')
   const nested = await h.tool('blueprint_start', args, child, 'nested')
-  assert.equal(nested.isError, true); assert.equal(nested.error.info.code, 'nested-run-unavailable')
-  await assert.rejects(() => h.service.startSessionRun({ blueprintId: args.blueprintId, expectedRevision: args.expectedRevision, inputJson: JSON.stringify(args.input), requestId: 'nested-ui', sessionId: child.id }), code('blueprint/nested-run-unavailable'))
+  assert.equal(nested.isError, true)
+  assert.equal(nested.error.info.code, 'nested-run-unavailable')
+  await assert.rejects(
+    () =>
+      h.service.startSessionRun({
+        blueprintId: args.blueprintId,
+        expectedRevision: args.expectedRevision,
+        inputJson: JSON.stringify(args.input),
+        requestId: 'nested-ui',
+        sessionId: child.id
+      }),
+    code('blueprint/nested-run-unavailable')
+  )
   const disposeGuard = h.nativeTools.guard(() => 'HOST_DENIAL_SECRET_SENTINEL')
   const denied = await h.tool('blueprint_start', args, h.caller, 'denied')
   assert.equal(denied.isError, true)
@@ -97,12 +145,14 @@ test('host: native missing/stale/forged caller and subagent recursion reject, Ho
 
 test('host: UI admission validates live caller and source fingerprint prevents same request crossing UI/tool/session', async t => {
   const h = await liveHarness(t)
-  const doc = await h.save(definition()), args = runArgs(doc, {}, 'same-request')
+  const doc = await h.save(definition()),
+    args = runArgs(doc, {}, 'same-request')
   await assert.rejects(() => h.service.startSessionRun({ ...args, sessionId: 'absent' }), code('blueprint/session-unavailable'))
   await assert.rejects(() => h.service.startSessionRun({ ...args, sessionId: h.caller.id, source: { sessionId: 'spoof' } }), code('gateway/bad-request'))
   const a = await h.service.startSessionRun({ ...args, sessionId: h.caller.id })
   const b = await h.service.startSessionRun({ ...args, sessionId: h.caller.id })
-  assert.equal(a.runId, b.runId); assert.equal(b.replayed, true)
+  assert.equal(a.runId, b.runId)
+  assert.equal(b.replayed, true)
   const other = await h.add('second-root')
   await assert.rejects(() => h.service.startSessionRun({ ...args, sessionId: other.id }), code('COMMAND_CONFLICT'))
   await assert.rejects(() => h.service.startRun(args), code('COMMAND_CONFLICT'))
@@ -115,8 +165,11 @@ test('host: inspectSession enforces membership even with selected runId, frozen 
   const h = await liveHarness(t)
   const def = definition([agentNode({ inputs: { task: 'string' }, outputs: { answer: 'string' } })])
   def.metadata = { secret: 'RAW_METADATA_SECRET' }
-  def.presentation = { nodes: { work: { x: 7, y: 9, title: 'Frozen', collapsed: true, pinned: true, width: 280, height: 100, color: 'purple' } },
-    groups: [{ id: 'group', label: 'Group', nodeIds: ['work'] }], edges: [] }
+  def.presentation = {
+    nodes: { work: { x: 7, y: 9, title: 'Frozen', collapsed: true, pinned: true, width: 280, height: 100, color: 'purple' } },
+    groups: [{ id: 'group', label: 'Group', nodeIds: ['work'] }],
+    edges: []
+  }
   const doc = await h.save(def)
   const started = await h.service.startSessionRun({ ...runArgs(doc), sessionId: h.caller.id })
   await drain(h)
@@ -131,19 +184,46 @@ test('host: inspectSession enforces membership even with selected runId, frozen 
     if (secret !== 'resourceDigests') assert.equal(serialized.includes(secret), false)
   }
   const child = await h.service.inspectSession({ sessionId: run.attempts[0].sessionId })
-  assert.equal(child.status, 'bound'); assert.deepEqual(child.selected.focusAttemptIds, [run.attempts[0].attemptId])
+  assert.equal(child.status, 'bound')
+  assert.deepEqual(child.selected.focusAttemptIds, [run.attempts[0].attemptId])
   assert.equal(child.selected.run.runId, started.runId)
   assert.deepEqual(await h.service.inspectSession({ sessionId: 'ordinary-unbound' }), { status: 'unbound', sessionId: 'ordinary-unbound' })
   await assert.rejects(() => h.service.inspectSession({ sessionId: 'ordinary-unbound', runId: started.runId }), code('blueprint/run-not-found'))
   await assert.rejects(() => h.service.inspectSession({ sessionId: h.caller.id, runId: 'foreign-run' }), code('blueprint/run-not-found'))
-  await h.service.saveDefinition({ blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, definitionJson: JSON.stringify({ ...def, presentation: { nodes: { work: { x: 999, y: 999 } } } }) })
+  await h.service.saveDefinition({
+    blueprintId: doc.blueprintId,
+    expectedRevision: doc.documentRevision,
+    definitionJson: JSON.stringify({ ...def, presentation: { nodes: { work: { x: 999, y: 999 } } } })
+  })
   assert.deepEqual((await h.service.inspectSession({ sessionId: h.caller.id })).selected.graph, before.selected.graph)
   assert.deepEqual((await h.service.inspectSession({ sessionId: h.caller.id })).selected.presentation, before.selected.presentation)
   assert.equal(codec('inspectSession').result.create().safeParse(before).success, true)
   assert.equal(codec('inspectRun').result.create().safeParse(before.selected.run).success, true)
-  assert.equal(codec('startSessionRun').parameters[0].codec.create().safeParse({ ...runArgs(doc), sessionId: h.caller.id }).success, true)
-  for (const inject of [v => { v.rawBody = 'RAW' }, v => { v.selected.source.rawBody = 'RAW' }, v => { v.selected.graph.nodes[0].agentRef = 'SECRET_PATH' }, v => { v.selected.presentation.groups[0].rawBody = 'RAW' }, v => { v.selected.run.attempts[0].rawBody = 'RAW' }]) {
-    const bad = structuredClone(before); inject(bad)
+  assert.equal(
+    codec('startSessionRun')
+      .parameters[0].codec.create()
+      .safeParse({ ...runArgs(doc), sessionId: h.caller.id }).success,
+    true
+  )
+  for (const inject of [
+    v => {
+      v.rawBody = 'RAW'
+    },
+    v => {
+      v.selected.source.rawBody = 'RAW'
+    },
+    v => {
+      v.selected.graph.nodes[0].agentRef = 'SECRET_PATH'
+    },
+    v => {
+      v.selected.presentation.groups[0].rawBody = 'RAW'
+    },
+    v => {
+      v.selected.run.attempts[0].rawBody = 'RAW'
+    }
+  ]) {
+    const bad = structuredClone(before)
+    inject(bad)
     assert.equal(inspectSessionCodec().safeParse(bad).success, false)
   }
   assert.equal(inspectSessionCodec().safeParse({ status: 'unbound', sessionId: 'unbound', runs: [] }).success, false)
@@ -156,7 +236,10 @@ test('host: headless service initializes without Tools and tool registration dis
   const h = await liveHarness(t)
   assert.ok(h.nativeTools.schemas().some(tool => tool.name === 'blueprint_start'))
   await h.close()
-  assert.equal(h.nativeTools.schemas().some(tool => tool.name.startsWith('blueprint_')), false)
+  assert.equal(
+    h.nativeTools.schemas().some(tool => tool.name.startsWith('blueprint_')),
+    false
+  )
 })
 
 test('host: global/legacy start remains unbound; multiple source Runs use stable descending createdAt/runId selection', async t => {
@@ -171,9 +254,18 @@ test('host: global/legacy start remains unbound; multiple source Runs use stable
   await drain(h)
   const store = [...h.service.runtimes.values()][0].opened.domain.table('runs')
   // Equal creation times are legitimate; exercise the deterministic tie-break.
-  for (const start of starts) { const run = await store.get(start.runId); await store.put(start.runId, { ...run, createdAt: 100 }) }
+  for (const start of starts) {
+    const run = await store.get(start.runId)
+    await store.put(start.runId, { ...run, createdAt: 100 })
+  }
   const selected = await h.service.inspectSession({ sessionId: h.caller.id })
-  assert.deepEqual(selected.runs.map(run => run.runId), starts.map(run => run.runId).sort().reverse())
+  assert.deepEqual(
+    selected.runs.map(run => run.runId),
+    starts
+      .map(run => run.runId)
+      .sort()
+      .reverse()
+  )
   assert.equal(selected.selected.run.runId, selected.runs[0].runId)
   const historical = await h.service.inspectSession({ sessionId: h.caller.id, runId: starts[0].runId })
   assert.equal(historical.selected.run.runId, starts[0].runId)
@@ -185,8 +277,13 @@ test('host: inspectSession selected run and root focus share a single aggregate 
   const h = await liveHarness(t)
   const handle = await h.service.configuredRuntime()
   const def = definition([agentNode()])
-  const { runId } = await handle.store.createRun({ scope: 'run', requestId: 'cut-race', payloadFingerprint: 'cut' }, 'cut-revision', JSON.stringify(def), '{}',
-    { blueprintId: def.id, source: { sessionId: h.caller.id, kind: 'ui' } })
+  const { runId } = await handle.store.createRun(
+    { scope: 'run', requestId: 'cut-race', payloadFingerprint: 'cut' },
+    'cut-revision',
+    JSON.stringify(def),
+    '{}',
+    { blueprintId: def.id, source: { sessionId: h.caller.id, kind: 'ui' } }
+  )
   const get = handle.store.get.bind(handle.store)
   let injected = false
   t.mock.method(handle.store, 'get', async id => {
@@ -204,7 +301,10 @@ test('host: inspectSession selected run and root focus share a single aggregate 
   assert.deepEqual(cut.selected.focusAttemptIds, [])
   const fresh = await h.service.inspectSession({ sessionId: h.caller.id })
   assert.equal(fresh.selected.run.state, 'running')
-  assert.deepEqual(fresh.selected.focusAttemptIds, fresh.selected.run.attempts.map(a => a.attemptId))
+  assert.deepEqual(
+    fresh.selected.focusAttemptIds,
+    fresh.selected.run.attempts.map(a => a.attemptId)
+  )
   const child = await h.service.inspectSession({ sessionId: 'concurrent-child' })
   assert.deepEqual(child.selected.focusAttemptIds, fresh.selected.focusAttemptIds)
 })
@@ -212,12 +312,21 @@ test('host: inspectSession selected run and root focus share a single aggregate 
 test('host: root focus includes every canonical active/waiting/recovery Attempt and terminal latest; child focus stays exact', async t => {
   const h = await liveHarness(t)
   const handle = await h.service.configuredRuntime()
-  const def = definition([{ id: 'one', kind: 'input' }, { id: 'two', kind: 'output' }], {})
-  const { runId } = await handle.store.createRun({ scope: 'run', requestId: 'focus', payloadFingerprint: 'focus' }, 'revision', JSON.stringify(def), '{}', { source: { sessionId: h.caller.id, kind: 'ui' } })
+  const def = definition(
+    [
+      { id: 'one', kind: 'input' },
+      { id: 'two', kind: 'output' }
+    ],
+    {}
+  )
+  const { runId } = await handle.store.createRun({ scope: 'run', requestId: 'focus', payloadFingerprint: 'focus' }, 'revision', JSON.stringify(def), '{}', {
+    source: { sessionId: h.caller.id, kind: 'ui' }
+  })
   const first = await handle.store.recordIntent(runId, { nodeId: 'one', kind: 'agentTask', sessionId: 'one-child' })
   const second = await handle.store.recordIntent(runId, { nodeId: 'two', kind: 'agentTask', sessionId: 'two-child' })
   await handle.store.transition(runId, draft => {
-    draft.attempts[0].state = 'waiting_input'; draft.attempts[1].state = 'recovery_required'
+    draft.attempts[0].state = 'waiting_input'
+    draft.attempts[1].state = 'recovery_required'
   })
   assert.deepEqual((await h.service.inspectSession({ sessionId: h.caller.id })).selected.focusAttemptIds, [first.attemptId, second.attemptId])
   assert.deepEqual((await h.service.inspectSession({ sessionId: 'one-child' })).selected.focusAttemptIds, [first.attemptId])
@@ -234,18 +343,29 @@ test('host: durable admission failure creates no Agent and intent write failure 
   const doc = await h.save(definition())
   const handle = await h.service.configuredRuntime()
   const runs = handle.opened.domain.table('runs')
-  const fail = t.mock.method(runs, 'put', async () => { throw new Error('RAW_DISK_SECRET /private/location') })
-  await assert.rejects(() => h.service.startSessionRun({ ...runArgs(doc, {}, 'write-fail'), sessionId: h.caller.id }), error => {
-    assert.equal(JSON.stringify(error).includes('RAW_DISK_SECRET'), false)
-    return error.code === 'blueprint/durability-failed'
+  const fail = t.mock.method(runs, 'put', async () => {
+    throw new Error('RAW_DISK_SECRET /private/location')
   })
+  await assert.rejects(
+    () => h.service.startSessionRun({ ...runArgs(doc, {}, 'write-fail'), sessionId: h.caller.id }),
+    error => {
+      assert.equal(JSON.stringify(error).includes('RAW_DISK_SECRET'), false)
+      return error.code === 'blueprint/durability-failed'
+    }
+  )
   assert.equal(h.host.calls.length, 0)
   assert.deepEqual(await handle.store.listRunIds(), [])
   fail.mock.restore()
   const recordIntent = handle.store.recordIntent.bind(handle.store)
   const failIntent = t.mock.method(handle.store, 'recordIntent', async (...args) => {
-    const update = t.mock.method(runs, 'update', async () => { throw new Error('intent disk full') })
-    try { return await recordIntent(...args) } finally { update.mock.restore() }
+    const update = t.mock.method(runs, 'update', async () => {
+      throw new Error('intent disk full')
+    })
+    try {
+      return await recordIntent(...args)
+    } finally {
+      update.mock.restore()
+    }
   })
   const started = await h.service.startSessionRun({ ...runArgs(doc, {}, 'intent-fail'), sessionId: h.caller.id })
   // Original driver propagates the typed durability failure to supervision.
@@ -288,7 +408,11 @@ test('host: cancel between durable intent and Agent creation preserves exact ses
 
 test('host: running cancel/reopen keeps caller and execution association, explicit settlement and no automatic redispatch', async t => {
   const began = Promise.withResolvers()
-  const h = await liveHarness(t, { onTurn: call => { began.resolve(call) } })
+  const h = await liveHarness(t, {
+    onTurn: call => {
+      began.resolve(call)
+    }
+  })
   const doc = await h.save(definition())
   const started = await h.service.startSessionRun({ ...runArgs(doc, {}, 'cancel-during-turn'), sessionId: h.caller.id })
   const call = await began.promise
@@ -305,7 +429,10 @@ test('host: running cancel/reopen keeps caller and execution association, explic
   await h.close()
   const reopened = new Context()
   const fiber = await reopened.plugin(BlueprintService, { runtimeRoot: h.runtimeRoot })
-  t.after(async () => { await fiber.dispose(); await reopened.fiber.dispose() })
+  t.after(async () => {
+    await fiber.dispose()
+    await reopened.fiber.dispose()
+  })
   assert.deepEqual(await reopened.blueprint.inspectSession({ sessionId: h.caller.id }), settled)
   const child = await reopened.blueprint.inspectSession({ sessionId: call.options.sessionId })
   assert.equal(child.selected.run.runId, started.runId)
@@ -313,7 +440,8 @@ test('host: running cancel/reopen keeps caller and execution association, explic
   const cancelledAgain = await reopened.blueprint.cancelRun({ runId: started.runId })
   assert.equal(cancelledAgain.state, 'cancelled')
   assert.equal((await reopened.blueprint.inspectRun({ runId: started.runId })).seq, settled.selected.run.seq)
-  await fiber.dispose(); await reopened.fiber.dispose()
+  await fiber.dispose()
+  await reopened.fiber.dispose()
 })
 
 test('host: unknown native effect retains original intent ID and source across process-equivalent reopen', async t => {
@@ -330,20 +458,40 @@ test('host: unknown native effect retains original intent ID and source across p
   await h.close()
   const ctx = new Context()
   const fiber = await ctx.plugin(BlueprintService, { runtimeRoot: h.runtimeRoot })
-  t.after(async () => { await fiber.dispose(); await ctx.fiber.dispose() })
+  t.after(async () => {
+    await fiber.dispose()
+    await ctx.fiber.dispose()
+  })
   assert.deepEqual(await ctx.blueprint.inspectSession({ sessionId: h.caller.id }), before)
   assert.equal((await ctx.blueprint.inspectSession({ sessionId: h.host.calls[0].options.sessionId })).selected.run.runId, started.runId)
-  await fiber.dispose(); await ctx.fiber.dispose()
+  await fiber.dispose()
+  await ctx.fiber.dispose()
 })
 
 test('host: existing group and routed-edge presentation fields round-trip through frozen inspect view', async t => {
   const h = await liveHarness(t)
-  const def = definition([{ id: 'input', kind: 'input', outputs: { value: 'string' } }, { id: 'output', kind: 'output', inputs: { value: 'string' } }], {}, [
-    { kind: 'data', from: 'input.value', to: 'output.value' },
-  ])
-  def.presentation = { nodes: { input: { x: -12.5, y: 0.25, title: 'Existing input', color: 'default' }, output: { x: 425, y: 77, width: 240, height: 84 } },
+  const def = definition(
+    [
+      { id: 'input', kind: 'input', outputs: { value: 'string' } },
+      { id: 'output', kind: 'output', inputs: { value: 'string' } }
+    ],
+    {},
+    [{ kind: 'data', from: 'input.value', to: 'output.value' }]
+  )
+  def.presentation = {
+    nodes: { input: { x: -12.5, y: 0.25, title: 'Existing input', color: 'default' }, output: { x: 425, y: 77, width: 240, height: 84 } },
     groups: [{ id: 'layout-group', label: 'Existing layout', nodeIds: ['input', 'output'] }],
-    edges: [{ kind: 'data', from: 'input.value', to: 'output.value', points: [{ x: 1.25, y: 10 }, { x: 40, y: -5 }] }],
+    edges: [
+      {
+        kind: 'data',
+        from: 'input.value',
+        to: 'output.value',
+        points: [
+          { x: 1.25, y: 10 },
+          { x: 40, y: -5 }
+        ]
+      }
+    ]
   }
   const doc = await h.save(def)
   await h.service.startSessionRun({ ...runArgs(doc, { value: 'typed user output' }, 'existing-layout'), sessionId: h.caller.id })
@@ -356,8 +504,11 @@ test('host: existing group and routed-edge presentation fields round-trip throug
 
 test('host: model-facing failures expose only static codes, no raw dependency error or forged source/path', async t => {
   const h = await liveHarness(t)
-  const doc = await h.save(definition()), args = { blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, input: {} }
-  t.mock.method(h.service, 'listDefinitions', async () => { throw new Error('RAW_PROVIDER_SECRET /private/user/location') })
+  const doc = await h.save(definition()),
+    args = { blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, input: {} }
+  t.mock.method(h.service, 'listDefinitions', async () => {
+    throw new Error('RAW_PROVIDER_SECRET /private/user/location')
+  })
   const failed = await h.tool('blueprint_list')
   assert.equal(failed.isError, true)
   assert.equal(failed.error.info.code, 'blueprint/tool-failed')
@@ -365,7 +516,8 @@ test('host: model-facing failures expose only static codes, no raw dependency er
   for (const raw of ['RAW_PROVIDER_SECRET', '/private/user/location']) assert.equal(JSON.stringify(failed).includes(raw), false)
   for (const name of ['source', 'sessionId', 'callId', 'turn', 'rootDir', 'runtimeRoot']) {
     const result = await h.tool('blueprint_start', { ...args, [name]: 'FORGED_RAW_SECRET /private/user/location' }, h.caller, `bad-${name}`)
-    assert.equal(result.isError, true); assert.equal(result.error.info.code, 'INVALID_ARGS')
+    assert.equal(result.isError, true)
+    assert.equal(result.error.info.code, 'INVALID_ARGS')
     assert.equal(result.error.message, 'INVALID_ARGS')
     assert.equal(JSON.stringify(result).includes('FORGED_RAW_SECRET'), false)
   }
@@ -377,15 +529,25 @@ test('host: UI/tool command-key collision cannot rebind source kind; same native
   const doc = await h.save(definition())
   const args = { blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, input: {} }
   const callId = 'collision-call'
-  const toolRequestId = `blueprint-tool-${createHash('sha256').update(JSON.stringify([h.caller.id, callId])).digest('hex')}`
-  await h.service.startSessionRun({ blueprintId: args.blueprintId, expectedRevision: args.expectedRevision, inputJson: JSON.stringify(args.input), sessionId: h.caller.id, requestId: toolRequestId })
+  const toolRequestId = `blueprint-tool-${createHash('sha256')
+    .update(JSON.stringify([h.caller.id, callId]))
+    .digest('hex')}`
+  await h.service.startSessionRun({
+    blueprintId: args.blueprintId,
+    expectedRevision: args.expectedRevision,
+    inputJson: JSON.stringify(args.input),
+    sessionId: h.caller.id,
+    requestId: toolRequestId
+  })
   const conflict = await h.tool('blueprint_start', args, h.caller, callId)
-  assert.equal(conflict.isError, true); assert.equal(conflict.error.info.code, 'COMMAND_CONFLICT')
+  assert.equal(conflict.isError, true)
+  assert.equal(conflict.error.info.code, 'COMMAND_CONFLICT')
   const started = value(await h.tool('blueprint_start', args, h.caller, 'turn-call'))
   h.caller.session.append('turn/end', { turn: 7, reason: { kind: 'completed' } })
   h.caller.session.append('turn/start', { turn: 8 })
   const later = await h.tool('blueprint_start', args, h.caller, 'turn-call')
-  assert.equal(later.isError, true); assert.equal(later.error.info.code, 'COMMAND_CONFLICT')
+  assert.equal(later.isError, true)
+  assert.equal(later.error.info.code, 'COMMAND_CONFLICT')
   await drain(h)
   assert.equal(h.host.calls.length, 2)
   const saved = (await records(h)).find(run => run.runId === started.runId)

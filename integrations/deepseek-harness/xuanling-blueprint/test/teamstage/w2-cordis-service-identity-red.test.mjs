@@ -27,22 +27,23 @@ test('W2 red: Cordis ctx.get fresh service proxies preserve native Team operatio
     listTasks: () => [],
     updateTask: async () => ({ id: 'task-1', revision: 2, status: 'completed' }),
     waitForChange: async () => ({ timedOut: true }),
-    interrupt: () => ({ previousStatus: 'inactive' }),
+    interrupt: () => ({ previousStatus: 'inactive' })
   }
 
-  const serviceProxy = () => new Proxy(stableService, {
-    get(target, property, receiver) {
-      proxyReads++
-      return Reflect.get(target, property, receiver)
-    },
-  })
+  const serviceProxy = () =>
+    new Proxy(stableService, {
+      get(target, property, receiver) {
+        proxyReads++
+        return Reflect.get(target, property, receiver)
+      }
+    })
 
   const context = {
     get(key) {
       if (key === 'agents') return { get: id => live.get(id) }
       if (key === 'agentTeams') return serviceProxy()
       return undefined
-    },
+    }
   }
 
   const adapter = new TeamNativeAdapter(context)
@@ -54,7 +55,7 @@ test('W2 red: Cordis ctx.get fresh service proxies preserve native Team operatio
   assert.deepEqual(task, { id: 'task-1', revision: 1, status: 'pending' })
   assert.deepEqual(calls, [
     ['listMembers', lead],
-    ['createTask', lead, { subject: 'subject', description: 'description' }],
+    ['createTask', lead, { subject: 'subject', description: 'description' }]
   ])
   assert.ok(proxyReads > 1, 'native operations should resolve agentTeams through ctx.get repeatedly')
 })

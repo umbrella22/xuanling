@@ -12,7 +12,7 @@ export {
   type TeamUpdateTaskRequest,
   type TeamSpawnTeammateRequest,
   type TeamSendMessageRequest,
-  type TeamTaskAction,
+  type TeamTaskAction
 } from './native-adapter.ts'
 export { TeamTaskBindingError, createBoundTeamTask, updateBoundTeamTask, type TeamTaskCreateRequest, type TeamTaskViewLike } from './task-binding.ts'
 export { TeamMemberBindingError, spawnBoundTeamMember } from './member-binding.ts'
@@ -25,7 +25,7 @@ export {
   recordTeamEffectRecovery,
   type TeamEffectFacts,
   type TeamEffectResultFacts,
-  type TeamEffectDispatch,
+  type TeamEffectDispatch
 } from './runner.ts'
 export { TeamCancellationError, cancelOwnedTeamStage, type OwnedTeamCancellationArgs } from './cancellation.ts'
 export { TeamAcceptanceRejectedError, acceptTeamOutput, type TeamAcceptanceInput, type TeamOutputArtifactRef } from './acceptance.ts'

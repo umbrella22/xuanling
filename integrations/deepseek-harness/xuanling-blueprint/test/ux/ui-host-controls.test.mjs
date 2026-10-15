@@ -7,13 +7,16 @@ import { installCanvasStyles } from '../../src/client/styles.ts'
 
 const marker = '/* Host controls: DSH primitives, scoped outside the graph. */'
 function installedStyles() {
-  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'document'), elements = []
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'document'),
+    elements = []
   globalThis.document = {
     getElementById: id => elements.find(element => element.id === id),
-    createElement: type => ({ type }), head: { appendChild: element => elements.push(element) },
+    createElement: type => ({ type }),
+    head: { appendChild: element => elements.push(element) }
   }
   try {
-    installCanvasStyles(); installCanvasStyles()
+    installCanvasStyles()
+    installCanvasStyles()
     assert.equal(elements.length, 1, 'STYLE_INSTALLER_MUST_REMAIN_IDEMPOTENT')
     assert.equal(elements[0].id, 'xuanling-blueprint-canvas-css')
     return elements[0].textContent
@@ -29,17 +32,23 @@ function rules() {
 }
 const matching = (css, predicate) => {
   const found = []
-  css.walkRules(rule => { if (predicate(rule.selector)) found.push(rule) })
+  css.walkRules(rule => {
+    if (predicate(rule.selector)) found.push(rule)
+  })
   assert.ok(found.length, 'HOST_CONTROLS_RULE_MISSING')
   return found
 }
-const declaration = (css, predicate, prop) => matching(css, predicate).flatMap(rule => rule.nodes.filter(node => node.type === 'decl' && node.prop === prop).map(node => node.value))
+const declaration = (css, predicate, prop) =>
+  matching(css, predicate).flatMap(rule => rule.nodes.filter(node => node.type === 'decl' && node.prop === prop).map(node => node.value))
 
 test('host controls C02 installer is idempotent and every appended control rule stays outside Flow', () => {
   assert.equal(installedStyles(), installed)
   const css = rules()
   css.walkRules(rule => {
-    assert.ok(rule.selectors.every(part => part.trim().startsWith('.bp-workspace')), rule.selector)
+    assert.ok(
+      rule.selectors.every(part => part.trim().startsWith('.bp-workspace')),
+      rule.selector
+    )
     assert.doesNotMatch(rule.selector, /react-flow|\.bp-node(?![\w-])|\.bp-canvas(?![\w-])|\.bp-group|\.bp-reroute|:root|\bbody\b|\bhtml\b/)
   })
   css.walkDecls(node => {
@@ -60,6 +69,7 @@ test('host controls C03 checkbox inputs avoid text-control sizing and reduced mo
   })
   assert.ok(textInputRules > 0, 'CHECKBOX_BOUNDARY_MUST_EXERCISE_TEXT_INPUT_RULES')
   const media = css.nodes.find(node => node.type === 'atrule' && node.name === 'media' && node.params === '(prefers-reduced-motion:reduce)')
-  assert.ok(media); assert.ok(declaration(media, () => true, 'transition').includes('none'))
+  assert.ok(media)
+  assert.ok(declaration(media, () => true, 'transition').includes('none'))
   assert.ok(declaration(media, s => s.includes('button:active'), 'transform').includes('none'))
 })

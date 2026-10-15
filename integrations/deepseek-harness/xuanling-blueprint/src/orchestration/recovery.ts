@@ -22,13 +22,18 @@ function teamRecoveryNeeded(run: RunRecord): boolean {
   const stage = run.teamStage
   if (RUN_TERMINAL.has(run.state) || stage === undefined || unknownTeamEffect(run) === undefined) return false
   const attempt = run.attempts.find(candidate => candidate.attemptId === stage.attemptId)
-  return run.state !== 'recovery_required' || stage.state !== 'recovery_required'
-    || (attempt !== undefined && attempt.result === undefined && !ATTEMPT_TERMINAL.has(attempt.state) && attempt.state !== 'recovery_required')
+  return (
+    run.state !== 'recovery_required' ||
+    stage.state !== 'recovery_required' ||
+    (attempt !== undefined && attempt.result === undefined && !ATTEMPT_TERMINAL.has(attempt.state) && attempt.state !== 'recovery_required')
+  )
 }
 
 /** Abort a raced read-only reconciliation before the store advances seq. */
 class TeamRecoveryUnchangedError extends TeamStageConflictError {
-  constructor(runId: string) { super(runId, 'Team recovery is no longer required') }
+  constructor(runId: string) {
+    super(runId, 'Team recovery is no longer required')
+  }
 }
 
 export interface ReconciliationReport {
@@ -85,13 +90,18 @@ export async function reconcileOnStart(store: RunStore): Promise<ReconciliationR
       report.untouched.push(runId)
       continue
     }
-    await store.transition(runId, (draft) => {
+    await store.transition(runId, draft => {
       const seq = draft.seq + 1
       for (const attempt of draft.attempts) {
         if (attempt.intent !== undefined && attempt.result === undefined && !ATTEMPT_TERMINAL.has(attempt.state)) attempt.state = 'recovery_required'
       }
       draft.state = 'recovery_required'
-      draft.log.push({ seq, at: Date.now(), kind: 'recovery', detail: { attemptId: unsettled.attemptId, nodeId: unsettled.nodeId, reason: 'intent-without-result' } })
+      draft.log.push({
+        seq,
+        at: Date.now(),
+        kind: 'recovery',
+        detail: { attemptId: unsettled.attemptId, nodeId: unsettled.nodeId, reason: 'intent-without-result' }
+      })
     })
     report.recoveryRequired.push({ runId, attemptId: unsettled.attemptId, nodeId: unsettled.nodeId, intentKind: unsettled.intent?.kind ?? 'unknown' })
   }
@@ -106,15 +116,18 @@ export async function reconcile(store: RunStore, run: RunRecord, action: Recover
   if (run.state !== 'recovery_required') {
     throw new IllegalTransitionError(run.state, action)
   }
-  return await store.transition(run.runId, (draft) => {
+  return await store.transition(run.runId, draft => {
     if (draft.state !== 'recovery_required') throw new IllegalTransitionError(draft.state, action)
     const seq = draft.seq + 1
     for (const attempt of draft.attempts) {
       if (attempt.intent === undefined || attempt.result !== undefined || ATTEMPT_TERMINAL.has(attempt.state)) continue
       attempt.state = action
       attempt.result = {
-        seq, at: Date.now(), ok: action === 'succeeded',
-        outcome: { recovery: action, kind: action === 'timed_out' ? 'timeout' : action }, evidence,
+        seq,
+        at: Date.now(),
+        ok: action === 'succeeded',
+        outcome: { recovery: action, kind: action === 'timed_out' ? 'timeout' : action },
+        evidence
       }
     }
     draft.state = action

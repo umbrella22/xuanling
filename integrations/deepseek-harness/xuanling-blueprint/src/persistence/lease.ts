@@ -47,7 +47,11 @@ function pidAlive(pid: number): boolean {
 }
 
 export class WriterLease {
-  private constructor(readonly runtimeRoot: string, private payload: LeasePayload, private readonly options: LeaseOptions) {}
+  private constructor(
+    readonly runtimeRoot: string,
+    private payload: LeasePayload,
+    private readonly options: LeaseOptions
+  ) {}
 
   static readonly LEASE_FILE = 'coordinator-lease.json'
 
@@ -64,10 +68,13 @@ export class WriterLease {
         existing = JSON.parse(readFileSync(file, 'utf8')) as LeasePayload
       } catch {
         throw new CoordinatorAlreadyActiveError({
-          ownerId: 'unreadable', pid: -1, startedAt: 0, runtimeRoot,
+          ownerId: 'unreadable',
+          pid: -1,
+          startedAt: 0,
+          runtimeRoot
         })
       }
-      const heartbeatAge = now() - (statSync(file).mtimeMs)
+      const heartbeatAge = now() - statSync(file).mtimeMs
       const ownerDead = !alive(existing.pid)
       if (ownerDead && heartbeatAge > threshold) {
         // Proven takeover: the recorded process is gone and its heartbeat is

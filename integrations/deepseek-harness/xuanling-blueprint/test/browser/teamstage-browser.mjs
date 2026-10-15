@@ -4,7 +4,7 @@
 export const TEAMSTAGE_BROWSER_STATUS = Object.freeze({
   PASSED: 'passed',
   NOT_RUN: 'not_run',
-  UNVERIFIED: 'UNVERIFIED',
+  UNVERIFIED: 'UNVERIFIED'
 })
 
 const IDENTITY_FIELDS = ['runId', 'attemptId', 'stageId', 'teamId', 'taskId', 'sourceSessionId']
@@ -12,15 +12,28 @@ const MEMBER_STATUSES = new Set(['provisioning', 'active', 'running', 'inactive'
 const APPROVAL_OUTCOMES = new Set(['allowed-once', 'allowed', 'denied'])
 const MUTATING_METHODS = /(?:^|\/)(?:startTeamStage|cancelTeamStage|acceptTeamStageOutput|startSessionRun|prompt|cancel|decide|updateQueue)$/
 const SECRET_KEY_NAMES = new Set([
-  'raw', 'prompt', 'rawprompt', 'body', 'rawbody', 'content', 'arguments',
-  'credential', 'credentials', 'apikey', 'authorization', 'cookie', 'secret',
-  'modeltext', 'providerbody', 'rawproviderbody',
+  'raw',
+  'prompt',
+  'rawprompt',
+  'body',
+  'rawbody',
+  'content',
+  'arguments',
+  'credential',
+  'credentials',
+  'apikey',
+  'authorization',
+  'cookie',
+  'secret',
+  'modeltext',
+  'providerbody',
+  'rawproviderbody'
 ])
 const SECRET_VALUE = [
   /BP[_-]?SECRET[_-]?CANARY/i,
   /\bsk-[A-Za-z0-9_-]{20,}/,
   /\bBearer\s+[A-Za-z0-9._-]{12,}/i,
-  /\b(?:authorization|api[_-]?key|password|cookie)\s*[:=]/i,
+  /\b(?:authorization|api[_-]?key|password|cookie)\s*[:=]/i
 ]
 
 function reject(code, message) {
@@ -68,7 +81,11 @@ function validateTeamBinding(receipt, identity) {
   const team = receipt.team
   if (!team) return unverified('TEAMSTAGE_NATIVE_TEAM_EVIDENCE_MISSING', ['team'])
   const teamMissing = missingIdentity(team)
-  if (teamMissing.length > 0) return unverified('TEAMSTAGE_NATIVE_TEAM_EVIDENCE_MISSING', teamMissing.map(field => `team.${field}`))
+  if (teamMissing.length > 0)
+    return unverified(
+      'TEAMSTAGE_NATIVE_TEAM_EVIDENCE_MISSING',
+      teamMissing.map(field => `team.${field}`)
+    )
   if (!sameIdentity(team, identity)) throw reject('TEAMSTAGE_FOREIGN_BINDING', 'Team binding does not match canonical identity')
   const task = receipt.task
   if (!task) return unverified('TEAMSTAGE_NATIVE_TEAM_EVIDENCE_MISSING', ['task'])
@@ -92,20 +109,22 @@ function validateTeamBinding(receipt, identity) {
     if (member.teamId !== identity.teamId || member.taskId !== identity.taskId || member.stageId !== identity.stageId) {
       throw reject('TEAMSTAGE_FOREIGN_BINDING', 'Member binding does not match canonical TeamStage identity')
     }
-    nativeIds.push(member.nativeId); logicalIds.push(member.logicalId)
+    nativeIds.push(member.nativeId)
+    logicalIds.push(member.logicalId)
   }
-  if (new Set(nativeIds).size !== nativeIds.length || new Set(logicalIds).size !== logicalIds.length
-    || nativeIds.length !== team.memberNativeIds.length
-    || nativeIds.some(nativeId => !team.memberNativeIds.includes(nativeId))) {
+  if (
+    new Set(nativeIds).size !== nativeIds.length ||
+    new Set(logicalIds).size !== logicalIds.length ||
+    nativeIds.length !== team.memberNativeIds.length ||
+    nativeIds.some(nativeId => !team.memberNativeIds.includes(nativeId))
+  ) {
     throw reject('TEAMSTAGE_FOREIGN_BINDING', 'Member native identity set does not match Team binding')
   }
   return null
 }
 
 function validateExecution(receipt) {
-  if (receipt?.execution?.automatic !== true
-    || receipt.execution.nodeKind !== 'agentTask'
-    || receipt.execution.stageKind !== 'teamStage') {
+  if (receipt?.execution?.automatic !== true || receipt.execution.nodeKind !== 'agentTask' || receipt.execution.stageKind !== 'teamStage') {
     return { status: TEAMSTAGE_BROWSER_STATUS.NOT_RUN, code: 'TEAMSTAGE_AUTOMATIC_NOT_RUN', missing: ['automatic agentTask.teamStage'] }
   }
   if (receipt.browserEvidence !== true || receipt.providerEvidence !== true || receipt.provider?.live !== true) {
@@ -136,33 +155,46 @@ export function validateTeamStageBrowserReceipt(receipt) {
     return unverified('TEAMSTAGE_LIVE_PROVIDER_NOT_RUN', ['provider.name', 'provider.model', 'provider.protocol'])
   }
   const stream = receipt.stream
-  if (!nonEmpty(stream?.requestIdentity) || !Number.isInteger(stream.requestCount) || stream.requestCount < 1
-    || !Array.isArray(stream.requestIdentities) || stream.requestIdentities.length !== stream.requestCount
-    || !stream.requestIdentities.every(nonEmpty)
-    || new Set(stream.requestIdentities).size !== stream.requestIdentities.length
-    || !stream.requestIdentities.includes(stream.requestIdentity) || stream.mutationDelta !== 0) {
+  if (
+    !nonEmpty(stream?.requestIdentity) ||
+    !Number.isInteger(stream.requestCount) ||
+    stream.requestCount < 1 ||
+    !Array.isArray(stream.requestIdentities) ||
+    stream.requestIdentities.length !== stream.requestCount ||
+    !stream.requestIdentities.every(nonEmpty) ||
+    new Set(stream.requestIdentities).size !== stream.requestIdentities.length ||
+    !stream.requestIdentities.includes(stream.requestIdentity) ||
+    stream.mutationDelta !== 0
+  ) {
     return unverified('TEAMSTAGE_STREAM_EVIDENCE_MISSING', ['stream.requestIdentity', 'stream.requestCount', 'stream.mutationDelta'])
   }
 
-  if (!receipt.approval || !receipt.toolLineage
-    || !nonEmpty(receipt.approval.auditId) || !nonEmpty(receipt.approval.callId)
-    || !APPROVAL_OUTCOMES.has(receipt.approval.outcome) || receipt.approval.outcome === 'denied'
-    || !nonEmpty(receipt.toolLineage.name)
-    || receipt.toolLineage.callId !== receipt.approval.callId
-    || receipt.toolLineage.resultObserved !== true) {
+  if (
+    !receipt.approval ||
+    !receipt.toolLineage ||
+    !nonEmpty(receipt.approval.auditId) ||
+    !nonEmpty(receipt.approval.callId) ||
+    !APPROVAL_OUTCOMES.has(receipt.approval.outcome) ||
+    receipt.approval.outcome === 'denied' ||
+    !nonEmpty(receipt.toolLineage.name) ||
+    receipt.toolLineage.callId !== receipt.approval.callId ||
+    receipt.toolLineage.resultObserved !== true
+  ) {
     return unverified('TEAMSTAGE_APPROVAL_TOOL_LINEAGE_MISSING', ['approval.auditId', 'approval.callId', 'toolLineage'])
   }
 
   const restart = receipt.restart
-  if (!restart?.before || !restart.after || !sameIdentity(restart.before, identity) || !sameIdentity(restart.after, identity)
-    || restart.mutationDelta !== 0) {
+  if (!restart?.before || !restart.after || !sameIdentity(restart.before, identity) || !sameIdentity(restart.after, identity) || restart.mutationDelta !== 0) {
     return unverified('TEAMSTAGE_RESTART_EVIDENCE_MISSING', ['restart.before', 'restart.after', 'restart.mutationDelta'])
   }
 
   const artifact = receipt.artifact
-  if (!/^[a-f0-9]{64}$/.test(artifact?.sha256 ?? '') || !artifact.provenance
-    || !sameIdentity(artifact.provenance, identity)
-    || !receipt.members.some(member => member.nativeId === artifact.provenance.memberNativeId)) {
+  if (
+    !/^[a-f0-9]{64}$/.test(artifact?.sha256 ?? '') ||
+    !artifact.provenance ||
+    !sameIdentity(artifact.provenance, identity) ||
+    !receipt.members.some(member => member.nativeId === artifact.provenance.memberNativeId)
+  ) {
     return unverified('TEAMSTAGE_ARTIFACT_EVIDENCE_MISSING', ['artifact.sha256', 'artifact.provenance'])
   }
 

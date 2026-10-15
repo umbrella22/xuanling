@@ -24,11 +24,16 @@ export const AGENT_BYTES = 'AGENT_PROMPT_SECRET_SENTINEL'
 export const OUTPUT = 'LEGACY_EXPLICIT_OUTPUT'
 export const MODEL = { provider: 'contract-provider', model: 'contract-model', reasoningEffort: 'high' }
 export const SCHEMA = {
-  type: 'object', properties: { answer: { type: 'number' } }, required: ['answer'], additionalProperties: false,
+  type: 'object',
+  properties: { answer: { type: 'number' } },
+  required: ['answer'],
+  additionalProperties: false
 }
 export const agentResources = { worker: { kind: 'agent', path: 'lib/agents/worker.md' } }
 export const bindingResources = {
-  ...agentResources, readset: { kind: 'mcp', bindingId: 'reader' }, writeset: { kind: 'mcp', bindingId: 'writer' },
+  ...agentResources,
+  readset: { kind: 'mcp', bindingId: 'reader' },
+  writeset: { kind: 'mcp', bindingId: 'writer' }
 }
 export const agentNode = (extra = {}) => ({ id: 'work', kind: 'agentTask', agentRef: 'worker', ...extra })
 export function definition(nodes = [agentNode()], resources = agentResources, edges = []) {
@@ -37,26 +42,43 @@ export function definition(nodes = [agentNode()], resources = agentResources, ed
   return value
 }
 export function structuredDefinition() {
-  return definition([
-    agentNode({ outputSchemaRef: 'answerSchema', outputs: { object: 'json', text: 'string' } }),
-    { id: 'sink', kind: 'output', inputs: { object: 'json', text: 'string' } },
-  ], { ...agentResources, answerSchema: { kind: 'schema', path: 'lib/schemas/answer.json' } }, [
-    { kind: 'data', from: 'work.object', to: 'sink.object' },
-    { kind: 'data', from: 'work.text', to: 'sink.text' },
-  ])
+  return definition(
+    [
+      agentNode({ outputSchemaRef: 'answerSchema', outputs: { object: 'json', text: 'string' } }),
+      { id: 'sink', kind: 'output', inputs: { object: 'json', text: 'string' } }
+    ],
+    { ...agentResources, answerSchema: { kind: 'schema', path: 'lib/schemas/answer.json' } },
+    [
+      { kind: 'data', from: 'work.object', to: 'sink.object' },
+      { kind: 'data', from: 'work.text', to: 'sink.text' }
+    ]
+  )
 }
 
 export function contentTool(name, effect = () => {}) {
   return {
-    name, description: 'Controlled contract fixture', parameters: { type: 'object', additionalProperties: true },
-    output: { schema: { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'], additionalProperties: false },
-      render: () => [{ type: 'text', text: 'controlled tool completed' }] },
-    async execute(args, exec) { await effect(args, exec); return { ok: true } },
+    name,
+    description: 'Controlled contract fixture',
+    parameters: { type: 'object', additionalProperties: true },
+    output: {
+      schema: { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'], additionalProperties: false },
+      render: () => [{ type: 'text', text: 'controlled tool completed' }]
+    },
+    async execute(args, exec) {
+      await effect(args, exec)
+      return { ok: true }
+    }
   }
 }
 export function executeTool(call, name, args = {}, extra = {}) {
-  return call.agent.ctx.tools.execute({ callId: ToolCallId(randomUUID()), name, arguments: args,
-    agent: call.agent, signal: new AbortController().signal, ...extra })
+  return call.agent.ctx.tools.execute({
+    callId: ToolCallId(randomUUID()),
+    name,
+    arguments: args,
+    agent: call.agent,
+    signal: new AbortController().signal,
+    ...extra
+  })
 }
 
 /** Directory collaborator for scripted public Agent/runtime fixtures, including cold reopen. */
@@ -66,13 +88,16 @@ export function provideFixtureWorkingDirectory(ctx, defaultDirectory) {
   const get = session => directories.get(session) ?? session.header.cwd ?? defaultDirectory
   ctx.provide('workingDirectory', {
     get,
-    async ensure(agent, signal) { signal?.throwIfAborted(); return get(agent.session) },
+    async ensure(agent, signal) {
+      signal?.throwIfAborted()
+      return get(agent.session)
+    },
     async set(agent, path, signal) {
       signal?.throwIfAborted()
       const cwd = resolve(get(agent.session), path)
       directories.set(agent.session, cwd)
       return cwd
-    },
+    }
   })
 }
 
@@ -86,25 +111,51 @@ function registryFixture(ctx, onTurn) {
     async create(options) {
       options.signal?.throwIfAborted()
       const id = SessionId(options.sessionId)
-      const session = Session.create(id, options.seed, {
-        version: SESSION_FORMAT_VERSION, id, createdAt: Date.now(), isSeeded: false, ...options.meta,
-      }, options.inheritedEventCount)
+      const session = Session.create(
+        id,
+        options.seed,
+        {
+          version: SESSION_FORMAT_VERSION,
+          id,
+          createdAt: Date.now(),
+          isSeeded: false,
+          ...options.meta
+        },
+        options.inheritedEventCount
+      )
       const idle = Promise.withResolvers()
       let finished = false
-      const call = { options, session, published: false, disposed: false, injections: [], toolResults: [],
+      const call = {
+        options,
+        session,
+        published: false,
+        disposed: false,
+        injections: [],
+        toolResults: [],
         finish(reason = COMPLETED, text = OUTPUT) {
           if (finished) return
           finished = true
-          if (text) session.append('assistant/message', { turn: 1, step: 1, stream: [],
-            message: createMessage({ role: 'assistant', content: [{ type: 'text', text }] }) }, { surfaceOp: 'append' })
+          if (text)
+            session.append(
+              'assistant/message',
+              { turn: 1, step: 1, stream: [], message: createMessage({ role: 'assistant', content: [{ type: 'text', text }] }) },
+              { surfaceOp: 'append' }
+            )
           session.append('turn/end', { turn: 1, reason })
           agent.status = 'idle'
           agent.ctx.emit('agent/status', { agent, status: 'idle' })
           idle.resolve()
         },
-        quiesceWithoutEnd() { finished = true; agent.status = 'idle'; idle.resolve() },
+        quiesceWithoutEnd() {
+          finished = true
+          agent.status = 'idle'
+          idle.resolve()
+        }
       }
-      const agent = { id: session.id, session, status: 'idle',
+      const agent = {
+        id: session.id,
+        session,
+        status: 'idle',
         inject(message) {
           call.injections.push(message)
           session.append('agent/inbox/spliced', { target: 'next-step', start: call.injections.length - 1, inserted: [message] })
@@ -117,13 +168,21 @@ function registryFixture(ctx, onTurn) {
           session.append('user/message', message, { surfaceOp: 'append' })
           const job = Promise.resolve().then(() => onTurn(call))
           pending.add(job)
-          job.then(() => pending.delete(job), error => {
-            pending.delete(job); errors.push(error)
-            call.finish({ kind: 'error', error: { code: 'UNKNOWN', message: 'fixture script failed' } }, '')
-          })
+          job.then(
+            () => pending.delete(job),
+            error => {
+              pending.delete(job)
+              errors.push(error)
+              call.finish({ kind: 'error', error: { code: 'UNKNOWN', message: 'fixture script failed' } }, '')
+            }
+          )
         },
-        whenIdle() { return agent.status === 'idle' ? Promise.resolve() : idle.promise },
-        cancel() { if (agent.status !== 'idle') call.finish({ kind: 'aborted', reason: { kind: 'parent' } }, '') },
+        whenIdle() {
+          return agent.status === 'idle' ? Promise.resolve() : idle.promise
+        },
+        cancel() {
+          if (agent.status !== 'idle') call.finish({ kind: 'aborted', reason: { kind: 'parent' } }, '')
+        }
       }
       const scope = createScope(ctx, agent)
       agent.ctx = scope.ctx
@@ -132,14 +191,23 @@ function registryFixture(ctx, onTurn) {
         const commit = await options.setup?.(scope.ctx, agent)
         options.signal?.throwIfAborted()
         commit?.commit()
-      } catch (error) { await scope.dispose(); throw error }
+      } catch (error) {
+        await scope.dispose()
+        throw error
+      }
       call.published = true
       calls.push(call)
-      return { agent, async dispose() {
-        if (call.disposed) return
-        agent.cancel({ kind: 'disposed' }); await agent.whenIdle(); await scope.dispose(); call.disposed = true
-      } }
-    },
+      return {
+        agent,
+        async dispose() {
+          if (call.disposed) return
+          agent.cancel({ kind: 'disposed' })
+          await agent.whenIdle()
+          await scope.dispose()
+          call.disposed = true
+        }
+      }
+    }
   }
   return { registry, calls, errors, pending }
 }
@@ -155,29 +223,47 @@ export async function harness(t, { onTurn = call => call.finish(), config = {}, 
   const ctx = new Context()
   const sections = []
   ctx.provide('systemPrompt', {
-    tools() { return () => {} },
-    section(value) { sections.push(value); return () => {} },
-    getSectionOrder() { return 100 },
+    tools() {
+      return () => {}
+    },
+    section(value) {
+      sections.push(value)
+      return () => {}
+    },
+    getSectionOrder() {
+      return 100
+    }
   })
   ctx.provide('agentDefaultModel', { currentSelection: () => structuredClone(MODEL) })
   // alpha.2 PTC and continuable SubagentRuntime both require this collaborator.
   provideFixtureWorkingDirectory(ctx, rootDir)
   if (ptcRun) {
     ctx.provide('ptcRuntime', {
-      language: 'typescript', isolation: 'test', resolve: request => request, run: ptcRun,
+      language: 'typescript',
+      isolation: 'test',
+      resolve: request => request,
+      run: ptcRun
     })
   }
   const nativeTools = tools ? new ToolRuntime(ctx, { mode }) : undefined
   const effects = []
   const removers = []
   for (const name of ['read_allowed', 'write_other', 'host_denied']) {
-    if (nativeTools) removers.push(nativeTools.register(contentTool(name, () => { effects.push(name) })))
+    if (nativeTools)
+      removers.push(
+        nativeTools.register(
+          contentTool(name, () => {
+            effects.push(name)
+          })
+        )
+      )
   }
   const host = registryFixture(ctx, onTurn)
   if (factory) ctx.provide('agents', host.registry)
   const fiber = await ctx.plugin(BlueprintService, {
-    blueprints: { 'runtime-contracts': rootDir }, runtimeRoot,
-    ...config,
+    blueprints: { 'runtime-contracts': rootDir },
+    runtimeRoot,
+    ...config
   })
   const service = ctx.blueprint
   const drivers = new Set()
@@ -186,7 +272,13 @@ export async function harness(t, { onTurn = call => call.finish(), config = {}, 
   t.mock.method(service, 'driveRun', function (...args) {
     const job = originalDrive.apply(this, args)
     drivers.add(job)
-    job.then(() => drivers.delete(job), error => { drivers.delete(job); driverErrors.push(error) })
+    job.then(
+      () => drivers.delete(job),
+      error => {
+        drivers.delete(job)
+        driverErrors.push(error)
+      }
+    )
     return job
   })
   let closed = false
@@ -197,25 +289,53 @@ export async function harness(t, { onTurn = call => call.finish(), config = {}, 
     for (const remove of removers) remove()
     await ctx.fiber.dispose()
   }
-  t.after(async () => { await close(); rmSync(root, { recursive: true, force: true }) })
-  return { root, rootDir, runtimeRoot, ctx, service, nativeTools, host, effects, drivers, driverErrors, sections, close,
-    async save(value) { return service.saveDefinition({ blueprintId: value.id, definitionJson: JSON.stringify(value), expectedRevision: null }) },
-    executor: () => new BlueprintAgentExecutor(ctx, host.registry),
+  t.after(async () => {
+    await close()
+    rmSync(root, { recursive: true, force: true })
+  })
+  return {
+    root,
+    rootDir,
+    runtimeRoot,
+    ctx,
+    service,
+    nativeTools,
+    host,
+    effects,
+    drivers,
+    driverErrors,
+    sections,
+    close,
+    async save(value) {
+      return service.saveDefinition({ blueprintId: value.id, definitionJson: JSON.stringify(value), expectedRevision: null })
+    },
+    executor: () => new BlueprintAgentExecutor(ctx, host.registry)
   }
 }
 export const directSpec = (h, extra = {}) => ({
-  runId: 'policy-source', attemptId: randomUUID(), nodeId: 'work', agentMd: AGENT_BYTES, skills: [],
-  input: JSON.stringify({ task: 'INPUT_SECRET_SENTINEL' }), cwd: h.rootDir, ...extra,
+  runId: 'policy-source',
+  attemptId: randomUUID(),
+  nodeId: 'work',
+  agentMd: AGENT_BYTES,
+  skills: [],
+  input: JSON.stringify({ task: 'INPUT_SECRET_SENTINEL' }),
+  cwd: h.rootDir,
+  ...extra
 })
 export const runArgs = (doc, input = { task: 'INPUT_SECRET_SENTINEL' }, requestId = randomUUID()) => ({
-  blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, inputJson: JSON.stringify(input), requestId,
+  blueprintId: doc.blueprintId,
+  expectedRevision: doc.documentRevision,
+  inputJson: JSON.stringify(input),
+  requestId
 })
 export async function records(h) {
   const opened = await openBlueprintDomain({ backend: 'json', path: join(h.runtimeRoot, 'store') })
   try {
     const store = new RunStore(opened.domain)
     return await Promise.all((await store.listRunIds()).map(id => store.get(id)))
-  } finally { await opened.close() }
+  } finally {
+    await opened.close()
+  }
 }
 export async function drain(h) {
   // Bounded event turns are only an I/O observation budget, never a success oracle.

@@ -19,5 +19,5 @@ export {
   type ResourceSource,
   type SharedSkillSource,
   type ValidationIssue,
-  type ValidationIssueCode,
+  type ValidationIssueCode
 } from './types.ts'

@@ -92,5 +92,5 @@ registerHooks({
       throw new Error('DIAGNOSTICS_ORACLE_ANCHOR_NOT_UNIQUE')
     }
     return { ...loaded, source: source.slice(0, offset) + replacement + source.slice(offset + anchor.length) }
-  },
+  }
 })

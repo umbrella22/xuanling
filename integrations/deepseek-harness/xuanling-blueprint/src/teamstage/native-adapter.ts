@@ -78,13 +78,17 @@ export interface TeamHostContext {
 export class TeamCapabilityUnavailableError extends Error {
   override readonly name = 'TeamCapabilityUnavailableError'
   readonly code = 'TEAM_UNAVAILABLE'
-  constructor(detail = 'Agent Teams capability is unavailable') { super(detail) }
+  constructor(detail = 'Agent Teams capability is unavailable') {
+    super(detail)
+  }
 }
 
 export class TeamIdentityUnavailableError extends Error {
   override readonly name = 'TeamIdentityUnavailableError'
   readonly code = 'TEAM_IDENTITY_UNAVAILABLE'
-  constructor(detail = 'caller is not the exact live Team Lead') { super(detail) }
+  constructor(detail = 'caller is not the exact live Team Lead') {
+    super(detail)
+  }
 }
 
 function hostValue(ctx: TeamHostContext, key: string): unknown {
@@ -92,8 +96,11 @@ function hostValue(ctx: TeamHostContext, key: string): unknown {
   // capabilities use the public Context.get lookup so ordinary no-Team runs
   // do not acquire a mandatory injection or read an undeclared property.
   if (typeof ctx.get === 'function') {
-    try { return ctx.get(key) }
-    catch { return undefined }
+    try {
+      return ctx.get(key)
+    } catch {
+      return undefined
+    }
   }
   if (key === 'agentTeams' && ctx.agentTeams !== undefined) return ctx.agentTeams
   if (key === 'agents' && ctx.agents !== undefined) return ctx.agents
@@ -105,11 +112,18 @@ export function resolveTeamService(ctx: TeamHostContext): TeamServiceLike {
   const value = hostValue(ctx, 'agentTeams')
   if (value === undefined || value === null || typeof value !== 'object') throw new TeamCapabilityUnavailableError()
   const service = value as Partial<TeamServiceLike>
-  if (typeof service.membership !== 'function' || typeof service.listMembers !== 'function'
-    || typeof service.spawnTeammate !== 'function' || typeof service.sendMessage !== 'function'
-    || typeof service.createTask !== 'function' || typeof service.getTask !== 'function'
-    || typeof service.listTasks !== 'function' || typeof service.updateTask !== 'function'
-    || typeof service.waitForChange !== 'function' || typeof service.interrupt !== 'function') {
+  if (
+    typeof service.membership !== 'function' ||
+    typeof service.listMembers !== 'function' ||
+    typeof service.spawnTeammate !== 'function' ||
+    typeof service.sendMessage !== 'function' ||
+    typeof service.createTask !== 'function' ||
+    typeof service.getTask !== 'function' ||
+    typeof service.listTasks !== 'function' ||
+    typeof service.updateTask !== 'function' ||
+    typeof service.waitForChange !== 'function' ||
+    typeof service.interrupt !== 'function'
+  ) {
     throw new TeamCapabilityUnavailableError()
   }
   return service as TeamServiceLike
@@ -144,8 +158,13 @@ export class TeamNativeAdapter {
     } catch {
       throw new TeamIdentityUnavailableError()
     }
-    if (membership === undefined || membership.root !== agent || membership.role !== 'lead'
-      || typeof membership.id !== 'string' || membership.id.length === 0) {
+    if (
+      membership === undefined ||
+      membership.root !== agent ||
+      membership.role !== 'lead' ||
+      typeof membership.id !== 'string' ||
+      membership.id.length === 0
+    ) {
       throw new TeamIdentityUnavailableError()
     }
     return { service, agent, membership, teamId: membership.id }
@@ -167,8 +186,8 @@ export class TeamNativeAdapter {
     } catch {
       throw new TeamIdentityUnavailableError()
     }
-    if (membership === undefined || membership.root !== lead.agent || membership.role !== 'lead'
-      || membership.id !== lead.teamId) throw new TeamIdentityUnavailableError()
+    if (membership === undefined || membership.root !== lead.agent || membership.role !== 'lead' || membership.id !== lead.teamId)
+      throw new TeamIdentityUnavailableError()
     return { service, agent: lead.agent, membership, teamId: membership.id }
   }
 
@@ -218,8 +237,7 @@ export class TeamNativeAdapter {
       throw new TeamIdentityUnavailableError('owned child session ids must be an array')
     }
     const childIds = [...ownedChildSessionIds]
-    if (childIds.some(id => typeof id !== 'string' || id.trim().length === 0)
-      || new Set(childIds).size !== childIds.length) {
+    if (childIds.some(id => typeof id !== 'string' || id.trim().length === 0) || new Set(childIds).size !== childIds.length) {
       throw new TeamIdentityUnavailableError('owned child session ids must be unique non-empty identities')
     }
     if (childIds.length === 0) return
@@ -229,11 +247,7 @@ export class TeamNativeAdapter {
     } catch {
       throw new TeamIdentityUnavailableError('Team roster is unavailable for child identity verification')
     }
-    const directChildren = new Set(
-      members
-        .filter(member => member.role === 'teammate' && typeof member.id === 'string')
-        .map(member => member.id as string),
-    )
+    const directChildren = new Set(members.filter(member => member.role === 'teammate' && typeof member.id === 'string').map(member => member.id as string))
     if (childIds.some(id => id === exact.agent.id || !directChildren.has(id))) {
       throw new TeamIdentityUnavailableError('drain target is not an exact direct child of the Team Lead')
     }
@@ -255,7 +269,13 @@ export class TeamNativeAdapter {
   }
 }
 
-export function memberSnapshot(member: unknown): { memberId: string; name?: string; phase: 'provisioning' | 'active' | 'failed' | 'inactive'; status: string; sessionId?: string } {
+export function memberSnapshot(member: unknown): {
+  memberId: string
+  name?: string
+  phase: 'provisioning' | 'active' | 'failed' | 'inactive'
+  status: string
+  sessionId?: string
+} {
   if (member === null || typeof member !== 'object' || Array.isArray(member)) {
     throw new TeamIdentityUnavailableError('Team member view is malformed')
   }
@@ -264,18 +284,21 @@ export function memberSnapshot(member: unknown): { memberId: string; name?: stri
   if (memberId.length === 0) throw new TeamIdentityUnavailableError('Team member has no stable session identity')
   const status = typeof view.status === 'string' ? view.status : 'unknown'
   const rawPhase = view.phase
-  const phase = status === 'provisioning' || status === 'failed' || status === 'inactive'
-    ? status
-    : status === 'running'
-      ? 'active'
-      : rawPhase === 'provisioning' || rawPhase === 'failed' || rawPhase === 'active' || rawPhase === 'inactive'
-        ? rawPhase
-        : (() => { throw new TeamIdentityUnavailableError(`Team member ${memberId} has an unrecognized runtime status`) })()
+  const phase =
+    status === 'provisioning' || status === 'failed' || status === 'inactive'
+      ? status
+      : status === 'running'
+        ? 'active'
+        : rawPhase === 'provisioning' || rawPhase === 'failed' || rawPhase === 'active' || rawPhase === 'inactive'
+          ? rawPhase
+          : (() => {
+              throw new TeamIdentityUnavailableError(`Team member ${memberId} has an unrecognized runtime status`)
+            })()
   return {
     memberId,
     ...(typeof view.name === 'string' && view.name.length > 0 ? { name: view.name } : {}),
     phase,
     status,
-    ...(typeof view.id === 'string' ? { sessionId: view.id } : {}),
+    ...(typeof view.id === 'string' ? { sessionId: view.id } : {})
   }
 }

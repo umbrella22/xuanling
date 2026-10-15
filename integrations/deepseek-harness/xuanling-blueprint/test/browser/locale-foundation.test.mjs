@@ -15,7 +15,10 @@ import { BUILTIN_NODE_CATALOG, nodeDisplayTitle, nodeKindTitle } from '../../src
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const parameters = template => [...template.matchAll(/\{(\w+)\}/g)].map(match => match[1]).sort()
-const translate = dict => (key, params = {}) => (dict[key] ?? key).replace(/\{(\w+)\}/g, (token, name) => Object.hasOwn(params, name) ? String(params[name]) : token)
+const translate =
+  dict =>
+  (key, params = {}) =>
+    (dict[key] ?? key).replace(/\{(\w+)\}/g, (token, name) => (Object.hasOwn(params, name) ? String(params[name]) : token))
 
 test('C-01 product dictionaries have identical nonempty zh/en keys and interpolation contracts', () => {
   assert.equal(BLUEPRINT_LOCALE, 'xuanlingBlueprint')
@@ -31,7 +34,9 @@ test('C-01 typed namespace, standard props t and foundation descriptor coverage 
   const directory = mkdtempSync(resolve(tmpdir(), 'blueprint-locale-types-'))
   t.after(() => rmSync(directory, { recursive: true, force: true }))
   const entry = resolve(directory, 'contract.ts')
-  writeFileSync(entry, `
+  writeFileSync(
+    entry,
+    `
     import { en, zh } from ${JSON.stringify(resolve(packageRoot, 'src/client/locales.ts'))};
     import type { BlueprintLocaleProps, BlueprintLocaleKey } from ${JSON.stringify(resolve(packageRoot, 'src/client/locales.ts'))};
     import type { ViewMessageKey } from ${JSON.stringify(resolve(packageRoot, 'src/client/view-contract.ts'))};
@@ -48,11 +53,27 @@ test('C-01 typed namespace, standard props t and foundation descriptor coverage 
     // @ts-expect-error extra dictionary keys must be a compile error
     const extra = { ...en, 'not.a.blueprint.key': 'Wrong' } satisfies typeof dictionary;
     void foundation; void incomplete; void extra;
-  `)
-  const result = spawnSync(resolve(packageRoot, 'node_modules/.bin/tsc'), [
-    '--noEmit', '--skipLibCheck', '--strict', '--target', 'es2023', '--lib', 'es2023,dom',
-    '--module', 'esnext', '--moduleResolution', 'bundler', '--allowImportingTsExtensions', entry,
-  ], { cwd: directory, encoding: 'utf8' })
+  `
+  )
+  const result = spawnSync(
+    resolve(packageRoot, 'node_modules/.bin/tsc'),
+    [
+      '--noEmit',
+      '--skipLibCheck',
+      '--strict',
+      '--target',
+      'es2023',
+      '--lib',
+      'es2023,dom',
+      '--module',
+      'esnext',
+      '--moduleResolution',
+      'bundler',
+      '--allowImportingTsExtensions',
+      entry
+    ],
+    { cwd: directory, encoding: 'utf8' }
+  )
   assert.equal(result.status, 0, `LOCALE_TYPE_CONTRACT_FAILED:\n${result.stdout}\n${result.stderr}`)
 })
 
@@ -69,8 +90,10 @@ test('C-02 catalog display translations leave user names and unknown kinds origi
     assert.equal(nodeDisplayTitle({ kind: 'input', name: '' }, 0, t), '', 'explicit empty user name is still user content')
     assert.equal(nodeKindTitle('future.kind/原样', t), 'future.kind/原样', 'no guessed localized label for unknown kind')
     const port = '用户.port/ raw : {x}'
-    assert.equal(t('node.portAria', { nodeId: custom, port, direction: t('port.input'), kind: t('port.data') }),
-      dict['node.portAria'].replace('{nodeId}', custom).replace('{direction}', dict['port.input']).replace('{kind}', dict['port.data']).replace('{port}', port))
+    assert.equal(
+      t('node.portAria', { nodeId: custom, port, direction: t('port.input'), kind: t('port.data') }),
+      dict['node.portAria'].replace('{nodeId}', custom).replace('{direction}', dict['port.input']).replace('{kind}', dict['port.data']).replace('{port}', port)
+    )
   }
 })
 
@@ -80,13 +103,18 @@ test('C-01 every installed React Flow aria configuration seat has dictionary cop
     assert.ok(Object.hasOwn(en, `flow.${key}`), `MISSING_REACT_FLOW_ARIA_KEY:${key}`)
   }
   const t = translate(zh)
-  assert.equal(t('flow.node.a11yDescription.ariaLiveMessage', { direction: t('flow.direction.left'), x: 12, y: -5 }),
-    '节点向左移动。新位置：x 12，y -5')
+  assert.equal(t('flow.node.a11yDescription.ariaLiveMessage', { direction: t('flow.direction.left'), x: 12, y: -5 }), '节点向左移动。新位置：x 12，y -5')
 })
 
 test('C-01 every current durable Run and Attempt state has bilingual display copy; no speculative lifecycle states are introduced', () => {
   const known = [...new Set([...RUN_STATES, ...ATTEMPT_STATES])].sort()
-  assert.deepEqual(Object.keys(zh).filter(key => key.startsWith('state.')).map(key => key.slice(6)).sort(), known)
+  assert.deepEqual(
+    Object.keys(zh)
+      .filter(key => key.startsWith('state.'))
+      .map(key => key.slice(6))
+      .sort(),
+    known
+  )
   for (const state of known) assert.ok(Object.hasOwn(en, `state.${state}`), state)
 })
 
@@ -98,7 +126,7 @@ test('C-01 locale/framework imports erase fully from the browser bootstrap runti
   const manifest = JSON.parse(readFileSync(resolve(packageRoot, 'package.json'), 'utf8'))
   const lock = readPnpmLock(packageRoot)
   for (const name of ['@deepseek-ai/dsh-client-locale', '@deepseek-ai/dsh-client-ui-slots']) {
-    assert.equal(manifest.devDependencies[name], '0.2.1-alpha.2')
+    assert.equal(manifest.devDependencies[name], '0.2.1-alpha.3')
     assert.equal(manifest.dependencies?.[name], undefined, 'FRAMEWORK_TYPES_STAY_DEV_ONLY')
     assert.equal(hasPnpmImporterDependency(lock, 'devDependencies', name, manifest.devDependencies[name]), true)
   }
@@ -118,8 +146,14 @@ test('C-02 existing journey English status semantics remain exact; typed failure
   assert.equal(en['status.saved'], 'Saved host document.')
   assert.equal(en['status.loaded'], 'Loaded host document.')
   assert.equal(en['status.draftRestored'], 'Restored local document draft.')
-  assert.equal(zh['status.recentRunUnavailable'], '无法保存最近的运行记录；持久运行仍保留在宿主。', 'RUN_BINDING_WRITE_FAILURE_IS_NOT_A_READ_FAILURE_OR_LOST_DURABLE_RUN')
+  assert.equal(
+    zh['status.recentRunUnavailable'],
+    '无法保存最近的运行记录；持久运行仍保留在宿主。',
+    'RUN_BINDING_WRITE_FAILURE_IS_NOT_A_READ_FAILURE_OR_LOST_DURABLE_RUN'
+  )
   assert.equal(en['status.recentRunUnavailable'], 'Recent run binding unavailable; the durable run remains on the host.')
   assert.equal(translate(en)('status.runAdmitted', { state: 'running' }), 'Run admitted: running.')
   assert.equal(translate(en)('status.error', { code: 'blueprint/revision-conflict' }), 'Operation failed: blueprint/revision-conflict')
+  assert.equal(zh['resource.noDescription'], '暂无简介')
+  assert.equal(en['resource.noDescription'], 'No description')
 })

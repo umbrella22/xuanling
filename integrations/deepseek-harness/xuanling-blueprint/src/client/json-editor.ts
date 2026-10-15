@@ -8,9 +8,14 @@ import { json, jsonParseLinter } from '@codemirror/lang-json'
 import type { BlueprintLocaleProps } from './locales.ts'
 
 const { createElement: h, useEffect, useRef, useState } = React
-export const jsonEditorKeymap = [...standardKeymap, ...historyKeymap, indentWithTab,
-  { key: 'Mod-[', run: indentLess }, { key: 'Mod-]', run: indentMore },
-  { key: 'Ctrl-m', mac: 'Shift-Alt-m', run: toggleTabFocusMode }]
+export const jsonEditorKeymap = [
+  ...standardKeymap,
+  ...historyKeymap,
+  indentWithTab,
+  { key: 'Mod-[', run: indentLess },
+  { key: 'Mod-]', run: indentMore },
+  { key: 'Ctrl-m', mac: 'Shift-Alt-m', run: toggleTabFocusMode }
+]
 
 export interface JsonEditorProps {
   value?: string
@@ -31,72 +36,163 @@ const parse = jsonParseLinter()
 export function formatJson(view: EditorView): boolean {
   if (view.composing || view.state.readOnly) return false
   let text: string
-  try { text = JSON.stringify(JSON.parse(view.state.doc.toString()), null, 2) } catch { return false }
-  if (text !== view.state.doc.toString()) view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, annotations: Transaction.userEvent.of('input.format') })
+  try {
+    text = JSON.stringify(JSON.parse(view.state.doc.toString()), null, 2)
+  } catch {
+    return false
+  }
+  if (text !== view.state.doc.toString())
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, annotations: Transaction.userEvent.of('input.format') })
   return true
 }
 export function JsonEditor(props: JsonEditorProps) {
-  const latest = useRef(props); latest.current = props
-  const root = useRef<HTMLDivElement>(null), mount = useRef<HTMLDivElement>(null)
+  const latest = useRef(props)
+  latest.current = props
+  const root = useRef<HTMLDivElement>(null),
+    mount = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
   const [text, setText] = useState(props.value ?? props.defaultValue ?? '')
   const [issue, setIssue] = useState<{ line: number; column: number } | null>(null)
   const [active, setActive] = useState(false)
   const [attributes] = useState(() => new Compartment())
   const [readOnly] = useState(() => new Compartment())
-  const contentAttributes = () => EditorView.contentAttributes.of({ 'aria-label': latest.current.label, ...(latest.current['data-bp-json'] ? { 'data-bp-json': latest.current['data-bp-json']! } : {}), ...(latest.current['data-bp-run-input'] ? { 'data-bp-run-input': 'true' } : {}) })
+  const contentAttributes = () =>
+    EditorView.contentAttributes.of({
+      'aria-label': latest.current.label,
+      ...(latest.current['data-bp-json'] ? { 'data-bp-json': latest.current['data-bp-json']! } : {}),
+      ...(latest.current['data-bp-run-input'] ? { 'data-bp-run-input': 'true' } : {})
+    })
   useEffect(() => {
     // Closed details do not allocate a view. Once opened, keep its undo/IME state.
-    if (typeof IntersectionObserver === 'undefined') { setActive(true); return }
-    const observer = new IntersectionObserver(entries => { if (entries.some(entry => entry.isIntersecting)) { setActive(true); observer.disconnect() } })
+    if (typeof IntersectionObserver === 'undefined') {
+      setActive(true)
+      return
+    }
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) {
+        setActive(true)
+        observer.disconnect()
+      }
+    })
     if (root.current) observer.observe(root.current)
     return () => observer.disconnect()
   }, [])
   useEffect(() => {
     if (!active || !mount.current) return
-    const editor = new EditorView({ parent: mount.current, state: EditorState.create({ doc: latest.current.value ?? latest.current.defaultValue ?? '', extensions: [
-      json(), history(), lineNumbers(), bracketMatching(), indentOnInput(), syntaxHighlighting(HighlightStyle.define(defaultHighlightStyle.specs.map(spec => ({ ...spec, ...(spec.color ? { color: `color-mix(in srgb, ${spec.color} 65%, var(--bp-text))` } : {}) })))),
-      keymap.of(jsonEditorKeymap), EditorView.lineWrapping,
-      attributes.of(contentAttributes()), readOnly.of([EditorState.readOnly.of(!!latest.current.disabled), EditorView.editable.of(!latest.current.disabled)]),
-      ViewPlugin.define(v => {
-        const diagnose = () => {
-          const diagnostics = parse(v)
-          const first = diagnostics[0]
-          const line = first ? v.state.doc.lineAt(first.from) : null
-          const next = first && line ? { line: line.number, column: first.from - line.from + 1 } : null
-          queueMicrotask(() => { if (view.current === v) setIssue(next) })
-          // Localized, body-free diagnostics; no JSON contents are sent to Host.
-          return Decoration.set(diagnostics.filter(d => d.to > d.from).map(d => Decoration.mark({ class: 'bp-json-error' }).range(d.from, d.to)), true)
-        }
-        return { decorations: diagnose(), update(update) { if (update.docChanged) this.decorations = diagnose() } }
-      }, { decorations: plugin => plugin.decorations }),
-      EditorView.updateListener.of(update => {
-        if (!update.docChanged) return
-        const value = update.state.doc.toString(); setText(value)
-        if (!update.transactions.some(tr => tr.annotation(external))) latest.current.onChange?.(value)
-      }),
-    ] }) })
+    const editor = new EditorView({
+      parent: mount.current,
+      state: EditorState.create({
+        doc: latest.current.value ?? latest.current.defaultValue ?? '',
+        extensions: [
+          json(),
+          history(),
+          lineNumbers(),
+          bracketMatching(),
+          indentOnInput(),
+          syntaxHighlighting(
+            HighlightStyle.define(
+              defaultHighlightStyle.specs.map(spec => ({ ...spec, ...(spec.color ? { color: `color-mix(in srgb, ${spec.color} 65%, var(--bp-text))` } : {}) }))
+            )
+          ),
+          keymap.of(jsonEditorKeymap),
+          EditorView.lineWrapping,
+          attributes.of(contentAttributes()),
+          readOnly.of([EditorState.readOnly.of(!!latest.current.disabled), EditorView.editable.of(!latest.current.disabled)]),
+          ViewPlugin.define(
+            v => {
+              const diagnose = () => {
+                const diagnostics = parse(v)
+                const first = diagnostics[0]
+                const line = first ? v.state.doc.lineAt(first.from) : null
+                const next = first && line ? { line: line.number, column: first.from - line.from + 1 } : null
+                queueMicrotask(() => {
+                  if (view.current === v) setIssue(next)
+                })
+                // Localized, body-free diagnostics; no JSON contents are sent to Host.
+                return Decoration.set(
+                  diagnostics.filter(d => d.to > d.from).map(d => Decoration.mark({ class: 'bp-json-error' }).range(d.from, d.to)),
+                  true
+                )
+              }
+              return {
+                decorations: diagnose(),
+                update(update) {
+                  if (update.docChanged) this.decorations = diagnose()
+                }
+              }
+            },
+            { decorations: plugin => plugin.decorations }
+          ),
+          EditorView.updateListener.of(update => {
+            if (!update.docChanged) return
+            const value = update.state.doc.toString()
+            setText(value)
+            if (!update.transactions.some(tr => tr.annotation(external))) latest.current.onChange?.(value)
+          })
+        ]
+      })
+    })
     view.current = editor
-    return () => { view.current = null; editor.destroy() }
+    return () => {
+      view.current = null
+      editor.destroy()
+    }
   }, [active])
   useEffect(() => {
     const editor = view.current
     if (!editor) return
-    editor.dispatch({ effects: [attributes.reconfigure(contentAttributes()), readOnly.reconfigure([EditorState.readOnly.of(!!props.disabled), EditorView.editable.of(!props.disabled)])] })
+    editor.dispatch({
+      effects: [
+        attributes.reconfigure(contentAttributes()),
+        readOnly.reconfigure([EditorState.readOnly.of(!!props.disabled), EditorView.editable.of(!props.disabled)])
+      ]
+    })
   }, [active, props.label, props.disabled])
   useEffect(() => {
     if (props.value === undefined) return
     setText(props.value)
     const editor = view.current
-    if (editor && !editor.composing && editor.state.doc.toString() !== props.value) editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: props.value }, annotations: [external.of(true), Transaction.addToHistory.of(false)] })
+    if (editor && !editor.composing && editor.state.doc.toString() !== props.value)
+      editor.dispatch({
+        changes: { from: 0, to: editor.state.doc.length, insert: props.value },
+        annotations: [external.of(true), Transaction.addToHistory.of(false)]
+      })
   }, [active, props.value])
-  return h('div', { ref: root, className: 'bp-json-editor nodrag nowheel nopan', 'data-bp-json-editor': true, role: 'group', 'aria-label': props.label,
-    onBlur: event => {
-      if (!event.currentTarget.contains(event.relatedTarget as Node | null) && !view.current?.composing) latest.current.onBlur?.(view.current?.state.doc.toString() ?? text)
-    } },
-  h('div', { ref: mount, className: 'bp-json-surface', style: { minHeight: `${(props.rows ?? 3) * 1.5 + 1}em` } }),
-  props.name && h('input', { type: 'hidden', name: props.name, value: text }),
-  h('div', { className: 'bp-json-footer' },
-    h('span', { role: 'status', 'aria-live': 'polite', 'data-bp-json-valid': String(!issue) }, issue ? props.t('json.errorLocation', issue) : 'JSON'),
-    h('button', { type: 'button', disabled: props.disabled || !active, 'data-bp-action': 'format-json', onMouseDown: event => event.preventDefault(), onClick: () => { if (view.current) { formatJson(view.current); view.current.focus() } } }, props.t('json.format'))))
+  return h(
+    'div',
+    {
+      ref: root,
+      className: 'bp-json-editor nodrag nowheel nopan',
+      'data-bp-json-editor': true,
+      role: 'group',
+      'aria-label': props.label,
+      onBlur: event => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null) && !view.current?.composing)
+          latest.current.onBlur?.(view.current?.state.doc.toString() ?? text)
+      }
+    },
+    h('div', { ref: mount, className: 'bp-json-surface', style: { minHeight: `${(props.rows ?? 3) * 1.5 + 1}em` } }),
+    props.name && h('input', { type: 'hidden', name: props.name, value: text }),
+    h(
+      'div',
+      { className: 'bp-json-footer' },
+      h('span', { role: 'status', 'aria-live': 'polite', 'data-bp-json-valid': String(!issue) }, issue ? props.t('json.errorLocation', issue) : 'JSON'),
+      h(
+        'button',
+        {
+          type: 'button',
+          disabled: props.disabled || !active,
+          'data-bp-action': 'format-json',
+          onMouseDown: event => event.preventDefault(),
+          onClick: () => {
+            if (view.current) {
+              formatJson(view.current)
+              view.current.focus()
+            }
+          }
+        },
+        props.t('json.format')
+      )
+    )
+  )
 }

@@ -13,21 +13,41 @@ import { observeMemberChunk, teamStageAbortError, type TeamStageRuntime } from '
 export interface MemberCapture {
   value: unknown
   evidence: {
-    producerSessionId: string; callId: string; rootCallId: string; turnId: string; completedTurnId: string
-    startLogSeq: number; captureLogSeq: number; endLogSeq: number
-    completedAt: number; flushedAt: number; quiescentAt: number
+    producerSessionId: string
+    callId: string
+    rootCallId: string
+    turnId: string
+    completedTurnId: string
+    startLogSeq: number
+    captureLogSeq: number
+    endLogSeq: number
+    completedAt: number
+    flushedAt: number
+    quiescentAt: number
   }
 }
 
-export function installTeamMemberScope(agent: Agent, options: {
-  schema: ObjectJsonSchema; effectiveToolNames: readonly string[]; taskId: string
-  nativeNames: readonly string[]; primary: boolean
-  observerContext: Context
-  signal: AbortSignal
-  store: RunStore; runId: string; stageId: string; teamId: string; attemptId: string; memberId: string; nativeName: string
-  activity?: TeamStageRuntime['members'][number]
-  onUnknown(): void
-}): { finish(signal: AbortSignal): Promise<MemberCapture>; assertQuiescent(): void; dispose(): void } {
+export function installTeamMemberScope(
+  agent: Agent,
+  options: {
+    schema: ObjectJsonSchema
+    effectiveToolNames: readonly string[]
+    taskId: string
+    nativeNames: readonly string[]
+    primary: boolean
+    observerContext: Context
+    signal: AbortSignal
+    store: RunStore
+    runId: string
+    stageId: string
+    teamId: string
+    attemptId: string
+    memberId: string
+    nativeName: string
+    activity?: TeamStageRuntime['members'][number]
+    onUnknown(): void
+  }
+): { finish(signal: AbortSignal): Promise<MemberCapture>; assertQuiescent(): void; dispose(): void } {
   const ctx = agent.ctx
   // Native continuable completion disposes the child scope before emitting
   // agent/disposed. These observers belong to the stage, not that child scope.
@@ -35,8 +55,9 @@ export function installTeamMemberScope(agent: Agent, options: {
   const tools = ctx.tools
   const removers: Array<() => void> = []
   const forbidden = new Set(['spawn_teammate', 'team_task_create', 'interrupt_agent', 'blueprint_start'])
-  const businessNames = options.effectiveToolNames.filter(name => !forbidden.has(name)
-    && !TEAM_MEMBER_TOOLS.includes(name as typeof TEAM_MEMBER_TOOLS[number]))
+  const businessNames = options.effectiveToolNames.filter(
+    name => !forbidden.has(name) && !TEAM_MEMBER_TOOLS.includes(name as (typeof TEAM_MEMBER_TOOLS)[number])
+  )
   const names = new Set([...businessNames, ...TEAM_MEMBER_TOOLS])
   // Policy remains child-owned for its whole continuation lifetime. Disposal
   // below only removes observers; it must never widen a surviving child.
@@ -49,8 +70,8 @@ export function installTeamMemberScope(agent: Agent, options: {
     let allowed = !options.signal.aborted && exec.agent === agent && (exec.name === 'run_code' || exec.name === STRUCTURED_OUTPUT_TOOL || names.has(exec.name))
     if (exec.name === 'team_task_get' || exec.name === 'team_task_update') allowed &&= args?.task_id === options.taskId
     if (exec.name === 'team_task_update') allowed &&= options.primary && (args?.action === 'claim' || args?.action === 'complete')
-    if (exec.name === 'send_message') allowed &&= args?.target === 'lead'
-      || (args?.target !== options.nativeName && options.nativeNames.includes(args?.target as string))
+    if (exec.name === 'send_message')
+      allowed &&= args?.target === 'lead' || (args?.target !== options.nativeName && options.nativeNames.includes(args?.target as string))
     if (allowed) return undefined
     denials.add('teamstage-tool-not-permitted')
     return 'blueprint Team member tool permission denied'
@@ -83,8 +104,7 @@ export function installTeamMemberScope(agent: Agent, options: {
   const assertUnchanged = (seq: number) => {
     options.signal.throwIfAborted()
     const live = registered()
-    if (invalidated || agent.status !== 'idle' || agent.session.seq !== seq
-      || (live !== agent && !(live === undefined && disposedSeq === seq))) {
+    if (invalidated || agent.status !== 'idle' || agent.session.seq !== seq || (live !== agent && !(live === undefined && disposedSeq === seq))) {
       throw new TeamDriverError('teamstage-quiescence-unverified')
     }
   }
@@ -100,8 +120,14 @@ export function installTeamMemberScope(agent: Agent, options: {
     if (denials.size) throw new TeamDriverError([...denials][0]!)
     if (end?.kind === 'error') throw new TeamDriverError('teamstage-provider-failed')
     if (end?.kind === 'aborted') throw new TeamDriverError('teamstage-cancelled')
-    if (end?.kind !== 'completed' || candidate === undefined || end.id !== candidate.turnId || turn?.id !== candidate.turnId
-      || candidate.captureLogSeq === undefined || candidate.captureLogSeq >= end.seq) {
+    if (
+      end?.kind !== 'completed' ||
+      candidate === undefined ||
+      end.id !== candidate.turnId ||
+      turn?.id !== candidate.turnId ||
+      candidate.captureLogSeq === undefined ||
+      candidate.captureLogSeq >= end.seq
+    ) {
       throw new TeamDriverError(invalid ? 'teamstage-output-invalid' : 'teamstage-structured-output-missing')
     }
     if (registered() !== agent) throw new TeamDriverError('teamstage-quiescence-unverified')
@@ -126,81 +152,126 @@ export function installTeamMemberScope(agent: Agent, options: {
     assertUnchanged(seq)
     if (denials.size) throw new TeamDriverError([...denials][0]!)
     verifiedSeq = seq
-    return { value: captured.value, evidence: {
-      producerSessionId: agent.id, callId: captured.callId, rootCallId: captured.rootCallId,
-      turnId: `${agent.id}:${captured.turnId}`, completedTurnId: `${agent.id}:${completed.id}`,
-      startLogSeq, captureLogSeq: captured.captureLogSeq!, endLogSeq: completed.seq,
-      completedAt: completed.at, flushedAt, quiescentAt: Date.now(),
-    } }
-  }
-  removers.push(observer.on('agent/status', ({ agent: changed, status }) => {
-    if (changed !== agent) return
-    if (status === 'running') {
-      if (completionSeq !== undefined) invalidated = true
-    } else if (registered() === agent) {
-      idleSeq = agent.session.seq
-      if (end?.kind === 'completed' && candidate !== undefined && completion === undefined) {
-        completion = captureCompletion()
-        void completion.catch(() => {})
+    return {
+      value: captured.value,
+      evidence: {
+        producerSessionId: agent.id,
+        callId: captured.callId,
+        rootCallId: captured.rootCallId,
+        turnId: `${agent.id}:${captured.turnId}`,
+        completedTurnId: `${agent.id}:${completed.id}`,
+        startLogSeq,
+        captureLogSeq: captured.captureLogSeq!,
+        endLogSeq: completed.seq,
+        completedAt: completed.at,
+        flushedAt,
+        quiescentAt: Date.now()
       }
     }
-  }))
-  removers.push(observer.on('agent/disposed', ({ agent: disposed }) => {
-    if (disposed !== agent) return
-    if (agent.status === 'idle' && idleSeq === agent.session.seq && completionSeq === idleSeq && registered() === undefined) disposedSeq = idleSeq
-    else invalidated = true
-  }))
-  removers.push(observer.on('agent/created', ({ agent: created }) => {
-    if (created.id === agent.id) invalidated = true
-  }, true))
-  removers.push(observer.on('session/event', (session, event) => {
-    if (session !== agent.session || event.seq < startLogSeq) return
-    if (completionSeq !== undefined && event.seq >= completionSeq) invalidated = true
-    if (event.type === 'turn/start') turn = { id: event.data.turn, start: event.seq }
-    if (event.type === 'tool/result' && candidate && event.data.turn === candidate.turnId
-      && event.data.message.toolCallId === candidate.rootCallId && !event.data.message.isError) candidate.captureLogSeq = event.seq
-    if (event.type === 'turn/end') end = { id: event.data.turn, seq: event.seq, kind: event.data.reason.kind, at: event.time }
-  }))
+  }
+  removers.push(
+    observer.on('agent/status', ({ agent: changed, status }) => {
+      if (changed !== agent) return
+      if (status === 'running') {
+        if (completionSeq !== undefined) invalidated = true
+      } else if (registered() === agent) {
+        idleSeq = agent.session.seq
+        if (end?.kind === 'completed' && candidate !== undefined && completion === undefined) {
+          completion = captureCompletion()
+          void completion.catch(() => {})
+        }
+      }
+    })
+  )
+  removers.push(
+    observer.on('agent/disposed', ({ agent: disposed }) => {
+      if (disposed !== agent) return
+      if (agent.status === 'idle' && idleSeq === agent.session.seq && completionSeq === idleSeq && registered() === undefined) disposedSeq = idleSeq
+      else invalidated = true
+    })
+  )
+  removers.push(
+    observer.on(
+      'agent/created',
+      ({ agent: created }) => {
+        if (created.id === agent.id) invalidated = true
+      },
+      true
+    )
+  )
+  removers.push(
+    observer.on('session/event', (session, event) => {
+      if (session !== agent.session || event.seq < startLogSeq) return
+      if (completionSeq !== undefined && event.seq >= completionSeq) invalidated = true
+      if (event.type === 'turn/start') turn = { id: event.data.turn, start: event.seq }
+      if (
+        event.type === 'tool/result' &&
+        candidate &&
+        event.data.turn === candidate.turnId &&
+        event.data.message.toolCallId === candidate.rootCallId &&
+        !event.data.message.isError
+      )
+        candidate.captureLogSeq = event.seq
+      if (event.type === 'turn/end') end = { id: event.data.turn, seq: event.seq, kind: event.data.reason.kind, at: event.time }
+    })
+  )
   if (options.activity) {
     const activity = options.activity
-    removers.push(observer.on('llm/stream', async function* (request, next) {
-      if (request.sessionId !== agent.id || registered() !== agent || invalidated) { yield* next(); return }
-      const ordinal = ++currentStreamOrdinal
-      activeStreams++
-      activity.activity = 'waiting_model'
-      activity.updatedAt = activity.requestStartedAt = Date.now()
-      activity.requestOrdinal = ordinal
-      activity.textDeltas = activity.reasoningDeltas = activity.toolCallDeltas = 0
-      delete activity.lastProgressAt
-      try { for await (const chunk of next()) { if (ordinal === currentStreamOrdinal) observeMemberChunk(activity, chunk); yield chunk } }
-      finally {
-        activeStreams = Math.max(0, activeStreams - 1)
-        settleActivity()
-      }
-    }))
-    removers.push(observer.on('tools/execute', async (exec, next) => {
-      if (exec.agent !== agent) return await next()
-      activeToolExecutions++
-      activity.activity = 'executing_tool'; activity.updatedAt = Date.now()
-      try { return await next() }
-      finally { activeToolExecutions = Math.max(0, activeToolExecutions - 1); settleActivity() }
-    }))
+    removers.push(
+      observer.on('llm/stream', async function* (request, next) {
+        if (request.sessionId !== agent.id || registered() !== agent || invalidated) {
+          yield* next()
+          return
+        }
+        const ordinal = ++currentStreamOrdinal
+        activeStreams++
+        activity.activity = 'waiting_model'
+        activity.updatedAt = activity.requestStartedAt = Date.now()
+        activity.requestOrdinal = ordinal
+        activity.textDeltas = activity.reasoningDeltas = activity.toolCallDeltas = 0
+        delete activity.lastProgressAt
+        try {
+          for await (const chunk of next()) {
+            if (ordinal === currentStreamOrdinal) observeMemberChunk(activity, chunk)
+            yield chunk
+          }
+        } finally {
+          activeStreams = Math.max(0, activeStreams - 1)
+          settleActivity()
+        }
+      })
+    )
+    removers.push(
+      observer.on('tools/execute', async (exec, next) => {
+        if (exec.agent !== agent) return await next()
+        activeToolExecutions++
+        activity.activity = 'executing_tool'
+        activity.updatedAt = Date.now()
+        try {
+          return await next()
+        } finally {
+          activeToolExecutions = Math.max(0, activeToolExecutions - 1)
+          settleActivity()
+        }
+      })
+    )
   }
-  removers.push(observer.on('tools/result', function (this: unknown, exec, result) {
-    if (exec.agent !== agent) return
-    if (result.isError) {
-      if (exec.name === STRUCTURED_OUTPUT_TOOL && result.error.info?.code === 'INVALID_ARGS') invalid = true
-      else denials.add('teamstage-tool-rejected')
-    }
-    if (exec.name === STRUCTURED_OUTPUT_TOOL && !result.isError && turn && exec.parent !== undefined) nested = { exec, turnId: turn.id }
-    const captured = structured.captured()
-    if (!captured || candidate || result.isError || !turn) return
-    const actual = exec.name === STRUCTURED_OUTPUT_TOOL && exec.parent === undefined ? exec
-      : nested?.exec.parent === exec.token ? nested.exec : undefined
-    if (!actual) return
-    invalid = false
-    candidate = { callId: actual.callId, rootCallId: actual.rootCallId, turnId: nested?.turnId ?? turn.id, value: captured.value }
-  }))
+  removers.push(
+    observer.on('tools/result', function (this: unknown, exec, result) {
+      if (exec.agent !== agent) return
+      if (result.isError) {
+        if (exec.name === STRUCTURED_OUTPUT_TOOL && result.error.info?.code === 'INVALID_ARGS') invalid = true
+        else denials.add('teamstage-tool-rejected')
+      }
+      if (exec.name === STRUCTURED_OUTPUT_TOOL && !result.isError && turn && exec.parent !== undefined) nested = { exec, turnId: turn.id }
+      const captured = structured.captured()
+      if (!captured || candidate || result.isError || !turn) return
+      const actual = exec.name === STRUCTURED_OUTPUT_TOOL && exec.parent === undefined ? exec : nested?.exec.parent === exec.token ? nested.exec : undefined
+      if (!actual) return
+      invalid = false
+      candidate = { callId: actual.callId, rootCallId: actual.rootCallId, turnId: nested?.turnId ?? turn.id, value: captured.value }
+    })
+  )
   // Native mutation tools retain their own implementations/approval. The
   // scoped around-dispatch layer adds Blueprint durability before delegation.
   // An error here cannot prove the native journal was untouched.
@@ -210,9 +281,16 @@ export function installTeamMemberScope(agent: Agent, options: {
     options.signal.throwIfAborted()
     try {
       let observedTask: { taskId: string; taskRevision: number; status: string } | undefined
-      return await runner.dispatch({ store: options.store, runId: options.runId, stageId: options.stageId,
-        teamId: options.teamId, actorSessionId: agent.id, memberId: options.memberId, memberName: options.nativeName,
-        taskId: options.taskId, effectId: `team-tool:${options.attemptId}:${randomUUID()}`,
+      return await runner.dispatch({
+        store: options.store,
+        runId: options.runId,
+        stageId: options.stageId,
+        teamId: options.teamId,
+        actorSessionId: agent.id,
+        memberId: options.memberId,
+        memberName: options.nativeName,
+        taskId: options.taskId,
+        effectId: `team-tool:${options.attemptId}:${randomUUID()}`,
         kind: exec.name === 'send_message' ? 'message' : 'task-update',
         effect: async () => {
           const previous = exec.name === 'team_task_update' ? (await options.store.get(options.runId)).teamStage : undefined
@@ -222,21 +300,34 @@ export function installTeamMemberScope(agent: Agent, options: {
             const args = exec.arguments as Record<string, unknown>
             const task = result.value as Record<string, unknown> | null
             const expectedRevision = args.expected_revision
-            if (previous?.taskId !== options.taskId || previous.taskRevision === undefined
-              || typeof expectedRevision !== 'number' || !Number.isSafeInteger(expectedRevision) || expectedRevision < 1
-              || !task || task.id !== options.taskId || task.revision !== expectedRevision + 1
-              || task.status !== (args.action === 'claim' ? 'in_progress' : 'completed')) {
+            if (
+              previous?.taskId !== options.taskId ||
+              previous.taskRevision === undefined ||
+              typeof expectedRevision !== 'number' ||
+              !Number.isSafeInteger(expectedRevision) ||
+              expectedRevision < 1 ||
+              !task ||
+              task.id !== options.taskId ||
+              task.revision !== expectedRevision + 1 ||
+              task.status !== (args.action === 'claim' ? 'in_progress' : 'completed')
+            ) {
               throw new TeamDriverError('teamstage-team-effect-unknown')
             }
             observedTask = { taskId: options.taskId, taskRevision: task.revision as number, status: task.status as string }
             // Publish the real successful mutation before returning to the
             // model. Cancellation freezes this revision; a cutoff race still
             // rejects the observation and preserves the unknown native effect.
-            await options.store.observeTeamTaskRevision(options.runId,
-              { taskId: observedTask.taskId, taskRevision: observedTask.taskRevision }, previous.taskRevision)
+            await options.store.observeTeamTaskRevision(
+              options.runId,
+              { taskId: observedTask.taskId, taskRevision: observedTask.taskRevision },
+              previous.taskRevision
+            )
           }
           return result
-        }, result: () => ({ ok: true, ...observedTask }), unknown: () => true })
+        },
+        result: () => ({ ok: true, ...observedTask }),
+        unknown: () => true
+      })
     } catch (error) {
       options.onUnknown()
       throw error
@@ -256,6 +347,8 @@ export function installTeamMemberScope(agent: Agent, options: {
       if (verifiedSeq === undefined) throw new TeamDriverError('teamstage-quiescence-unverified')
       assertUnchanged(verifiedSeq)
     },
-    dispose() { for (const remove of removers.splice(0).reverse()) remove() },
+    dispose() {
+      for (const remove of removers.splice(0).reverse()) remove()
+    }
   }
 }

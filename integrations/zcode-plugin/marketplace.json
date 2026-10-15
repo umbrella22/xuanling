@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "xuanling-mcp",
-      "version": "0.6.0",
+      "version": "0.6.1",
       "description": "Cross-platform stdio MCP server with typed filesystem, process, project, artifact, session, and Memory tools.",
       "author": {
         "name": "umbrella22 and XuanLing contributors",
@@ -19,7 +19,7 @@
         "source": "github",
         "repo": "umbrella22/xuanling-zcode-marketplace",
         "path": "plugins/xuanling-mcp",
-        "ref": "xuanling-mcp-v0.6.0"
+        "ref": "xuanling-mcp-v0.6.1"
       },
       "category": "Developer Tools",
       "policy": {
@@ -29,7 +29,7 @@
     },
     {
       "name": "xuanling-mcp-replace",
-      "version": "0.6.0",
+      "version": "0.6.1",
       "description": "Opt-in ZCode filesystem replacement that routes file operations through XuanLing and enforces CAS on mutations.",
       "author": {
         "name": "umbrella22 and XuanLing contributors",
@@ -40,7 +40,7 @@
         "source": "github",
         "repo": "umbrella22/xuanling-zcode-marketplace",
         "path": "plugins/xuanling-mcp-replace",
-        "ref": "xuanling-mcp-replace-v0.6.0"
+        "ref": "xuanling-mcp-replace-v0.6.1"
       },
       "category": "Developer Tools",
       "policy": {

@@ -25,16 +25,18 @@ const cases = [
   { id: 'boolean-false', type: 'boolean', input: false },
   { id: 'number', type: 'number', input: -12.5 },
   { id: 'zero', type: 'number', input: 0 },
-  { id: 'null', type: 'null', input: null },
+  { id: 'null', type: 'null', input: null }
 ]
 
 for (const { id, type, input } of cases) {
   test(`C-08/C-04 saved-service ${id}: exact Agent input and canonical typed diagnostics`, async t => {
-    const h = await harness(t, { onTurn: async call => {
-      // Read the real durable intent before the public Agent turn completes.
-      call.beforeResult = (await records(h))[0]
-      call.finish()
-    } })
+    const h = await harness(t, {
+      onTurn: async call => {
+        // Read the real durable intent before the public Agent turn completes.
+        call.beforeResult = (await records(h))[0]
+        call.finish()
+      }
+    })
     assert.ok(h.ctx instanceof Context, 'fixture: use installed public Context')
     assert.ok(h.nativeTools instanceof ToolRuntime, 'fixture: parent has real installed Tools')
     const doc = await h.save(definition())
@@ -44,7 +46,9 @@ for (const { id, type, input } of cases) {
     const inputJson = `\n  ${JSON.stringify(input, null, 2)}\t `
     const requestId = `input-representation-${id}`
     const preflight = await h.service.preflightRun({
-      blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, inputJson,
+      blueprintId: doc.blueprintId,
+      expectedRevision: doc.documentRevision,
+      inputJson
     })
     assert.equal(preflight.canStart, true, 'fixture: real Host preflight admits the saved Agent definition')
     assert.equal(preflight.documentRevision, doc.documentRevision)
@@ -89,7 +93,10 @@ for (const { id, type, input } of cases) {
     assert.equal(replay.runId, admitted.runId, 'C-08: identical request/payload replays the canonical Run')
     assert.equal(replay.replayed, true)
     assert.equal(h.host.calls.length, 1, 'C-08: replay does not dispatch another Agent')
-    assert.deepEqual((await records(h)).find(run => run.runId === admitted.runId), record)
+    assert.deepEqual(
+      (await records(h)).find(run => run.runId === admitted.runId),
+      record
+    )
 
     // No fixture decode/trim: this is the actual public Session followup text.
     const expected = type === 'string' ? input : canonical

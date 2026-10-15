@@ -9,30 +9,53 @@ import { RuntimeSnapshots } from '../../src/resources/runtime-snapshots.ts'
 import { harness, definition, agentNode, agentResources, records, drain, sha256 } from '../runtime-contracts/agent-fixtures.mjs'
 
 function teamDefinition() {
-  return definition([agentNode({
-    outputSchemaRef: 'answerSchema',
-    teamStage: {
-      task: { subject: 'Review output', description: 'Review the structured output.' },
-      members: [{ name: 'reviewer', description: 'Review schema', agentRef: 'worker', context: 'fresh' }],
-      requiredChecks: ['schema'],
-    },
-  })], { ...agentResources, answerSchema: { kind: 'schema', path: 'lib/schemas/answer.json' } })
+  return definition(
+    [
+      agentNode({
+        outputSchemaRef: 'answerSchema',
+        teamStage: {
+          task: { subject: 'Review output', description: 'Review the structured output.' },
+          members: [{ name: 'reviewer', description: 'Review schema', agentRef: 'worker', context: 'fresh' }],
+          requiredChecks: ['schema']
+        }
+      })
+    ],
+    { ...agentResources, answerSchema: { kind: 'schema', path: 'lib/schemas/answer.json' } }
+  )
 }
 
 async function fixture(t) {
   const agentTurns = []
   const teamEffects = []
-  const h = await harness(t, { onTurn: call => { agentTurns.push('scripted-turn'); call.finish() } })
-  h.ctx.provide('agentTeams', Object.fromEntries([
-    'membership', 'listMembers', 'createTask', 'spawnTeammate', 'sendMessage',
-    'getTask', 'listTasks', 'updateTask', 'waitForChange', 'interrupt',
-  ].map(name => [name, () => { teamEffects.push(name); assert.fail(`unexpected Team effect: ${name}`) }])))
+  const h = await harness(t, {
+    onTurn: call => {
+      agentTurns.push('scripted-turn')
+      call.finish()
+    }
+  })
+  h.ctx.provide(
+    'agentTeams',
+    Object.fromEntries(
+      ['membership', 'listMembers', 'createTask', 'spawnTeammate', 'sendMessage', 'getTask', 'listTasks', 'updateTask', 'waitForChange', 'interrupt'].map(
+        name => [
+          name,
+          () => {
+            teamEffects.push(name)
+            assert.fail(`unexpected Team effect: ${name}`)
+          }
+        ]
+      )
+    )
+  )
   return { ...h, agentTurns, teamEffects }
 }
 
 const internalArgs = (h, value) => ({
-  definitionJson: JSON.stringify(value), inputJson: '{}',
-  runtimeRoot: h.runtimeRoot, rootDir: h.rootDir, requestId: randomUUID(),
+  definitionJson: JSON.stringify(value),
+  inputJson: '{}',
+  runtimeRoot: h.runtimeRoot,
+  rootDir: h.rootDir,
+  requestId: randomUUID()
 })
 
 async function seedQueued(h, value) {
@@ -40,21 +63,29 @@ async function seedQueued(h, value) {
   const opened = await openBlueprintDomain({ backend: 'json', path: join(h.runtimeRoot, 'store') })
   try {
     const store = new RunStore(opened.domain)
-    const { runId } = await store.createRun({ scope: 'run', requestId: args.requestId,
-      payloadFingerprint: sha256(`${args.definitionJson}\0${args.inputJson}`) },
-    'frozen-fixture-revision', args.definitionJson, args.inputJson)
+    const { runId } = await store.createRun(
+      { scope: 'run', requestId: args.requestId, payloadFingerprint: sha256(`${args.definitionJson}\0${args.inputJson}`) },
+      'frozen-fixture-revision',
+      args.definitionJson,
+      args.inputJson
+    )
     await new RuntimeSnapshots(h.runtimeRoot).freezePackage(runId, value, h.rootDir)
     const record = await store.get(runId)
     assert.equal(record.state, 'queued', 'fixture must start from a valid durable queued Run')
     assert.deepEqual(record.attempts, [])
     return record
-  } finally { await opened.close() }
+  } finally {
+    await opened.close()
+  }
 }
 
 function observed(h, stored) {
-  return { agentCreates: h.host.calls.length, agentTurns: h.agentTurns.length,
-    teamEffects: h.teamEffects, runs: stored.map(record => ({ state: record.state,
-      results: record.attempts.map(attempt => attempt.result?.evidence) })) }
+  return {
+    agentCreates: h.host.calls.length,
+    agentTurns: h.agentTurns.length,
+    teamEffects: h.teamEffects,
+    runs: stored.map(record => ({ state: record.state, results: record.attempts.map(attempt => attempt.result?.evidence) }))
+  }
 }
 
 function noEffects(h) {
@@ -66,7 +97,11 @@ function noEffects(h) {
 test('W1.3 internal admission refuses undeployed TeamStage before Run or ordinary Agent effects', async t => {
   const h = await fixture(t)
   let refusal
-  try { await h.service.startRun(internalArgs(h, teamDefinition())) } catch (error) { refusal = error }
+  try {
+    await h.service.startRun(internalArgs(h, teamDefinition()))
+  } catch (error) {
+    refusal = error
+  }
   await drain(h)
   const stored = await records(h)
   t.diagnostic(JSON.stringify(observed(h, stored)))

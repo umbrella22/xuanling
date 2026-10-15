@@ -33,7 +33,11 @@ export function semanticProjection(definition: BlueprintDefinition): unknown {
   const ordered = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(ordered)
     if (value !== null && typeof value === 'object') {
-      return Object.fromEntries(Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([k, v]) => [k, ordered(v)]))
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>)
+          .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+          .map(([k, v]) => [k, ordered(v)])
+      )
     }
     return value
   }
@@ -48,7 +52,7 @@ function collectResourceFiles(definition: BlueprintDefinition, rootDir: string, 
     if (typeof ref.path !== 'string') continue
     const absolute = resolve(rootDir, ref.path)
     const rel = relative(rootDir, absolute)
-    if (rel.startsWith('..') || resolve(absolute) !== absolute && !absolute.startsWith(resolve(rootDir) + sep)) {
+    if (rel.startsWith('..') || (resolve(absolute) !== absolute && !absolute.startsWith(resolve(rootDir) + sep))) {
       issues.push(`resource "${refId}" escapes the blueprint root: ${ref.path}`)
       continue
     }
@@ -91,16 +95,11 @@ export function computeRevision(input: RevisionInput): DefinitionRevision {
     error.name = 'RevisionInputMissingError'
     throw error
   }
-  const fileEntries = [...files.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+  const fileEntries = [...files.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
   const fileLines = fileEntries.map(([path, digest]) => `${path}\u0000${digest}\n`).join('')
-  const semantic = sha256(Buffer.concat([
-    Buffer.from('xuanling-blueprint-semantic-v1\u0000'),
-    Buffer.from(JSON.stringify(semanticProjection(definition))),
-    Buffer.from(fileLines),
-  ]))
-  const layout = sha256(Buffer.concat([
-    Buffer.from('xuanling-blueprint-layout-v1\u0000'),
-    Buffer.from(JSON.stringify(definition.presentation ?? null)),
-  ]))
+  const semantic = sha256(
+    Buffer.concat([Buffer.from('xuanling-blueprint-semantic-v1\u0000'), Buffer.from(JSON.stringify(semanticProjection(definition))), Buffer.from(fileLines)])
+  )
+  const layout = sha256(Buffer.concat([Buffer.from('xuanling-blueprint-layout-v1\u0000'), Buffer.from(JSON.stringify(definition.presentation ?? null))]))
   return { semantic, layout, files: Object.fromEntries(fileEntries) }
 }

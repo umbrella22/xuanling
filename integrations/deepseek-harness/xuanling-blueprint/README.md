@@ -3,16 +3,18 @@
 [简体中文](README-ZH.md) · `@xuanling-rs/xuanling-dsh-blueprint`
 
 Turn inputs, Agent tasks, decisions and outputs into reusable workflows inside DeepSeek Harness (DSH).
-Edit a graph, choose existing DSH Agents, Skills and MCP tools, select a model for each Agent task,
-then inspect the recorded results. DSH provides models, native conversations and tool permissions;
-Blueprint adds the canvas, saved definitions, resource snapshots and durable Run records.
+Edit a graph, choose existing DSH Agents, Skills and MCP tools when a task needs them, select a model
+for each Agent task, then inspect the recorded results. DSH provides models, native conversations and
+tool permissions; Blueprint adds the canvas, saved definitions, resource snapshots and durable Run
+records. The resource sidebar groups Agent, Skill, MCP and other resources; node display settings
+control presentation and new connection entry points without changing execution contracts.
 
 ## Install
 
 Install the published package into the same profile as your DSH browser:
 
 ```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.6.0
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.6.1
 ```
 
 Restart that profile and refresh DSH. Replace `web` with your actual profile;
@@ -42,7 +44,11 @@ opens a draft automatically. Creating or saving a blueprint does not run it.
 1. Drag **Input**, **Agent task** and **Output** from the node library onto the
    canvas. Double-clicking empty space also opens node search.
 2. Select each node and set these ports in **Inspector**. Remove unused default
-   ports and click **Apply ports** after editing.
+   ports and click **Apply ports** after editing. **Port visibility and connections**
+   lets you independently toggle control, data input and data output sides. These
+   switches affect presentation and new connections only; they do not delete port
+   declarations or change execution order, data flow or existing edges. A side with
+   an existing edge stays visible until that edge is disconnected.
 
    | Node | Input port | Output port |
    | --- | --- | --- |
@@ -54,7 +60,10 @@ opens a draft automatically. Creating or saving a blueprint does not run it.
    `Agent task.result → Output.value`. Data connections require matching types.
 4. Select the Agent task. In **Agent binding**, choose an existing DSH Agent
    preset. DSH resources appear first; blueprint resources follow. Optionally
-   select **Skill bindings** and **Toolset bindings** for the task.
+   select **Skill bindings** and **Toolset bindings** for the task. Input, Output,
+   Condition, Join and Approval nodes hide executable Agent/Skill/Tool/Model fields;
+   any original references remain in the definition and are still checked by Host
+   preflight.
 5. In **Model route**, keep **DSH default** or choose **Selected model**, enter
    the configured provider/model and optional reasoning effort, then click
    **Apply node options**. Explicit selection takes priority; each new Attempt
@@ -81,6 +90,29 @@ approvals still apply to selected tools. Preflight does not establish MCP reacha
 For plain text, leave **Output schema binding** empty. A bound output schema
 requires DSH's accepted structured-output capture; JSON in ordinary assistant
 text does not satisfy that schema contract.
+
+## Canvas layout and resource management
+
+Group titles reserve their own header area, and measured node content participates in
+collision handling. The first mount and **Fit View** include both nodes and group
+headers. The runtime blueprint view uses the Host's remaining canvas height so the
+Attempt list and native composer do not cover the graph. Runtime inspection is
+read-only: pan, zoom, refresh and Fit View do not save layout or start, cancel or
+retry a Run.
+
+The resource sidebar has four stable categories: **Agent**, **Skill**, **MCP** and
+**Other**. Click **+** beside the resource library to open the add-resource dialog;
+click a row to inspect it. The dialog shows resource type, logical ID, display name,
+description, source, availability, a public configuration summary and advanced JSON.
+**Apply** creates one blueprint history edit; **Cancel** and Escape leave no partial
+write. Host resources that cannot be edited are shown in view mode.
+
+Display metadata (title and description) is stored separately from the execution
+`ResourceRef`. Resource details never read or display Host URLs, headers, env values,
+secrets, raw Skill bodies or private MCP configuration, and opening the details does
+not probe or call MCP. When the Host catalog is loading or unavailable, existing
+references are retained and shown as unknown/unavailable instead of being silently
+replaced.
 
 ## Let the Native Agent Create a Blueprint
 

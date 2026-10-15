@@ -7,10 +7,22 @@
  * the host side, never by silently overwriting.
  */
 
-import type { BlueprintDefinition, GraphEdge, GraphNode, ResourceRef, Presentation, PresentationNode, XY } from '../definition/types.ts'
+import type {
+  BlueprintDefinition,
+  GraphEdge,
+  GraphNode,
+  ResourceRef,
+  Presentation,
+  PresentationNode,
+  PresentationResourceMetadata,
+  XY
+} from '../definition/types.ts'
 import type { ConnectionVerdict, ViewTranslator } from './view-contract.ts'
 import { decodeClipboard, ClipboardError, edgeKey, endpointNode, referencedResourceIds, validatePresentation, validateResourceReferences } from './clipboard.ts'
 import type { ClipboardFragment, ClipboardPasteResult } from './clipboard.ts'
+import { projectLayoutCollisions } from './layout-collisions.ts'
+import { nodeContentMinimum } from './node-geometry.ts'
+import { connectedPortEdges, effectivePortVisibility, portSide } from './port-visibility.ts'
 import { nodeDisplayTitle } from './node-catalog.ts'
 
 export interface EditorNode {
@@ -82,9 +94,28 @@ interface HistoryEntry {
 
 export type AlignmentMode = 'left' | 'right' | 'top' | 'bottom' | 'center-x' | 'center-y'
 export type NodeMeasurements = ReadonlyMap<string, { width: number; height: number }>
-export type EditorCommandCode = 'presentation-invalid' | 'stale-selection' | 'missing-measurement' | 'pinned-node' | 'invalid-position' | 'no-definition' | 'transaction-async' | 'transaction-history' | 'layout-pending' | 'clipboard-resource-conflict'
+export type EditorCommandCode =
+  | 'presentation-invalid'
+  | 'stale-selection'
+  | 'missing-measurement'
+  | 'pinned-node'
+  | 'invalid-position'
+  | 'no-definition'
+  | 'transaction-async'
+  | 'transaction-history'
+  | 'layout-pending'
+  | 'clipboard-resource-conflict'
+  | 'port-visibility-connected'
+  | 'port-hidden'
+  | 'layout-collision-unresolved'
 export class EditorCommandError extends Error {
-  constructor(readonly code: EditorCommandCode, message: string = code) { super(message) }
+  constructor(
+    readonly code: EditorCommandCode,
+    message: string = code,
+    readonly params?: { edgeCount: number }
+  ) {
+    super(message)
+  }
 }
 
 const HISTORY_CAP = 100
@@ -131,7 +162,7 @@ export class GraphEditor {
       nodes: this.nodes.map(n => ({ ...structuredClone(n), inputs: { ...n.inputs }, outputs: { ...n.outputs } })),
       edges: structuredClone(this.edges),
       groups: this.groups.map(g => ({ ...g, nodeIds: [...g.nodeIds] })),
-      selection: [...this.selection],
+      selection: [...this.selection]
     }
   }
 
@@ -152,23 +183,33 @@ export class GraphEditor {
 
   private restore(entry: HistoryEntry): void {
     this.definition = entry.definition
-    this.nodes = entry.nodes; this.edges = entry.edges; this.groups = entry.groups
+    this.nodes = entry.nodes
+    this.edges = entry.edges
+    this.groups = entry.groups
     this.selection = new Set(entry.selection)
   }
 
   private checkLayout(layout: unknown, ids: Iterable<string> = this.nodes.map(n => n.id), edges = this.edges): void {
-    try { validatePresentation(layout, ids, edges) }
-    catch (error) {
+    try {
+      validatePresentation(layout, ids, edges, Object.keys(this.definition?.resources ?? {}))
+    } catch (error) {
       const message = error instanceof ClipboardError && /\/(x|y)$/.test(error.pointer) ? 'Invalid layout coordinates' : 'presentation-invalid'
       throw new EditorCommandError('presentation-invalid', message)
     }
   }
 
   private portFor(edge: EditorEdge, side: 'from' | 'to'): CanvasPort {
-    const value = edge[side]; const nodeId = endpointNode(value, edge.kind)
+    const value = edge[side]
+    const nodeId = endpointNode(value, edge.kind)
     const node = this.nodes.find(n => n.id === nodeId)
-    const port = edge.kind === 'control' ? value.split('@')[1] ?? 'control' : value.slice(value.indexOf('.') + 1)
-    return { nodeId, port, direction: side === 'from' ? 'out' : 'in', kind: edge.kind, type: edge.kind === 'control' ? 'control' : (side === 'from' ? node?.outputs[port] : node?.inputs[port]) ?? '' }
+    const port = edge.kind === 'control' ? (value.split('@')[1] ?? 'control') : value.slice(value.indexOf('.') + 1)
+    return {
+      nodeId,
+      port,
+      direction: side === 'from' ? 'out' : 'in',
+      kind: edge.kind,
+      type: edge.kind === 'control' ? 'control' : ((side === 'from' ? node?.outputs[port] : node?.inputs[port]) ?? '')
+    }
   }
 
   /** Synchronous savepoints; only outer commit publishes or adds history.
@@ -177,7 +218,9 @@ export class GraphEditor {
   transaction<T>(fn: () => T): T {
     if (Object.prototype.toString.call(fn) === '[object AsyncFunction]') throw new EditorCommandError('transaction-async')
     const pending = this.layoutBefore
-    const before = this.snap(); const undo = structuredClone(this.undoStack); const redo = structuredClone(this.redoStack)
+    const before = this.snap()
+    const undo = structuredClone(this.undoStack)
+    const redo = structuredClone(this.redoStack)
     const outer = this.transactionDepth === 0
     this.transactionDepth++
     let value: T
@@ -188,7 +231,10 @@ export class GraphEditor {
         this.checkLayout(this.exportLayout())
       }
     } catch (error) {
-      this.restore(before); this.undoStack = undo; this.redoStack = redo; this.layoutBefore = pending
+      this.restore(before)
+      this.undoStack = undo
+      this.redoStack = redo
+      this.layoutBefore = pending
       this.transactionDepth--
       throw error
     }
@@ -220,11 +266,114 @@ export class GraphEditor {
 
   patchPresentation(nodeIds: string[], patch: Partial<Omit<PresentationNode, 'x' | 'y'>>): void {
     // Reject coordinates/unknown fields even when JS bypasses the static type.
-    if (!patch || typeof patch !== 'object' || Array.isArray(patch) || ![Object.prototype, null].includes(Object.getPrototypeOf(patch)) || Object.keys(patch).some(k => !['title', 'collapsed', 'pinned', 'width', 'height', 'color'].includes(k))) throw new EditorCommandError('presentation-invalid')
+    if (
+      !patch ||
+      typeof patch !== 'object' ||
+      Array.isArray(patch) ||
+      ![Object.prototype, null].includes(Object.getPrototypeOf(patch)) ||
+      Object.keys(patch).some(k => !['title', 'collapsed', 'pinned', 'width', 'height', 'color', 'ports'].includes(k))
+    )
+      throw new EditorCommandError('presentation-invalid')
     const targets = this.requireNodes(nodeIds)
-    const proposed = Object.fromEntries(targets.map(n => [n.id, { ...n.presentation, ...patch, x: n.x, y: n.y }]))
+    // Validate the submitted ports object before merging; null/arrays must
+    // not disappear through object spread into a seemingly valid preference.
+    if (Object.hasOwn(patch, 'ports')) this.checkLayout({ nodes: Object.fromEntries(targets.map(n => [n.id, { x: n.x, y: n.y, ports: patch.ports }])) })
+    const { ports: _ports, ...otherAttrs } = patch
+    const attrs = (n: EditorNode) => ({
+      ...n.presentation,
+      ...otherAttrs,
+      ...(patch.ports && Object.keys(patch.ports).length ? { ports: { ...n.presentation?.ports, ...patch.ports } } : {})
+    })
+    const proposed = Object.fromEntries(targets.map(n => [n.id, { ...attrs(n), x: n.x, y: n.y }]))
     this.checkLayout({ nodes: proposed })
-    this.transaction(() => { for (const n of targets) n.presentation = { ...n.presentation, ...structuredClone(patch) } })
+    const affected = new Set<EditorEdge>()
+    for (const node of targets)
+      for (const side of ['control', 'inputs', 'outputs'] as const) {
+        if (patch.ports?.[side] !== false) continue
+        for (const edge of this.edges) if (connectedPortEdges(node.id, side, [edge])) affected.add(edge)
+      }
+    if (affected.size) throw new EditorCommandError('port-visibility-connected', 'port-visibility-connected', { edgeCount: affected.size })
+    this.transaction(() => {
+      for (const n of targets) n.presentation = structuredClone(attrs(n))
+    })
+  }
+
+  collisionProjection(measurements: NodeMeasurements = new Map(), rigidGroups: readonly (readonly string[])[] = []) {
+    return projectLayoutCollisions(
+      this.nodes.map(node => {
+        const minimum = nodeContentMinimum({
+          title: node.label,
+          state: 'idle',
+          inputs: node.inputs,
+          outputs: node.outputs,
+          controlOutputs: node.definition?.branches ?? [],
+          visibility: effectivePortVisibility(node, this.edges)
+        })
+        return {
+          id: node.id,
+          x: node.x,
+          y: node.y,
+          width: Math.max(minimum.width, node.presentation?.width ?? 0, measurements.get(node.id)?.width ?? 0),
+          height: Math.max(minimum.height, node.presentation?.height ?? 0, measurements.get(node.id)?.height ?? 0),
+          pinned: node.presentation?.pinned ?? false
+        }
+      }),
+      rigidGroups
+    )
+  }
+  applyCollisionLayout(measurements: NodeMeasurements = new Map(), rigidGroups: readonly (readonly string[])[] = []): void {
+    if (
+      this.nodes.some(node => {
+        const measured = measurements.get(node.id)
+        return !measured || !Number.isFinite(measured.width) || !Number.isFinite(measured.height) || measured.width <= 0 || measured.height <= 0
+      })
+    )
+      throw new EditorCommandError('missing-measurement')
+    const projection = this.collisionProjection(measurements, rigidGroups)
+    if (!projection.ok) throw new EditorCommandError('layout-collision-unresolved', projection.nodeIds.join(', '))
+    if (!projection.changed) return
+    this.transaction(() => {
+      for (const [id, position] of projection.positions) this.moveNode(id, position.x, position.y)
+    })
+  }
+
+  /** Placement templates may correct a newly-created node before it is measurable. */
+  settleCreatedNodes(
+    newIds: readonly string[],
+    measurements: NodeMeasurements = new Map(),
+    displayPositions: ReadonlyMap<string, XY> = new Map(),
+    rigid = false
+  ): void {
+    const created = new Set(newIds)
+    // Existing unmeasured bodies cannot justify persisted guessed positions.
+    // Leave canonical geometry untouched; observation will project it for display.
+    if (this.nodes.some(node => !created.has(node.id) && !measurements.has(node.id))) return
+    const rects = this.nodes.map(node => {
+      const minimum = nodeContentMinimum({
+        title: node.label,
+        state: 'idle',
+        inputs: node.inputs,
+        outputs: node.outputs,
+        controlOutputs: node.definition?.branches ?? [],
+        visibility: effectivePortVisibility(node, this.edges)
+      })
+      const measured = measurements.get(node.id)
+      const position = !created.has(node.id) ? displayPositions.get(node.id) : undefined
+      return {
+        id: node.id,
+        x: position?.x ?? node.x,
+        y: position?.y ?? node.y,
+        width: measured?.width ?? Math.max(minimum.width, node.presentation?.width ?? 0),
+        height: measured?.height ?? Math.max(minimum.height, node.presentation?.height ?? 0),
+        pinned: !created.has(node.id) || !!node.presentation?.pinned
+      }
+    })
+    const projection = projectLayoutCollisions(rects, rigid ? [newIds] : [])
+    if (!projection.ok) throw new EditorCommandError('layout-collision-unresolved', projection.nodeIds.join(', '))
+    for (const id of newIds) {
+      const position = projection.positions.get(id)!
+      this.moveNode(id, position.x, position.y)
+    }
   }
 
   private requireNodes(ids: Iterable<string>): EditorNode[] {
@@ -241,52 +390,71 @@ export class GraphEditor {
     const group = this.groups.find(g => g.id === id)
     if (!group) throw new EditorCommandError('stale-selection')
     if (typeof label !== 'string') throw new EditorCommandError('presentation-invalid')
-    this.transaction(() => { group.label = label })
+    this.transaction(() => {
+      group.label = label
+    })
   }
 
   renameDefinition(name: string): void {
     if (!this.definition) throw new EditorCommandError('no-definition')
     if (this.definition.name === name) return
-    this.transaction(() => { this.definition!.name = name })
+    this.transaction(() => {
+      this.definition!.name = name
+    })
   }
 
   moveGroup(id: string, dx: number, dy: number): void {
     const group = this.groups.find(g => g.id === id)
     if (!group) throw new EditorCommandError('stale-selection')
-    const nodes = this.requireNodes(group.nodeIds); this.movable(nodes)
+    const nodes = this.requireNodes(group.nodeIds)
+    this.movable(nodes)
     if (!Number.isFinite(dx) || !Number.isFinite(dy)) throw new EditorCommandError('invalid-position')
-    this.transaction(() => { for (const n of nodes) this.moveNode(n.id, n.x + dx, n.y + dy) })
+    this.transaction(() => {
+      for (const n of nodes) this.moveNode(n.id, n.x + dx, n.y + dy)
+    })
   }
 
   private measured(nodes: EditorNode[], measurements?: NodeMeasurements): Array<EditorNode & { width: number; height: number }> {
     return nodes.map(n => {
       const size = measurements?.get(n.id)
-      const width = size?.width ?? n.presentation?.width; const height = size?.height ?? n.presentation?.height
-      if (width === undefined || height === undefined || !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) throw new EditorCommandError('missing-measurement')
+      const width = size?.width ?? n.presentation?.width
+      const height = size?.height ?? n.presentation?.height
+      if (width === undefined || height === undefined || !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0)
+        throw new EditorCommandError('missing-measurement')
       return { ...n, width, height }
     })
   }
 
   alignSelection(mode: AlignmentMode, measurements?: NodeMeasurements): void {
     if (!['left', 'right', 'top', 'bottom', 'center-x', 'center-y'].includes(mode)) throw new EditorCommandError('invalid-position')
-    const selected = this.requireNodes(this.selection); if (selected.length < 2) return
+    const selected = this.requireNodes(this.selection)
+    if (selected.length < 2) return
     this.movable(selected)
     // Leading edges need positions only. Extents/centres need measured sizes.
     const nodes = mode === 'left' || mode === 'top' ? selected.map(n => ({ ...n, width: 0, height: 0 })) : this.measured(selected, measurements)
-    const left = Math.min(...nodes.map(n => n.x)); const top = Math.min(...nodes.map(n => n.y))
-    const right = Math.max(...nodes.map(n => n.x + n.width)); const bottom = Math.max(...nodes.map(n => n.y + n.height))
-    this.transaction(() => { for (const n of nodes) this.moveNode(n.id,
-      mode === 'left' ? left : mode === 'right' ? right - n.width : mode === 'center-x' ? (left + right - n.width) / 2 : n.x,
-      mode === 'top' ? top : mode === 'bottom' ? bottom - n.height : mode === 'center-y' ? (top + bottom - n.height) / 2 : n.y) })
+    const left = Math.min(...nodes.map(n => n.x))
+    const top = Math.min(...nodes.map(n => n.y))
+    const right = Math.max(...nodes.map(n => n.x + n.width))
+    const bottom = Math.max(...nodes.map(n => n.y + n.height))
+    this.transaction(() => {
+      for (const n of nodes)
+        this.moveNode(
+          n.id,
+          mode === 'left' ? left : mode === 'right' ? right - n.width : mode === 'center-x' ? (left + right - n.width) / 2 : n.x,
+          mode === 'top' ? top : mode === 'bottom' ? bottom - n.height : mode === 'center-y' ? (top + bottom - n.height) / 2 : n.y
+        )
+    })
   }
 
   distributeSelection(axis: 'x' | 'y', measurements?: NodeMeasurements): void {
     if (axis !== 'x' && axis !== 'y') throw new EditorCommandError('invalid-position')
-    const selected = this.requireNodes(this.selection); if (selected.length < 3) return
+    const selected = this.requireNodes(this.selection)
+    if (selected.length < 3) return
     this.movable(selected)
     const nodes = this.measured(selected, measurements).sort((a, b) => a[axis] - b[axis] || a.id.localeCompare(b.id))
     const size = axis === 'x' ? 'width' : 'height'
-    const start = nodes[0]![axis]; const end = nodes[nodes.length - 1]![axis] + nodes[nodes.length - 1]![size]
+    const start = nodes[0]![axis]
+    const end = nodes[nodes.length - 1]![axis] + nodes[nodes.length - 1]![size]
     const gap = (end - start - nodes.reduce((sum, n) => sum + n[size], 0)) / (nodes.length - 1)
     this.transaction(() => {
       let position = start
@@ -303,75 +471,168 @@ export class GraphEditor {
     const verdict = this.connectionVerdict(from, to, id)
     if (!verdict.ok) return verdict
     const kind = from.kind ?? 'data'
-    const source = kind === 'control' ? `${from.nodeId}${this.nodes.find(n => n.id === from.nodeId)?.definition?.branches?.length ? `@${from.port}` : ''}` : `${from.nodeId}.${from.port}`
+    const source =
+      kind === 'control'
+        ? `${from.nodeId}${this.nodes.find(n => n.id === from.nodeId)?.definition?.branches?.length ? `@${from.port}` : ''}`
+        : `${from.nodeId}.${from.port}`
     const target = kind === 'control' ? to.nodeId : `${to.nodeId}.${to.port}`
-    this.transaction(() => { edge.kind = kind; edge.from = source; edge.to = target })
+    this.transaction(() => {
+      edge.kind = kind
+      edge.from = source
+      edge.to = target
+    })
     return { ok: true, edge }
   }
 
   createClipboard(nodeIds: string[] = [...this.selection]): ClipboardFragment {
     if (!this.definition) throw new EditorCommandError('no-definition')
-    const selected = this.requireNodes(nodeIds); const ids = new Set(selected.map(n => n.id))
+    const selected = this.requireNodes(nodeIds)
+    const ids = new Set(selected.map(n => n.id))
     const nodes = selected.map(n => this.graphNode(n))
     const edges = this.edges.filter(e => ids.has(endpointNode(e.from, e.kind)) && ids.has(endpointNode(e.to, e.kind)))
     const incoming = this.edges.filter(e => !ids.has(endpointNode(e.from, e.kind)) && ids.has(endpointNode(e.to, e.kind)))
     const layout = this.exportLayout()
     const resources = Object.fromEntries([...referencedResourceIds(nodes)].map(id => [id, structuredClone(this.definition!.resources[id])]))
-    return decodeClipboard({ version: 1, sourceBlueprintId: this.definition.id, nodes,
-      edges: edges.map(({ kind, from, to }) => ({ kind, from, to })), incoming: incoming.map(({ kind, from, to }) => ({ kind, from, to })), resources,
-      presentation: { nodes: Object.fromEntries(selected.map(n => [n.id, layout.nodes[n.id]])),
+    const presentationResources = layout.resources
+      ? Object.fromEntries(
+          Object.keys(resources)
+            .filter(id => Object.hasOwn(layout.resources!, id))
+            .map(id => [id, structuredClone(layout.resources![id]!)])
+        )
+      : undefined
+    return decodeClipboard({
+      version: 1,
+      sourceBlueprintId: this.definition.id,
+      nodes,
+      edges: edges.map(({ kind, from, to }) => ({ kind, from, to })),
+      incoming: incoming.map(({ kind, from, to }) => ({ kind, from, to })),
+      resources,
+      presentation: {
+        nodes: Object.fromEntries(selected.map(n => [n.id, layout.nodes[n.id]])),
+        ...(presentationResources && Object.keys(presentationResources).length ? { resources: presentationResources } : {}),
         groups: this.groups.map(g => ({ ...g, nodeIds: g.nodeIds.filter(id => ids.has(id)) })).filter(g => g.nodeIds.length),
-        ...(layout.edges ? { edges: layout.edges.filter(e => [...edges, ...incoming].some(known => edgeKey(e) === edgeKey(known))) } : {}) },
+        ...(layout.edges ? { edges: layout.edges.filter(e => [...edges, ...incoming].some(known => edgeKey(e) === edgeKey(known))) } : {})
+      }
     })
   }
 
-  pasteClipboard(input: unknown, position: XY, options: { withIncoming?: boolean } = {}): ClipboardPasteResult {
+  pasteClipboard(
+    input: unknown,
+    position: XY,
+    options: {
+      rigid?: boolean
+      withIncoming?: boolean
+      measurements?: NodeMeasurements | undefined
+      displayPositions?: ReadonlyMap<string, XY> | undefined
+    } = {}
+  ): ClipboardPasteResult {
     if (!this.definition) return { ok: false, code: 'no-definition', nodeIds: [] }
     let fragment: ClipboardFragment
-    try { fragment = decodeClipboard(input) } catch { return { ok: false, code: 'clipboard-invalid', nodeIds: [] } }
+    try {
+      fragment = decodeClipboard(input)
+    } catch {
+      return { ok: false, code: 'clipboard-invalid', nodeIds: [] }
+    }
     if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.y)) return { ok: false, code: 'clipboard-invalid', nodeIds: [] }
     const same = fragment.sourceBlueprintId === this.definition.id
     if (options.withIncoming && !same) return { ok: false, code: 'clipboard-incoming-cross-blueprint', nodeIds: [] }
-    const canonical = (value: unknown): string => JSON.stringify(value, (_key, v: unknown) => v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b))) : v)
+    const canonical = (value: unknown): string =>
+      JSON.stringify(value, (_key, v: unknown) =>
+        v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b))) : v
+      )
     for (const [id, ref] of Object.entries(fragment.resources)) {
       const target = this.definition.resources[id]
-      if (!Object.hasOwn(this.definition.resources, id) || !target || canonical(target) !== canonical(ref) || (!same && !(ref.kind === 'mcp' || ref.kind === 'skill' && ref.source?.kind === 'shared'))) return { ok: false, code: 'clipboard-resource-conflict', nodeIds: [] }
+      if (
+        !Object.hasOwn(this.definition.resources, id) ||
+        !target ||
+        canonical(target) !== canonical(ref) ||
+        (!same && !(ref.kind === 'mcp' || (ref.kind === 'skill' && ref.source?.kind === 'shared')))
+      )
+        return { ok: false, code: 'clipboard-resource-conflict', nodeIds: [] }
     }
-    const ids = new Set(this.nodes.map(n => n.id)); const groups = new Set(this.groups.map(g => g.id))
-    const unique = (base: string, used: Set<string>): string => { let i = 1; while (used.has(`${base}_copy${i}`)) i++; const id = `${base}_copy${i}`; used.add(id); return id }
+    const ids = new Set(this.nodes.map(n => n.id))
+    const groups = new Set(this.groups.map(g => g.id))
+    const unique = (base: string, used: Set<string>): string => {
+      let i = 1
+      while (used.has(`${base}_copy${i}`)) i++
+      const id = `${base}_copy${i}`
+      used.add(id)
+      return id
+    }
     const remap = new Map(fragment.nodes.map(n => [n.id, unique(n.id, ids)]))
     const endpoint = (value: string, kind: GraphEdge['kind']): string => {
-      const id = endpointNode(value, kind); return (remap.get(id) ?? id) + value.slice(id.length)
+      const id = endpointNode(value, kind)
+      return (remap.get(id) ?? id) + value.slice(id.length)
     }
     const edge = (e: GraphEdge): GraphEdge => ({ kind: e.kind, from: endpoint(e.from, e.kind), to: endpoint(e.to, e.kind) })
     const left = Math.min(...fragment.nodes.map(n => fragment.presentation.nodes[n.id]?.x ?? 0))
     const top = Math.min(...fragment.nodes.map(n => fragment.presentation.nodes[n.id]?.y ?? 0))
-    const dx = position.x - left; const dy = position.y - top
+    const dx = position.x - left
+    const dy = position.y - top
     const nodeIds = [...remap.values()]
     try {
       this.transaction(() => {
+        if (fragment.presentation.resources) {
+          this.definition!.presentation = {
+            ...(this.definition!.presentation ?? { nodes: {} }),
+            resources: {
+              ...this.definition!.presentation?.resources,
+              ...structuredClone(fragment.presentation.resources)
+            }
+          }
+        }
         for (const n of fragment.nodes) {
-          const p = fragment.presentation.nodes[n.id] ?? { x: 0, y: 0 }; const { x, y, ...attrs } = p
+          const p = fragment.presentation.nodes[n.id] ?? { x: 0, y: 0 }
+          const { x, y, ...attrs } = p
           const id = remap.get(n.id)!
-          this.addNode({ id, definition: { ...n, id }, kind: n.kind, label: n.kind, x: x + dx, y: y + dy, inputs: n.inputs ?? {}, outputs: n.outputs ?? {}, presentation: attrs })
+          this.addNode({
+            id,
+            definition: { ...n, id },
+            kind: n.kind,
+            label: n.kind,
+            x: x + dx,
+            y: y + dy,
+            inputs: n.inputs ?? {},
+            outputs: n.outputs ?? {},
+            presentation: attrs
+          })
         }
         for (const original of [...fragment.edges, ...(options.withIncoming ? fragment.incoming : [])]) {
           const mapped = edge(original)
           const temporary: EditorEdge = { ...mapped, id: '' }
-          const result = this.connect(this.portFor(temporary, 'from'), this.portFor(temporary, 'to'))
-          if (!result.ok || !result.edge) throw new ClipboardError('/edges')
+          // Internal edges restore a strictly validated canonical subgraph. Only
+          // newly introduced external incoming edges use the visibility gate.
+          const internal = fragment.edges.includes(original)
+          const from = this.portFor(temporary, 'from'),
+            to = this.portFor(temporary, 'to')
+          const verdict = internal ? this.checkedConnection(from, to, undefined, true) : this.connectionVerdict(from, to)
+          if (!verdict.ok) {
+            if (verdict.reason === 'port-hidden') throw new EditorCommandError('port-hidden')
+            throw new ClipboardError('/edges')
+          }
+          const restored: EditorEdge = { ...mapped, id: edgeId() }
+          this.edges.push(restored)
           const route = fragment.presentation.edges?.find(e => edgeKey(e) === edgeKey(original))
-          if (route) result.edge.points = route.points.map(p => ({ x: p.x + dx, y: p.y + dy }))
+          if (route) restored.points = route.points.map(p => ({ x: p.x + dx, y: p.y + dy }))
         }
-        for (const g of fragment.presentation.groups ?? []) this.groups.push({ id: unique(g.id, groups), label: g.label ?? g.id, nodeIds: g.nodeIds.map(id => remap.get(id)!) })
+        for (const g of fragment.presentation.groups ?? [])
+          this.groups.push({ id: unique(g.id, groups), label: g.label ?? g.id, nodeIds: g.nodeIds.map(id => remap.get(id)!) })
+        this.settleCreatedNodes(nodeIds, options.measurements, options.displayPositions, options.rigid)
         this.selection = new Set(nodeIds)
       })
       return { ok: true, code: 'clipboard-pasted', nodeIds }
-    } catch { return { ok: false, code: 'clipboard-invalid', nodeIds: [] } }
+    } catch (error) {
+      if (error instanceof EditorCommandError && error.code === 'layout-collision-unresolved') throw error
+      return { ok: false, code: error instanceof EditorCommandError && error.code === 'port-hidden' ? 'port-hidden' : 'clipboard-invalid', nodeIds: [] }
+    }
   }
 
-  get canUndo(): boolean { return this.undoStack.length > 0 }
-  get canRedo(): boolean { return this.redoStack.length > 0 }
+  get canUndo(): boolean {
+    return this.undoStack.length > 0
+  }
+  get canRedo(): boolean {
+    return this.redoStack.length > 0
+  }
 
   undo(): boolean {
     if (this.transactionDepth) throw new EditorCommandError('transaction-history')
@@ -406,8 +667,11 @@ export class GraphEditor {
   addNode(node: Omit<EditorNode, 'id'> & { id?: string }): EditorNode {
     const candidate = { ...node, id: node.id ?? `n-${Math.random().toString(36).slice(2, 8)}-${++identitySequence}` }
     if (this.nodes.some(n => n.id === candidate.id)) throw new EditorCommandError('stale-selection')
-    try { validateResourceReferences([this.graphNode(candidate)], this.definition?.resources ?? {}) }
-    catch { throw new EditorCommandError('clipboard-resource-conflict') }
+    try {
+      validateResourceReferences([this.graphNode(candidate)], this.definition?.resources ?? {})
+    } catch {
+      throw new EditorCommandError('clipboard-resource-conflict')
+    }
     this.checkLayout({ nodes: { [candidate.id]: { ...candidate.presentation, x: candidate.x, y: candidate.y } } }, [candidate.id], [])
     this.pushHistory()
     const created: EditorNode = structuredClone(candidate)
@@ -462,13 +726,14 @@ export class GraphEditor {
     this.emit()
   }
 
-  connectionVerdict(from: CanvasPort, to: CanvasPort, ignoreEdgeId?: string): ConnectionVerdict {
+  private checkedConnection(from: CanvasPort, to: CanvasPort, ignoreEdgeId?: string, canonicalRestore = false): ConnectionVerdict {
     const verdict = canConnect(from, to)
     if (!verdict.ok) return verdict
     const kind = from.kind ?? 'data'
     if (!this.nodes.some(n => n.id === from.nodeId) || !this.nodes.some(n => n.id === to.nodeId)) return { ok: false, reason: 'unknown-node' }
     if (kind === 'data') {
-      if (this.nodes.find(n => n.id === from.nodeId)?.outputs[from.port] !== from.type || this.nodes.find(n => n.id === to.nodeId)?.inputs[to.port] !== to.type) return { ok: false, reason: 'undeclared-port' }
+      if (this.nodes.find(n => n.id === from.nodeId)?.outputs[from.port] !== from.type || this.nodes.find(n => n.id === to.nodeId)?.inputs[to.port] !== to.type)
+        return { ok: false, reason: 'undeclared-port' }
       const visited = new Set<string>()
       const stack = [to.nodeId]
       while (stack.length) {
@@ -481,26 +746,53 @@ export class GraphEditor {
     }
     if (kind === 'control') {
       const branches = this.nodes.find(n => n.id === from.nodeId)?.definition?.branches ?? []
-      if (from.type !== 'control' || to.type !== 'control' || to.port !== 'control' || (branches.length ? !branches.includes(from.port) : from.port !== 'control')) return { ok: false, reason: 'undeclared-port' }
+      if (
+        from.type !== 'control' ||
+        to.type !== 'control' ||
+        to.port !== 'control' ||
+        (branches.length ? !branches.includes(from.port) : from.port !== 'control')
+      )
+        return { ok: false, reason: 'undeclared-port' }
     }
-    const source = kind === 'control' ? `${from.nodeId}${this.nodes.find(n => n.id === from.nodeId)?.definition?.branches?.length ? `@${from.port}` : ''}` : `${from.nodeId}.${from.port}`
+    if (
+      !canonicalRestore &&
+      [from, to].some(
+        port =>
+          !effectivePortVisibility(
+            this.nodes.find(n => n.id === port.nodeId)!,
+            this.edges
+          )[portSide(port)]
+      )
+    )
+      return { ok: false, reason: 'port-hidden' }
+    const source =
+      kind === 'control'
+        ? `${from.nodeId}${this.nodes.find(n => n.id === from.nodeId)?.definition?.branches?.length ? `@${from.port}` : ''}`
+        : `${from.nodeId}.${from.port}`
     const target = kind === 'control' ? to.nodeId : `${to.nodeId}.${to.port}`
     if (this.edges.some(e => e.id !== ignoreEdgeId && e.kind === kind && e.from === source && e.to === target)) return { ok: false, reason: 'duplicate-edge' }
     return { ok: true }
+  }
+
+  connectionVerdict(from: CanvasPort, to: CanvasPort, ignoreEdgeId?: string): ConnectionVerdict {
+    return this.checkedConnection(from, to, ignoreEdgeId)
   }
 
   connect(from: CanvasPort, to: CanvasPort): ConnectionVerdict & { edge?: EditorEdge } {
     const verdict = this.connectionVerdict(from, to)
     if (!verdict.ok) return verdict
     const kind = from.kind ?? 'data'
-    const source = kind === 'control' ? `${from.nodeId}${this.nodes.find(n => n.id === from.nodeId)?.definition?.branches?.length ? `@${from.port}` : ''}` : `${from.nodeId}.${from.port}`
+    const source =
+      kind === 'control'
+        ? `${from.nodeId}${this.nodes.find(n => n.id === from.nodeId)?.definition?.branches?.length ? `@${from.port}` : ''}`
+        : `${from.nodeId}.${from.port}`
     const target = kind === 'control' ? to.nodeId : `${to.nodeId}.${to.port}`
     this.pushHistory()
     const edge: EditorEdge = {
       id: edgeId(),
       kind,
       from: source,
-      to: target,
+      to: target
     }
     this.edges.push(edge)
     this.emit()
@@ -545,9 +837,17 @@ export class GraphEditor {
 
   /** Presentation-only export; edge routing binds the stable logical triple. */
   exportLayout(): Presentation {
-    const nodes: Record<string, PresentationNode> = Object.fromEntries(this.nodes.map(node => [node.id, { ...structuredClone(node.presentation), x: node.x, y: node.y }]))
+    const nodes: Record<string, PresentationNode> = Object.fromEntries(
+      this.nodes.map(node => [node.id, { ...structuredClone(node.presentation), x: node.x, y: node.y }])
+    )
     const edges = this.edges.filter(e => e.points !== undefined).map(e => ({ kind: e.kind, from: e.from, to: e.to, points: structuredClone(e.points!) }))
-    const layout: Presentation = { nodes, groups: structuredClone(this.groups), ...(edges.length ? { edges } : {}) }
+    const resources = this.definition?.presentation?.resources
+    const layout: Presentation = {
+      nodes,
+      ...(resources ? { resources: structuredClone(resources) } : {}),
+      groups: structuredClone(this.groups),
+      ...(edges.length ? { edges } : {})
+    }
     this.checkLayout(layout)
     return layout
   }
@@ -555,18 +855,23 @@ export class GraphEditor {
   importLayout(layout: Partial<Presentation>): void {
     // Restore is intentionally history-free, but validates every record first.
     if (this.layoutBefore) throw new EditorCommandError('layout-pending')
-    if (!layout || typeof layout !== 'object' || Array.isArray(layout) || ![Object.prototype, null].includes(Object.getPrototypeOf(layout))) throw new EditorCommandError('presentation-invalid')
+    if (!layout || typeof layout !== 'object' || Array.isArray(layout) || ![Object.prototype, null].includes(Object.getPrototypeOf(layout)))
+      throw new EditorCommandError('presentation-invalid')
     const complete = { ...layout, nodes: layout.nodes ?? {} }
     this.checkLayout(complete)
     for (const node of this.nodes) {
       const position = complete.nodes[node.id]
       if (position !== undefined) {
         const { x, y, ...attrs } = structuredClone(position)
-        node.x = x; node.y = y
+        node.x = x
+        node.y = y
         node.presentation = attrs
       }
     }
     if (layout.groups !== undefined) this.groups = layout.groups.map(g => ({ ...structuredClone(g), label: g.label ?? g.id }))
+    if (layout.resources !== undefined && this.definition) {
+      this.definition.presentation = { ...(this.definition.presentation ?? { nodes: {} }), resources: structuredClone(layout.resources) }
+    }
     const routing = new Map((layout.edges ?? []).map(e => [edgeKey(e), e.points]))
     for (const edge of this.edges) {
       const points = routing.get(edgeKey(edge))
@@ -588,11 +893,29 @@ export class GraphEditor {
     this.emit()
   }
 
-  updateResource(refId: string, ref: ResourceRef): void {
+  /** Update an executable reference and its optional display metadata as one
+   * undoable transaction. Presentation metadata never enters ResourceRef. */
+  updateResource(refId: string, ref: ResourceRef, metadata?: PresentationResourceMetadata): void {
     if (!this.definition) return
-    this.pushHistory()
-    this.definition.resources[refId] = structuredClone(ref)
-    this.emit()
+    this.transaction(() => {
+      this.definition!.resources[refId] = structuredClone(ref)
+      if (metadata !== undefined) {
+        const presentation = this.definition!.presentation
+        const resources = presentation?.resources ? structuredClone(presentation.resources) : {}
+        if (Object.keys(metadata).length === 0) delete resources[refId]
+        else resources[refId] = structuredClone(metadata)
+        if (Object.keys(resources).length) {
+          // A metadata edit needs a valid presentation container, but an empty
+          // draft must not manufacture one when the definition had no
+          // presentation state at all.
+          this.definition!.presentation = { ...(presentation ?? { nodes: {} }), resources }
+        } else if (presentation?.resources) {
+          const { resources: _removed, ...withoutResources } = presentation
+          if (Object.keys(withoutResources).length) this.definition!.presentation = withoutResources
+          else delete this.definition!.presentation
+        }
+      }
+    })
   }
 
   exportDefinition(): BlueprintDefinition {
@@ -618,7 +941,10 @@ export class GraphEditor {
   /** Definition → editor nodes/edges (definition graph is JSON; the editor
    * keeps only what it renders). */
   static fromDefinition(definition: {
-    graph: { nodes: Array<{ id: string; kind: string; name?: string; inputs?: Record<string, string>; outputs?: Record<string, string> }>; edges: Array<{ kind: string; from: string; to: string }> }
+    graph: {
+      nodes: Array<{ id: string; kind: string; name?: string; inputs?: Record<string, string>; outputs?: Record<string, string> }>
+      edges: Array<{ kind: string; from: string; to: string }>
+    }
     presentation?: Partial<Presentation>
   }): GraphEditor {
     const presentation = definition.presentation?.nodes ?? {}
@@ -631,13 +957,46 @@ export class GraphEditor {
       y: presentation[node.id]?.y ?? 60 + Math.floor(index / 4) * 140,
       inputs: structuredClone(node.inputs ?? {}),
       outputs: structuredClone(node.outputs ?? {}),
-      ...(presentation[node.id] ? { presentation: (({ x: _x, y: _y, ...attrs }) => attrs)(structuredClone(presentation[node.id]!)) } : {}),
+      ...(presentation[node.id] ? { presentation: (({ x: _x, y: _y, ...attrs }) => attrs)(structuredClone(presentation[node.id]!)) } : {})
     }))
-    const edges = definition.graph.edges.map(e => ({ id: edgeId(), kind: e.kind === 'control' ? 'control' as const : 'data' as const, from: e.from, to: e.to }))
+    const edges = definition.graph.edges.map(e => ({
+      id: edgeId(),
+      kind: e.kind === 'control' ? ('control' as const) : ('data' as const),
+      from: e.from,
+      to: e.to
+    }))
     const groups = (definition.presentation?.groups ?? []).map(g => ({ id: g.id, label: g.label ?? g.id, nodeIds: [...g.nodeIds] }))
     const editor = new GraphEditor(nodes, edges, groups)
-    if (definition.presentation) editor.importLayout(definition.presentation)
     editor.definition = structuredClone(definition) as BlueprintDefinition
+    if (definition.presentation) editor.importLayout(definition.presentation)
+    // Only absent coordinates are authored here. Saved coordinates are immutable
+    // display inputs, even when they overlap. Natural template heights vary by ports.
+    const defaults = projectLayoutCollisions(
+      editor.nodes.map(node => {
+        const minimum = nodeContentMinimum({
+          title: node.label,
+          state: 'idle',
+          inputs: node.inputs,
+          outputs: node.outputs,
+          controlOutputs: node.definition?.branches ?? [],
+          visibility: effectivePortVisibility(node, edges)
+        })
+        return {
+          id: node.id,
+          x: node.x,
+          y: node.y,
+          width: Math.max(minimum.width, node.presentation?.width ?? 0),
+          height: Math.max(minimum.height, node.presentation?.height ?? 0),
+          pinned: presentation[node.id]?.x !== undefined && presentation[node.id]?.y !== undefined
+        }
+      })
+    )
+    if (defaults.ok)
+      for (const node of editor.nodes) {
+        const position = defaults.positions.get(node.id)!
+        if (presentation[node.id]?.x === undefined) node.x = position.x
+        if (presentation[node.id]?.y === undefined) node.y = position.y
+      }
     return editor
   }
 }

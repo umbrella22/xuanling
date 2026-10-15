@@ -13,24 +13,28 @@ const DEF = {
     reviewSkill: { kind: 'skill', source: { kind: 'shared', rootId: 'user-agents-skills', path: 'sample' } },
     resultSchema: { kind: 'schema', path: 'lib/schemas/review-result.json' },
     repoTools: { kind: 'mcp', bindingId: 'repo-readonly' },
-    script1: { kind: 'script', path: 'lib/scripts/check.mjs' },
+    script1: { kind: 'script', path: 'lib/scripts/check.mjs' }
   },
   graph: {
     nodes: [
       { id: 'input', kind: 'input', outputs: { request: 'string' } },
       {
-        id: 'review', kind: 'agentTask',
-        agentRef: 'reviewer', skillRefs: ['reviewSkill'],
-        toolsetRefs: ['repoTools'], outputSchemaRef: 'resultSchema',
-        inputs: { input: 'string' }, outputs: { result: 'json' },
+        id: 'review',
+        kind: 'agentTask',
+        agentRef: 'reviewer',
+        skillRefs: ['reviewSkill'],
+        toolsetRefs: ['repoTools'],
+        outputSchemaRef: 'resultSchema',
+        inputs: { input: 'string' },
+        outputs: { result: 'json' }
       },
-      { id: 'result', kind: 'output', inputs: { value: 'json' } },
+      { id: 'result', kind: 'output', inputs: { value: 'json' } }
     ],
     edges: [
       { kind: 'data', from: 'input.request', to: 'review.input' },
-      { kind: 'data', from: 'review.result', to: 'result.value' },
-    ],
-  },
+      { kind: 'data', from: 'review.result', to: 'result.value' }
+    ]
+  }
 }
 
 function fixture() {
@@ -62,7 +66,10 @@ export async function getCases(helpers) {
   const cases = []
 
   cases.push({
-    id: 'P1', title: 'T11: export materializes the FULL skill tree + package files and rewrites shared refs to package paths', contract: 'C-11', expect: 'pass',
+    id: 'P1',
+    title: 'T11: export materializes the FULL skill tree + package files and rewrites shared refs to package paths',
+    contract: 'C-11',
+    expect: 'pass',
     run: () => {
       const f = fixture()
       try {
@@ -70,25 +77,30 @@ export async function getCases(helpers) {
         const names = Object.keys(result.manifest.files)
         const packagedDef = JSON.parse(readFileSync(join(f.bp, 'blueprint.json'), 'utf8')) // export never mutates the source
         const skillRef = result.materializedSkills.reviewSkill
-        return names.includes('blueprint.json')
-          && names.some(n => n === 'lib/agents/reviewer.md')
-          && names.some(n => n === 'lib/schemas/review-result.json')
-          && names.some(n => n.startsWith('lib/skills/reviewSkill/'))
-          && names.includes('lib/skills/reviewSkill/SKILL.md')
-          && names.includes('lib/skills/reviewSkill/scripts/helper.sh')
-          && names.includes('lib/skills/reviewSkill/references/ref.md')
-          && skillRef === 'lib/skills/reviewSkill'
-          && result.manifest.requiredBindings.includes('repo-readonly')
-          && result.manifest.runDependencies.length >= 1
-          && packagedDef.resources.reviewSkill.source !== undefined
+        return (
+          names.includes('blueprint.json') &&
+          names.some(n => n === 'lib/agents/reviewer.md') &&
+          names.some(n => n === 'lib/schemas/review-result.json') &&
+          names.some(n => n.startsWith('lib/skills/reviewSkill/')) &&
+          names.includes('lib/skills/reviewSkill/SKILL.md') &&
+          names.includes('lib/skills/reviewSkill/scripts/helper.sh') &&
+          names.includes('lib/skills/reviewSkill/references/ref.md') &&
+          skillRef === 'lib/skills/reviewSkill' &&
+          result.manifest.requiredBindings.includes('repo-readonly') &&
+          result.manifest.runDependencies.length >= 1 &&
+          packagedDef.resources.reviewSkill.source !== undefined
+        )
       } finally {
         cleanup(f.root)
       }
-    },
+    }
   })
 
   cases.push({
-    id: 'P2', title: 'T11: roundtrip — import into a fresh machine reproduces the closure byte-for-byte and needs no source dirs', contract: 'C-11', expect: 'pass',
+    id: 'P2',
+    title: 'T11: roundtrip — import into a fresh machine reproduces the closure byte-for-byte and needs no source dirs',
+    contract: 'C-11',
+    expect: 'pass',
     run: () => {
       const f = fixture()
       try {
@@ -101,24 +113,31 @@ export async function getCases(helpers) {
         const helper = readFileSync(join(target, 'lib', 'skills', 'reviewSkill', 'scripts', 'helper.sh'), 'utf8')
         const republished = JSON.parse(readFileSync(join(target, 'blueprint.json'), 'utf8'))
         const importedRef = republished.resources.reviewSkill
-        return imported.filesWritten.includes('blueprint.json')
-          && skillMd.includes('SKILL-CONTENT') && helper.includes('echo helper')
-          && importedRef.source === undefined && importedRef.path === 'lib/skills/reviewSkill'
-          && imported.manifest.closureDigest === result.manifest.closureDigest
+        return (
+          imported.filesWritten.includes('blueprint.json') &&
+          skillMd.includes('SKILL-CONTENT') &&
+          helper.includes('echo helper') &&
+          importedRef.source === undefined &&
+          importedRef.path === 'lib/skills/reviewSkill' &&
+          imported.manifest.closureDigest === result.manifest.closureDigest
+        )
       } finally {
         cleanup(f.root)
       }
-    },
+    }
   })
 
   cases.push({
-    id: 'P3', title: 'T11: zip-slip, symlink entries, backslash paths and duplicates are rejected before extraction', contract: 'C-11', expect: 'pass',
+    id: 'P3',
+    title: 'T11: zip-slip, symlink entries, backslash paths and duplicates are rejected before extraction',
+    contract: 'C-11',
+    expect: 'pass',
     run: () => {
       const f = fixture()
       try {
         const result = port.exportBlueprint(f.bp, { roots: [{ rootId: 'user-agents-skills', rootPath: f.skillsRoot }] })
         const baseEntries = port.readZip(result.archive)
-        const mk = (mutate) => {
+        const mk = mutate => {
           const entries = baseEntries.map(e => ({ name: e.name, data: e.data, mode: e.mode }))
           mutate(entries)
           return port.writeZip(entries)
@@ -129,7 +148,7 @@ export async function getCases(helpers) {
           mk(es => es.push({ name: '/abs/evil.txt', data: Buffer.from('x'), mode: 0o100644 })),
           mk(es => es.push({ name: 'lib\\evil.txt', data: Buffer.from('x'), mode: 0o100644 })),
           mk(es => es.push({ name: 'lib/skills/link', data: Buffer.from('target'), mode: 0o120777 })),
-          mk(es => es.push({ name: 'lib/agents/reviewer.md', data: Buffer.from('dup'), mode: 0o100644 })),
+          mk(es => es.push({ name: 'lib/agents/reviewer.md', data: Buffer.from('dup'), mode: 0o100644 }))
         ]) {
           try {
             port.importBlueprint(archive, join(f.root, 'never'))
@@ -143,17 +162,20 @@ export async function getCases(helpers) {
       } finally {
         cleanup(f.root)
       }
-    },
+    }
   })
 
   cases.push({
-    id: 'P4', title: 'T11: tampered digest / undeclared extra file / missing dependency block import with no partial target', contract: 'C-11', expect: 'pass',
+    id: 'P4',
+    title: 'T11: tampered digest / undeclared extra file / missing dependency block import with no partial target',
+    contract: 'C-11',
+    expect: 'pass',
     run: () => {
       const f = fixture()
       try {
         const result = port.exportBlueprint(f.bp, { roots: [{ rootId: 'user-agents-skills', rootPath: f.skillsRoot }] })
         const entries = port.readZip(result.archive)
-        const tamper = (name) => {
+        const tamper = name => {
           const es = entries.map(e => ({ name: e.name, data: e.name === name ? Buffer.from('TAMPERED') : e.data, mode: e.mode }))
           return port.writeZip(es)
         }
@@ -181,16 +203,18 @@ export async function getCases(helpers) {
         } catch (error) {
           exportError = error?.code
         }
-        return results.every(r => r === 'PORTABILITY_CONFLICT') && !results.includes('left-target')
-          && exportError === 'EXPORT_DEPENDENCY_MISSING'
+        return results.every(r => r === 'PORTABILITY_CONFLICT') && !results.includes('left-target') && exportError === 'EXPORT_DEPENDENCY_MISSING'
       } finally {
         cleanup(f.root)
       }
-    },
+    }
   })
 
   cases.push({
-    id: 'P5', title: 'T11: import never executes scripts and never rebinds to same-named local skills implicitly', contract: 'C-11', expect: 'pass',
+    id: 'P5',
+    title: 'T11: import never executes scripts and never rebinds to same-named local skills implicitly',
+    contract: 'C-11',
+    expect: 'pass',
     run: () => {
       const f = fixture()
       try {
@@ -206,17 +230,18 @@ export async function getCases(helpers) {
         // Explicit rebind is the only path back to the local root.
         port.rebindSharedSkill(target, 'reviewSkill', { rootId: 'user-agents-skills', skillPath: 'sample' })
         const after = JSON.parse(readFileSync(join(target, 'blueprint.json'), 'utf8'))
-        return stillPackaged
-          && after.resources.reviewSkill.source?.rootId === 'user-agents-skills'
-          && after.resources.reviewSkill.path === undefined
+        return stillPackaged && after.resources.reviewSkill.source?.rootId === 'user-agents-skills' && after.resources.reviewSkill.path === undefined
       } finally {
         cleanup(f.root)
       }
-    },
+    }
   })
 
   cases.push({
-    id: 'P6', title: 'T11/T16: sensitive export (secret canary in a packaged file) is blocked and names the file', contract: 'C-16', expect: 'pass',
+    id: 'P6',
+    title: 'T11/T16: sensitive export (secret canary in a packaged file) is blocked and names the file',
+    contract: 'C-16',
+    expect: 'pass',
     run: () => {
       const f = fixture()
       try {
@@ -225,21 +250,23 @@ export async function getCases(helpers) {
         try {
           port.exportBlueprint(f.bp, {
             roots: [{ rootId: 'user-agents-skills', rootPath: f.skillsRoot }],
-            scanForSecrets: helpers.scanForSecrets,
+            scanForSecrets: helpers.scanForSecrets
           })
         } catch (error) {
           blocked = error
         }
-        return blocked?.code === 'SENSITIVE_EXPORT_BLOCKED'
-          && blocked.findings.some(x => x.path === 'lib/agents/reviewer.md')
+        return blocked?.code === 'SENSITIVE_EXPORT_BLOCKED' && blocked.findings.some(x => x.path === 'lib/agents/reviewer.md')
       } finally {
         cleanup(f.root)
       }
-    },
+    }
   })
 
   cases.push({
-    id: 'P7', title: 'T11: import into an existing non-empty target is refused (no half-import, original kept)', contract: 'C-11', expect: 'pass',
+    id: 'P7',
+    title: 'T11: import into an existing non-empty target is refused (no half-import, original kept)',
+    contract: 'C-11',
+    expect: 'pass',
     run: () => {
       const f = fixture()
       try {
@@ -259,7 +286,7 @@ export async function getCases(helpers) {
       } finally {
         cleanup(f.root)
       }
-    },
+    }
   })
 
   return cases

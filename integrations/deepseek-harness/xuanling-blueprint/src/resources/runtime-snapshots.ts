@@ -12,8 +12,16 @@ import { ResourceUnavailableError, resolveResource, type SkillRoot } from './res
 import { snapshotDirectory, snapshotFile, type SnapshotFile } from './snapshotter.ts'
 import { parseHostAgentComposition, validatePackagedPreset, type PackagedPreset, type HostAgentComposition } from '../portability/host-resources.ts'
 
-interface FrozenFile { path: string; digest: string; base64: string }
-interface Bundle { version: 1; files: FrozenFile[]; digest: string }
+interface FrozenFile {
+  path: string
+  digest: string
+  base64: string
+}
+interface Bundle {
+  version: 1
+  files: FrozenFile[]
+  digest: string
+}
 export interface Prepared {
   agentMd: string
   /** Host-owned preset selected for this Attempt. The preset body is never
@@ -32,11 +40,17 @@ export interface Prepared {
  * portable blueprint package to a particular DSH release. */
 export interface HostResourceProvider {
   getAgentPreset(id: string): Promise<{ composition?: HostAgentComposition } | undefined>
-  getSkill(id: string, options: { cwd: string }): Promise<{
-    content?: string
-    /** Provider-relative files. Absolute paths are deliberately not accepted. */
-    files?: Record<string, string | Buffer> | Array<{ path: string; bytes: Buffer }>
-  } | undefined>
+  getSkill(
+    id: string,
+    options: { cwd: string }
+  ): Promise<
+    | {
+        content?: string
+        /** Provider-relative files. Absolute paths are deliberately not accepted. */
+        files?: Record<string, string | Buffer> | Array<{ path: string; bytes: Buffer }>
+      }
+    | undefined
+  >
 }
 /** Resolve DSH registry winners on every call. File-backed Skills keep their
  * full safe directory; virtual Skills with external relative assets fail
@@ -44,12 +58,18 @@ export interface HostResourceProvider {
 export function createHostResourceProvider(ownerCtx: { get(service: string): unknown }): HostResourceProvider {
   return {
     async getAgentPreset(id) {
-      let registry: {
-        resolve?(id: string): Promise<{ id?: string; broken?: unknown }>
-        list?(): Promise<Array<{ id: string; broken?: unknown }>>
-        readDocument?(id: string): Promise<{ content: string }>
-      } | undefined
-      try { registry = ownerCtx.get('agentPresets') as typeof registry } catch { return undefined }
+      let registry:
+        | {
+            resolve?(id: string): Promise<{ id?: string; broken?: unknown }>
+            list?(): Promise<Array<{ id: string; broken?: unknown }>>
+            readDocument?(id: string): Promise<{ content: string }>
+          }
+        | undefined
+      try {
+        registry = ownerCtx.get('agentPresets') as typeof registry
+      } catch {
+        return undefined
+      }
       try {
         if (typeof registry?.resolve === 'function') {
           const preset = await registry.resolve(id)
@@ -62,23 +82,42 @@ export function createHostResourceProvider(ownerCtx: { get(service: string): unk
           return { composition: parseHostAgentComposition(document.content) }
         }
         return {}
-      } catch { return undefined }
+      } catch {
+        return undefined
+      }
     },
     async getSkill(id, options) {
-      let registry: { get?(id: string, options: { cwd: string }): Promise<{
-        content: string; path?: string; resourceBase?: { kind: string; path?: string }
-      } | undefined> } | undefined
-      try { registry = ownerCtx.get('skills') as typeof registry } catch { return undefined }
+      let registry:
+        | {
+            get?(
+              id: string,
+              options: { cwd: string }
+            ): Promise<
+              | {
+                  content: string
+                  path?: string
+                  resourceBase?: { kind: string; path?: string }
+                }
+              | undefined
+            >
+          }
+        | undefined
+      try {
+        registry = ownerCtx.get('skills') as typeof registry
+      } catch {
+        return undefined
+      }
       if (typeof registry?.get !== 'function') return undefined
       const skill = await registry.get(id, options)
       if (skill === undefined || typeof skill.content !== 'string') return undefined
       const base = skill.resourceBase
-      if (base !== undefined && (base.kind !== 'directory' || typeof base.path !== 'string')) throw new ResourceUnavailableError(id, 'Host Skill assets cannot be materialized')
+      if (base !== undefined && (base.kind !== 'directory' || typeof base.path !== 'string'))
+        throw new ResourceUnavailableError(id, 'Host Skill assets cannot be materialized')
       const directory = base?.path ?? (skill.path === undefined ? undefined : dirname(skill.path))
       if (directory === undefined) return { content: skill.content }
       const tree = snapshotDirectory(directory, { kind: 'package-path', absolutePath: directory })
       return { content: skill.content, files: tree.files.map(file => ({ path: file.path, bytes: file.bytes })) }
-    },
+    }
   }
 }
 export interface PreparedTeam extends Prepared {
@@ -86,17 +125,24 @@ export interface PreparedTeam extends Prepared {
 }
 const hash = (value: string | Buffer): string => createHash('sha256').update(value).digest('hex')
 function bundle(files: SnapshotFile[]): Bundle {
-  files.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
-  if (admitSnapshotPaths(files.map(f => f.path)).length || new Set(files.map(f => f.path.normalize('NFC').toLowerCase())).size !== files.length) throw new Error('resource closure paths rejected')
-  return { version: 1, files: files.map(f => ({ path: f.path, digest: f.digest, base64: f.bytes.toString('base64') })), digest: hash(files.map(f => `${f.path}\0${f.digest}\n`).join('')) }
+  files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+  if (admitSnapshotPaths(files.map(f => f.path)).length || new Set(files.map(f => f.path.normalize('NFC').toLowerCase())).size !== files.length)
+    throw new Error('resource closure paths rejected')
+  return {
+    version: 1,
+    files: files.map(f => ({ path: f.path, digest: f.digest, base64: f.bytes.toString('base64') })),
+    digest: hash(files.map(f => `${f.path}\0${f.digest}\n`).join(''))
+  }
 }
 function verify(value: Bundle): Bundle {
   if (value.version !== 1 || !Array.isArray(value.files)) throw new Error('snapshot format rejected')
-  const checked = bundle(value.files.map(f => {
-    const bytes = Buffer.from(f.base64, 'base64')
-    if (hash(bytes) !== f.digest) throw new Error('snapshot integrity rejected')
-    return { path: f.path, digest: f.digest, bytes }
-  }))
+  const checked = bundle(
+    value.files.map(f => {
+      const bytes = Buffer.from(f.base64, 'base64')
+      if (hash(bytes) !== f.digest) throw new Error('snapshot integrity rejected')
+      return { path: f.path, digest: f.digest, bytes }
+    })
+  )
   if (checked.digest !== value.digest) throw new Error('snapshot tree integrity rejected')
   return checked
 }
@@ -112,17 +158,24 @@ function durableWrite(path: string, value: Bundle): void {
     fd = openSync(temporary, 'wx', 0o600)
     writeFileSync(fd, JSON.stringify(value))
     fsyncSync(fd)
-    closeSync(fd); fd = undefined
+    closeSync(fd)
+    fd = undefined
     renameSync(temporary, path)
     // Directory durability matters: a successful file fsync alone is not a commit.
     const dir = openSync(dirname(path), 'r')
-    try { fsyncSync(dir) } finally { closeSync(dir) }
+    try {
+      fsyncSync(dir)
+    } finally {
+      closeSync(dir)
+    }
   } finally {
     if (fd !== undefined) closeSync(fd)
     rmSync(temporary, { force: true })
   }
 }
-function load(path: string): Bundle { return verify(JSON.parse(readFileSync(path, 'utf8')) as Bundle) }
+function load(path: string): Bundle {
+  return verify(JSON.parse(readFileSync(path, 'utf8')) as Bundle)
+}
 function fileBytes(value: Bundle, path: string): Buffer {
   const file = value.files.find(f => f.path === path)
   if (!file) throw new Error('required frozen package resource unavailable')
@@ -137,8 +190,14 @@ function putFiles(cwd: string, value: Bundle, prefix = ''): void {
 }
 
 export class RuntimeSnapshots {
-  constructor(private readonly runtimeRoot: string, private readonly configuredRoots?: () => SkillRoot[], private readonly hostResources?: HostResourceProvider) {}
-  private packagePath(runId: string): string { return join(this.runtimeRoot, 'snapshots', runId, 'package.json') }
+  constructor(
+    private readonly runtimeRoot: string,
+    private readonly configuredRoots?: () => SkillRoot[],
+    private readonly hostResources?: HostResourceProvider
+  ) {}
+  private packagePath(runId: string): string {
+    return join(this.runtimeRoot, 'snapshots', runId, 'package.json')
+  }
 
   async freezePackage(runId: string, definition: BlueprintDefinition, rootDir?: string): Promise<void> {
     if (admitResources(definition.resources).length) throw new Error('resource admission rejected')
@@ -185,9 +244,10 @@ export class RuntimeSnapshots {
     let agentPreset: string | undefined
     let agentComposition: PackagedPreset | undefined
     let hostAgentComposition: HostAgentComposition | undefined
-    const resourceDigests: Record<string, string> = { '$package': pkg.digest }
+    const resourceDigests: Record<string, string> = { $package: pkg.digest }
     if (hostAgentId !== undefined) {
-      if (!node.agentRef || agentRef?.kind !== 'agent' || this.hostResources === undefined) throw new ResourceUnavailableError(node.agentRef ?? 'agent', 'Host Agent preset provider unavailable')
+      if (!node.agentRef || agentRef?.kind !== 'agent' || this.hostResources === undefined)
+        throw new ResourceUnavailableError(node.agentRef ?? 'agent', 'Host Agent preset provider unavailable')
       const preset = await this.hostResources.getAgentPreset(hostAgentId)
       if (preset === undefined) throw new ResourceUnavailableError(node.agentRef, `Host Agent preset "${hostAgentId}" unavailable`)
       agentPreset = hostAgentId
@@ -203,7 +263,8 @@ export class RuntimeSnapshots {
       const agentBytes = fileBytes(pkg, agentPath)
       if (agentRef?.format === 'agent-preset') {
         agentComposition = validatePackagedPreset(JSON.parse(agentBytes.toString('utf8')))
-        if (agentComposition.requiredBindings.length > 0) throw new ResourceUnavailableError(node.agentRef, 'Packaged preset requires explicit destination bindings')
+        if (agentComposition.requiredBindings.length > 0)
+          throw new ResourceUnavailableError(node.agentRef, 'Packaged preset requires explicit destination bindings')
       } else agentMd = agentBytes.toString('utf8')
       resourceDigests[node.agentRef] = hash(agentBytes)
     }
@@ -217,7 +278,9 @@ export class RuntimeSnapshots {
         const schema: unknown = JSON.parse(bytes.toString('utf8'))
         assertObjectJsonSchema(schema)
         outputSchema = schema
-      } catch { throw new Error('frozen output schema rejected') }
+      } catch {
+        throw new Error('frozen output schema rejected')
+      }
       resourceDigests[node.outputSchemaRef] = hash(bytes)
     }
     const trees: Array<{ value: Bundle; prefix: string }> = []
@@ -240,7 +303,10 @@ export class RuntimeSnapshots {
           throw new ResourceUnavailableError(id, `Host Skill "${skillSource.id}" unavailable`)
         }
         const hostFiles: SnapshotFile[] = [{ path: 'SKILL.md', bytes: Buffer.from(loaded.content), digest: hash(loaded.content) }]
-        if (Array.isArray(loaded.files)) hostFiles.push(...loaded.files.filter(file => file.path !== 'SKILL.md').map(file => ({ path: file.path, bytes: file.bytes, digest: hash(file.bytes) })))
+        if (Array.isArray(loaded.files))
+          hostFiles.push(
+            ...loaded.files.filter(file => file.path !== 'SKILL.md').map(file => ({ path: file.path, bytes: file.bytes, digest: hash(file.bytes) }))
+          )
         else if (loaded.files !== undefined) {
           for (const [path, bytes] of Object.entries(loaded.files)) {
             if (path === 'SKILL.md') continue
@@ -252,11 +318,18 @@ export class RuntimeSnapshots {
       } else if (ref.source?.kind === 'shared') {
         const resource = await resolveResource(id, { kind: ref.kind, source: ref.source }, { blueprintRoot: '', roots })
         if (resource.kind !== 'shared-skill') throw new Error('Skill resource rejected')
-        value = bundle(snapshotDirectory(resource.skillDir, { kind: 'shared-skill', rootId: resource.rootId, skillDir: resource.skillDir, skillName: resource.skillName }).files)
+        value = bundle(
+          snapshotDirectory(resource.skillDir, { kind: 'shared-skill', rootId: resource.rootId, skillDir: resource.skillDir, skillName: resource.skillName })
+            .files
+        )
       } else {
         const path = ref.path ?? (ref.source?.kind === 'package' ? ref.source.path : undefined)
         if (!path) throw new Error('package Skill path required')
-        value = bundle(pkg.files.filter(f => f.path.startsWith(`${path}/`)).map(f => ({ path: f.path.slice(path.length + 1), digest: f.digest, bytes: Buffer.from(f.base64, 'base64') })))
+        value = bundle(
+          pkg.files
+            .filter(f => f.path.startsWith(`${path}/`))
+            .map(f => ({ path: f.path.slice(path.length + 1), digest: f.digest, bytes: Buffer.from(f.base64, 'base64') }))
+        )
       }
       const content = fileBytes(value, 'SKILL.md').toString('utf8')
       durableWrite(join(this.runtimeRoot, 'snapshots', 'trees', `${value.digest}.json`), value)
@@ -266,7 +339,12 @@ export class RuntimeSnapshots {
       skills.push({ name: id, content: `${content}\n[Full Skill directory: ${prefix}]`, digest: value.digest })
     }
     return {
-      agentMd, ...(agentPreset === undefined ? {} : { agentPreset }), ...(agentComposition === undefined ? {} : { agentComposition }), ...(hostAgentComposition === undefined ? {} : { hostAgentComposition }), skills, resourceDigests,
+      agentMd,
+      ...(agentPreset === undefined ? {} : { agentPreset }),
+      ...(agentComposition === undefined ? {} : { agentComposition }),
+      ...(hostAgentComposition === undefined ? {} : { hostAgentComposition }),
+      skills,
+      resourceDigests,
       ...(outputSchema === undefined ? {} : { outputSchema }),
       materialize: attemptId => {
         const cwd = join(this.runtimeRoot, 'attempts', runId, attemptId)
@@ -274,7 +352,7 @@ export class RuntimeSnapshots {
         putFiles(cwd, pkg)
         for (const tree of trees) putFiles(cwd, tree.value, tree.prefix)
         return cwd
-      },
+      }
     }
   }
 
@@ -285,7 +363,8 @@ export class RuntimeSnapshots {
     if (node.modelSelection !== undefined) throw new Error('TeamStage node model selection is unavailable')
     const lead = node.agentRef === undefined ? undefined : definition.resources[node.agentRef]
     if (lead?.source?.kind === 'host') throw new ResourceUnavailableError(node.agentRef ?? 'agent', 'Host Agent presets are not supported for TeamStage lead')
-    if (lead?.format === 'agent-preset') throw new ResourceUnavailableError(node.agentRef ?? 'agent', 'Packaged Agent presets are not supported for TeamStage lead')
+    if (lead?.format === 'agent-preset')
+      throw new ResourceUnavailableError(node.agentRef ?? 'agent', 'Packaged Agent presets are not supported for TeamStage lead')
     const common = await this.prepare(runId, definition, node)
     const pkg = load(this.packagePath(runId))
     const members = node.teamStage.members.map(member => {
@@ -296,8 +375,7 @@ export class RuntimeSnapshots {
       const path = ref?.path ?? (ref?.source?.kind === 'package' ? ref.source.path : undefined)
       if (ref?.kind !== 'agent' || path === undefined) throw new Error('member agent resource unavailable')
       const bytes = fileBytes(pkg, path)
-      return { logicalName: member.name, agentMd: bytes.toString('utf8'),
-        resourceDigests: { ...common.resourceDigests, [member.agentRef]: hash(bytes) } }
+      return { logicalName: member.name, agentMd: bytes.toString('utf8'), resourceDigests: { ...common.resourceDigests, [member.agentRef]: hash(bytes) } }
     })
     const resourceDigests = Object.assign({}, common.resourceDigests, ...members.map(member => member.resourceDigests)) as Record<string, string>
     return { ...common, members, resourceDigests }

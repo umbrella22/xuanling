@@ -8,8 +8,14 @@ export function createNotRunEvidenceManifest({ planId, evidenceFingerprint }) {
     plan_id: planId,
     evidence_fingerprint: evidenceFingerprint,
     gates: REQUIRED_GATES.map(({ id, suite, scope, minimum_repeat }) => ({
-      id, suite, scope, minimum_repeat, status: 'not-run',
-      reason_code: 'EVIDENCE_NOT_COLLECTED', path: null, sha256: null,
-    })),
+      id,
+      suite,
+      scope,
+      minimum_repeat,
+      status: 'not-run',
+      reason_code: 'EVIDENCE_NOT_COLLECTED',
+      path: null,
+      sha256: null
+    }))
   }
 }

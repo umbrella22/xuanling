@@ -5,17 +5,18 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import {
-  harness, definition, agentNode, bindingResources, agentResources, SCHEMA,
-  runArgs, runSaved, records, drain, executeTool,
-} from './agent-fixtures.mjs'
+import { harness, definition, agentNode, bindingResources, agentResources, SCHEMA, runArgs, runSaved, records, drain, executeTool } from './agent-fixtures.mjs'
 
 const configuredBindings = { reader: { tools: ['read_allowed'] }, writer: { tools: ['write_other'] } }
 
 async function expectBlocked(h, value, message) {
   const doc = await h.save(value)
   let failure
-  try { await h.service.startRun(runArgs(doc)) } catch (error) { failure = error }
+  try {
+    await h.service.startRun(runArgs(doc))
+  } catch (error) {
+    failure = error
+  }
   await drain(h)
   assert.equal(failure?.code, 'blueprint/preflight-blocked', message)
   assert.equal((await records(h)).length, 0, 'C-01: blocked admission creates no durable Run')
@@ -26,27 +27,31 @@ async function expectBlocked(h, value, message) {
 for (const kind of ['toolCall', 'scriptCall']) {
   test(`C-01 startRun: ${kind} readable vocabulary is blocked before admission`, async t => {
     const h = await harness(t)
-    await expectBlocked(h, definition([{ id: 'unsupported', kind }], {}),
-      `C-01: unsupported ${kind} is currently admitted; readable is not executable`)
+    await expectBlocked(h, definition([{ id: 'unsupported', kind }], {}), `C-01: unsupported ${kind} is currently admitted; readable is not executable`)
   })
 }
 
 test('C-01 startRun: missing declared Host tool binding blocks before Agent creation', async t => {
   const h = await harness(t)
-  await expectBlocked(h, definition([agentNode({ toolsetRefs: ['readset'] })], bindingResources),
-    'C-01: declared reader binding is absent, but current startRun admits it')
+  await expectBlocked(
+    h,
+    definition([agentNode({ toolsetRefs: ['readset'] })], bindingResources),
+    'C-01: declared reader binding is absent, but current startRun admits it'
+  )
 })
 
 test('C-01 startRun: binding names must exist in the current real Tools view', async t => {
   const h = await harness(t, { config: { toolBindings: { reader: { tools: ['not_registered'] } } } })
-  await expectBlocked(h, definition([agentNode({ toolsetRefs: ['readset'] })], bindingResources),
-    'C-01: configured unknown tool cannot silently expand/fallback to Host capabilities')
+  await expectBlocked(
+    h,
+    definition([agentNode({ toolsetRefs: ['readset'] })], bindingResources),
+    'C-01: configured unknown tool cannot silently expand/fallback to Host capabilities'
+  )
 })
 
 test('C-01 startRun: a configured binding cannot use a wildcard capability', async t => {
   const h = await harness(t, { config: { toolBindings: { reader: { tools: ['*'] } } } })
-  await expectBlocked(h, definition([agentNode({ toolsetRefs: ['readset'] })], bindingResources),
-    'C-01: wildcard is not an exact registered capability name')
+  await expectBlocked(h, definition([agentNode({ toolsetRefs: ['readset'] })], bindingResources), 'C-01: wildcard is not an exact registered capability name')
 })
 
 test('C-01 startRun: absent public Agent factory is an admission blocker', async t => {
@@ -63,8 +68,11 @@ test('C-01 preflightRun: layered report is read-only and resource/MCP readiness 
   const h = await harness(t, { config: { toolBindings: configuredBindings } })
   const doc = await h.save(definition([agentNode({ toolsetRefs: ['readset'] })], bindingResources))
   assert.equal(typeof h.service.preflightRun, 'function', 'C-01 capability oracle: existing service has no preflightRun')
-  const report = await h.service.preflightRun({ blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision,
-    inputJson: JSON.stringify({ task: 'PREFLIGHT_INPUT_SECRET_SENTINEL' }) })
+  const report = await h.service.preflightRun({
+    blueprintId: doc.blueprintId,
+    expectedRevision: doc.documentRevision,
+    inputJson: JSON.stringify({ task: 'PREFLIGHT_INPUT_SECRET_SENTINEL' })
+  })
   assert.equal(report.blueprintId, doc.blueprintId)
   assert.equal(report.documentRevision, doc.documentRevision)
   assert.equal(report.semanticRevision, doc.semanticRevision)
@@ -74,11 +82,15 @@ test('C-01 preflightRun: layered report is read-only and resource/MCP readiness 
     assert.ok(['block', 'warning', 'info', 'pass'].includes(check.status))
     assert.equal(typeof check.code, 'string')
     assert.ok(check.code.length > 0)
-    assert.ok(Object.keys(check).every(key => ['code', 'status', 'nodeId', 'resourceId', 'toolName'].includes(key)),
-      'C-01: report uses the stable-code/logical-ID whitelist')
+    assert.ok(
+      Object.keys(check).every(key => ['code', 'status', 'nodeId', 'resourceId', 'toolName'].includes(key)),
+      'C-01: report uses the stable-code/logical-ID whitelist'
+    )
   }
-  assert.ok(report.checks.some(check => check.code === 'reachability-unverified'),
-    'C-01: registered MCP capability is not evidence of reachable remote service')
+  assert.ok(
+    report.checks.some(check => check.code === 'reachability-unverified'),
+    'C-01: registered MCP capability is not evidence of reachable remote service'
+  )
   assert.equal(h.host.calls.length, 0)
   assert.deepEqual(h.effects, [])
   assert.equal((await records(h)).length, 0)
@@ -95,13 +107,18 @@ test('C-01 startRun: Host capability change after green preflight is rechecked o
   assert.equal(report.canStart, true)
   // Real registration removal, not a stubbed preflight result or allowlist function.
   const remove = h.nativeTools.register({
-    name: 'temporary_binding', description: 'temporary capability', parameters: { type: 'object' },
-    output: { schema: { type: 'boolean' }, render: () => [{ type: 'text', text: 'ok' }] }, execute: async () => true,
+    name: 'temporary_binding',
+    description: 'temporary capability',
+    parameters: { type: 'object' },
+    output: { schema: { type: 'boolean' }, render: () => [{ type: 'text', text: 'ok' }] },
+    execute: async () => true
   })
   remove()
   // Mutate the Host-owned binding object; preflight is not an authority token.
   configuredBindings.reader.tools = ['temporary_binding']
-  t.after(() => { configuredBindings.reader.tools = ['read_allowed'] })
+  t.after(() => {
+    configuredBindings.reader.tools = ['read_allowed']
+  })
   await assert.rejects(h.service.startRun(args), error => error.code === 'blueprint/preflight-blocked')
   assert.equal(h.host.calls.length, 0)
   assert.deepEqual(h.effects, [])
@@ -109,13 +126,14 @@ test('C-01 startRun: Host capability change after green preflight is rechecked o
 
 for (const [label, schema] of [
   ['external-ref', { ...SCHEMA, $ref: 'https://example.invalid/schema' }],
-  ['unsupported-keyword', { ...SCHEMA, allOf: [{ type: 'object' }] }],
+  ['unsupported-keyword', { ...SCHEMA, allOf: [{ type: 'object' }] }]
 ]) {
   test(`C-01/C-03 startRun: ${label} schema is rejected before dispatch`, async t => {
     const h = await harness(t)
     writeFileSync(join(h.rootDir, 'lib/schemas/answer.json'), JSON.stringify(schema))
     const value = definition([agentNode({ outputSchemaRef: 'answerSchema' })], {
-      ...agentResources, answerSchema: { kind: 'schema', path: 'lib/schemas/answer.json' },
+      ...agentResources,
+      answerSchema: { kind: 'schema', path: 'lib/schemas/answer.json' }
     })
     await expectBlocked(h, value, 'C-03: schema bytes must be validated with the public DSH subset before new admission')
   })
@@ -142,7 +160,10 @@ test('C-08 control: malformed input and stale document revision remain typed and
 test('C-08 control: command replay survives changed Host capability without redispatch or refreezing', async t => {
   const h = await harness(t, {
     config: { toolBindings: { reader: { tools: ['read_allowed'] } } },
-    onTurn: async call => { call.result = await executeTool(call, 'read_allowed'); call.finish() },
+    onTurn: async call => {
+      call.result = await executeTool(call, 'read_allowed')
+      call.finish()
+    }
   })
   const value = definition([agentNode({ toolsetRefs: ['readset'] })], bindingResources)
   const { args, admitted, record } = await runSaved(h, value)

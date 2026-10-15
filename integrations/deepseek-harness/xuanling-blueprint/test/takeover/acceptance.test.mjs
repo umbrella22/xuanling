@@ -45,7 +45,9 @@ function fixture(t) {
   mkdirSync(env.DSH_HOME)
   const networkLog = join(root, 'network-attempts.txt')
   const preload = join(root, 'no-network.mjs')
-  writeFileSync(preload, `
+  writeFileSync(
+    preload,
+    `
 import http from 'node:http';
 import https from 'node:https';
 import net from 'node:net';
@@ -67,14 +69,18 @@ dgram.createSocket = deny;
 dns.lookup = dns.resolve = deny;
 dns.promises.lookup = dns.promises.resolve = deny;
 syncBuiltinESMExports();
-`)
+`
+  )
   return { root, env, preload, networkLog }
 }
 
 function invoke(f, args, extraEnv = {}) {
   assert.equal(existsSync(join(packageRoot, 'lib/index.js')), true, 'W0 build prerequisite missing: this is NOT a valid product red')
   const child = spawnSync(process.execPath, ['--import', pathToFileURL(f.preload).href, runner, ...args], {
-    cwd: packageRoot, env: { ...f.env, ...extraEnv }, encoding: 'utf8', timeout: 20_000,
+    cwd: packageRoot,
+    env: { ...f.env, ...extraEnv },
+    encoding: 'utf8',
+    timeout: 20_000
   })
   assert.equal(child.error, undefined, `runner launch failure is NOT a valid product red: ${child.error}`)
   assert.equal(child.signal, null, 'timeout/signal is NOT a valid product red')
@@ -97,7 +103,7 @@ test('C-11 controlled placeholder + import-only live case must NOT produce a pas
   const reportDir = join(f.root, 'isolated-placeholder-report')
   const child = invoke(f, ['--suite', 'live', '--report-dir', reportDir, '--plan-id', 'dsh-blueprint-takeover-v1'], {
     BP_LIVE_PROVIDER_KEY: placeholder,
-    BP_LIVE_PROVIDER_BASE_URL: 'http://127.0.0.1:9',
+    BP_LIVE_PROVIDER_BASE_URL: 'http://127.0.0.1:9'
   })
   assertOldReportsUnchanged(before)
   const report = reportAt(reportDir)
@@ -109,9 +115,21 @@ test('C-11 controlled placeholder + import-only live case must NOT produce a pas
   // "journey harness ready". The diagnostic message preserves that finding;
   // an actual future guarded call may try network and must still not pass.
   const networkAttempts = existsSync(f.networkLog) ? readFileSync(f.networkLog, 'utf8').trim() : 'none'
-  t.diagnostic(JSON.stringify({ oracle: 'controlled-placeholder-not-live', report_path: join(reportDir, 'w7.live-report.json'), plan_id: report.plan_id, passed: report.passed, network_attempts: networkAttempts, old_reports_unchanged: true }))
-  assert.equal(report.passed, false,
-    `FALSE_LIVE_PASS: a controlled placeholder/import-only run cannot prove a live journey; status=${child.status}; L1=${JSON.stringify(report.runs[0].results[0])}; networkAttempts=${networkAttempts}`)
+  t.diagnostic(
+    JSON.stringify({
+      oracle: 'controlled-placeholder-not-live',
+      report_path: join(reportDir, 'w7.live-report.json'),
+      plan_id: report.plan_id,
+      passed: report.passed,
+      network_attempts: networkAttempts,
+      old_reports_unchanged: true
+    })
+  )
+  assert.equal(
+    report.passed,
+    false,
+    `FALSE_LIVE_PASS: a controlled placeholder/import-only run cannot prove a live journey; status=${child.status}; L1=${JSON.stringify(report.runs[0].results[0])}; networkAttempts=${networkAttempts}`
+  )
   assert.notEqual(child.status, 0, 'invalid placeholder must not exit with a passed live gate')
 })
 
@@ -131,7 +149,16 @@ test('control: report routing preserves explicit missing-credentials not-run and
   assert.equal(report.runs[0].results[0].status, 'not-run')
   assert.match(report.runs[0].results[0].reason_code, /^[A-Z][A-Z0-9_]+$/)
   assert.equal(existsSync(f.networkLog), false)
-  t.diagnostic(JSON.stringify({ oracle: 'missing-credentials-routing', report_path: join(reportDir, 'w7.live-report.json'), plan_id: report.plan_id, passed: report.passed, exit_code: child.status, old_reports_unchanged: true }))
+  t.diagnostic(
+    JSON.stringify({
+      oracle: 'missing-credentials-routing',
+      report_path: join(reportDir, 'w7.live-report.json'),
+      plan_id: report.plan_id,
+      passed: report.passed,
+      exit_code: child.status,
+      old_reports_unchanged: true
+    })
+  )
 })
 
 test('control: explicit report-dir with default plan-id and equals-form options preserves suite outcomes', t => {
@@ -145,7 +172,15 @@ test('control: explicit report-dir with default plan-id and equals-form options 
   const explicit = invoke(f, ['--suite=live', `--report-dir=${explicitDir}`, '--plan-id=dsh-blueprint-takeover-v1'])
   assert.equal(explicit.status, 1)
   assert.equal(reportAt(explicitDir).plan_id, 'dsh-blueprint-takeover-v1')
-  t.diagnostic(JSON.stringify({ oracle: 'equals-routing-and-default-plan-id', default_plan_report_path: join(defaultDir, 'w7.live-report.json'), default_plan_id: reportAt(defaultDir).plan_id, explicit_report_path: join(explicitDir, 'w7.live-report.json'), explicit_plan_id: reportAt(explicitDir).plan_id }))
+  t.diagnostic(
+    JSON.stringify({
+      oracle: 'equals-routing-and-default-plan-id',
+      default_plan_report_path: join(defaultDir, 'w7.live-report.json'),
+      default_plan_id: reportAt(defaultDir).plan_id,
+      explicit_report_path: join(explicitDir, 'w7.live-report.json'),
+      explicit_plan_id: reportAt(explicitDir).plan_id
+    })
+  )
   assertOldReportsUnchanged(before)
 })
 
@@ -164,11 +199,28 @@ test('control: original pass/expected-red/wrong-red/no-evidence classification r
   const results = await runCases([
     { id: 'pass', expect: 'pass', run: () => ({ ok: true }) },
     { id: 'no-evidence', expect: 'pass', run: () => undefined },
-    { id: 'named-red', expect: 'red', redCode: 'TEST_DENIED', run: () => { throw Object.assign(new Error('denied'), { code: 'TEST_DENIED' }) } },
-    { id: 'wrong-red', expect: 'red', redCode: 'TEST_DENIED', run: () => { throw new Error('unrelated') } },
-    { id: 'unexpected-green', expect: 'red', redCode: 'TEST_DENIED', run: () => ({ ok: true }) },
+    {
+      id: 'named-red',
+      expect: 'red',
+      redCode: 'TEST_DENIED',
+      run: () => {
+        throw Object.assign(new Error('denied'), { code: 'TEST_DENIED' })
+      }
+    },
+    {
+      id: 'wrong-red',
+      expect: 'red',
+      redCode: 'TEST_DENIED',
+      run: () => {
+        throw new Error('unrelated')
+      }
+    },
+    { id: 'unexpected-green', expect: 'red', redCode: 'TEST_DENIED', run: () => ({ ok: true }) }
   ])
-  assert.deepEqual(results.map(result => result.status), ['pass', 'fail', 'expected-red', 'fail', 'fail'])
+  assert.deepEqual(
+    results.map(result => result.status),
+    ['pass', 'fail', 'expected-red', 'fail', 'fail']
+  )
 })
 
 // C-11 regression: a historical green flag with no current behavioral
@@ -176,11 +228,21 @@ test('control: original pass/expected-red/wrong-red/no-evidence classification r
 test('acceptance rejects historical top-level green empty wrong-plan reports', async t => {
   const root = mkdtempSync(join(tmpdir(), 'bp-old-aggregator-'))
   t.after(() => rmSync(root, { recursive: true, force: true }))
-  const old = ['w0/w0.2-probe-report.json', 'w2/w2.definition-report.json',
-    'w2/w2.resources-report.json', 'w2/w2.security-report.json', 'w2/w2.critical-report.json',
-    'w3/w3.runtime-report.json', 'w3/w3.recovery-report.json', 'w4/w4.host-report.json',
-    'w4/w4.api-report.json', 'w5/w5.portability-report.json', 'w6/w6.browser-report.json',
-    'w7/w7.platform-report.json', 'w8/w8.lifecycle-report.json']
+  const old = [
+    'w0/w0.2-probe-report.json',
+    'w2/w2.definition-report.json',
+    'w2/w2.resources-report.json',
+    'w2/w2.security-report.json',
+    'w2/w2.critical-report.json',
+    'w3/w3.runtime-report.json',
+    'w3/w3.recovery-report.json',
+    'w4/w4.host-report.json',
+    'w4/w4.api-report.json',
+    'w5/w5.portability-report.json',
+    'w6/w6.browser-report.json',
+    'w7/w7.platform-report.json',
+    'w8/w8.lifecycle-report.json'
+  ]
   for (const rel of old) {
     const path = join(root, 'test/blueprint/reports', rel)
     mkdirSync(dirname(path), { recursive: true })
@@ -202,18 +264,29 @@ const digest = bytes => createHash('sha256').update(bytes).digest('hex')
 
 // Explicitly synthetic receipts, not a network/platform execution claim.
 function syntheticLiveDetail() {
-  return { ok: true, behavior_assertions: {
-    runId: 'synthetic-run', attemptId: 'synthetic-model', downstreamAttemptId: 'synthetic-downstream',
-    sessionId: 'bp-synthetic-run-synthetic-model-session',
-    ...Object.fromEntries(LIVE_BEHAVIOR_FLAGS.map(key => [key, true])),
-    output_sha256: 'd'.repeat(64), nonce_sha256: 'd'.repeat(64),
-  } }
+  return {
+    ok: true,
+    behavior_assertions: {
+      runId: 'synthetic-run',
+      attemptId: 'synthetic-model',
+      downstreamAttemptId: 'synthetic-downstream',
+      sessionId: 'bp-synthetic-run-synthetic-model-session',
+      ...Object.fromEntries(LIVE_BEHAVIOR_FLAGS.map(key => [key, true])),
+      output_sha256: 'd'.repeat(64),
+      nonce_sha256: 'd'.repeat(64)
+    }
+  }
 }
 function syntheticDetail(required, caseId) {
   if (required.suite === 'live') return syntheticLiveDetail()
   if (required.suite === 'platform' && caseId === 'PL1') return { ok: true, platform: required.platform ?? 'darwin', arch: 'arm64' }
-  if (required.suite === 'lifecycle') return { ok: true, mode: required.scope, artifact_sha256: 'e'.repeat(64),
-    behavior_assertions: Object.fromEntries(LIFECYCLE_BEHAVIOR_FLAGS[caseId].map(key => [key, true])) }
+  if (required.suite === 'lifecycle')
+    return {
+      ok: true,
+      mode: required.scope,
+      artifact_sha256: 'e'.repeat(64),
+      behavior_assertions: Object.fromEntries(LIFECYCLE_BEHAVIOR_FLAGS[caseId].map(key => [key, true]))
+    }
   return true
 }
 
@@ -223,25 +296,45 @@ function evaluatorFixture(t) {
   t.after(() => rmSync(root, { recursive: true, force: true }))
   const manifest = { schema_version: 1, plan_id: syntheticPlan, evidence_fingerprint: { ...syntheticFingerprint }, gates: [] }
   const reports = new Map()
-  const writeGate = (id) => {
+  const writeGate = id => {
     const gate = manifest.gates.find(g => g.id === id)
     const bytes = JSON.stringify(reports.get(id))
     writeFileSync(join(root, gate.path), bytes)
     gate.sha256 = digest(bytes)
   }
   for (const required of REQUIRED_GATES) {
-    const gate = { id: required.id, suite: required.suite, scope: required.scope,
-      minimum_repeat: required.minimum_repeat, status: 'passed', path: `${required.id}.json`, sha256: null }
+    const gate = {
+      id: required.id,
+      suite: required.suite,
+      scope: required.scope,
+      minimum_repeat: required.minimum_repeat,
+      status: 'passed',
+      path: `${required.id}.json`,
+      sha256: null
+    }
     manifest.gates.push(gate)
     const repeat = required.minimum_repeat
-    reports.set(required.id, { schema_version: 1, plan_id: syntheticPlan, suite: required.suite,
-      scope: required.scope, repeat, passed: true, clean_acceptance_count: repeat,
+    reports.set(required.id, {
+      schema_version: 1,
+      plan_id: syntheticPlan,
+      suite: required.suite,
+      scope: required.scope,
+      repeat,
+      passed: true,
+      clean_acceptance_count: repeat,
       environment: { platform: `${required.platform ?? 'darwin'}/arm64` },
       ...(required.suite === 'lifecycle' ? { mode: required.scope, artifacts: { tarball: { path: 'synthetic-only.tgz', sha256: 'e'.repeat(64) } } } : {}),
-      evidence_fingerprint: { ...syntheticFingerprint }, evidence_fingerprint_after: { ...syntheticFingerprint },
-      runs: Array.from({ length: repeat }, (_, i) => ({ index: i + 1, passed: true, clean_acceptance_count: i + 1,
-        evidence_fingerprint: { ...syntheticFingerprint }, evidence_fingerprint_after: { ...syntheticFingerprint },
-        results: required.required_cases.map(id => ({ id, expect: 'pass', status: 'pass', detail: syntheticDetail(required, id) })) })) })
+      evidence_fingerprint: { ...syntheticFingerprint },
+      evidence_fingerprint_after: { ...syntheticFingerprint },
+      runs: Array.from({ length: repeat }, (_, i) => ({
+        index: i + 1,
+        passed: true,
+        clean_acceptance_count: i + 1,
+        evidence_fingerprint: { ...syntheticFingerprint },
+        evidence_fingerprint_after: { ...syntheticFingerprint },
+        results: required.required_cases.map(id => ({ id, expect: 'pass', status: 'pass', detail: syntheticDetail(required, id) }))
+      }))
+    })
     writeGate(required.id)
   }
   const path = join(root, 'synthetic-manifest.json')
@@ -263,29 +356,73 @@ test('synthetic evaluator only: fixed complete manifest validates; does NOT prov
   const f = evaluatorFixture(t)
   assert.equal(f.evaluate().ok, true)
   assert.equal(REQUIRED_GATES.length, 20)
-  const expected = ['foundation', 'definition', 'resources', 'runtime', 'host', 'api', 'portability', 'security',
-    'recovery', 'critical', 'browser', 'performance', 'platform', 'live', 'package',
-    'platform-darwin', 'platform-linux', 'platform-win32', 'lifecycle-web', 'lifecycle-headless']
-  assert.deepEqual(REQUIRED_GATES.map(g => g.id), expected)
+  const expected = [
+    'foundation',
+    'definition',
+    'resources',
+    'runtime',
+    'host',
+    'api',
+    'portability',
+    'security',
+    'recovery',
+    'critical',
+    'browser',
+    'performance',
+    'platform',
+    'live',
+    'package',
+    'platform-darwin',
+    'platform-linux',
+    'platform-win32',
+    'lifecycle-web',
+    'lifecycle-headless'
+  ]
+  assert.deepEqual(
+    REQUIRED_GATES.map(g => g.id),
+    expected
+  )
   assert.equal(REQUIRED_GATES.find(g => g.id === 'critical').minimum_repeat, 3)
 })
 
 // Main review regressions: these MUST fail against the pre-review evaluator.
 for (const [label, gateId, mutate, reason] of [
-  ['live import-only detail', 'live', report => { report.runs[0].results[0].detail = 'ready/import-only' }, 'LIVE_BEHAVIOR_INVALID'],
-  ['live top-level forged behavior', 'live', report => {
-    report.behavior_assertions = { runSucceeded: true, nonceMatched: true }
-    report.runs[0].results[0].behavior_assertions = report.behavior_assertions
-    report.runs[0].results[0].detail = 'ready/import-only'
-  }, 'LIVE_BEHAVIOR_INVALID'],
-  ['OS PL1 contradicts environment', 'platform-linux', report => {
-    report.runs[0].results[0].detail = { ok: true, platform: 'darwin', arch: 'arm64' }
-  }, 'PLATFORM_BEHAVIOR_INVALID'],
-  ['lifecycle top-level green lacks behaviors', 'lifecycle-web', report => {
-    report.mode = 'web'
-    report.artifacts = { tarball: { path: 'synthetic.tgz', sha256: 'd'.repeat(64) } }
-    for (const result of report.runs[0].results) result.detail = { ok: true }
-  }, 'LIFECYCLE_BEHAVIOR_INVALID'],
+  [
+    'live import-only detail',
+    'live',
+    report => {
+      report.runs[0].results[0].detail = 'ready/import-only'
+    },
+    'LIVE_BEHAVIOR_INVALID'
+  ],
+  [
+    'live top-level forged behavior',
+    'live',
+    report => {
+      report.behavior_assertions = { runSucceeded: true, nonceMatched: true }
+      report.runs[0].results[0].behavior_assertions = report.behavior_assertions
+      report.runs[0].results[0].detail = 'ready/import-only'
+    },
+    'LIVE_BEHAVIOR_INVALID'
+  ],
+  [
+    'OS PL1 contradicts environment',
+    'platform-linux',
+    report => {
+      report.runs[0].results[0].detail = { ok: true, platform: 'darwin', arch: 'arm64' }
+    },
+    'PLATFORM_BEHAVIOR_INVALID'
+  ],
+  [
+    'lifecycle top-level green lacks behaviors',
+    'lifecycle-web',
+    report => {
+      report.mode = 'web'
+      report.artifacts = { tarball: { path: 'synthetic.tgz', sha256: 'd'.repeat(64) } }
+      for (const result of report.runs[0].results) result.detail = { ok: true }
+    },
+    'LIFECYCLE_BEHAVIOR_INVALID'
+  ]
 ]) {
   test(`review regression: rejects ${label}`, t => {
     const f = evaluatorFixture(t)
@@ -312,13 +449,48 @@ for (const key of LIVE_BEHAVIOR_FLAGS) {
   })
 }
 for (const [label, mutate] of [
-  ['different nonce digest', facts => { facts.nonce_sha256 = 'f'.repeat(64) }],
-  ['malformed output digest', facts => { facts.output_sha256 = 'not-a-digest' }],
-  ['unrelated session', facts => { facts.sessionId = 'bp-unrelated-run-model-session' }],
-  ['no session suffix', facts => { facts.sessionId = `bp-${facts.runId}-${facts.attemptId}-` }],
-  ['same downstream attempt', facts => { facts.downstreamAttemptId = facts.attemptId }],
-  ['empty run identity', facts => { facts.runId = '' }],
-  ['truthy instead of true', facts => { facts.runSucceeded = 1 }],
+  [
+    'different nonce digest',
+    facts => {
+      facts.nonce_sha256 = 'f'.repeat(64)
+    }
+  ],
+  [
+    'malformed output digest',
+    facts => {
+      facts.output_sha256 = 'not-a-digest'
+    }
+  ],
+  [
+    'unrelated session',
+    facts => {
+      facts.sessionId = 'bp-unrelated-run-model-session'
+    }
+  ],
+  [
+    'no session suffix',
+    facts => {
+      facts.sessionId = `bp-${facts.runId}-${facts.attemptId}-`
+    }
+  ],
+  [
+    'same downstream attempt',
+    facts => {
+      facts.downstreamAttemptId = facts.attemptId
+    }
+  ],
+  [
+    'empty run identity',
+    facts => {
+      facts.runId = ''
+    }
+  ],
+  [
+    'truthy instead of true',
+    facts => {
+      facts.runSucceeded = 1
+    }
+  ]
 ]) {
   test(`live negative: rejects ${label}`, t => {
     const f = evaluatorFixture(t)
@@ -342,14 +514,54 @@ for (const mode of ['web', 'headless']) {
   }
 }
 for (const [label, mutate] of [
-  ['missing mode', report => { delete report.mode }],
-  ['other mode', report => { report.mode = 'headless' }],
-  ['other case mode', report => { report.runs[0].results[3].detail.mode = 'headless' }],
-  ['missing tarball', report => { delete report.artifacts }],
-  ['malformed artifact digest', report => { report.artifacts.tarball.sha256 = 'not-a-digest' }],
-  ['empty artifact locator', report => { report.artifacts.tarball.path = '' }],
-  ['different installed artifact', report => { report.runs[0].results[2].detail.artifact_sha256 = 'f'.repeat(64) }],
-  ['false behavior behind green status', report => { report.runs[0].results[4].detail.behavior_assertions.uninstalled = false }],
+  [
+    'missing mode',
+    report => {
+      delete report.mode
+    }
+  ],
+  [
+    'other mode',
+    report => {
+      report.mode = 'headless'
+    }
+  ],
+  [
+    'other case mode',
+    report => {
+      report.runs[0].results[3].detail.mode = 'headless'
+    }
+  ],
+  [
+    'missing tarball',
+    report => {
+      delete report.artifacts
+    }
+  ],
+  [
+    'malformed artifact digest',
+    report => {
+      report.artifacts.tarball.sha256 = 'not-a-digest'
+    }
+  ],
+  [
+    'empty artifact locator',
+    report => {
+      report.artifacts.tarball.path = ''
+    }
+  ],
+  [
+    'different installed artifact',
+    report => {
+      report.runs[0].results[2].detail.artifact_sha256 = 'f'.repeat(64)
+    }
+  ],
+  [
+    'false behavior behind green status',
+    report => {
+      report.runs[0].results[4].detail.behavior_assertions.uninstalled = false
+    }
+  ]
 ]) {
   test(`lifecycle negative: rejects ${label}`, t => {
     const f = evaluatorFixture(t)
@@ -375,9 +587,18 @@ for (const platform of ['darwin', 'linux', 'win32']) {
 
 test('runner: L1 complete structured facts survive without truncation; import-only/top-level metadata fail and raw fields are dropped', async () => {
   const detail = syntheticLiveDetail()
-  const [green] = await runCases([{ id: 'L1', expect: 'pass', run: () => ({ ...detail,
-    detail: 'PRIVATE_PROVIDER_RAW_KEY', raw: 'PRIVATE_PROVIDER_RAW_KEY',
-    behavior_assertions: { ...detail.behavior_assertions, raw: 'PRIVATE_PROVIDER_RAW_KEY' } }) }])
+  const [green] = await runCases([
+    {
+      id: 'L1',
+      expect: 'pass',
+      run: () => ({
+        ...detail,
+        detail: 'PRIVATE_PROVIDER_RAW_KEY',
+        raw: 'PRIVATE_PROVIDER_RAW_KEY',
+        behavior_assertions: { ...detail.behavior_assertions, raw: 'PRIVATE_PROVIDER_RAW_KEY' }
+      })
+    }
+  ])
   assert.equal(green.status, 'pass')
   assert.deepEqual(green.detail, detail)
   assert.ok(JSON.stringify(green.detail).length > 200)
@@ -397,7 +618,10 @@ test('runner: PL1 platform receipt is structured without temporary path/200-char
 test('acceptance: no manifest, missing file/gate/env and explicit gaps are typed not-run, never green', t => {
   assertNotRun(() => evaluateEvidenceManifest({ planId: syntheticPlan, evidenceFingerprint: syntheticFingerprint }), 'MANIFEST_MISSING')
   const f = evaluatorFixture(t)
-  assertNotRun(() => evaluateEvidenceManifest({ evidenceManifestPath: f.path, planId: syntheticPlan, evidenceFingerprint: syntheticFingerprint }), 'MANIFEST_MISSING')
+  assertNotRun(
+    () => evaluateEvidenceManifest({ evidenceManifestPath: f.path, planId: syntheticPlan, evidenceFingerprint: syntheticFingerprint }),
+    'MANIFEST_MISSING'
+  )
   const last = f.manifest.gates.pop()
   assertNotRun(f.evaluate, 'GATE_MISSING')
   f.manifest.gates.push(last)
@@ -415,49 +639,258 @@ test('acceptance: no manifest, missing file/gate/env and explicit gaps are typed
 })
 
 for (const [label, reason, mutate] of [
-  ['wrong manifest plan', 'WRONG_PLAN', f => { f.manifest.plan_id = 'old-plan' }],
-  ['stale manifest source', 'EVIDENCE_STALE', f => { f.manifest.evidence_fingerprint.source_sha256 = 'd'.repeat(64) }],
-  ['bad manifest schema', 'MANIFEST_SCHEMA_INVALID', f => { f.manifest.schema_version = 2 }],
-  ['duplicate required ID', 'GATE_ID_INVALID', f => { f.manifest.gates.push({ ...f.manifest.gates[0] }) }],
-  ['unknown gate ID', 'GATE_ID_INVALID', f => { f.manifest.gates[0].id = 'UNTRUSTED_RAW_SECRET' }],
-  ['wrong suite', 'GATE_SCHEMA_INVALID', f => { f.manifest.gates[0].suite = 'live' }],
-  ['shrunk all scope', 'GATE_SCHEMA_INVALID', f => { f.manifest.gates.find(g => g.id === 'api').scope = 'ui' }],
-  ['shrunk critical repeat', 'GATE_SCHEMA_INVALID', f => { f.manifest.gates.find(g => g.id === 'critical').minimum_repeat = 1 }],
-  ['bad digest shape', 'GATE_SCHEMA_INVALID', f => { f.manifest.gates[0].sha256 = 'not-a-sha' }],
-  ['tampered report', 'EVIDENCE_TAMPERED', f => { writeFileSync(join(f.root, f.manifest.gates[0].path), 'PRIVATE_RAW_BODY') }],
+  [
+    'wrong manifest plan',
+    'WRONG_PLAN',
+    f => {
+      f.manifest.plan_id = 'old-plan'
+    }
+  ],
+  [
+    'stale manifest source',
+    'EVIDENCE_STALE',
+    f => {
+      f.manifest.evidence_fingerprint.source_sha256 = 'd'.repeat(64)
+    }
+  ],
+  [
+    'bad manifest schema',
+    'MANIFEST_SCHEMA_INVALID',
+    f => {
+      f.manifest.schema_version = 2
+    }
+  ],
+  [
+    'duplicate required ID',
+    'GATE_ID_INVALID',
+    f => {
+      f.manifest.gates.push({ ...f.manifest.gates[0] })
+    }
+  ],
+  [
+    'unknown gate ID',
+    'GATE_ID_INVALID',
+    f => {
+      f.manifest.gates[0].id = 'UNTRUSTED_RAW_SECRET'
+    }
+  ],
+  [
+    'wrong suite',
+    'GATE_SCHEMA_INVALID',
+    f => {
+      f.manifest.gates[0].suite = 'live'
+    }
+  ],
+  [
+    'shrunk all scope',
+    'GATE_SCHEMA_INVALID',
+    f => {
+      f.manifest.gates.find(g => g.id === 'api').scope = 'ui'
+    }
+  ],
+  [
+    'shrunk critical repeat',
+    'GATE_SCHEMA_INVALID',
+    f => {
+      f.manifest.gates.find(g => g.id === 'critical').minimum_repeat = 1
+    }
+  ],
+  [
+    'bad digest shape',
+    'GATE_SCHEMA_INVALID',
+    f => {
+      f.manifest.gates[0].sha256 = 'not-a-sha'
+    }
+  ],
+  [
+    'tampered report',
+    'EVIDENCE_TAMPERED',
+    f => {
+      writeFileSync(join(f.root, f.manifest.gates[0].path), 'PRIVATE_RAW_BODY')
+    }
+  ]
 ]) {
   test(`synthetic negative: ${label}`, t => {
-    const f = evaluatorFixture(t); mutate(f); assertTypedFailure(f.evaluate, reason)
+    const f = evaluatorFixture(t)
+    mutate(f)
+    assertTypedFailure(f.evaluate, reason)
   })
 }
 
 for (const [label, reason, mutate, id = 'foundation'] of [
-  ['wrong report schema', 'REPORT_SCHEMA_INVALID', r => { delete r.schema_version }],
-  ['malformed environment', 'ENVIRONMENT_SCHEMA_INVALID', r => { r.environment = { platform: 'PRIVATE_RAW_BODY' } }],
-  ['wrong report plan', 'WRONG_PLAN', r => { r.plan_id = 'obsolete-plan' }],
-  ['wrong report suite', 'REPORT_IDENTITY_INVALID', r => { r.suite = 'acceptance' }],
-  ['wrong report scope', 'REPORT_IDENTITY_INVALID', r => { r.scope = 'ui' }, 'api'],
-  ['stale report before', 'EVIDENCE_STALE', r => { r.evidence_fingerprint.artifact_sha256 = 'd'.repeat(64) }],
-  ['changed report after', 'EVIDENCE_STALE', r => { r.evidence_fingerprint_after.source_sha256 = 'd'.repeat(64) }],
-  ['stale run before', 'EVIDENCE_STALE', r => { r.runs[0].evidence_fingerprint.revision = 'd'.repeat(40) }],
-  ['changed run after', 'EVIDENCE_STALE', r => { r.runs[0].evidence_fingerprint_after.source_sha256 = 'd'.repeat(64) }],
-  ['empty runs green flag', 'REPEAT_OR_RUNS_INVALID', r => { r.runs = [] }],
-  ['empty results green flag', 'EMPTY_OR_INVALID_RESULTS', r => { r.runs[0].results = [] }],
-  ['missing required case', 'REQUIRED_CASE_MISSING', r => { r.runs[0].results.pop() }],
-  ['duplicate result', 'RESULT_SCHEMA_INVALID', r => { r.runs[0].results.push({ ...r.runs[0].results[0] }) }],
-  ['expected-red cannot count as product green', 'RESULT_SCHEMA_INVALID', r => { Object.assign(r.runs[0].results[0], { expect: 'red', status: 'expected-red' }) }],
-  ['hidden failed result', 'RESULT_FAILED', r => { r.runs[0].results[0].status = 'fail' }],
-  ['ignored result', 'RESULT_FAILED', r => { r.runs[0].results[0].status = 'ignored' }],
-  ['false run passed', 'NONCONTIGUOUS_GREEN', r => { r.runs[0].passed = false }],
-  ['false clean count', 'NONCONTIGUOUS_GREEN', r => { r.runs[1].clean_acceptance_count = 1 }, 'critical'],
-  ['insufficient actual repeat', 'REPEAT_OR_RUNS_INVALID', r => { r.repeat = 1; r.runs = r.runs.slice(0, 1) }, 'critical'],
-  ['hidden middle failure', 'RESULT_FAILED', r => { r.runs[1].results[0].status = 'fail' }, 'critical'],
-  ['failed report top-level', 'REPORT_FAILED', r => { r.passed = false }],
-  ['false final count', 'REPORT_FAILED', r => { r.clean_acceptance_count = 0 }],
-  ['wrong OS identity', 'PLATFORM_IDENTITY_INVALID', r => { r.environment.platform = 'darwin/arm64' }, 'platform-win32'],
+  [
+    'wrong report schema',
+    'REPORT_SCHEMA_INVALID',
+    r => {
+      delete r.schema_version
+    }
+  ],
+  [
+    'malformed environment',
+    'ENVIRONMENT_SCHEMA_INVALID',
+    r => {
+      r.environment = { platform: 'PRIVATE_RAW_BODY' }
+    }
+  ],
+  [
+    'wrong report plan',
+    'WRONG_PLAN',
+    r => {
+      r.plan_id = 'obsolete-plan'
+    }
+  ],
+  [
+    'wrong report suite',
+    'REPORT_IDENTITY_INVALID',
+    r => {
+      r.suite = 'acceptance'
+    }
+  ],
+  [
+    'wrong report scope',
+    'REPORT_IDENTITY_INVALID',
+    r => {
+      r.scope = 'ui'
+    },
+    'api'
+  ],
+  [
+    'stale report before',
+    'EVIDENCE_STALE',
+    r => {
+      r.evidence_fingerprint.artifact_sha256 = 'd'.repeat(64)
+    }
+  ],
+  [
+    'changed report after',
+    'EVIDENCE_STALE',
+    r => {
+      r.evidence_fingerprint_after.source_sha256 = 'd'.repeat(64)
+    }
+  ],
+  [
+    'stale run before',
+    'EVIDENCE_STALE',
+    r => {
+      r.runs[0].evidence_fingerprint.revision = 'd'.repeat(40)
+    }
+  ],
+  [
+    'changed run after',
+    'EVIDENCE_STALE',
+    r => {
+      r.runs[0].evidence_fingerprint_after.source_sha256 = 'd'.repeat(64)
+    }
+  ],
+  [
+    'empty runs green flag',
+    'REPEAT_OR_RUNS_INVALID',
+    r => {
+      r.runs = []
+    }
+  ],
+  [
+    'empty results green flag',
+    'EMPTY_OR_INVALID_RESULTS',
+    r => {
+      r.runs[0].results = []
+    }
+  ],
+  [
+    'missing required case',
+    'REQUIRED_CASE_MISSING',
+    r => {
+      r.runs[0].results.pop()
+    }
+  ],
+  [
+    'duplicate result',
+    'RESULT_SCHEMA_INVALID',
+    r => {
+      r.runs[0].results.push({ ...r.runs[0].results[0] })
+    }
+  ],
+  [
+    'expected-red cannot count as product green',
+    'RESULT_SCHEMA_INVALID',
+    r => {
+      Object.assign(r.runs[0].results[0], { expect: 'red', status: 'expected-red' })
+    }
+  ],
+  [
+    'hidden failed result',
+    'RESULT_FAILED',
+    r => {
+      r.runs[0].results[0].status = 'fail'
+    }
+  ],
+  [
+    'ignored result',
+    'RESULT_FAILED',
+    r => {
+      r.runs[0].results[0].status = 'ignored'
+    }
+  ],
+  [
+    'false run passed',
+    'NONCONTIGUOUS_GREEN',
+    r => {
+      r.runs[0].passed = false
+    }
+  ],
+  [
+    'false clean count',
+    'NONCONTIGUOUS_GREEN',
+    r => {
+      r.runs[1].clean_acceptance_count = 1
+    },
+    'critical'
+  ],
+  [
+    'insufficient actual repeat',
+    'REPEAT_OR_RUNS_INVALID',
+    r => {
+      r.repeat = 1
+      r.runs = r.runs.slice(0, 1)
+    },
+    'critical'
+  ],
+  [
+    'hidden middle failure',
+    'RESULT_FAILED',
+    r => {
+      r.runs[1].results[0].status = 'fail'
+    },
+    'critical'
+  ],
+  [
+    'failed report top-level',
+    'REPORT_FAILED',
+    r => {
+      r.passed = false
+    }
+  ],
+  [
+    'false final count',
+    'REPORT_FAILED',
+    r => {
+      r.clean_acceptance_count = 0
+    }
+  ],
+  [
+    'wrong OS identity',
+    'PLATFORM_IDENTITY_INVALID',
+    r => {
+      r.environment.platform = 'darwin/arm64'
+    },
+    'platform-win32'
+  ]
 ]) {
   test(`synthetic negative: ${label}`, t => {
-    const f = evaluatorFixture(t); mutate(f.reports.get(id)); f.writeGate(id); assertTypedFailure(f.evaluate, reason)
+    const f = evaluatorFixture(t)
+    mutate(f.reports.get(id))
+    f.writeGate(id)
+    assertTypedFailure(f.evaluate, reason)
   })
 }
 
@@ -482,19 +915,49 @@ test('acceptance: typed not-run report is non-green and malicious reason/body ne
   assert.equal(result.reason_code, 'GATE_NOT_RUN')
   assert.equal(result.gate_id, 'live')
   assert.doesNotMatch(JSON.stringify(result), /PRIVATE_PROVIDER_RESPONSE/)
-  r.passed = true; f.writeGate('live')
+  r.passed = true
+  f.writeGate('live')
   assertTypedFailure(f.evaluate, 'FALSE_NOT_RUN_PASS')
 })
 
 test('runner: typed not-run, ordinary fail, empty cases and expected-red stay distinct and redacted', async () => {
   const raw = 'PRIVATE_PROVIDER_RAW_KEY'
   const results = await runCases([
-    { id: 'missing', expect: 'pass', run: () => { throw new VerificationNotRunError('LIVE_CREDENTIALS_MISSING', raw) } },
-    { id: 'ordinary', expect: 'pass', run: () => { throw new Error(raw) } },
-    { id: 'red', expect: 'red', redCode: 'DENIED', run: () => { throw Object.assign(new Error(raw), { code: 'DENIED' }) } },
-    { id: 'wrong', expect: 'red', redCode: 'DENIED', run: () => { throw new Error(raw) } },
+    {
+      id: 'missing',
+      expect: 'pass',
+      run: () => {
+        throw new VerificationNotRunError('LIVE_CREDENTIALS_MISSING', raw)
+      }
+    },
+    {
+      id: 'ordinary',
+      expect: 'pass',
+      run: () => {
+        throw new Error(raw)
+      }
+    },
+    {
+      id: 'red',
+      expect: 'red',
+      redCode: 'DENIED',
+      run: () => {
+        throw Object.assign(new Error(raw), { code: 'DENIED' })
+      }
+    },
+    {
+      id: 'wrong',
+      expect: 'red',
+      redCode: 'DENIED',
+      run: () => {
+        throw new Error(raw)
+      }
+    }
   ])
-  assert.deepEqual(results.map(r => r.status), ['not-run', 'fail', 'expected-red', 'fail'])
+  assert.deepEqual(
+    results.map(r => r.status),
+    ['not-run', 'fail', 'expected-red', 'fail']
+  )
   assert.equal(results[0].reason_code, 'LIVE_CREDENTIALS_MISSING')
   assert.doesNotMatch(JSON.stringify(results), /PRIVATE_PROVIDER_RAW_KEY/)
   assert.equal((await runCases([]))[0].reason_code, 'EMPTY_CASES')
@@ -520,18 +983,26 @@ function relocatedRunner(t, suiteBody = 'return [{ id: "SYNTHETIC", expect: "pas
   mkdirSync(dirname(diagnosticEvidence), { recursive: true })
   writeFileSync(diagnosticEvidence, diagnosticBytes)
   assert.deepEqual(readFileSync(diagnosticEvidence), diagnosticBytes, 'relocated runner diagnostic module must preserve the real dependency bytes')
-  writeFileSync(join(pkg, 'test/foundation/foundation.mjs'), `import { writeFileSync } from 'node:fs';
+  writeFileSync(
+    join(pkg, 'test/foundation/foundation.mjs'),
+    `import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { VerificationNotRunError } from '../../scripts/verify.mjs';
 let count = 0;
-export async function getCases(helpers) { ${suiteBody} }`)
+export async function getCases(helpers) { ${suiteBody} }`
+  )
   const fp = () => captureEvidenceFingerprint({ packageRoot: pkg, repoRoot: repo })
   const reportDir = join(repo, 'docs/validation/blueprint/current/synthetic-only')
   const invokeRunner = (extra = []) => {
-    const child = spawnSync(process.execPath, [join(pkg, 'scripts/verify.mjs'), '--suite', 'foundation',
-      '--report-dir', reportDir, '--plan-id', syntheticPlan, ...extra], {
-      cwd: pkg, env: { PATH: process.env.PATH ?? '', ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) }, encoding: 'utf8',
-    })
+    const child = spawnSync(
+      process.execPath,
+      [join(pkg, 'scripts/verify.mjs'), '--suite', 'foundation', '--report-dir', reportDir, '--plan-id', syntheticPlan, ...extra],
+      {
+        cwd: pkg,
+        env: { PATH: process.env.PATH ?? '', ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) },
+        encoding: 'utf8'
+      }
+    )
     assert.equal(child.error, undefined)
     assert.equal(child.signal, null)
     assert.equal(existsSync(join(reportDir, 'w1.foundation-report.json')), true, `synthetic runner must emit report: ${child.stderr}`)
@@ -547,10 +1018,16 @@ test('fingerprint: relocated roots, deterministic ordering, all source/config/te
   assert.match(before.source_sha256, /^[a-f0-9]{64}$/)
   assert.match(before.artifact_sha256, /^[a-f0-9]{64}$/)
   assert.equal(before.revision, 'unknown', 'non-git synthetic root is honest about missing revision')
-  for (const path of [join(f.pkg, 'src/index.ts'), join(f.pkg, 'config/settings.json'),
-    join(f.pkg, 'test/control.mjs'), join(f.pkg, 'scripts/helper.mjs'), join(f.pkg, 'vite.config.ts'),
-    join(f.repo, 'test/blueprint/probe.mjs'), join(f.repo, '.github/workflows/blueprint.yml'),
-    join(f.repo, 'package.json')]) {
+  for (const path of [
+    join(f.pkg, 'src/index.ts'),
+    join(f.pkg, 'config/settings.json'),
+    join(f.pkg, 'test/control.mjs'),
+    join(f.pkg, 'scripts/helper.mjs'),
+    join(f.pkg, 'vite.config.ts'),
+    join(f.repo, 'test/blueprint/probe.mjs'),
+    join(f.repo, '.github/workflows/blueprint.yml'),
+    join(f.repo, 'package.json')
+  ]) {
     const previous = f.fp()
     writeFileSync(path, 'changed synthetic bytes')
     assert.notEqual(f.fp().source_sha256, previous.source_sha256, path)
@@ -574,10 +1051,21 @@ test('fingerprint: relocated roots, deterministic ordering, all source/config/te
 test('fingerprint: reports, docs, key, dependencies, caches, dist, artifacts, logs/tgz do not poison source', t => {
   const f = relocatedRunner(t)
   const before = f.fp()
-  for (const dir of [join(f.pkg, 'node_modules'), join(f.pkg, 'dist'), join(f.pkg, '.cache'),
-    join(f.pkg, 'artifacts'), join(f.pkg, 'test/reports'), join(f.repo, 'test/blueprint/reports'),
-    join(f.repo, 'docs/validation/blueprint/current'), join(f.repo, 'docs'), join(f.repo, 'key'), join(f.pkg, 'test/docs'), join(f.pkg, 'test/key')]) {
-    mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, 'SENSITIVE_NOT_SOURCE.json'), 'synthetic excluded bytes')
+  for (const dir of [
+    join(f.pkg, 'node_modules'),
+    join(f.pkg, 'dist'),
+    join(f.pkg, '.cache'),
+    join(f.pkg, 'artifacts'),
+    join(f.pkg, 'test/reports'),
+    join(f.repo, 'test/blueprint/reports'),
+    join(f.repo, 'docs/validation/blueprint/current'),
+    join(f.repo, 'docs'),
+    join(f.repo, 'key'),
+    join(f.pkg, 'test/docs'),
+    join(f.pkg, 'test/key')
+  ]) {
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'SENSITIVE_NOT_SOURCE.json'), 'synthetic excluded bytes')
   }
   for (const name of ['trace.log', 'packed.tgz']) writeFileSync(join(f.pkg, 'test', name), 'excluded')
   writeFileSync(join(f.pkg, 'lib/map.js.map'), 'non-JS artifact')
@@ -588,29 +1076,46 @@ test('fingerprint: reports, docs, key, dependencies, caches, dist, artifacts, lo
   assert.deepEqual(report.evidence_fingerprint, report.evidence_fingerprint_after)
   assert.deepEqual(f.fp(), before, 'writing report did not change source')
   assert.ok(report.fingerprint, 'legacy field retained')
-  assert.deepEqual(report.runs.map(r => r.clean_acceptance_count), [1, 2, 3])
+  assert.deepEqual(
+    report.runs.map(r => r.clean_acceptance_count),
+    [1, 2, 3]
+  )
   assert.ok(report.runs.every(r => typeof r.duration_ms === 'number' && r.duration_ms >= 0))
 })
 
 test('runner: fail between green runs resets real clean count, not loop index', t => {
   const f = relocatedRunner(t, 'count++; return [{ id: "SYNTHETIC", expect: "pass", run: () => count !== 2 }]')
   const { report, child } = f.invokeRunner(['--repeat', '3'])
-  assert.equal(child.status, 1); assert.equal(report.passed, false)
-  assert.deepEqual(report.runs.map(r => r.clean_acceptance_count), [1, 0, 1])
+  assert.equal(child.status, 1)
+  assert.equal(report.passed, false)
+  assert.deepEqual(
+    report.runs.map(r => r.clean_acceptance_count),
+    [1, 0, 1]
+  )
   assert.equal(report.clean_acceptance_count, 0)
 })
 
 for (const [label, body] of [
-  ['source change', 'count++; return [{ id: "SYNTHETIC", expect: "pass", run: () => { if (count === 1) writeFileSync(join(helpers.packageRoot, "src/index.ts"), "changed source"); return true } }]'],
-  ['artifact change', 'count++; return [{ id: "SYNTHETIC", expect: "pass", run: () => { if (count === 1) writeFileSync(join(helpers.packageRoot, "lib/nested/second.js"), "changed JS"); return true } }]'],
+  [
+    'source change',
+    'count++; return [{ id: "SYNTHETIC", expect: "pass", run: () => { if (count === 1) writeFileSync(join(helpers.packageRoot, "src/index.ts"), "changed source"); return true } }]'
+  ],
+  [
+    'artifact change',
+    'count++; return [{ id: "SYNTHETIC", expect: "pass", run: () => { if (count === 1) writeFileSync(join(helpers.packageRoot, "lib/nested/second.js"), "changed JS"); return true } }]'
+  ],
   ['empty suite', 'return []'],
-  ['typed missing env', 'throw new VerificationNotRunError("ENVIRONMENT_UNAVAILABLE", "PRIVATE_PROVIDER_RESPONSE")'],
+  ['typed missing env', 'throw new VerificationNotRunError("ENVIRONMENT_UNAVAILABLE", "PRIVATE_PROVIDER_RESPONSE")']
 ]) {
   test(`runner negative: ${label} cannot produce passed evidence`, t => {
     const f = relocatedRunner(t, body)
     const { report, child } = f.invokeRunner(['--repeat', '3'])
-    assert.equal(child.status, 1); assert.equal(report.passed, false)
-    assert.deepEqual(report.runs.map(r => r.clean_acceptance_count), [0, 0, 0])
+    assert.equal(child.status, 1)
+    assert.equal(report.passed, false)
+    assert.deepEqual(
+      report.runs.map(r => r.clean_acceptance_count),
+      [0, 0, 0]
+    )
     assert.equal(report.clean_acceptance_count, 0)
     if (label === 'typed missing env') {
       assert.equal(report.runs[0].results[0].status, 'not-run')
@@ -644,7 +1149,10 @@ test('runner acceptance: missing explicit manifest emits not-run, exit 1 and cle
   assert.equal(child.status, 1)
   const report = JSON.parse(readFileSync(join(reportDir, 'w8.acceptance-report.json'), 'utf8'))
   assert.equal(report.passed, false)
-  assert.deepEqual(report.runs.map(r => r.clean_acceptance_count), [0, 0, 0])
+  assert.deepEqual(
+    report.runs.map(r => r.clean_acceptance_count),
+    [0, 0, 0]
+  )
   assert.ok(report.runs.every(r => r.results[0].status === 'not-run' && r.results[0].reason_code === 'MANIFEST_MISSING'))
   // Main must rerun under a source freeze if the live worker edited mid-run.
   assert.deepEqual(report.evidence_fingerprint, report.evidence_fingerprint_after)
@@ -653,11 +1161,17 @@ test('runner acceptance: missing explicit manifest emits not-run, exit 1 and cle
 test('acceptance example: complete fixed not-run bootstrap cannot generate passed product evidence', t => {
   const f = evaluatorFixture(t)
   const manifest = createNotRunEvidenceManifest({ planId: syntheticPlan, evidenceFingerprint: syntheticFingerprint })
-  assert.deepEqual(manifest.gates.map(g => g.id), REQUIRED_GATES.map(g => g.id))
+  assert.deepEqual(
+    manifest.gates.map(g => g.id),
+    REQUIRED_GATES.map(g => g.id)
+  )
   assert.ok(manifest.gates.every(g => g.status === 'not-run' && g.path === null && g.sha256 === null))
   assert.equal(validateEvidenceManifest(manifest, { planId: syntheticPlan, evidenceFingerprint: syntheticFingerprint }).missing.length, 0)
   writeFileSync(f.path, JSON.stringify(manifest))
-  assertNotRun(() => evaluateEvidenceManifest({ evidenceManifestPath: f.path, planId: syntheticPlan, evidenceFingerprint: syntheticFingerprint }), 'GATE_NOT_RUN')
+  assertNotRun(
+    () => evaluateEvidenceManifest({ evidenceManifestPath: f.path, planId: syntheticPlan, evidenceFingerprint: syntheticFingerprint }),
+    'GATE_NOT_RUN'
+  )
 })
 
 test('acceptance: corrupted JSON and key/docs evidence paths fail typed without reading content', t => {
@@ -673,7 +1187,10 @@ test('acceptance: corrupted JSON and key/docs evidence paths fail typed without 
     assertTypedFailure(f.evaluate, 'EVIDENCE_PATH_INVALID')
   }
   writeFileSync(f.path, bytes)
-  assertTypedFailure(() => evaluateEvidenceManifest({ evidenceManifestPath: f.path, planId: syntheticPlan, evidenceFingerprint: syntheticFingerprint }), 'EVIDENCE_JSON_INVALID')
+  assertTypedFailure(
+    () => evaluateEvidenceManifest({ evidenceManifestPath: f.path, planId: syntheticPlan, evidenceFingerprint: syntheticFingerprint }),
+    'EVIDENCE_JSON_INVALID'
+  )
 })
 
 test('acceptance: malformed evidence cannot hide behind missing environment in same gate', t => {
@@ -686,22 +1203,29 @@ test('acceptance: malformed evidence cannot hide behind missing environment in s
 })
 
 test('runner: typed not-run between actual greens resets streak with overall false', t => {
-  const f = relocatedRunner(t, 'count++; return [{ id: "SYNTHETIC", expect: "pass", run: () => { if (count === 2) throw new VerificationNotRunError("ENVIRONMENT_UNAVAILABLE", "private"); return true } }]')
+  const f = relocatedRunner(
+    t,
+    'count++; return [{ id: "SYNTHETIC", expect: "pass", run: () => { if (count === 2) throw new VerificationNotRunError("ENVIRONMENT_UNAVAILABLE", "private"); return true } }]'
+  )
   const { report, child } = f.invokeRunner(['--repeat', '3'])
   assert.equal(child.status, 1)
   assert.equal(report.passed, false)
-  assert.deepEqual(report.runs.map(r => r.clean_acceptance_count), [1, 0, 1])
+  assert.deepEqual(
+    report.runs.map(r => r.clean_acceptance_count),
+    [1, 0, 1]
+  )
   assert.equal(report.clean_acceptance_count, 0)
 })
-
 
 test('runner import: stdin entrypoint does not start main and exported fingerprint works', t => {
   const f = relocatedRunner(t)
   const source = `import { captureEvidenceFingerprint } from ${JSON.stringify(pathToFileURL(join(f.pkg, 'scripts/verify.mjs')).href)};
 console.log(JSON.stringify(captureEvidenceFingerprint({packageRoot: ${JSON.stringify(f.pkg)}, repoRoot: ${JSON.stringify(f.repo)}})));`
   const child = spawnSync(process.execPath, ['--input-type=module', '-', '--suite', 'foundation', '--report-dir', f.reportDir], {
-    cwd: f.pkg, input: source, encoding: 'utf8',
-    env: { PATH: process.env.PATH ?? '', ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) },
+    cwd: f.pkg,
+    input: source,
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH ?? '', ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) }
   })
   assert.equal(child.error, undefined)
   assert.equal(child.signal, null)
@@ -716,8 +1240,10 @@ test('runner import: missing non-file host entrypoint also leaves helpers import
 const { captureEvidenceFingerprint } = await import(${JSON.stringify(pathToFileURL(join(f.pkg, 'scripts/verify.mjs')).href)});
 console.log(JSON.stringify(captureEvidenceFingerprint({packageRoot: ${JSON.stringify(f.pkg)}, repoRoot: ${JSON.stringify(f.repo)}})));`
   const child = spawnSync(process.execPath, ['--input-type=module', '-'], {
-    cwd: f.pkg, input: source, encoding: 'utf8',
-    env: { PATH: process.env.PATH ?? '', ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) },
+    cwd: f.pkg,
+    input: source,
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH ?? '', ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) }
   })
   assert.equal(child.error, undefined)
   assert.equal(child.signal, null)
@@ -731,8 +1257,9 @@ test('runner control: symlink CLI entrypoint still executes main', t => {
   const alias = join(f.root, 'verify-symlink.mjs')
   symlinkSync(join(f.pkg, 'scripts/verify.mjs'), alias, 'file')
   const child = spawnSync(process.execPath, [alias, '--suite', 'foundation', '--report-dir', f.reportDir, '--plan-id', syntheticPlan], {
-    cwd: f.pkg, encoding: 'utf8',
-    env: { PATH: process.env.PATH ?? '', ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) },
+    cwd: f.pkg,
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH ?? '', ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) }
   })
   assert.equal(child.error, undefined)
   assert.equal(child.signal, null)

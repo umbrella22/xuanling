@@ -11,7 +11,9 @@ import { createHostResourceProvider } from '../resources/runtime-snapshots.ts'
 import { validatePackagedPreset, validatePackagedMcp, packagedPresetModulesAvailable } from '../portability/host-resources.ts'
 import { teamDriverCapability, type TeamProviders } from '../teamstage/driver-admission.ts'
 
-export interface ToolBinding { tools: string[] }
+export interface ToolBinding {
+  tools: string[]
+}
 export type ToolBindings = Record<string, ToolBinding>
 /** DSH-owned capability probes. These are observations only; the runtime
  * resolves the same identity again before dispatch. */
@@ -19,7 +21,11 @@ export interface HostResourceProbe {
   getAgentPreset?(id: string): Promise<unknown | undefined>
   getSkill?(id: string, options: { cwd: string }): Promise<{ content?: unknown } | undefined>
 }
-export interface PreflightRunArgs { blueprintId: string; expectedRevision: string; inputJson: string }
+export interface PreflightRunArgs {
+  blueprintId: string
+  expectedRevision: string
+  inputJson: string
+}
 export interface PreflightCheck {
   code: string
   status: 'block' | 'warning' | 'info' | 'pass'
@@ -28,16 +34,20 @@ export interface PreflightCheck {
   toolName?: string
 }
 export interface PreflightRunValue {
-  blueprintId: string; documentRevision: string; semanticRevision: string
-  canStart: boolean; checks: PreflightCheck[]
+  blueprintId: string
+  documentRevision: string
+  semanticRevision: string
+  canStart: boolean
+  checks: PreflightCheck[]
 }
 export class ToolBindingUnavailableError extends Error {
   readonly code = 'tool-binding-unavailable'
-  constructor() { super('declared tool capabilities unavailable') }
+  constructor() {
+    super('declared tool capabilities unavailable')
+  }
 }
 const reserved = new Set(['run_code', 'structured_output'])
-const exactName = (name: unknown): name is string => typeof name === 'string'
-  && name.length > 0 && !name.includes('*') && !reserved.has(name)
+const exactName = (name: unknown): name is string => typeof name === 'string' && name.length > 0 && !name.includes('*') && !reserved.has(name)
 
 /** Business grants are the declared union, optionally narrowed, never the
  * inherited Host registry. Reserved transport/capture tools are not grants. */
@@ -51,8 +61,15 @@ export function resolveEffectiveToolNames(ctx: Context, definition: BlueprintDef
     const source = ref.source
     if (source?.kind === 'host' || ref.format === 'mcp-definition') {
       const name = source?.kind === 'host' ? source.id : ref.bindingId
-      if (!exactName(name) || !name.startsWith('mcp__') || ref.bindingId !== name || !tools.get(name)
-        || typeof tools.schemas !== 'function' || !tools.schemas().some(schema => schema.name === name)) throw new ToolBindingUnavailableError()
+      if (
+        !exactName(name) ||
+        !name.startsWith('mcp__') ||
+        ref.bindingId !== name ||
+        !tools.get(name) ||
+        typeof tools.schemas !== 'function' ||
+        !tools.schemas().some(schema => schema.name === name)
+      )
+        throw new ToolBindingUnavailableError()
       union.add(name)
       continue
     }
@@ -71,9 +88,18 @@ export function resolveEffectiveToolNames(ctx: Context, definition: BlueprintDef
   return [...union].filter(name => allow === undefined || allow.has(name)).sort()
 }
 
-export async function collectPreflight(ctx: Context, snapshot: DefinitionPackage, definition: BlueprintDefinition, options: {
-  toolBindings?: ToolBindings; skillRoots: SkillRoot[]; teamProviders?: TeamProviders; input?: unknown; hostResources?: HostResourceProbe
-}): Promise<PreflightRunValue> {
+export async function collectPreflight(
+  ctx: Context,
+  snapshot: DefinitionPackage,
+  definition: BlueprintDefinition,
+  options: {
+    toolBindings?: ToolBindings
+    skillRoots: SkillRoot[]
+    teamProviders?: TeamProviders
+    input?: unknown
+    hostResources?: HostResourceProbe
+  }
+): Promise<PreflightRunValue> {
   const checks: PreflightCheck[] = []
   const hostResources = options.hostResources ?? createHostResourceProvider(ctx)
   // Only source nodes without data dependencies consume the initial input.
@@ -83,7 +109,7 @@ export async function collectPreflight(ctx: Context, snapshot: DefinitionPackage
       if (definition.graph.edges.some(edge => edge.kind === 'data' && edge.to.startsWith(`${node.id}.`))) continue
       try {
         validateNodeInputs(node, options.input, new Set())
-        if (node.kind === 'input' || node.kind === 'output' || node.kind === 'join' && node.join !== 'any') structuralOutputs(node, options.input, new Set())
+        if (node.kind === 'input' || node.kind === 'output' || (node.kind === 'join' && node.join !== 'any')) structuralOutputs(node, options.input, new Set())
       } catch (error) {
         if (!(error instanceof NodeValueError)) throw error
         checks.push({ code: error.code, status: 'block', nodeId: node.id })
@@ -96,8 +122,13 @@ export async function collectPreflight(ctx: Context, snapshot: DefinitionPackage
   const needsAgent = definition.graph.nodes.some(node => node.kind === 'agentTask')
   if (needsAgent) {
     checks.push({ code: factoryReady ? 'agent-factory-ready' : 'agent-factory-unavailable', status: factoryReady ? 'pass' : 'block' })
-    checks.push({ code: tools && typeof tools.get === 'function' && typeof tools.restrict === 'function' && typeof tools.guard === 'function' ? 'tools-ready' : 'tools-unavailable',
-      status: tools && typeof tools.get === 'function' && typeof tools.restrict === 'function' && typeof tools.guard === 'function' ? 'pass' : 'block' })
+    checks.push({
+      code:
+        tools && typeof tools.get === 'function' && typeof tools.restrict === 'function' && typeof tools.guard === 'function'
+          ? 'tools-ready'
+          : 'tools-unavailable',
+      status: tools && typeof tools.get === 'function' && typeof tools.restrict === 'function' && typeof tools.guard === 'function' ? 'pass' : 'block'
+    })
   }
   for (const [resourceId, ref] of Object.entries(definition.resources)) {
     const source = ref.source
@@ -106,14 +137,24 @@ export async function collectPreflight(ctx: Context, snapshot: DefinitionPackage
       try {
         if (typeof hostId !== 'string') throw new Error('host-resource-provider-unavailable')
         if (ref.kind === 'agent') {
-          if (hostResources.getAgentPreset === undefined || await hostResources.getAgentPreset(hostId) === undefined) throw new Error('host-agent-unavailable')
+          if (hostResources.getAgentPreset === undefined || (await hostResources.getAgentPreset(hostId)) === undefined)
+            throw new Error('host-agent-unavailable')
         } else if (ref.kind === 'skill') {
-          if (hostResources.getSkill === undefined || typeof (await hostResources.getSkill(hostId, { cwd: process.cwd() }))?.content !== 'string') throw new Error('host-skill-unavailable')
+          if (hostResources.getSkill === undefined || typeof (await hostResources.getSkill(hostId, { cwd: process.cwd() }))?.content !== 'string')
+            throw new Error('host-skill-unavailable')
         } else if (ref.kind === 'mcp') {
           const registry = ctx.get('tools')
-          if (!exactName(hostId) || !hostId.startsWith('mcp__') || ref.bindingId !== hostId
-            || !registry || typeof registry.get !== 'function' || !registry.get(hostId)
-            || typeof registry.schemas !== 'function' || !registry.schemas().some(schema => schema.name === hostId)) throw new Error('host-mcp-unavailable')
+          if (
+            !exactName(hostId) ||
+            !hostId.startsWith('mcp__') ||
+            ref.bindingId !== hostId ||
+            !registry ||
+            typeof registry.get !== 'function' ||
+            !registry.get(hostId) ||
+            typeof registry.schemas !== 'function' ||
+            !registry.schemas().some(schema => schema.name === hostId)
+          )
+            throw new Error('host-mcp-unavailable')
         } else throw new Error('host-resource-kind-unavailable')
         checks.push({ code: 'host-resource-ready', status: 'pass', resourceId })
       } catch {
@@ -126,7 +167,12 @@ export async function collectPreflight(ctx: Context, snapshot: DefinitionPackage
       if (ref.source?.kind === 'shared') {
         const resolved = await resolveResource(resourceId, { kind: ref.kind, source: ref.source }, { blueprintRoot: '', roots: options.skillRoots })
         if (resolved.kind !== 'shared-skill') throw new Error('unavailable')
-        const files = snapshotDirectory(resolved.skillDir, { kind: 'shared-skill', rootId: resolved.rootId, skillDir: resolved.skillDir, skillName: resolved.skillName }).files
+        const files = snapshotDirectory(resolved.skillDir, {
+          kind: 'shared-skill',
+          rootId: resolved.rootId,
+          skillDir: resolved.skillDir,
+          skillName: resolved.skillName
+        }).files
         if (!files.some(file => file.path === 'SKILL.md')) throw new Error('unavailable')
       } else {
         const path = ref.path ?? (ref.source?.kind === 'package' ? ref.source.path : undefined)
@@ -153,8 +199,7 @@ export async function collectPreflight(ctx: Context, snapshot: DefinitionPackage
     }
   }
   for (const node of definition.graph.nodes) {
-    if (!['input', 'output', 'agentTask', 'humanDecision', 'condition', 'join'].includes(node.kind)
-      || (node.kind === 'join' && node.join === 'any')) {
+    if (!['input', 'output', 'agentTask', 'humanDecision', 'condition', 'join'].includes(node.kind) || (node.kind === 'join' && node.join === 'any')) {
       checks.push({ code: 'node-executor-unavailable', status: 'block', nodeId: node.id })
       continue
     }
@@ -181,7 +226,11 @@ export async function collectPreflight(ctx: Context, snapshot: DefinitionPackage
     if (executorReady) checks.push({ code: 'node-executor-ready', status: 'pass', nodeId: node.id })
     if (node.kind !== 'agentTask') continue
     if (node.modelSelection !== undefined) {
-      checks.push({ code: node.teamStage === undefined ? 'model-route-declared' : 'teamstage-model-route-unavailable', status: node.teamStage === undefined ? 'info' : 'block', nodeId: node.id })
+      checks.push({
+        code: node.teamStage === undefined ? 'model-route-declared' : 'teamstage-model-route-unavailable',
+        status: node.teamStage === undefined ? 'info' : 'block',
+        nodeId: node.id
+      })
     }
     for (const resourceId of node.skillRefs ?? []) {
       if (!Object.hasOwn(definition.resources, resourceId)) checks.push({ code: 'resource-unavailable', status: 'block', nodeId: node.id, resourceId })

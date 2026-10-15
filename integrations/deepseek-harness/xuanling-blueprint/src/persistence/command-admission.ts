@@ -83,7 +83,7 @@ export class CommandAdmission {
       requestId: request.requestId,
       payloadFingerprint: request.payloadFingerprint,
       runId: null,
-      createdAt: Date.now(),
+      createdAt: Date.now()
     }
     try {
       await this.commands.put(commandKey, record)
@@ -96,7 +96,7 @@ export class CommandAdmission {
   /** Bind the admitted command to its run (single writer; called once). */
   async bindRun(commandKey: string, runId: string): Promise<void> {
     try {
-      await this.commands.update(commandKey, (value) => {
+      await this.commands.update(commandKey, value => {
         if (value === undefined) throw new Error(`command ${commandKey} vanished before bind`)
         if (value.runId !== null && value.runId !== runId) {
           throw new Error(`command ${commandKey} already bound to ${value.runId}`)

@@ -26,6 +26,7 @@ const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const repositoryRoot = resolve(packageRoot, '../../..')
 const dshRequire = createRequire(resolve(repositoryRoot, 'test/blueprint/package.json'))
 const packageRequire = createRequire(resolve(packageRoot, 'package.json'))
+const browserClient = packageName => dshRequire.resolve(`${packageName}/client`, { conditions: new Set(['browser']) })
 const cordis = await import(pathToFileURL(dshRequire.resolve('@deepseek-ai/cordis')))
 const { Context, Service } = cordis
 const { TypertRegistry } = await import(pathToFileURL(dshRequire.resolve('@deepseek-ai/dsh-typert-registry')))
@@ -35,13 +36,27 @@ const seeds = new Map([['@deepseek-ai/cordis', cordis]])
 for (const id of ['react', 'react/jsx-runtime', 'react/jsx-dev-runtime', 'react-dom', 'react-dom/client']) {
   seeds.set(id, packageRequire(id))
 }
+seeds.set('zod', packageRequire('zod'))
 const artifactEvidence = []
 function actualFactory(path, factorySeeds = seeds) {
   const source = readFileSync(path, 'utf8')
   const registrations = []
-  const sandbox = { console, AbortController, AbortSignal, setTimeout, clearTimeout, setInterval, clearInterval,
-    queueMicrotask, crypto: webcrypto, TextEncoder, TextDecoder, URL, URLSearchParams,
-    __ModuleLoader__: { load: registration => registrations.push(registration) } }
+  const sandbox = {
+    console,
+    AbortController,
+    AbortSignal,
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval,
+    queueMicrotask,
+    crypto: webcrypto,
+    TextEncoder,
+    TextDecoder,
+    URL,
+    URLSearchParams,
+    __ModuleLoader__: { load: registration => registrations.push(registration) }
+  }
   sandbox.window = sandbox
   sandbox.self = sandbox
   const vm = createContext(sandbox)
@@ -59,89 +74,190 @@ function actualFactory(path, factorySeeds = seeds) {
   artifactEvidence.push({ path, sha256: createHash('sha256').update(source).digest('hex'), requested })
   return value
 }
-const installedRegistry = actualFactory(dshRequire.resolve('@deepseek-ai/dsh-typert-registry/client'))
-const installedGateway = actualFactory(dshRequire.resolve('@deepseek-ai/dsh-api-gateway/client'))
+const installedRegistry = actualFactory(browserClient('@deepseek-ai/dsh-typert-registry'))
+const installedGateway = actualFactory(browserClient('@deepseek-ai/dsh-api-gateway'))
 // Execute the installed locale closure unchanged. Only its actual LocaleRuntime
 // is exercised: the settings LanguageRow/store are not mounted in this native
 // fixture. Their guards throw on ANY use instead of silently faking UI behavior.
-const unmountedViewDependency = id => new Proxy({}, {
-  get: (_target, key) => { throw new Error(`UNMOUNTED_LOCALE_SETTINGS_DEPENDENCY:${id}:${String(key)}`) },
-})
-const installedLocale = actualFactory(dshRequire.resolve('@deepseek-ai/dsh-client-locale/client'), new Map([
-  ...seeds,
-  ['@deepseek-ai/dsh-client-ui-primitives', unmountedViewDependency('ui-primitives')],
-  ['@deepseek-ai/dsh-client-store', unmountedViewDependency('store')],
-]))
+const unmountedViewDependency = id =>
+  new Proxy(
+    {},
+    {
+      get: (_target, key) => {
+        throw new Error(`UNMOUNTED_LOCALE_SETTINGS_DEPENDENCY:${id}:${String(key)}`)
+      }
+    }
+  )
+const installedLocale = actualFactory(
+  browserClient('@deepseek-ai/dsh-client-locale'),
+  new Map([
+    ...seeds,
+    ['@deepseek-ai/dsh-client-ui-primitives', unmountedViewDependency('ui-primitives')],
+    ['@deepseek-ai/dsh-client-store', unmountedViewDependency('store')]
+  ])
+)
 // Main can point the same native/lifecycle oracles at its unified artifact;
 // worker evidence uses only an isolated copied package build.
-const productionClient = process.env.BLUEPRINT_NATIVE_CLIENT_ARTIFACT
-  ? actualFactory(resolve(process.env.BLUEPRINT_NATIVE_CLIENT_ARTIFACT)) : sourceClient
-const document = { blueprintId: 'native-fixture', definitionJson: '{"schemaVersion":1,"id":"native-fixture"}',
-  documentRevision: 'document-1', semanticRevision: 'semantic-1', layoutRevision: 'layout-1' }
+const productionClient = process.env.BLUEPRINT_NATIVE_CLIENT_ARTIFACT ? actualFactory(resolve(process.env.BLUEPRINT_NATIVE_CLIENT_ARTIFACT)) : sourceClient
+const document = {
+  blueprintId: 'native-fixture',
+  definitionJson: '{"schemaVersion":1,"id":"native-fixture"}',
+  documentRevision: 'document-1',
+  semanticRevision: 'semantic-1',
+  layoutRevision: 'layout-1'
+}
 const teamAction = (state = 'active', code = 'accepted') => ({
   runId: 'native-run',
   team: {
-    schemaVersion: 1, stageId: 'stage-1', runId: 'native-run', teamId: 'team-1', leadSessionId: 'native-session',
-    taskSpecificationFingerprint: 'a'.repeat(64), taskId: 'task-1', taskRevision: 1, state, members: [],
-    ...(code === 'accepted' ? {
-      outputAcceptance: {
-        code: 'accepted', schemaVersion: 1, runId: 'native-run', stageId: 'stage-1', taskId: 'task-1',
-        sourceSessionId: 'native-session', artifactId: 'artifact-1', digest: 'b'.repeat(64),
-        evidenceDigest: 'c'.repeat(64), checks: ['schema'],
-      },
-    } : {}),
-    updatedAt: 1,
+    schemaVersion: 1,
+    stageId: 'stage-1',
+    runId: 'native-run',
+    teamId: 'team-1',
+    leadSessionId: 'native-session',
+    taskSpecificationFingerprint: 'a'.repeat(64),
+    taskId: 'task-1',
+    taskRevision: 1,
+    state,
+    members: [],
+    ...(code === 'accepted'
+      ? {
+          outputAcceptance: {
+            code: 'accepted',
+            schemaVersion: 1,
+            runId: 'native-run',
+            stageId: 'stage-1',
+            taskId: 'task-1',
+            sourceSessionId: 'native-session',
+            artifactId: 'artifact-1',
+            digest: 'b'.repeat(64),
+            evidenceDigest: 'c'.repeat(64),
+            checks: ['schema']
+          }
+        }
+      : {}),
+    updatedAt: 1
   },
   task: { id: 'task-1', revision: 1, status: state === 'active' ? 'pending' : 'completed' },
-  replayed: false,
+  replayed: false
 })
 
 async function provideConversationServices(client) {
   const binding = { sessionId: 'native-session', session: {} }
   class SessionsFixture extends Service {
-    constructor(ctx) { super(ctx, 'sessions') }
-    binding(sessionId) { return sessionId === binding.sessionId ? binding : undefined }
+    constructor(ctx) {
+      super(ctx, 'sessions')
+    }
+    binding(sessionId) {
+      return sessionId === binding.sessionId ? binding : undefined
+    }
   }
-  class UiSessionFixture extends Service { constructor(ctx) { super(ctx, 'uiSession') } }
-  const sessions = client.plugin(SessionsFixture), uiSession = client.plugin(UiSessionFixture)
-  await sessions; await uiSession
+  class UiSessionFixture extends Service {
+    constructor(ctx) {
+      super(ctx, 'uiSession')
+    }
+  }
+  const sessions = client.plugin(SessionsFixture),
+    uiSession = client.plugin(UiSessionFixture)
+  await sessions
+  await uiSession
   return { sessions, uiSession }
 }
 
 async function fixture(t, { gateway = true, localeReady = true, conversationReady = false, setupHost } = {}) {
   const host = new Context()
   const client = new Context()
-  t.after(async () => { await client.fiber.dispose(); await host.fiber.dispose() })
+  t.after(async () => {
+    await client.fiber.dispose()
+    await host.fiber.dispose()
+  })
   await host.plugin(TypertRegistry)
   host.typert.register(TYPERT)
+  class RemoteAccessFixture extends Service {
+    constructor(ctx) {
+      super(ctx, 'remoteAccess')
+    }
+    decide() {
+      return { kind: 'allow' }
+    }
+    allows() {
+      return true
+    }
+  }
+  await host.plugin(RemoteAccessFixture)
   await host.plugin(TypertGatewayService, {})
   const hostCalls = []
   const carrierCalls = []
+  const ownerPeer = { signal: new AbortController().signal, principal: { kind: 'owner' }, interactions: 'answer' }
   const rows = new Set()
   const slotEvents = []
   const slotControllers = new Set()
   const locale = new installedLocale.LocaleRuntime(client, undefined, { languages: ['en'], preference: null })
   if (localeReady) client.provide('locale', locale)
   class ConfiguredBlueprint extends TypertRemoteService {
-    constructor(ctx) { super(ctx, 'blueprint') }
-    listDefinitions() { hostCalls.push(['listDefinitions']); return { definitions: [{ blueprintId: document.blueprintId,
-      name: 'Native configured fixture', documentRevision: document.documentRevision, semanticRevision: document.semanticRevision }] } }
-    loadDefinition(args) { hostCalls.push(['loadDefinition', args]); return { ...document } }
-    saveDefinition(args) { hostCalls.push(['saveDefinition', args]); return { ...document, definitionJson: args.definitionJson } }
-    validate(args) { hostCalls.push(['validate', args]); return { ok: true, semanticRevision: document.semanticRevision } }
-    startRun(args) { hostCalls.push(['startRun', args]); return { runId: 'native-run', semanticRevision: document.semanticRevision, state: 'running', replayed: false } }
-    startTeamStage(args) { hostCalls.push(['startTeamStage', args]); return teamAction() }
-    inspectRun(args) { hostCalls.push(['inspectRun', args]); return { runId: args.runId, state: 'succeeded', definitionRevision: document.semanticRevision, seq: 4, attempts: [], logTail: [] } }
-    cancelRun(args) { hostCalls.push(['cancelRun', args]); return { runId: args.runId, state: 'succeeded' } }
-    cancelTeamStage(args) { hostCalls.push(['cancelTeamStage', args]); return teamAction('cancelled') }
-    acceptTeamStageOutput(args) { hostCalls.push(['acceptTeamStageOutput', args]); return teamAction('succeeded') }
-    decide(args) { hostCalls.push(['decide', args]); return { runId: args.runId, decisionId: args.decisionId, state: 'running', applied: true } }
+    constructor(ctx) {
+      super(ctx, 'blueprint')
+    }
+    listDefinitions() {
+      hostCalls.push(['listDefinitions'])
+      return {
+        definitions: [
+          {
+            blueprintId: document.blueprintId,
+            name: 'Native configured fixture',
+            documentRevision: document.documentRevision,
+            semanticRevision: document.semanticRevision
+          }
+        ]
+      }
+    }
+    loadDefinition(args) {
+      hostCalls.push(['loadDefinition', args])
+      return { ...document }
+    }
+    saveDefinition(args) {
+      hostCalls.push(['saveDefinition', args])
+      return { ...document, definitionJson: args.definitionJson }
+    }
+    validate(args) {
+      hostCalls.push(['validate', args])
+      return { ok: true, semanticRevision: document.semanticRevision }
+    }
+    startRun(args) {
+      hostCalls.push(['startRun', args])
+      return { runId: 'native-run', semanticRevision: document.semanticRevision, state: 'running', replayed: false }
+    }
+    startTeamStage(args) {
+      hostCalls.push(['startTeamStage', args])
+      return teamAction()
+    }
+    inspectRun(args) {
+      hostCalls.push(['inspectRun', args])
+      return { runId: args.runId, state: 'succeeded', definitionRevision: document.semanticRevision, seq: 4, attempts: [], logTail: [] }
+    }
+    cancelRun(args) {
+      hostCalls.push(['cancelRun', args])
+      return { runId: args.runId, state: 'succeeded' }
+    }
+    cancelTeamStage(args) {
+      hostCalls.push(['cancelTeamStage', args])
+      return teamAction('cancelled')
+    }
+    acceptTeamStageOutput(args) {
+      hostCalls.push(['acceptTeamStageOutput', args])
+      return teamAction('succeeded')
+    }
+    decide(args) {
+      hostCalls.push(['decide', args])
+      return { runId: args.runId, decisionId: args.decisionId, state: 'running', applied: true }
+    }
   }
   if (setupHost) await setupHost(host)
   else await host.plugin(ConfiguredBlueprint)
   if (conversationReady) await provideConversationServices(client)
   class SlotsFixture extends Service {
-    constructor(ctx) { super(ctx, 'slots') }
+    constructor(ctx) {
+      super(ctx, 'slots')
+    }
     inject(key, register) {
       const controller = { key }
       const disposeController = this.ctx.effect(() => {
@@ -149,15 +265,25 @@ async function fixture(t, { gateway = true, localeReady = true, conversationRead
         slotControllers.add(controller)
         const disposeRegistration = register()
         assert.equal(typeof disposeRegistration, 'function', 'NATIVE_SLOT_CALLBACK_MUST_RETURN_DISPOSER')
-        return () => { disposeRegistration(); slotControllers.delete(controller) }
+        return () => {
+          disposeRegistration()
+          slotControllers.delete(controller)
+        }
       })
       // Match native SlotRegistry.inject: a synchronous idempotent controller
       // disposer, not void and not an unhandled asynchronous cleanup promise.
-      return () => { void disposeController() }
+      return () => {
+        void disposeController()
+      }
     }
     register(options, component) {
       const row = { options, component }
-      return this.ctx.effect(() => { rows.add(row); return () => { rows.delete(row) } })
+      return this.ctx.effect(() => {
+        rows.add(row)
+        return () => {
+          rows.delete(row)
+        }
+      })
     }
   }
   await client.plugin(installedRegistry)
@@ -171,16 +297,27 @@ async function fixture(t, { gateway = true, localeReady = true, conversationRead
         // The carrier decodes into the host realm, as JSON transport does.
         // Use the official RPC dispatcher so success/failure envelopes and
         // strict named-argument decoding are native, not handcrafted here.
-        return host.typertGateway.dispatchRpc(endpoint, structuredClone(payload), signal)
+        return host.get('typertGateway').dispatchRpc(endpoint, structuredClone(payload), signal, ownerPeer)
       },
-      open: () => { throw new Error('unexpected stream in direct invocation fixture') },
+      open: () => {
+        throw new Error('unexpected stream in direct invocation fixture')
+      }
     },
     registerGenerationSource: () => () => {},
-    start: () => ({ stop() {} }), generation: { getSnapshot: () => undefined }, isLoopback: true,
+    start: () => ({ stop() {} }),
+    generation: { getSnapshot: () => undefined },
+    isLoopback: true
   })
   if (gateway) await client.plugin(installedGateway)
-  t.diagnostic(JSON.stringify({ scope: 'real native installed factories + Cordis; deterministic carrier/slot seats; real installed LocaleRuntime; guarded unmounted settings deps; no DOM/live acceptance',
-    artifacts: artifactEvidence, client: process.env.BLUEPRINT_NATIVE_CLIENT_ARTIFACT ?? 'production source', node: process.version }))
+  t.diagnostic(
+    JSON.stringify({
+      scope:
+        'real native installed factories + Cordis; deterministic carrier/slot seats; real installed LocaleRuntime; guarded unmounted settings deps; no DOM/live acceptance',
+      artifacts: artifactEvidence,
+      client: process.env.BLUEPRINT_NATIVE_CLIENT_ARTIFACT ?? 'production source',
+      node: process.version
+    })
+  )
   return { host, client, hostCalls, carrierCalls, rows, slotEvents, slotControllers, locale }
 }
 function ownContribution(ctx, contribution) {
@@ -188,12 +325,20 @@ function ownContribution(ctx, contribution) {
 }
 async function withHost(client, operation) {
   let result
-  const fiber = client.plugin({ inject: ['remote.blueprint'], apply: async scope => {
-    const link = resolveBlueprintHost(scope)
-    assert.ok(link, 'NATIVE_EXACT_NAMESPACE_MUST_RESOLVE')
-    result = await operation(link, scope.get('remote.blueprint'))
-  } })
-  try { await fiber; return result } finally { await fiber.dispose() }
+  const fiber = client.plugin({
+    inject: ['remote.blueprint'],
+    apply: async scope => {
+      const link = resolveBlueprintHost(scope)
+      assert.ok(link, 'NATIVE_EXACT_NAMESPACE_MUST_RESOLVE')
+      result = await operation(link, scope.get('remote.blueprint'))
+    }
+  })
+  try {
+    await fiber
+    return result
+  } finally {
+    await fiber.dispose()
+  }
 }
 const ownDescriptors = client => client.typert.remotes.list().filter(d => d.namespace === 'blueprint')
 
@@ -215,13 +360,24 @@ async function durableFixture(t, { teamAvailable = true, leadRole = 'lead' } = {
     try {
       const store = new RunStore(opened.domain)
       return await Promise.all((await store.listRunIds()).map(id => store.get(id)))
-    } finally { await opened.close() }
+    } finally {
+      await opened.close()
+    }
   }
   const team = {
-    membership(agent) { assert.equal(agent, lead); return { root: lead, id: lead.id, role: leadRole, name: 'lead' } },
-    listMembers() { return [{ id: 'unrelated-member', name: 'unrelated', status: 'running' }] },
-    spawnTeammate() { throw new Error('this fixture never spawns a member') },
-    sendMessage() { throw new Error('this fixture never sends a message') },
+    membership(agent) {
+      assert.equal(agent, lead)
+      return { root: lead, id: lead.id, role: leadRole, name: 'lead' }
+    },
+    listMembers() {
+      return [{ id: 'unrelated-member', name: 'unrelated', status: 'running' }]
+    },
+    spawnTeammate() {
+      throw new Error('this fixture never spawns a member')
+    },
+    sendMessage() {
+      throw new Error('this fixture never sends a message')
+    },
     async createTask(agent, request) {
       assert.equal(agent, lead)
       effects.push('create')
@@ -234,8 +390,14 @@ async function durableFixture(t, { teamAvailable = true, leadRole = 'lead' } = {
       tasks.set(task.id, task)
       return structuredClone(task)
     },
-    getTask(agent, id) { assert.equal(agent, lead); assert.ok(tasks.has(id)); return structuredClone(tasks.get(id)) },
-    listTasks() { return [...tasks.values()].map(task => structuredClone(task)) },
+    getTask(agent, id) {
+      assert.equal(agent, lead)
+      assert.ok(tasks.has(id))
+      return structuredClone(tasks.get(id))
+    },
+    listTasks() {
+      return [...tasks.values()].map(task => structuredClone(task))
+    },
     updateTask(agent, request) {
       assert.equal(agent, lead)
       assert.equal(request.action, 'delete')
@@ -246,43 +408,86 @@ async function durableFixture(t, { teamAvailable = true, leadRole = 'lead' } = {
       task.status = 'deleted'
       return structuredClone(task)
     },
-    waitForChange() { throw new Error('this fixture never waits for Team events') },
-    interrupt() { effects.push('interrupt'); throw new Error('unrelated members must never be interrupted') },
+    waitForChange() {
+      throw new Error('this fixture never waits for Team events')
+    },
+    interrupt() {
+      effects.push('interrupt')
+      throw new Error('unrelated members must never be interrupted')
+    }
   }
   let f
   try {
-    f = await fixture(t, { setupHost: async host => {
-      host.provide('agents', { get: id => id === lead.id ? lead : undefined })
-      if (teamAvailable) host.provide('agentTeams', team)
-      serviceFiber = await host.plugin(BlueprintService, config)
-    } })
-  } catch (error) { rmSync(root, { recursive: true, force: true }); throw error }
+    f = await fixture(t, {
+      setupHost: async host => {
+        host.provide('agents', { get: id => (id === lead.id ? lead : undefined) })
+        if (teamAvailable) host.provide('agentTeams', team)
+        serviceFiber = await host.plugin(BlueprintService, config)
+      }
+    })
+  } catch (error) {
+    rmSync(root, { recursive: true, force: true })
+    throw error
+  }
   t.after(() => rmSync(root, { recursive: true, force: true }))
   await ownContribution(f.client, TYPERT_REMOTE)
   const teamDefinition = {
-    schemaVersion: 1, id: 'native-team-durable', name: 'Native Team durable boundary fixture',
+    schemaVersion: 1,
+    id: 'native-team-durable',
+    name: 'Native Team durable boundary fixture',
     resources: { worker: { kind: 'agent', path: 'lib/agents/worker.md' }, resultSchema: { kind: 'schema', path: 'lib/schemas/result.json' } },
-    graph: { nodes: [{ id: 'review', kind: 'agentTask', agentRef: 'worker', outputSchemaRef: 'resultSchema', outputs: { result: 'json' }, teamStage: {
-      task: { subject: 'Review', description: 'Review the current artifact' },
-      members: [{ name: 'worker-one', description: 'Review the artifact.', agentRef: 'worker', context: 'fresh' }],
-      requiredChecks: ['schema'],
-    } }], edges: [] },
+    graph: {
+      nodes: [
+        {
+          id: 'review',
+          kind: 'agentTask',
+          agentRef: 'worker',
+          outputSchemaRef: 'resultSchema',
+          outputs: { result: 'json' },
+          teamStage: {
+            task: { subject: 'Review', description: 'Review the current artifact' },
+            members: [{ name: 'worker-one', description: 'Review the artifact.', agentRef: 'worker', context: 'fresh' }],
+            requiredChecks: ['schema']
+          }
+        }
+      ],
+      edges: []
+    }
   }
   const teamDefinitionJson = JSON.stringify(teamDefinition)
   const teamResourceDigests = { worker: 'a'.repeat(64), resultSchema: 'b'.repeat(64) }
   let runtimeStore
   const createTeamRun = async requestId => {
-    const store = runtimeStore ?? await f.host.get('blueprint').configuredRuntime().then(runtime => runtime.store)
+    const store =
+      runtimeStore ??
+      (await f.host
+        .get('blueprint')
+        .configuredRuntime()
+        .then(runtime => runtime.store))
     runtimeStore = store
     const payloadFingerprint = createHash('sha256').update(`${requestId}\u0000${teamDefinitionJson}`).digest('hex')
-    const admission = await store.createRun({ scope: 'run', requestId, payloadFingerprint }, 'team-semantic-1', teamDefinitionJson, '{}', { source: { sessionId: lead.id, kind: 'ui' } })
+    const admission = await store.createRun({ scope: 'run', requestId, payloadFingerprint }, 'team-semantic-1', teamDefinitionJson, '{}', {
+      source: { sessionId: lead.id, kind: 'ui' }
+    })
     await store.recordIntent(admission.runId, { nodeId: 'review', kind: 'agentTask', resourceDigests: teamResourceDigests })
     return { admission: { ...admission, semanticRevision: 'team-semantic-1', state: 'running' }, args: [] }
   }
   const definition = {
-    schemaVersion: 1, id: 'native-durable', name: 'Native durable boundary fixture', resources: {},
-    graph: { nodes: [{ id: 'input', kind: 'input' }, { id: 'review', kind: 'humanDecision' }, { id: 'output', kind: 'output' }],
-      edges: [{ kind: 'control', from: 'input', to: 'review' }, { kind: 'control', from: 'review', to: 'output' }] },
+    schemaVersion: 1,
+    id: 'native-durable',
+    name: 'Native durable boundary fixture',
+    resources: {},
+    graph: {
+      nodes: [
+        { id: 'input', kind: 'input' },
+        { id: 'review', kind: 'humanDecision' },
+        { id: 'output', kind: 'output' }
+      ],
+      edges: [
+        { kind: 'control', from: 'input', to: 'review' },
+        { kind: 'control', from: 'review', to: 'output' }
+      ]
+    }
   }
   const doc = await withHost(f.client, link => link.saveDefinition(definition.id, JSON.stringify(definition), null))
   const start = async requestId => {
@@ -308,10 +513,28 @@ async function durableFixture(t, { teamAvailable = true, leadRole = 'lead' } = {
     runtimeStore = (await f.host.get('blueprint').configuredRuntime()).store
     return await createTeamRun(requestId)
   }
-  return { ...f, root, lead, team, tasks, effects, records, start, startTeam,
-    reopen: async () => { await serviceFiber.dispose(); serviceFiber = await f.host.plugin(BlueprintService, config) },
-    stageArgs: runId => ({ sessionId: lead.id, runId, stageId: 'review', taskSpecificationFingerprint: frozenTeamTaskSpecificationFingerprint(teamDefinition.graph.nodes[0].teamStage, teamResourceDigests),
-      subject: 'Review', description: 'Review the current artifact' }),
+  return {
+    ...f,
+    root,
+    lead,
+    team,
+    tasks,
+    effects,
+    records,
+    start,
+    startTeam,
+    reopen: async () => {
+      await serviceFiber.dispose()
+      serviceFiber = await f.host.plugin(BlueprintService, config)
+    },
+    stageArgs: runId => ({
+      sessionId: lead.id,
+      runId,
+      stageId: 'review',
+      taskSpecificationFingerprint: frozenTeamTaskSpecificationFingerprint(teamDefinition.graph.nodes[0].teamStage, teamResourceDigests),
+      subject: 'Review',
+      description: 'Review the current artifact'
+    })
   }
 }
 
@@ -336,7 +559,10 @@ test('C-08 production apply mounts native contribution before registering namesp
   assert.deepEqual(Array.from(ownDescriptors(f.client), d => d.id).sort(), TYPERT.invocations.map(d => d.id).sort())
   assert.equal(f.rows.size, 2, 'sidebar and main seats must both register')
   assert.equal(f.slotControllers.size, 2, 'both declared-seat lifetimes own actual controller disposers')
-  assert.ok(f.slotEvents.every(event => event.namespaceReady), 'PANEL_MUST_REGISTER_ONLY_AFTER_OFFICIAL_MOUNT')
+  assert.ok(
+    f.slotEvents.every(event => event.namespaceReady),
+    'PANEL_MUST_REGISTER_ONLY_AFTER_OFFICIAL_MOUNT'
+  )
   assert.deepEqual(f.carrierCalls, [], 'bootstrap does not replay or issue commands')
   const main = [...f.rows].find(row => row.options.name === 'main')
   assert.equal(main.options.key, 'xuanling-blueprint')
@@ -353,8 +579,14 @@ test('C-08 production apply mounts native contribution before registering namesp
     assert.equal((await link.cancelRun('native-run')).state, 'succeeded')
     assert.equal((await link.decide('native-run', 'decision-1', 'approve')).applied, true)
   })
-  assert.deepEqual(f.carrierCalls.map(call => call[1]), methods.map(method => `blueprint/${method}`))
-  assert.deepEqual(f.hostCalls.map(call => call[0]), methods)
+  assert.deepEqual(
+    f.carrierCalls.map(call => call[1]),
+    methods.map(method => `blueprint/${method}`)
+  )
+  assert.deepEqual(
+    f.hostCalls.map(call => call[0]),
+    methods
+  )
 })
 
 test('C-08 parent waits for official remote service without depending on its own not-yet-mounted namespace', async t => {
@@ -375,9 +607,16 @@ test('C-08 native undeclared namespace guard remains enforced; declared panel ch
   await f.client.plugin(productionClient)
   assert.ok(f.client.get('remote.blueprint'), 'NATIVE_CONTRIBUTION_MUST_BE_MOUNTED_BY_PRODUCTION_APPLY')
   let error
-  await f.client.plugin({ inject: ['slots'], apply: scope => {
-    try { void scope.get('remote').blueprint } catch (caught) { error = caught }
-  } })
+  await f.client.plugin({
+    inject: ['slots'],
+    apply: scope => {
+      try {
+        void scope.get('remote').blueprint
+      } catch (caught) {
+        error = caught
+      }
+    }
+  })
   assert.match(error?.message ?? '', /cannot get property "remote\.blueprint" without inject/)
   assert.equal((await withHost(f.client, link => link.listDefinitions())).definitions[0].blueprintId, document.blueprintId)
 })
@@ -391,7 +630,7 @@ test('C-08 malformed native args are rejected by real strict host Gateway before
       ['saveDefinition', { blueprintId: document.blueprintId, definitionJson: '{}', expectedRevision: null, rootDir: '/fixture/forbidden' }],
       ['startRun', { blueprintId: document.blueprintId, expectedRevision: 'document-1', inputJson: '{}', requestId: 'x', definitionJson: '{}' }],
       ['loadDefinition', { rootDir: '/fixture/forbidden' }],
-      ['decide', { runId: 'native-run', decisionId: 'decision-1', action: 'spoofed' }],
+      ['decide', { runId: 'native-run', decisionId: 'decision-1', action: 'spoofed' }]
     ]) {
       const result = await namespace[method](args)
       assert.equal(result.ok, false, `STRICT_NATIVE_ARGS_MUST_REJECT:${method}`)
@@ -406,22 +645,39 @@ test('C-08 TeamStage public invocations cross the installed Typert Gateway with 
   const f = await fixture(t)
   await f.client.plugin(productionClient)
   const startArgs = {
-    sessionId: 'native-session', runId: 'native-run', stageId: 'stage-1', taskSpecificationFingerprint: 'a'.repeat(64),
-    subject: 'review', description: 'Review the artifact',
+    sessionId: 'native-session',
+    runId: 'native-run',
+    stageId: 'stage-1',
+    taskSpecificationFingerprint: 'a'.repeat(64),
+    subject: 'review',
+    description: 'Review the artifact'
   }
   const cancelArgs = { sessionId: 'native-session', runId: 'native-run', memberNames: [] }
   const outputArgs = {
-    sessionId: 'native-session', runId: 'native-run', stageId: 'stage-1', taskId: 'task-1',
-    code: 'accepted', schemaVersion: 1, artifactId: 'artifact-1', digest: 'b'.repeat(64),
-    evidenceDigest: 'c'.repeat(64), checks: ['schema'],
+    sessionId: 'native-session',
+    runId: 'native-run',
+    stageId: 'stage-1',
+    taskId: 'task-1',
+    code: 'accepted',
+    schemaVersion: 1,
+    artifactId: 'artifact-1',
+    digest: 'b'.repeat(64),
+    evidenceDigest: 'c'.repeat(64),
+    checks: ['schema']
   }
   await withHost(f.client, async link => {
     assert.equal((await link.startTeamStage(startArgs)).team.teamId, 'team-1')
     assert.equal((await link.cancelTeamStage(cancelArgs)).team.state, 'cancelled')
     assert.equal((await link.acceptTeamStageOutput(outputArgs)).team.outputAcceptance.code, 'accepted')
   })
-  assert.deepEqual(f.carrierCalls.map(call => call[1]), ['blueprint/startTeamStage', 'blueprint/cancelTeamStage', 'blueprint/acceptTeamStageOutput'])
-  assert.deepEqual(f.hostCalls.map(call => call[0]), ['startTeamStage', 'cancelTeamStage', 'acceptTeamStageOutput'])
+  assert.deepEqual(
+    f.carrierCalls.map(call => call[1]),
+    ['blueprint/startTeamStage', 'blueprint/cancelTeamStage', 'blueprint/acceptTeamStageOutput']
+  )
+  assert.deepEqual(
+    f.hostCalls.map(call => call[0]),
+    ['startTeamStage', 'cancelTeamStage', 'acceptTeamStageOutput']
+  )
   assert.deepEqual(f.hostCalls[0][1], startArgs)
   assert.deepEqual(f.hostCalls[1][1], cancelArgs)
   assert.deepEqual(f.hostCalls[2][1], outputArgs)
@@ -455,18 +711,44 @@ test('C-08 scoped disposal withdraws only blueprint methods and panel seats; rem
   assert.equal(f.client.get('remote.other')[cordis.symbols.original], other)
 })
 
-
 test('C-08 host and remote select one unchanged strict descriptor/codec source', () => {
   assert.equal(TYPERT.package, BLUEPRINT_PACKAGE)
   assert.equal(TYPERT_REMOTE.package, BLUEPRINT_PACKAGE)
   assert.equal(TYPERT.invocations, BLUEPRINT_INVOCATIONS, 'host cannot fork the descriptor array')
   assert.equal(TYPERT_REMOTE.descriptors, BLUEPRINT_INVOCATIONS, 'client cannot fork the descriptor array')
   assert.deepEqual(Object.keys(TYPERT_REMOTE).sort(), ['descriptors', 'package'], 'client contribution has no host implementation')
-  const methods = ['ping', 'listDefinitions', 'listResources', 'loadDefinition', 'deleteDefinition', 'createDefinition', 'saveDefinition', 'validate', 'preflightRun', 'startRun', 'startSessionRun', 'startTeamStage', 'inspectSession', 'inspectRun', 'cancelRun', 'cancelTeamStage', 'acceptTeamStageOutput', 'decide', 'hostProbe', 'mcpProbe', 'exportDefinition', 'importDefinition']
-  assert.deepEqual(BLUEPRINT_INVOCATIONS.map(d => d.method), methods)
+  const methods = [
+    'ping',
+    'listDefinitions',
+    'listResources',
+    'loadDefinition',
+    'deleteDefinition',
+    'createDefinition',
+    'saveDefinition',
+    'validate',
+    'preflightRun',
+    'startRun',
+    'startSessionRun',
+    'startTeamStage',
+    'inspectSession',
+    'inspectRun',
+    'cancelRun',
+    'cancelTeamStage',
+    'acceptTeamStageOutput',
+    'decide',
+    'hostProbe',
+    'mcpProbe',
+    'exportDefinition',
+    'importDefinition'
+  ]
+  assert.deepEqual(
+    BLUEPRINT_INVOCATIONS.map(d => d.method),
+    methods
+  )
   for (const d of BLUEPRINT_INVOCATIONS) {
     assert.equal(d.id, `${BLUEPRINT_PACKAGE}#blueprint/${d.method}`)
-    assert.equal(d.service, 'blueprint'); assert.equal(d.namespace, 'blueprint')
+    assert.equal(d.service, 'blueprint')
+    assert.equal(d.namespace, 'blueprint')
     assert.deepEqual(d.invocation, { kind: 'direct' })
     assert.ok(d.parameters.every(p => p.wire === 'args' && p.source === 'json' && p.codec.mode === 'strict'))
     assert.equal(d.result.mode, 'strict')
@@ -480,13 +762,18 @@ test('C-08 host and remote select one unchanged strict descriptor/codec source',
 test('C-08 published remote export and official boot dependency match the host-face build entry', () => {
   const manifest = JSON.parse(readFileSync(resolve(packageRoot, 'package.json'), 'utf8'))
   assert.equal(manifest.exports['./remote'], './lib/typert.remote.js')
-  assert.deepEqual(manifest.dsh.client.inject, ['@deepseek-ai/dsh-client-ui-sidebar', '@deepseek-ai/dsh-api-gateway', '@deepseek-ai/dsh-client-locale', '@deepseek-ai/dsh-client-ui-conversation', '@deepseek-ai/dsh-client-ui-session'])
+  assert.deepEqual(manifest.dsh.client.inject, [
+    '@deepseek-ai/dsh-client-ui-sidebar',
+    '@deepseek-ai/dsh-api-gateway',
+    '@deepseek-ai/dsh-client-locale',
+    '@deepseek-ai/dsh-client-ui-conversation',
+    '@deepseek-ai/dsh-client-ui-session'
+  ])
   assert.deepEqual(Array.from(productionClient.inject), ['slots', 'remote', 'locale'], 'parent must not inject its own namespace')
   const hostPack = config.pack.find(pack => pack.platform === 'node')
   assert.equal(hostPack.entry['typert.remote'], 'src/typert.remote.ts')
   assert.ok(manifest.files.includes('lib/**/*.js'), 'remote contribution is npm-packable')
 })
-
 
 test('C-01 native locale dependency waits without mounting transport/seats; late provider activates once', async t => {
   const f = await fixture(t, { localeReady: false })
@@ -567,14 +854,15 @@ test('C-01 Cordis effect releases only own dictionaries on dispose; remount regi
   assert.equal(f.locale.bind('native.unrelated')('title'), 'Unrelated')
 })
 
-
 test('native slot fixture returns a synchronous disposer and actually releases the callback exactly once', async t => {
   const f = await fixture(t)
   let installed = 0
   let disposed = 0
   const off = f.client.get('slots').inject('native-disposer-control', () => {
     installed += 1
-    return () => { disposed += 1 }
+    return () => {
+      disposed += 1
+    }
   })
   assert.equal(typeof off, 'function', 'SLOT_INJECT_RETURNS_DISPOSER_NOT_VOID')
   assert.equal(installed, 1)
@@ -612,7 +900,8 @@ test('C-01/C-02 native conversation seat waits for session services without bloc
 
 test('C-01/C-07 late conversation services add only the native seat; loss withdraws it and leaves workspace/namespace usable', async t => {
   const f = await fixture(t)
-  const plugin = f.client.plugin(productionClient); await plugin
+  const plugin = f.client.plugin(productionClient)
+  await plugin
   const panel = [...f.rows].find(row => row.options.name === 'main')
   const namespace = f.client.get('remote.blueprint')[cordis.symbols.original]
   assert.equal(f.rows.size, 2, 'no conversation services do not block workspace startup')
@@ -621,7 +910,10 @@ test('C-01/C-07 late conversation services add only the native seat; loss withdr
   assert.equal(f.rows.size, 3)
   const row = [...f.rows].find(row => row.options.name === 'conversation.view')
   assert.ok(row)
-  assert.equal([...f.rows].find(row => row.options.name === 'main'), panel)
+  assert.equal(
+    [...f.rows].find(row => row.options.name === 'main'),
+    panel
+  )
   assert.equal(f.client.get('remote.blueprint')[cordis.symbols.original], namespace)
   await services.uiSession.dispose()
   assert.equal(f.rows.size, 2, 'optional conversation teardown leaves global seats mounted')
@@ -657,18 +949,24 @@ test('W2.6 durable C-02/C-07/C-09: installed Typert calls the real service, comm
   assert.equal(ordinaryReplay.runId, ordinary.admission.runId)
   assert.equal(ordinaryReplay.replayed, true)
   assert.equal((await withHost(f.client, link => link.inspectRun(ordinaryReplay.runId))).team, undefined)
-  assert.deepEqual((await f.records()).find(run => run.runId === ordinaryReplay.runId), ordinaryBefore)
+  assert.deepEqual(
+    (await f.records()).find(run => run.runId === ordinaryReplay.runId),
+    ordinaryBefore
+  )
 })
 
 for (const [label, options, code] of [
   ['missing optional Team service', { teamAvailable: false }, 'blueprint/team-unavailable'],
-  ['caller is not a Lead', { leadRole: 'teammate' }, 'blueprint/team-identity-unavailable'],
+  ['caller is not a Lead', { leadRole: 'teammate' }, 'blueprint/team-identity-unavailable']
 ]) {
   test(`W2.6 durable C-01/C-08: ${label} rejects through installed Typert before a stage write`, async t => {
     const f = await durableFixture(t, options)
     const run = await f.startTeam('guarded-run')
     const before = await f.records()
-    await assert.rejects(withHost(f.client, link => link.startTeamStage(f.stageArgs(run.admission.runId))), error => error.code === code)
+    await assert.rejects(
+      withHost(f.client, link => link.startTeamStage(f.stageArgs(run.admission.runId))),
+      error => error.code === code
+    )
     assert.deepEqual(await f.records(), before)
     assert.deepEqual(f.effects, [])
   })
@@ -679,8 +977,14 @@ test('W2.6 durable C-08: forged DTO fields and unavailable caller remain side-ef
   const run = await f.startTeam('strict-run')
   const before = await f.records()
   const args = f.stageArgs(run.admission.runId)
-  await assert.rejects(withHost(f.client, link => link.startTeamStage({ ...args, teamId: 'forged' })), error => error.code === 'gateway/input-invalid')
-  await assert.rejects(withHost(f.client, link => link.startTeamStage({ ...args, sessionId: 'absent-session' })), error => error.code === 'blueprint/session-unavailable')
+  await assert.rejects(
+    withHost(f.client, link => link.startTeamStage({ ...args, teamId: 'forged' })),
+    error => error.code === 'gateway/input-invalid'
+  )
+  await assert.rejects(
+    withHost(f.client, link => link.startTeamStage({ ...args, sessionId: 'absent-session' })),
+    error => error.code === 'blueprint/session-unavailable'
+  )
   assert.deepEqual(await f.records(), before)
   assert.deepEqual(f.effects, [])
 })
@@ -689,15 +993,30 @@ test('W2.7.1 durable C-04: task completion alone cannot settle the stage without
   const f = await durableFixture(t)
   const run = await f.startTeam('accepted-run')
   const started = await withHost(f.client, link => link.startTeamStage(f.stageArgs(run.admission.runId)))
-  const output = { sessionId: f.lead.id, runId: started.runId, stageId: 'review', taskId: started.task.id,
-    code: 'accepted', schemaVersion: 1, artifactId: 'artifact-1', digest: 'b'.repeat(64),
-    evidenceDigest: 'c'.repeat(64), checks: ['schema'] }
-  await assert.rejects(withHost(f.client, link => link.acceptTeamStageOutput(output)), error => error.code === 'blueprint/team-output-rejected')
+  const output = {
+    sessionId: f.lead.id,
+    runId: started.runId,
+    stageId: 'review',
+    taskId: started.task.id,
+    code: 'accepted',
+    schemaVersion: 1,
+    artifactId: 'artifact-1',
+    digest: 'b'.repeat(64),
+    evidenceDigest: 'c'.repeat(64),
+    checks: ['schema']
+  }
+  await assert.rejects(
+    withHost(f.client, link => link.acceptTeamStageOutput(output)),
+    error => error.code === 'blueprint/team-output-rejected'
+  )
   assert.equal((await withHost(f.client, link => link.inspectRun(started.runId))).team.outputAcceptance, undefined)
   f.tasks.get(started.task.id).status = 'completed'
   f.tasks.get(started.task.id).revision = 3
   assert.equal((await withHost(f.client, link => link.inspectRun(started.runId))).team.state, 'active')
-  await assert.rejects(withHost(f.client, link => link.acceptTeamStageOutput(output)), error => error.code === 'blueprint/team-output-rejected')
+  await assert.rejects(
+    withHost(f.client, link => link.acceptTeamStageOutput(output)),
+    error => error.code === 'blueprint/team-output-rejected'
+  )
   const inspected = await withHost(f.client, link => link.inspectRun(started.runId))
   assert.equal(inspected.team.state, 'active')
   assert.equal(inspected.team.outputAcceptance, undefined)
@@ -708,7 +1027,10 @@ test('W2.6 durable C-05/C-09: stage cancellation never interrupts a foreign memb
   const run = await f.startTeam('cancelled-run')
   const started = await withHost(f.client, link => link.startTeamStage(f.stageArgs(run.admission.runId)))
   const before = await f.records()
-  await assert.rejects(withHost(f.client, link => link.cancelTeamStage({ sessionId: f.lead.id, runId: started.runId, memberNames: ['unrelated'] })), error => error.code === 'blueprint/team-stage-conflict')
+  await assert.rejects(
+    withHost(f.client, link => link.cancelTeamStage({ sessionId: f.lead.id, runId: started.runId, memberNames: ['unrelated'] })),
+    error => error.code === 'blueprint/team-stage-conflict'
+  )
   assert.deepEqual(await f.records(), before)
   const cancelled = await withHost(f.client, link => link.cancelTeamStage({ sessionId: f.lead.id, runId: started.runId, memberNames: [] }))
   assert.equal(cancelled.team.state, 'cancelled')
@@ -734,7 +1056,11 @@ test('W2.6 durable C-06: actual BlueprintService disposal/reopen preserves stage
   assert.equal(recovered.attempts[0].state, 'recovery_required')
   assert.equal(recovered.team.attemptId, before.team.attemptId)
   assert.equal(recovered.team.taskId, started.task.id)
-  await assert.rejects(withHost(f.client, link => link.startTeamStage(args)), error => error.code === 'blueprint/team-stage-conflict', 'recovery replay cannot redispatch or rebind the task')
+  await assert.rejects(
+    withHost(f.client, link => link.startTeamStage(args)),
+    error => error.code === 'blueprint/team-stage-conflict',
+    'recovery replay cannot redispatch or rebind the task'
+  )
   assert.deepEqual(f.effects, ['create'])
 })
 
@@ -743,8 +1069,11 @@ test('W2.6 durable C-06/C-08: malformed native result retains unknown-effect rec
   const run = await f.startTeam('unknown-effect-run')
   const args = f.stageArgs(run.admission.runId)
   const create = f.team.createTask
-  f.team.createTask = async (...request) => ({ ...await create(...request), revision: 2, raw: 'PRIVATE_NATIVE_PAYLOAD_SENTINEL' })
-  await assert.rejects(withHost(f.client, link => link.startTeamStage(args)), error => error.code === 'blueprint/team-task-conflict')
+  f.team.createTask = async (...request) => ({ ...(await create(...request)), revision: 2, raw: 'PRIVATE_NATIVE_PAYLOAD_SENTINEL' })
+  await assert.rejects(
+    withHost(f.client, link => link.startTeamStage(args)),
+    error => error.code === 'blueprint/team-task-conflict'
+  )
   const before = await withHost(f.client, link => link.inspectRun(run.admission.runId))
   assert.equal(before.state, 'running')
   assert.equal(before.attempts[0].state, 'running')
@@ -791,7 +1120,10 @@ test('W2.6 durable C-06/C-08: malformed native result retains unknown-effect rec
     assert.deepEqual(await withHost(f.client, link => link.inspectRun(run.admission.runId)), inspected, 'second reopen and repeated inspect are read-only')
   }
   assert.deepEqual(await f.records(), recoveredRecords, 'second reopen adds no recovery fact or seq')
-  await assert.rejects(withHost(f.client, link => link.startTeamStage(args)), error => error.code === 'blueprint/team-stage-conflict')
+  await assert.rejects(
+    withHost(f.client, link => link.startTeamStage(args)),
+    error => error.code === 'blueprint/team-stage-conflict'
+  )
   assert.deepEqual(await f.records(), recoveredRecords, 'refused replay adds no intent or settled result')
   assert.deepEqual(f.effects, ['create'], 'UNKNOWN_NATIVE_EFFECT_CANNOT_BE_REDISPATCHED')
   assert.equal(f.tasks.size, 1, 'external fixture confirms one effect really happened')

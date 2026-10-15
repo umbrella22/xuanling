@@ -21,7 +21,11 @@ import { TYPERT } from '../../src/typert.host.ts'
 
 const completed = { kind: 'completed' }
 const deferred = () => Promise.withResolvers()
-const text = message => message.content.filter(b => b.type === 'text').map(b => b.text).join('\n')
+const text = message =>
+  message.content
+    .filter(b => b.type === 'text')
+    .map(b => b.text)
+    .join('\n')
 function definition(nodes, edges = [], resources = {}) {
   const value = { schemaVersion: 1, id: 'w2-races', name: 'Isolated races', graph: { nodes, edges }, resources }
   validateDefinition(decodeDefinition(JSON.stringify(value)))
@@ -30,9 +34,15 @@ function definition(nodes, edges = [], resources = {}) {
 const worker = { kind: 'agent', path: 'lib/agents/worker.md' }
 const agent = (id = 'work', more = {}) => ({ id, kind: 'agentTask', agentRef: 'worker', ...more })
 const oneAgent = () => definition([agent()], [], { worker })
-const decisionGraph = () => definition([
-  { id: 'review', kind: 'humanDecision' }, agent(), { id: 'unused', kind: 'output' },
-], [{ kind: 'control', from: 'review@approve', to: 'work' }, { kind: 'control', from: 'review@reject', to: 'unused' }], { worker })
+const decisionGraph = () =>
+  definition(
+    [{ id: 'review', kind: 'humanDecision' }, agent(), { id: 'unused', kind: 'output' }],
+    [
+      { kind: 'control', from: 'review@approve', to: 'work' },
+      { kind: 'control', from: 'review@reject', to: 'unused' }
+    ],
+    { worker }
+  )
 
 /** Public shape only, real Session for the canonical terminal reason. */
 function publicHost(onDispatch = call => call.finish(completed, 'COMPLETE_RESULT'), cancelSettles = true) {
@@ -43,24 +53,44 @@ function publicHost(onDispatch = call => call.finish(completed, 'COMPLETE_RESULT
     async create(options) {
       options.signal?.throwIfAborted()
       const id = SessionId(options.sessionId)
-      const session = Session.create(id, options.seed, { version: SESSION_FORMAT_VERSION, id, createdAt: Date.now(), isSeeded: false, ...options.meta }, options.inheritedEventCount)
+      const session = Session.create(
+        id,
+        options.seed,
+        { version: SESSION_FORMAT_VERSION, id, createdAt: Date.now(), isSeeded: false, ...options.meta },
+        options.inheritedEventCount
+      )
       const idle = deferred()
       const disposed = deferred()
       let running = false
       const call = {
-        options, session, followups: [], cancelCalls: [], disposed: disposed.promise,
+        options,
+        session,
+        followups: [],
+        cancelCalls: [],
+        disposed: disposed.promise,
         finish(reason, output = '') {
           if (!running) return
-          if (output) session.append('assistant/message', { turn: 1, step: 1, stream: [], message: createMessage({ role: 'assistant', content: [{ type: 'text', text: output }] }) }, { surfaceOp: 'append' })
+          if (output)
+            session.append(
+              'assistant/message',
+              { turn: 1, step: 1, stream: [], message: createMessage({ role: 'assistant', content: [{ type: 'text', text: output }] }) },
+              { surfaceOp: 'append' }
+            )
           session.append('turn/end', { turn: 1, reason })
           running = false
           runtime.status = 'idle'
           idle.resolve()
         },
-        idleWithoutCloser() { running = false; runtime.status = 'idle'; idle.resolve() },
+        idleWithoutCloser() {
+          running = false
+          runtime.status = 'idle'
+          idle.resolve()
+        }
       }
       const runtime = {
-        id: session.id, status: 'idle', session,
+        id: session.id,
+        status: 'idle',
+        session,
         inject() {},
         followup(input) {
           running = true
@@ -71,11 +101,13 @@ function publicHost(onDispatch = call => call.finish(completed, 'COMPLETE_RESULT
           started.resolve(call)
           onDispatch(call)
         },
-        whenIdle() { return running ? idle.promise : Promise.resolve() },
+        whenIdle() {
+          return running ? idle.promise : Promise.resolve()
+        },
         cancel(cause) {
           call.cancelCalls.push(cause)
           if (cancelSettles) call.finish({ kind: 'aborted', cause }, 'PARTIAL_ON_CANCEL')
-        },
+        }
       }
       const scope = createScope(ownerCtx, runtime)
       runtime.ctx = scope.ctx
@@ -83,12 +115,29 @@ function publicHost(onDispatch = call => call.finish(completed, 'COMPLETE_RESULT
         const commit = await options.setup?.(scope.ctx, runtime)
         options.signal?.throwIfAborted()
         commit?.commit()
-      } catch (error) { await scope.dispose(); throw error }
+      } catch (error) {
+        await scope.dispose()
+        throw error
+      }
       calls.push(call)
-      return { agent: runtime, async dispose() { await runtime.whenIdle(); await scope.dispose(); disposed.resolve() } }
-    },
+      return {
+        agent: runtime,
+        async dispose() {
+          await runtime.whenIdle()
+          await scope.dispose()
+          disposed.resolve()
+        }
+      }
+    }
   }
-  return { registry, calls, started: started.promise, bindOwner(ctx) { ownerCtx = ctx } }
+  return {
+    registry,
+    calls,
+    started: started.promise,
+    bindOwner(ctx) {
+      ownerCtx = ctx
+    }
+  }
 }
 async function fixture(t, host = publicHost()) {
   const root = mkdtempSync(join(tmpdir(), 'bp-w2-race-'))
@@ -98,25 +147,58 @@ async function fixture(t, host = publicHost()) {
   mkdirSync(runtimeRoot)
   writeFileSync(join(rootDir, 'lib', 'agents', 'worker.md'), 'FROZEN_PACKAGE')
   const ctx = new Context()
-  ctx.provide('systemPrompt', { tools() { return () => {} }, section() { return () => {} }, getSectionOrder() { return 100 } })
+  ctx.provide('systemPrompt', {
+    tools() {
+      return () => {}
+    },
+    section() {
+      return () => {}
+    },
+    getSectionOrder() {
+      return 100
+    }
+  })
   new ToolRuntime(ctx, { mode: 'native' })
   host.bindOwner(ctx)
   ctx.provide('agents', host.registry)
   let fiber = await ctx.plugin(BlueprintService)
   let service = ctx.blueprint
-  const args = (value = oneAgent(), more = {}) => ({ definitionJson: JSON.stringify(value), inputJson: '{"task":"ACTUAL_INPUT"}', rootDir, runtimeRoot, requestId: randomUUID(), ...more })
+  const args = (value = oneAgent(), more = {}) => ({
+    definitionJson: JSON.stringify(value),
+    inputJson: '{"task":"ACTUAL_INPUT"}',
+    rootDir,
+    runtimeRoot,
+    requestId: randomUUID(),
+    ...more
+  })
   const handle = () => [...service.runtimes.values()][0]
   const drain = async () => {
     const h = handle()
     while (h?.jobs.size) await Promise.all(h.jobs.values())
     assert.equal(h?.backgroundFailures.size ?? 0, 0, 'driver failures must not disappear behind resolved job promises')
   }
-  t.after(async () => { await fiber.dispose(); rmSync(root, { force: true, recursive: true }) })
+  t.after(async () => {
+    await fiber.dispose()
+    rmSync(root, { force: true, recursive: true })
+  })
   return {
-    root, rootDir, runtimeRoot, ctx, host, args, handle, drain,
-    get service() { return service },
+    root,
+    rootDir,
+    runtimeRoot,
+    ctx,
+    host,
+    args,
+    handle,
+    drain,
+    get service() {
+      return service
+    },
     run: async id => await handle().store.get(id),
-    async restart() { await fiber.dispose(); fiber = await ctx.plugin(BlueprintService); service = ctx.blueprint },
+    async restart() {
+      await fiber.dispose()
+      fiber = await ctx.plugin(BlueprintService)
+      service = ctx.blueprint
+    }
   }
 }
 const direct = h => ({ runId: 'direct', attemptId: 'direct', nodeId: 'work', cwd: h.rootDir, agentMd: '', skills: [], input: 'REAL', timeoutMs: 2_000 })
@@ -127,9 +209,17 @@ for (const backend of ['json', 'sqlite']) {
       const root = mkdtempSync(join(tmpdir(), 'bp-w2-reconcile-'))
       const spec = { backend, path: join(root, backend === 'sqlite' ? 'runs.sqlite' : 'store') }
       let opened = await openBlueprintDomain(spec)
-      t.after(async () => { await opened.close(); rmSync(root, { recursive: true, force: true }) })
+      t.after(async () => {
+        await opened.close()
+        rmSync(root, { recursive: true, force: true })
+      })
       const store = new RunStore(opened.domain)
-      const created = await store.createRun({ scope: 'recovery', requestId: 'review', payloadFingerprint: 'same' }, 'revision', JSON.stringify(oneAgent()), '{}')
+      const created = await store.createRun(
+        { scope: 'recovery', requestId: 'review', payloadFingerprint: 'same' },
+        'revision',
+        JSON.stringify(oneAgent()),
+        '{}'
+      )
       const intent = await store.recordIntent(created.runId, { nodeId: 'work', kind: 'agentTask', resourceDigests: { worker: 'a'.repeat(64) } })
       await reconcileOnStart(store)
       const unknown = await store.get(created.runId)
@@ -142,7 +232,9 @@ for (const backend of ['json', 'sqlite']) {
       assert.equal(result.attempts[0].attemptId, intent.attemptId)
       assert.deepEqual(result.attempts[0].intent, unknown.attempts[0].intent)
       assert.equal(result.attempts[0].result.ok, action === 'succeeded')
-      await assert.rejects(store.recordResult(created.runId, intent.attemptId, { ok: true, outcome: { kind: 'succeeded' }, evidence: 'late' }), { code: 'TERMINAL_STATE_IMMUTABLE' })
+      await assert.rejects(store.recordResult(created.runId, intent.attemptId, { ok: true, outcome: { kind: 'succeeded' }, evidence: 'late' }), {
+        code: 'TERMINAL_STATE_IMMUTABLE'
+      })
       await opened.close()
       opened = await openBlueprintDomain(spec)
       const reopened = new RunStore(opened.domain)
@@ -155,7 +247,10 @@ for (const backend of ['json', 'sqlite']) {
   test(`store ${backend}: simultaneous duplicate admission and competing results serialize`, async t => {
     const root = mkdtempSync(join(tmpdir(), 'bp-w2-store-race-'))
     const opened = await openBlueprintDomain({ backend, path: join(root, backend === 'sqlite' ? 'runs.sqlite' : 'store') })
-    t.after(async () => { await opened.close(); rmSync(root, { recursive: true, force: true }) })
+    t.after(async () => {
+      await opened.close()
+      rmSync(root, { recursive: true, force: true })
+    })
     const store = new RunStore(opened.domain)
     const request = { scope: 'start', requestId: 'same', payloadFingerprint: 'payload' }
     const results = await Promise.all(Array.from({ length: 6 }, () => store.createRun(request, 'revision', '{}', '{}')))
@@ -166,7 +261,7 @@ for (const backend of ['json', 'sqlite']) {
     const first = { ok: true, outcome: { outputs: { text: 'FIRST' } }, evidence: 'first' }
     const raced = await Promise.allSettled([
       store.recordResult(runId, intent.attemptId, first),
-      store.recordResult(runId, intent.attemptId, { ok: false, outcome: { kind: 'failed' }, evidence: 'second' }),
+      store.recordResult(runId, intent.attemptId, { ok: false, outcome: { kind: 'failed' }, evidence: 'second' })
     ])
     assert.equal(raced[0].status, 'fulfilled')
     assert.equal(raced[1].reason.code, 'ATTEMPT_SETTLED_CONFLICT')
@@ -180,7 +275,11 @@ test('service: concurrent first open, path alias, duplicate admission yield one 
   const alias = join(h.root, 'runtime-alias')
   symlinkSync(h.runtimeRoot, alias, 'dir')
   const args = h.args()
-  const results = await Promise.all([h.service.startRun(args), h.service.startRun({ ...args, runtimeRoot: alias }), h.service.inspectRun({ runtimeRoot: alias, runId: 'nonexistent' }).catch(error => error)])
+  const results = await Promise.all([
+    h.service.startRun(args),
+    h.service.startRun({ ...args, runtimeRoot: alias }),
+    h.service.inspectRun({ runtimeRoot: alias, runId: 'nonexistent' }).catch(error => error)
+  ])
   assert.equal(results[0].runId, results[1].runId)
   assert.equal(results[0].replayed, false)
   assert.equal(results[1].replayed, true)
@@ -197,7 +296,10 @@ test('service: competing decisions are idempotent by Attempt result, conflicting
   await h.drain()
   const args = { runId: admitted.runId, runtimeRoot: h.runtimeRoot, decisionId: 'one-decision', action: 'approve' }
   const results = await Promise.all([h.service.decide(args), h.service.decide(args), h.service.decide({ ...args, action: 'reject' }).catch(error => error)])
-  assert.deepEqual(results.slice(0, 2).map(r => r.applied), [true, false])
+  assert.deepEqual(
+    results.slice(0, 2).map(r => r.applied),
+    [true, false]
+  )
   assert.equal(results[2].code, 'blueprint/decision-invalid')
   await h.drain()
   const run = await h.run(admitted.runId)
@@ -219,14 +321,19 @@ test('service: decision admitted before previous waiting driver drains still sch
   const transition = store.transition.bind(store)
   t.mock.method(store, 'transition', async (...args) => {
     const run = await transition(...args)
-    if (run.state === 'waiting_input') { persisted.resolve(run); await release.promise }
+    if (run.state === 'waiting_input') {
+      persisted.resolve(run)
+      await release.promise
+    }
     return run
   })
   const start = await h.service.startRun(h.args(decisionGraph()))
   await persisted.promise
   try {
     assert.equal((await h.service.decide({ runId: start.runId, runtimeRoot: h.runtimeRoot, decisionId: 'early', action: 'approve' })).applied, true)
-  } finally { release.resolve() }
+  } finally {
+    release.resolve()
+  }
   await h.drain()
   assert.equal((await h.run(start.runId)).state, 'succeeded')
   assert.equal(h.host.calls.length, 1)
@@ -254,7 +361,13 @@ test('service: restart waiting decision uses frozen package, fresh shared closur
     specs.push(spec)
     const path = join(spec.cwd, '.blueprint-skills', '0', 'scripts', 'helper.mjs')
     assert.equal(readFileSync(path, 'utf8'), 'AFTER_SCRIPT')
-    return { sessionId: 'isolated', agentCreated: true, scopedInjections: [], inboxSplicedSeen: true, outcome: { ok: true, kind: 'succeeded', detail: 'complete' } }
+    return {
+      sessionId: 'isolated',
+      agentCreated: true,
+      scopedInjections: [],
+      inboxSplicedSeen: true,
+      outcome: { ok: true, kind: 'succeeded', detail: 'complete' }
+    }
   })
   await h.service.decide({ runId: admitted.runId, runtimeRoot: h.runtimeRoot, decisionId: 'after-restart', action: 'approve' })
   await h.drain()
@@ -275,7 +388,8 @@ test('executor: pre-abort has no creation or dispatch; in-flight abort invokes p
   const live = new AbortController()
   const result = executor.execute({ ...direct(h), signal: live.signal })
   const call = await host.started
-  live.abort(); live.abort()
+  live.abort()
+  live.abort()
   const evidence = await result
   assert.equal(evidence.outcome.kind, 'cancelled')
   assert.equal(call.cancelCalls.length, 1)
@@ -331,12 +445,13 @@ for (const mode of ['idle-no-end', 'prior-completed']) {
   test(`executor: ${mode} cannot counterfeit this dispatch's successful durable turn`, async t => {
     const host = publicHost(call => call.idleWithoutCloser())
     const create = host.registry.create
-    if (mode === 'prior-completed') host.registry.create = async options => {
-      const handle = await create(options)
-      handle.agent.session.append('turn/start', { turn: 0 })
-      handle.agent.session.append('turn/end', { turn: 0, reason: completed })
-      return handle
-    }
+    if (mode === 'prior-completed')
+      host.registry.create = async options => {
+        const handle = await create(options)
+        handle.agent.session.append('turn/start', { turn: 0 })
+        handle.agent.session.append('turn/end', { turn: 0, reason: completed })
+        return handle
+      }
     const h = await fixture(t, host)
     const evidence = await new BlueprintAgentExecutor(h.ctx, host.registry).execute(direct(h))
     assert.equal(evidence.outcome.ok, false)
@@ -380,7 +495,9 @@ for (const mode of ['aborted', 'unknown']) {
     const call = await host.started
     if (mode === 'unknown') {
       let settled = false
-      void result.then(() => { settled = true })
+      void result.then(() => {
+        settled = true
+      })
       t.mock.timers.tick(20_000)
       await eventTurn()
       assert.equal(settled, false, 'hostProbe has no default execution deadline')
@@ -463,7 +580,9 @@ test('driver: raw provider/creation failure never enters Run evidence or wire er
   await h.drain()
   assert.equal((await h.run(first.runId)).state, 'failed')
   assert.doesNotMatch(JSON.stringify(await h.run(first.runId)), /RAW_PROVIDER_TOKEN_NOT_A_REAL_KEY/)
-  host.registry.create = async () => { throw new Error(secret) }
+  host.registry.create = async () => {
+    throw new Error(secret)
+  }
   const second = await h.service.startRun(h.args())
   await h.drain()
   const run = await h.run(second.runId)
@@ -479,7 +598,11 @@ test('service: driver write failure is caught, persisted recovery when later sto
   const original = store.recordResult.bind(store)
   let first = true
   t.mock.method(store, 'recordResult', async (...args) => {
-    if (first) { first = false; const { DurabilityFailureError } = await import('../../src/persistence/index.ts'); throw new DurabilityFailureError('isolated-fault', new Error('RAW_STORAGE_BODY')) }
+    if (first) {
+      first = false
+      const { DurabilityFailureError } = await import('../../src/persistence/index.ts')
+      throw new DurabilityFailureError('isolated-fault', new Error('RAW_STORAGE_BODY'))
+    }
     return await original(...args)
   })
   const start = await h.service.startRun(h.args())
@@ -525,8 +648,11 @@ test('service: cancellation before intent/creation does not publish or dispatch 
   })
   const start = await h.service.startRun(h.args())
   await entered.promise
-  try { assert.equal((await h.service.cancelRun({ runId: start.runId, runtimeRoot: h.runtimeRoot })).state, 'cancelled') }
-  finally { release.resolve() }
+  try {
+    assert.equal((await h.service.cancelRun({ runId: start.runId, runtimeRoot: h.runtimeRoot })).state, 'cancelled')
+  } finally {
+    release.resolve()
+  }
   await h.drain()
   assert.equal((await h.run(start.runId)).state, 'cancelled')
   assert.equal((await h.run(start.runId)).attempts.length, 0)
@@ -538,8 +664,12 @@ test('service: persistent settlement failure yields typed unavailable inspection
   await h.service.runtimeFor(h.runtimeRoot)
   const store = h.handle().store
   const { DurabilityFailureError } = await import('../../src/persistence/index.ts')
-  t.mock.method(store, 'recordResult', async () => { throw new DurabilityFailureError('isolated-result', 'RAW_SECRET_STORAGE_CAUSE') })
-  t.mock.method(store, 'settleTerminal', async () => { throw new DurabilityFailureError('isolated-settle', 'RAW_SECRET_STORAGE_CAUSE') })
+  t.mock.method(store, 'recordResult', async () => {
+    throw new DurabilityFailureError('isolated-result', 'RAW_SECRET_STORAGE_CAUSE')
+  })
+  t.mock.method(store, 'settleTerminal', async () => {
+    throw new DurabilityFailureError('isolated-settle', 'RAW_SECRET_STORAGE_CAUSE')
+  })
   const start = await h.service.startRun(h.args())
   await Promise.all(h.handle().jobs.values())
   assert.equal(h.handle().backgroundFailures.size, 1)
@@ -559,7 +689,9 @@ test('service: persistent settlement failure yields typed unavailable inspection
 
 test('hostProbe: synchronous composition error is typed and never echoes raw provider secret', async t => {
   const host = publicHost()
-  host.registry.create = () => { throw new Error('SYNCHRONOUS_RAW_SECRET') }
+  host.registry.create = () => {
+    throw new Error('SYNCHRONOUS_RAW_SECRET')
+  }
   const h = await fixture(t, host)
   const skillDir = join(h.root, 'skill')
   mkdirSync(skillDir)

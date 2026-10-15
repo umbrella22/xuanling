@@ -57,7 +57,12 @@ export function importBlueprint(archive: Buffer, targetDir: string, options: { a
       throw new PortabilityConflictError(`archive carries an undeclared file ${entry.name}`)
     }
   }
-  const closureDigest = sha256(Object.entries(manifest.files).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([p, d]) => `${p}\u0000${d}\n`).join(''))
+  const closureDigest = sha256(
+    Object.entries(manifest.files)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([p, d]) => `${p}\u0000${d}\n`)
+      .join('')
+  )
   if (closureDigest !== manifest.closureDigest) throw new PortabilityConflictError('closure digest mismatch')
 
   // Structural validation of the definition BEFORE anything touches disk.
@@ -68,7 +73,11 @@ export function importBlueprint(archive: Buffer, targetDir: string, options: { a
     const artifact = ref.path === undefined ? undefined : byName.get(ref.path)
     if (artifact === undefined) throw new PortabilityConflictError('packaged Host artifact missing')
     let value: unknown
-    try { value = JSON.parse(artifact.data.toString('utf8')) } catch { throw new PortabilityConflictError('packaged Host artifact JSON rejected') }
+    try {
+      value = JSON.parse(artifact.data.toString('utf8'))
+    } catch {
+      throw new PortabilityConflictError('packaged Host artifact JSON rejected')
+    }
     if (ref.format === 'agent-preset') validatePackagedPreset(value)
     else validatePackagedMcp(value)
   }

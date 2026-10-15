@@ -70,7 +70,7 @@ function readTree(rootDir: string): SnapshotFile[] {
     const bytes = readFileSync(absolute)
     files.push({ path: rel, digest: sha256(bytes), bytes })
   }
-  files.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
+  files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
   return files
 }
 
@@ -122,7 +122,10 @@ export function snapshotFile(absolutePath: string, source: ResourceSnapshot['sou
     throw error
   }
   const bytes = readFileSync(file)
-  const rel = relative(resolve(source.kind === 'shared-skill' ? source.skillDir : file), file).split(sep).join('/') || 'file'
+  const rel =
+    relative(resolve(source.kind === 'shared-skill' ? source.skillDir : file), file)
+      .split(sep)
+      .join('/') || 'file'
   const files: SnapshotFile[] = [{ path: rel, digest: sha256(bytes), bytes }]
   return { source, files, treeDigest: treeDigestOf(files) }
 }

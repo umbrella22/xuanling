@@ -10,7 +10,12 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { getCases } from './host.mjs'
 import {
-  probeReportRouting, probeArtifactPaths, isolatedProbeEnv, waitForTerminal, rawScriptUnavailable, terminalCancelEvidence,
+  probeReportRouting,
+  probeArtifactPaths,
+  isolatedProbeEnv,
+  waitForTerminal,
+  rawScriptUnavailable,
+  terminalCancelEvidence
 } from '../../../../../test/blueprint/capabilities/probe.mjs'
 
 const packageRoot = fileURLToPath(new URL('../../', import.meta.url))
@@ -42,7 +47,10 @@ async function hostHarness(t, simulate, { explicit = true } = {}) {
     return simulate({ command, args, options })
   })
   syncBuiltinESMExports()
-  t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports() })
+  t.after(() => {
+    t.mock.restoreAll()
+    syncBuiltinESMExports()
+  })
   const [h1] = await getCases({ packageRoot: plugin, repoRoot: root, ...(explicit ? { reportDir, planId } : {}) })
   return { h1, calls, historical, prior, reportDir, planId, root }
 }
@@ -80,9 +88,18 @@ test('missing/empty probe routing values fail before any install, network or rep
 
 test('probe environment is key/config isolated, not a spread of the real environment', t => {
   const home = temp(t)
-  const env = isolatedProbeEnv(home, { PATH: '/operational-path', LANG: 'C', HOME: '/real-home', DSH_HOME: '/real-dsh',
-    BP_LIVE_PROVIDER_KEY: 'placeholder', OPENAI_API_KEY: 'placeholder', DEEPSEEK_API_KEY: 'placeholder',
-    NODE_OPTIONS: '--import /real-config', HTTPS_PROXY: 'secret-proxy', npm_config_userconfig: '/real-npmrc' })
+  const env = isolatedProbeEnv(home, {
+    PATH: '/operational-path',
+    LANG: 'C',
+    HOME: '/real-home',
+    DSH_HOME: '/real-dsh',
+    BP_LIVE_PROVIDER_KEY: 'placeholder',
+    OPENAI_API_KEY: 'placeholder',
+    DEEPSEEK_API_KEY: 'placeholder',
+    NODE_OPTIONS: '--import /real-config',
+    HTTPS_PROXY: 'secret-proxy',
+    npm_config_userconfig: '/real-npmrc'
+  })
   assert.equal(env.PATH, '/operational-path')
   assert.equal(env.HOME, home)
   assert.equal(env.DSH_HOME, join(home, 'dsh'))
@@ -108,7 +125,9 @@ test('default host H1 still isolates the nested probe under takeover, not histor
   const f = await hostHarness(t, fakeReport, { explicit: false })
   assert.equal((await f.h1.run()).ok, true)
   const args = f.calls[0].args
-  assert.ok(args[args.indexOf('--report-dir') + 1].startsWith(join(f.root, 'docs', 'validation', 'blueprint', 'current', 'takeover', 'w2', 'host', 'host-probe-')))
+  assert.ok(
+    args[args.indexOf('--report-dir') + 1].startsWith(join(f.root, 'docs', 'validation', 'blueprint', 'current', 'takeover', 'w2', 'host', 'host-probe-'))
+  )
   assert.equal(args[args.indexOf('--plan-id') + 1], 'dsh-blueprint-plugin-v1')
   assert.equal(readFileSync(f.historical, 'utf8'), f.prior)
 })
@@ -123,7 +142,10 @@ test('host H1 rejects failed process, mismatched plan, and contradictory or miss
   for (const variant of ['exit', 'plan', 'contradiction', 'missing']) {
     await t.test(variant, async t => {
       const f = await hostHarness(t, call => {
-        if (variant === 'exit') { fakeReport(call); return { status: 1, stderr: 'required failure', signal: null } }
+        if (variant === 'exit') {
+          fakeReport(call)
+          return { status: 1, stderr: 'required failure', signal: null }
+        }
         if (variant === 'plan') return fakeReport(call, { plan_id: 'wrong-plan' })
         if (variant === 'contradiction') return fakeReport(call, { assertions: [...fixtureAssertions, { id: 'required-regression', passed: false }] })
         return fakeReport(call, { assertions: fixtureAssertions.filter(a => a.id !== 'P4j') })
@@ -146,10 +168,14 @@ test('raw diagnostic oracle requires actual endpoint unavailability and no side 
 test('bounded inspectRun poll observes queued/running/terminal separately from admission', async () => {
   const states = ['queued', 'running', 'succeeded']
   const calls = []
-  const inspected = await waitForTerminal(async (...args) => {
-    calls.push(args)
-    return { status: 200, body: { result: { ok: true, value: { runId: 'run-test', state: states.shift() } } } }
-  }, 'run-test', { timeoutMs: 1000, pollIntervalMs: 0 })
+  const inspected = await waitForTerminal(
+    async (...args) => {
+      calls.push(args)
+      return { status: 200, body: { result: { ok: true, value: { runId: 'run-test', state: states.shift() } } } }
+    },
+    'run-test',
+    { timeoutMs: 1000, pollIntervalMs: 0 }
+  )
   assert.equal(inspected.body.result.value.state, 'succeeded')
   assert.equal(inspected.observations.length, 3)
   assert.equal(calls.length, 3)
@@ -161,24 +187,48 @@ test('bounded inspectRun poll observes queued/running/terminal separately from a
 })
 
 test('bounded terminal poll rejects missing admission, bad inspect, unrelated run, and nonterminal budget exhaustion', async () => {
-  await assert.rejects(waitForTerminal(() => { throw new Error('must not inspect') }, undefined), /valid runId/)
-  await assert.rejects(waitForTerminal(async () => ({ body: { result: { ok: false } } }), 'run-test'), /inspectRun failed/)
-  await assert.rejects(waitForTerminal(async () => ({ body: { result: { ok: true, value: { runId: 'other', state: 'succeeded' } } } }), 'run-test'), /unrelated run/)
-  await assert.rejects(waitForTerminal(async () => ({ body: { result: { ok: true, value: { runId: 'run-test', state: 'running' } } } }), 'run-test', { timeoutMs: 10, pollIntervalMs: 0 }), /did not settle/)
+  await assert.rejects(
+    waitForTerminal(() => {
+      throw new Error('must not inspect')
+    }, undefined),
+    /valid runId/
+  )
+  await assert.rejects(
+    waitForTerminal(async () => ({ body: { result: { ok: false } } }), 'run-test'),
+    /inspectRun failed/
+  )
+  await assert.rejects(
+    waitForTerminal(async () => ({ body: { result: { ok: true, value: { runId: 'other', state: 'succeeded' } } } }), 'run-test'),
+    /unrelated run/
+  )
+  await assert.rejects(
+    waitForTerminal(async () => ({ body: { result: { ok: true, value: { runId: 'run-test', state: 'running' } } } }), 'run-test', {
+      timeoutMs: 10,
+      pollIntervalMs: 0
+    }),
+    /did not settle/
+  )
 })
 
 function terminalCancelFixture(mutate = () => {}, beforePatch = {}) {
-  const snapshot = { runId: 'run-terminal', state: 'succeeded', definitionRevision: 'revision-1', seq: 5,
-    attempts: [{ nodeId: 'in', state: 'succeeded', attempt: 1 }, { nodeId: 'out', state: 'succeeded', attempt: 1 }],
-    logTail: ['admitted', 'intent', 'result', 'intent', 'result', 'state'].map((kind, seq) => ({ seq, kind })) }
+  const snapshot = {
+    runId: 'run-terminal',
+    state: 'succeeded',
+    definitionRevision: 'revision-1',
+    seq: 5,
+    attempts: [
+      { nodeId: 'in', state: 'succeeded', attempt: 1 },
+      { nodeId: 'out', state: 'succeeded', attempt: 1 }
+    ],
+    logTail: ['admitted', 'intent', 'result', 'intent', 'result', 'state'].map((kind, seq) => ({ seq, kind }))
+  }
   const response = value => ({ status: 200, body: { result: { ok: true, value } } })
   const before = response(snapshot)
   Object.assign(snapshot, beforePatch)
   const calls = []
   const callApi = async (method, args, rpcId) => {
     calls.push({ method, args, rpcId })
-    const r = response(method === 'blueprint/cancelRun'
-      ? { runId: snapshot.runId, state: snapshot.state } : structuredClone(snapshot))
+    const r = response(method === 'blueprint/cancelRun' ? { runId: snapshot.runId, state: snapshot.state } : structuredClone(snapshot))
     mutate(r, method, calls.length, snapshot)
     return r
   }
@@ -192,7 +242,10 @@ test('P4o repeated successful cancel preserves the complete succeeded snapshot a
   assert.equal(evidence.ok, true, evidence.detail)
   assert.equal(evidence.cancels.length, 2)
   assert.equal(evidence.inspections.length, 2)
-  assert.deepEqual(f.calls.map(c => c.method), ['blueprint/cancelRun', 'blueprint/inspectRun', 'blueprint/cancelRun', 'blueprint/inspectRun'])
+  assert.deepEqual(
+    f.calls.map(c => c.method),
+    ['blueprint/cancelRun', 'blueprint/inspectRun', 'blueprint/cancelRun', 'blueprint/inspectRun']
+  )
   assert.equal(new Set(f.calls.map(c => c.rpcId)).size, 4)
   for (const c of f.calls) assert.deepEqual(c.args, { args: { runId: 'run-terminal' } })
   for (const r of evidence.cancels) assert.deepEqual(r.body.result.value, { runId: 'run-terminal', state: 'succeeded' })
@@ -202,18 +255,34 @@ test('P4o repeated successful cancel preserves the complete succeeded snapshot a
 
 test('P4o rejects success-shaped mutation or bad RPC evidence, including first-cancel changes later undone', async t => {
   const mutations = {
-    seq: r => { r.body.result.value.seq++ },
-    logTail: r => { r.body.result.value.logTail.push({ seq: 6, kind: 'cancel' }) },
-    attempts: r => { r.body.result.value.attempts[0].attempt++ },
-    revision: r => { r.body.result.value.definitionRevision = 'revision-mutated' },
-    state: r => { r.body.result.value.state = 'cancelled' },
-    runId: r => { r.body.result.value.runId = 'other-run' },
-    'missing field': r => { delete r.body.result.value.logTail },
+    seq: r => {
+      r.body.result.value.seq++
+    },
+    logTail: r => {
+      r.body.result.value.logTail.push({ seq: 6, kind: 'cancel' })
+    },
+    attempts: r => {
+      r.body.result.value.attempts[0].attempt++
+    },
+    revision: r => {
+      r.body.result.value.definitionRevision = 'revision-mutated'
+    },
+    state: r => {
+      r.body.result.value.state = 'cancelled'
+    },
+    runId: r => {
+      r.body.result.value.runId = 'other-run'
+    },
+    'missing field': r => {
+      delete r.body.result.value.logTail
+    }
   }
   for (const [name, change] of Object.entries(mutations)) {
     await t.test(name, async () => {
       // Only the FIRST inspect mutates; the second restores the fixture.
-      const f = terminalCancelFixture((r, method, n) => { if (method === 'blueprint/inspectRun' && n === 2) change(r) })
+      const f = terminalCancelFixture((r, method, n) => {
+        if (method === 'blueprint/inspectRun' && n === 2) change(r)
+      })
       const evidence = await f.run()
       assert.equal(evidence.ok, false, `${name} must not pass as an idempotent terminal cancel`)
       assert.match(evidence.detail, /inspect after cancel 1 changed/)
@@ -221,25 +290,46 @@ test('P4o rejects success-shaped mutation or bad RPC evidence, including first-c
     })
   }
   for (const [name, change] of Object.entries({
-    'second cancel wrong state': r => { r.body.result.value.state = 'cancelled' },
-    'second cancel missing runId': r => { delete r.body.result.value.runId },
-    'second cancel error': r => { r.body.result = { ok: false, error: { code: 'blueprint/illegal-transition' } } },
-    'second cancel HTTP failure': r => { r.status = 500 },
-    'inspect error': r => { r.body.result = { ok: false, error: { code: 'blueprint/run-not-found' } } },
+    'second cancel wrong state': r => {
+      r.body.result.value.state = 'cancelled'
+    },
+    'second cancel missing runId': r => {
+      delete r.body.result.value.runId
+    },
+    'second cancel error': r => {
+      r.body.result = { ok: false, error: { code: 'blueprint/illegal-transition' } }
+    },
+    'second cancel HTTP failure': r => {
+      r.status = 500
+    },
+    'inspect error': r => {
+      r.body.result = { ok: false, error: { code: 'blueprint/run-not-found' } }
+    }
   })) {
     await t.test(name, async () => {
-      const f = terminalCancelFixture((r, _method, n) => { if (n === (name === 'inspect error' ? 2 : 3)) change(r) })
+      const f = terminalCancelFixture((r, _method, n) => {
+        if (n === (name === 'inspect error' ? 2 : 3)) change(r)
+      })
       assert.equal((await f.run()).ok, false, name)
     })
   }
   await t.test('shared baseline object mutated during RPC', async () => {
-    const f = terminalCancelFixture((_r, method, _n, snapshot) => { if (method === 'blueprint/cancelRun') snapshot.seq++ })
+    const f = terminalCancelFixture((_r, method, _n, snapshot) => {
+      if (method === 'blueprint/cancelRun') snapshot.seq++
+    })
     assert.equal((await f.run()).ok, false, 'must freeze pre-cancel values, not compare two aliases')
   })
 })
 
 test('P4o requires the complete successful terminal baseline before dispatching any cancel', async () => {
-  for (const patch of [{ state: 'running' }, { runId: 'unrelated' }, { seq: undefined }, { logTail: undefined }, { attempts: undefined }, { definitionRevision: '' }]) {
+  for (const patch of [
+    { state: 'running' },
+    { runId: 'unrelated' },
+    { seq: undefined },
+    { logTail: undefined },
+    { attempts: undefined },
+    { definitionRevision: '' }
+  ]) {
     const f = terminalCancelFixture(undefined, patch)
     const evidence = await f.run()
     assert.equal(evidence.ok, false)
@@ -254,7 +344,8 @@ test('runner passes resolved explicit/default report-dir/plan-id to suite helper
   const copy = join(mirror, 'scripts', 'verify.mjs')
   const suite = join(mirror, 'test', 'host', 'host.mjs')
   const behaviorEvidence = join(mirror, 'test', 'acceptance', 'behavior-evidence.mjs')
-  mkdirSync(dirname(copy), { recursive: true }); mkdirSync(dirname(suite), { recursive: true })
+  mkdirSync(dirname(copy), { recursive: true })
+  mkdirSync(dirname(suite), { recursive: true })
   writeFileSync(copy, readFileSync(runner, 'utf8'))
   // Assemble the real runner's static receipt dependency, never a stub.
   const behaviorBytes = readFileSync(join(packageRoot, 'test', 'acceptance', 'behavior-evidence.mjs'))
@@ -266,11 +357,14 @@ test('runner passes resolved explicit/default report-dir/plan-id to suite helper
   mkdirSync(dirname(diagnosticEvidence), { recursive: true })
   writeFileSync(diagnosticEvidence, diagnosticBytes)
   assert.deepEqual(readFileSync(diagnosticEvidence), diagnosticBytes, 'mirror diagnostic module must preserve the real dependency bytes')
-  writeFileSync(suite, `import {writeFileSync} from 'node:fs';
+  writeFileSync(
+    suite,
+    `import {writeFileSync} from 'node:fs';
     export function getCases(helpers) {
       writeFileSync(process.env.CAPTURE, JSON.stringify({hasReportDir:Object.hasOwn(helpers,'reportDir'),hasPlanId:Object.hasOwn(helpers,'planId'),reportDir:helpers.reportDir,planId:helpers.planId}));
       return [{id:'control',title:'control pass',expect:'pass',run:()=>true},{id:'red',title:'control expected-red',expect:'red',redCode:'CONTROL',run:()=>{throw Object.assign(new Error('control red'),{code:'CONTROL'})}}];
-    }`)
+    }`
+  )
   for (const explicit of [true, false]) {
     const capture = join(root, `capture-${explicit}.json`)
     const reports = join(root, 'reports explicit')
@@ -280,7 +374,8 @@ test('runner passes resolved explicit/default report-dir/plan-id to suite helper
     const helpers = JSON.parse(readFileSync(capture, 'utf8'))
     const expectedReportDir = explicit ? reports : join(root, 'docs', 'validation', 'blueprint', 'current', 'w4')
     const expectedPlanId = explicit ? 'takeover-helper-test' : 'dsh-blueprint-plugin-v1'
-    assert.equal(helpers.hasReportDir, true); assert.equal(helpers.hasPlanId, true)
+    assert.equal(helpers.hasReportDir, true)
+    assert.equal(helpers.hasPlanId, true)
     assert.equal(helpers.reportDir, expectedReportDir)
     assert.equal(helpers.planId, expectedPlanId)
     const reportPath = join(expectedReportDir, 'w4.host-report.json')
@@ -288,7 +383,10 @@ test('runner passes resolved explicit/default report-dir/plan-id to suite helper
     const report = JSON.parse(readFileSync(reportPath, 'utf8'))
     assert.equal(report.plan_id, expectedPlanId)
     assert.equal(report.plan_id, helpers.planId)
-    assert.deepEqual(report.runs[0].results.map(r => r.status), ['pass', 'expected-red'])
+    assert.deepEqual(
+      report.runs[0].results.map(r => r.status),
+      ['pass', 'expected-red']
+    )
     assert.equal(report.passed, true)
   }
   assert.equal(existsSync(join(root, 'test', 'blueprint', 'reports', 'w0')), false)

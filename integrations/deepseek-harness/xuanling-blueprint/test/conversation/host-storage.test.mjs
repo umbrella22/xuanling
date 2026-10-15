@@ -16,13 +16,22 @@ async function fixture(t, backend) {
   const runtimeRoot = join(root, 'runtime')
   mkdirSync(join(runtimeRoot, 'store'), { recursive: true })
   let opened
-  const close = async () => { if (opened) { const own = opened; opened = undefined; await own.close() } }
+  const close = async () => {
+    if (opened) {
+      const own = opened
+      opened = undefined
+      await own.close()
+    }
+  }
   const open = async (location = runtimeRoot) => {
     assert.equal(opened, undefined)
     opened = await openBlueprintDomain({ backend, path: backend === 'json' ? join(location, 'store') : join(location, 'store', 'runs.db') })
     return new RunStore(opened.domain)
   }
-  t.after(async () => { await close(); rmSync(root, { recursive: true, force: true }) })
+  t.after(async () => {
+    await close()
+    rmSync(root, { recursive: true, force: true })
+  })
   return { root, runtimeRoot, open, close, domain: () => opened.domain, table: name => opened.domain.table(name) }
 }
 for (const backend of ['json', 'sqlite']) {
@@ -41,7 +50,8 @@ for (const backend of ['json', 'sqlite']) {
     assert.equal(Object.hasOwn(legacy, 'source'), false)
     assert.equal(Object.hasOwn(legacy, 'blueprintId'), false)
     await store.settleTerminal(legacyId, 'succeeded')
-    await h.close(); store = await h.open()
+    await h.close()
+    store = await h.open()
     assert.deepEqual((await store.get(runId)).source, source)
     assert.equal((await store.get(runId)).attempts[0].sessionId, 'reserved-native-agent')
     await reconcileOnStart(store)
@@ -50,12 +60,14 @@ for (const backend of ['json', 'sqlite']) {
     assert.equal(recovered.attempts[0].result, undefined, 'unknown effect is not replayed or invented')
     assert.equal(recovered.attempts[0].sessionId, 'reserved-native-agent')
     const old = await store.get(legacyId)
-    await h.close(); store = await h.open()
+    await h.close()
+    store = await h.open()
     assert.deepEqual(await store.get(runId), recovered)
     assert.deepEqual(await store.get(legacyId), old)
     await h.close()
     const backup = createBackup(h.runtimeRoot)
-    const restored = join(h.root, 'restored'); restoreBackup(backup.archive, restored)
+    const restored = join(h.root, 'restored')
+    restoreBackup(backup.archive, restored)
     store = await h.open(restored)
     assert.deepEqual(await store.get(runId), recovered)
     assert.deepEqual(await store.get(legacyId), old)
@@ -63,17 +75,31 @@ for (const backend of ['json', 'sqlite']) {
   test(`host ${backend}: admission and intent failures dispatch no effects; bind-crash replay retains original source`, async t => {
     const h = await fixture(t, backend)
     const store = await h.open()
-    const runs = h.table('runs'), commands = h.table('commands')
+    const runs = h.table('runs'),
+      commands = h.table('commands')
     const put = runs.put.bind(runs)
-    const failPut = t.mock.method(runs, 'put', async () => { throw new Error('PRIVATE_PATH/provider-secret') })
-    await assert.rejects(() => admit(store, 'fail-put'), error => error.code === 'DURABILITY_FAILED')
+    const failPut = t.mock.method(runs, 'put', async () => {
+      throw new Error('PRIVATE_PATH/provider-secret')
+    })
+    await assert.rejects(
+      () => admit(store, 'fail-put'),
+      error => error.code === 'DURABILITY_FAILED'
+    )
     assert.deepEqual(await store.listRunIds(), [])
     failPut.mock.restore()
     // Source is included in the first durable put, even if command binding crashes.
     let firstPut
-    t.mock.method(runs, 'put', async (id, value) => { firstPut = structuredClone(value); return put(id, value) })
-    const failedBind = t.mock.method(commands, 'update', async () => { throw new Error('binding disk failure') })
-    await assert.rejects(() => admit(store, 'fail-bind'), error => error.code === 'DURABILITY_FAILED')
+    t.mock.method(runs, 'put', async (id, value) => {
+      firstPut = structuredClone(value)
+      return put(id, value)
+    })
+    const failedBind = t.mock.method(commands, 'update', async () => {
+      throw new Error('binding disk failure')
+    })
+    await assert.rejects(
+      () => admit(store, 'fail-bind'),
+      error => error.code === 'DURABILITY_FAILED'
+    )
     assert.deepEqual(firstPut.source, source)
     assert.equal(firstPut.blueprintId, 'bp-logical')
     failedBind.mock.restore()
@@ -82,18 +108,38 @@ for (const backend of ['json', 'sqlite']) {
     assert.equal(replay.runId, firstPut.runId)
     assert.equal((await store.listRunIds()).length, 1)
     const original = await store.get(replay.runId)
-    const update = t.mock.method(runs, 'update', async () => { throw new Error('intent disk full') })
-    await assert.rejects(() => store.recordIntent(replay.runId, { nodeId: 'work', kind: 'agentTask', sessionId: 'never-dispatched' }), error => error.code === 'DURABILITY_FAILED')
+    const update = t.mock.method(runs, 'update', async () => {
+      throw new Error('intent disk full')
+    })
+    await assert.rejects(
+      () => store.recordIntent(replay.runId, { nodeId: 'work', kind: 'agentTask', sessionId: 'never-dispatched' }),
+      error => error.code === 'DURABILITY_FAILED'
+    )
     update.mock.restore()
     assert.deepEqual(await store.get(replay.runId), original)
-    await assert.rejects(() => store.createRun({ ...request('fail-bind'), payloadFingerprint: 'cross-source-fingerprint' }, 'revision', '{}', '{}', { source: { ...source, sessionId: 'foreign' } }), error => error.code === 'COMMAND_CONFLICT')
+    await assert.rejects(
+      () =>
+        store.createRun({ ...request('fail-bind'), payloadFingerprint: 'cross-source-fingerprint' }, 'revision', '{}', '{}', {
+          source: { ...source, sessionId: 'foreign' }
+        }),
+      error => error.code === 'COMMAND_CONFLICT'
+    )
     assert.deepEqual(await store.get(replay.runId), original)
   })
   test(`host ${backend}: source strict validation precedes any durable admission and concurrent replay admits once`, async t => {
-    const h = await fixture(t, backend), store = await h.open()
-    for (const bad of [{ ...source, rawBody: 'secret' }, { ...source, sessionId: '' }, { ...source, kind: 'made-up' }, { ...source, turn: -1 }]) {
+    const h = await fixture(t, backend),
+      store = await h.open()
+    for (const bad of [
+      { ...source, rawBody: 'secret' },
+      { ...source, sessionId: '' },
+      { ...source, kind: 'made-up' },
+      { ...source, turn: -1 }
+    ]) {
       assert.equal(runSourceCodec().safeParse(bad).success, false)
-      await assert.rejects(() => admit(store, 'invalid', { source: bad }), error => error.name === 'ZodError')
+      await assert.rejects(
+        () => admit(store, 'invalid', { source: bad }),
+        error => error.name === 'ZodError'
+      )
       assert.deepEqual(await store.listRunIds(), [])
       assert.equal(await h.table('commands').get(store.admission.constructor.commandKey('run', 'invalid')), undefined)
     }
@@ -102,7 +148,10 @@ for (const backend of ['json', 'sqlite']) {
     assert.equal(replies.filter(reply => !reply.replayed).length, 1)
     const runId = replies[0].runId
     const intent = await store.recordIntent(runId, { nodeId: 'work', kind: 'agentTask', sessionId: 'cancelled-agent' })
-    await Promise.all([store.requestCancel(runId), store.recordResult(runId, intent.attemptId, { ok: true, outcome: { kind: 'succeeded' }, evidence: 'known-effect' })])
+    await Promise.all([
+      store.requestCancel(runId),
+      store.recordResult(runId, intent.attemptId, { ok: true, outcome: { kind: 'succeeded' }, evidence: 'known-effect' })
+    ])
     const run = await store.get(runId)
     assert.equal(run.state, 'cancelled')
     assert.equal(run.attempts[0].sessionId, 'cancelled-agent')

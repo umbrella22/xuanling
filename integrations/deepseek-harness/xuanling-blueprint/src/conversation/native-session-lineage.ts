@@ -8,19 +8,28 @@ import type { RunSource } from './contracts.ts'
 
 type LineageHost = Pick<Context, 'get'>
 /** A live capability captured at admission, never stored or exposed on wire. */
-export interface NativeSourceParent { readonly agent: Agent; readonly session: Session }
+export interface NativeSourceParent {
+  readonly agent: Agent
+  readonly session: Session
+}
 
 export class NativeSessionLineageError extends Error {
   readonly code = 'BLUEPRINT_NATIVE_LINEAGE_UNAVAILABLE'
-  constructor() { super('blueprint native session lineage unavailable') }
+  constructor() {
+    super('blueprint native session lineage unavailable')
+  }
 }
 
 export function assertNativeSourceParent(ctx: LineageHost, parent: NativeSourceParent, sessionId: string): void {
   const live = ctx.get('agents')?.get(SessionId(sessionId))
   const sessions = ctx.get('sessions')
-  if (live !== parent.agent || live?.session !== parent.session || parent.session.id !== sessionId
-    || parent.session.header.origin === 'subagent'
-    || (sessions !== undefined && sessions.get(parent.session.id) !== parent.session)) {
+  if (
+    live !== parent.agent ||
+    live?.session !== parent.session ||
+    parent.session.id !== sessionId ||
+    parent.session.header.origin === 'subagent' ||
+    (sessions !== undefined && sessions.get(parent.session.id) !== parent.session)
+  ) {
     throw new NativeSessionLineageError()
   }
 }
@@ -47,8 +56,7 @@ async function flushNativeSession(ctx: LineageHost, session: Session): Promise<v
   if (durable && !participated) throw new NativeSessionLineageError()
 }
 
-export function nativeSessionLineage(ctx: LineageHost, source: RunSource, reservedId: string,
-  admittedParent?: NativeSourceParent) {
+export function nativeSessionLineage(ctx: LineageHost, source: RunSource, reservedId: string, admittedParent?: NativeSourceParent) {
   // Capture identifiers before asynchronous creation. RunRecord.source is the
   // canonical driver input; a same-id replacement is never a new authority.
   const parentSessionId = source.sessionId
@@ -59,7 +67,9 @@ export function nativeSessionLineage(ctx: LineageHost, source: RunSource, reserv
   // continuable activations. Blueprint's sourced Agent is terminal, so stamp
   // the public one-shot descriptor directly with the current format version.
   const descriptor: OneShotSubagentDescriptorData = {
-    version: SUBAGENT_DESCRIPTOR_VERSION, mode: 'one-shot', provider: 'xuanling-blueprint',
+    version: SUBAGENT_DESCRIPTOR_VERSION,
+    mode: 'one-shot',
+    provider: 'xuanling-blueprint'
   }
   let descriptorAppended = false
   return {
@@ -98,11 +108,14 @@ export function nativeSessionLineage(ctx: LineageHost, source: RunSource, reserv
       // The package's establishCatalogChild helper is private, so its native
       // version-0 append contract is implemented here without private imports.
       parent.session.append('subagent/catalog', {
-        version: 0, childId: child.id, childCreatedAt: child.header.createdAt, mode: 'one-shot',
+        version: 0,
+        childId: child.id,
+        childCreatedAt: child.header.createdAt,
+        mode: 'one-shot'
       })
       await flushNativeSession(ctx, parent.session)
       signal.throwIfAborted()
       assertParent()
-    },
+    }
   }
 }

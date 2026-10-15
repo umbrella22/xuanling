@@ -31,29 +31,44 @@ async function fixture(t, backend, requestId) {
     await open()
   }
 
-  t.after(async () => { await close(); await rm(root, { recursive: true, force: true }) })
+  t.after(async () => {
+    await close()
+    await rm(root, { recursive: true, force: true })
+  })
   await open()
 
   const created = await store.createRun(
     { scope: 'w2-7-3-cancellation-red', requestId, payloadFingerprint: digest(requestId) },
-    digest('w2.7.3-definition'), '{}', '{}',
+    digest('w2.7.3-definition'),
+    '{}',
+    '{}'
   )
   const attempt = await store.recordIntent(created.runId, { nodeId: 'work', kind: 'agentTask' })
   await store.bindTeamStage(created.runId, {
-    stageId: 'work', teamId: 'team-1', leadSessionId: 'lead', taskSpecificationFingerprint: digest('task'),
-    attemptId: attempt.attemptId, requiredMemberIds: ['member-1'], requiredChecks: ['schema'], primaryMemberId: 'member-1',
+    stageId: 'work',
+    teamId: 'team-1',
+    leadSessionId: 'lead',
+    taskSpecificationFingerprint: digest('task'),
+    attemptId: attempt.attemptId,
+    requiredMemberIds: ['member-1'],
+    requiredChecks: ['schema'],
+    primaryMemberId: 'member-1'
   })
   await store.bindTeamTask(created.runId, { taskId: 'task-1', taskRevision: 1 })
   await store.updateTeamStage(created.runId, {
-    members: [{ memberId: 'member-1', name: 'bp-member-1', sessionId: 'member-session-1', phase: 'active', status: 'running' }],
+    members: [{ memberId: 'member-1', name: 'bp-member-1', sessionId: 'member-session-1', phase: 'active', status: 'running' }]
   })
 
   return {
-    get store() { return store },
-    get opened() { return opened },
+    get store() {
+      return store
+    },
+    get opened() {
+      return opened
+    },
     runId: created.runId,
     attemptId: attempt.attemptId,
-    reopen,
+    reopen
   }
 }
 
@@ -61,17 +76,21 @@ test('W2.7.3 red: requestCancel persists the Team cancelling cutoff and owned fa
   const h = await fixture(t, 'json', 'cancel-cutoff')
   const after = await h.store.requestCancel(h.runId)
 
-  assert.deepEqual({
-    runState: after.state,
-    stageState: after.teamStage?.state,
-    attemptState: after.attempts.find(attempt => attempt.attemptId === h.attemptId)?.state,
-    cancellationFact: after.teamStage?.cancel !== undefined,
-  }, {
-    runState: 'cancelling',
-    stageState: 'cancelling',
-    attemptState: 'cancelling',
-    cancellationFact: true,
-  }, 'cancelRun must durably close the TeamStage cutoff and retain owned cancellation facts before native effects')
+  assert.deepEqual(
+    {
+      runState: after.state,
+      stageState: after.teamStage?.state,
+      attemptState: after.attempts.find(attempt => attempt.attemptId === h.attemptId)?.state,
+      cancellationFact: after.teamStage?.cancel !== undefined
+    },
+    {
+      runState: 'cancelling',
+      stageState: 'cancelling',
+      attemptState: 'cancelling',
+      cancellationFact: true
+    },
+    'cancelRun must durably close the TeamStage cutoff and retain owned cancellation facts before native effects'
+  )
 })
 
 for (const backend of ['json', 'sqlite']) {
@@ -108,8 +127,13 @@ for (const backend of ['json', 'sqlite']) {
     const h = await fixture(t, backend, `pending-effect-${backend}`)
     await h.store.requestCancel(h.runId)
     await recordTeamEffectIntent(h.store, {
-      runId: h.runId, stageId: 'work', teamId: 'team-1', effectId: `spawn-${backend}`,
-      kind: 'spawn', memberName: 'bp-member-1', actorSessionId: 'lead',
+      runId: h.runId,
+      stageId: 'work',
+      teamId: 'team-1',
+      effectId: `spawn-${backend}`,
+      kind: 'spawn',
+      memberName: 'bp-member-1',
+      actorSessionId: 'lead'
     })
 
     await h.reopen()
@@ -123,9 +147,11 @@ for (const backend of ['json', 'sqlite']) {
     assert.equal(recovered.teamStage?.effects?.[0]?.state, 'pending')
     assert.equal(typeof recovered.teamStage?.cancel?.requestedAt, 'number', 'reopen must retain the cancellation cutoff')
     assert.deepEqual(recovered.teamStage?.requiredMemberIds, ['member-1'], 'reopen must retain the server-owned member set')
-    assert.deepEqual(recovered.teamStage?.members.map(member => ({ memberId: member.memberId, sessionId: member.sessionId })), [
-      { memberId: 'member-1', sessionId: 'member-session-1' },
-    ], 'reopen must retain the canonical member identity facts')
+    assert.deepEqual(
+      recovered.teamStage?.members.map(member => ({ memberId: member.memberId, sessionId: member.sessionId })),
+      [{ memberId: 'member-1', sessionId: 'member-session-1' }],
+      'reopen must retain the canonical member identity facts'
+    )
 
     await h.reopen()
     assert.deepEqual(await h.store.get(h.runId), recovered, 'a second real backend reopen must be read-only after the recovery barrier')

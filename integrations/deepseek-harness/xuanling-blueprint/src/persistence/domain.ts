@@ -6,7 +6,7 @@
  * in-memory fake.
  */
 import type {} from '@deepseek-ai/dsh-storage-domain'
-import { recordsSchema } from './records.ts'
+import { recordsSchema, type CommandRecord, type RunRecord } from './records.ts'
 
 export interface KvTableLike<K = string, V = unknown> {
   get(key: K): Promise<V | undefined>
@@ -42,23 +42,32 @@ export async function openBlueprintDomain(spec: BlueprintDomainSpec): Promise<Op
   const { Context } = await import('@deepseek-ai/cordis')
   const Storage = (await import('@deepseek-ai/dsh-storage')).default
   const domainMod = await import('@deepseek-ai/dsh-storage-domain')
-  const backendMod = spec.backend === 'json'
-    ? await import('@deepseek-ai/dsh-storage-json')
-    : await import('@deepseek-ai/dsh-storage-sqlite')
+  const backendMod = spec.backend === 'json' ? await import('@deepseek-ai/dsh-storage-json') : await import('@deepseek-ai/dsh-storage-sqlite')
 
   const ctx = new Context()
   await ctx.plugin(Storage)
   await ctx.plugin(backendMod, spec.backend === 'json' ? { root: spec.path } : { path: spec.path })
   await ctx.plugin(domainMod, { backend: spec.backend })
-  const domain = await ctx.storageDomain.open(domainMod.defineDomain({
-    name: spec.domainName ?? 'blueprint_runs',
-    version: 1,
-    layout: 'per-record',
-    tables: {
-      runs: domainMod.domainTable(recordsSchema.runs),
-      commands: domainMod.domainTable(recordsSchema.commands),
-    },
-  }))
+  // Pin the table value types at this boundary.  Alpha.3's DomainSpec
+  // projection otherwise recursively expands the large zod TeamStage schema
+  // while inferring `defineDomain`, producing TS2589 without changing the
+  // runtime validators used by the durable store.
+  // The alpha.3 package carries its own zod 4.4 type identity while the
+  // plugin currently resolves zod 4.6, so cross-package schema arguments are
+  // deliberately narrowed through the function's public parameter type.
+  const runsTable = domainMod.domainTable<string, RunRecord>(recordsSchema.runs as unknown as never)
+  const commandsTable = domainMod.domainTable<string, CommandRecord>(recordsSchema.commands as unknown as never)
+  const domain = await ctx.storageDomain.open(
+    domainMod.defineDomain({
+      name: spec.domainName ?? 'blueprint_runs',
+      version: 1,
+      layout: 'per-record',
+      tables: {
+        runs: runsTable,
+        commands: commandsTable
+      }
+    })
+  )
   const closable = ctx as unknown as { stop?: () => Promise<void>; destroy?: () => Promise<void> }
   const close = async (): Promise<void> => {
     await domain.close()

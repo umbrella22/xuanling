@@ -24,62 +24,104 @@ function graph(nodes, edges = []) {
 }
 const choose = () => ({ id: 'choose', kind: 'condition', inputs: { predicate: 'boolean' }, branches: ['yes', 'no'], condition: { ...config } })
 function conditionGraph() {
-  return graph([choose(), { id: 'yesPath', kind: 'output' }, { id: 'noPath', kind: 'output' }], [
-    { kind: 'control', from: 'choose@yes', to: 'yesPath' },
-    { kind: 'control', from: 'choose@no', to: 'noPath' },
-  ])
+  return graph(
+    [choose(), { id: 'yesPath', kind: 'output' }, { id: 'noPath', kind: 'output' }],
+    [
+      { kind: 'control', from: 'choose@yes', to: 'yesPath' },
+      { kind: 'control', from: 'choose@no', to: 'noPath' }
+    ]
+  )
 }
 function forkGraph(strategy) {
-  return graph([
-    { id: 'source', kind: 'input', outputs: { predicate: 'boolean', value: 'string' } }, choose(),
-    { id: 'yesPath', kind: 'output', inputs: { value: 'string' }, outputs: { value: 'string' } },
-    { id: 'noPath', kind: 'output', inputs: { value: 'string' }, outputs: { value: 'string' } },
-    { id: 'merge', kind: 'join', ...(strategy === undefined ? {} : { join: strategy }),
-      inputs: { yes: 'string', no: 'string' }, outputs: { yes: 'string', no: 'string' } },
-  ], [
-    { kind: 'data', from: 'source.predicate', to: 'choose.predicate' },
-    { kind: 'data', from: 'source.value', to: 'yesPath.value' },
-    { kind: 'data', from: 'source.value', to: 'noPath.value' },
-    { kind: 'control', from: 'choose@yes', to: 'yesPath' },
-    { kind: 'control', from: 'choose@no', to: 'noPath' },
-    { kind: 'control', from: 'yesPath', to: 'merge' },
-    { kind: 'control', from: 'noPath', to: 'merge' },
-    { kind: 'data', from: 'yesPath.value', to: 'merge.yes' },
-    { kind: 'data', from: 'noPath.value', to: 'merge.no' },
-  ])
+  return graph(
+    [
+      { id: 'source', kind: 'input', outputs: { predicate: 'boolean', value: 'string' } },
+      choose(),
+      { id: 'yesPath', kind: 'output', inputs: { value: 'string' }, outputs: { value: 'string' } },
+      { id: 'noPath', kind: 'output', inputs: { value: 'string' }, outputs: { value: 'string' } },
+      {
+        id: 'merge',
+        kind: 'join',
+        ...(strategy === undefined ? {} : { join: strategy }),
+        inputs: { yes: 'string', no: 'string' },
+        outputs: { yes: 'string', no: 'string' }
+      }
+    ],
+    [
+      { kind: 'data', from: 'source.predicate', to: 'choose.predicate' },
+      { kind: 'data', from: 'source.value', to: 'yesPath.value' },
+      { kind: 'data', from: 'source.value', to: 'noPath.value' },
+      { kind: 'control', from: 'choose@yes', to: 'yesPath' },
+      { kind: 'control', from: 'choose@no', to: 'noPath' },
+      { kind: 'control', from: 'yesPath', to: 'merge' },
+      { kind: 'control', from: 'noPath', to: 'merge' },
+      { kind: 'data', from: 'yesPath.value', to: 'merge.yes' },
+      { kind: 'data', from: 'noPath.value', to: 'merge.no' }
+    ]
+  )
 }
 function mergeGraph({ controls = false, sharedPort = false, strategy } = {}) {
-  return graph([
-    { id: 'left', kind: 'input', outputs: { value: 'string' } },
-    { id: 'right', kind: 'input', outputs: { value: 'string' } },
-    { id: 'merge', kind: 'join', ...(strategy === undefined ? {} : { join: strategy }),
-      inputs: sharedPort ? { value: 'string' } : { left: 'string', right: 'string' },
-      outputs: sharedPort ? { value: 'string' } : { left: 'string', right: 'string' } },
-  ], [
-    { kind: 'data', from: 'left.value', to: `merge.${sharedPort ? 'value' : 'left'}` },
-    { kind: 'data', from: 'right.value', to: `merge.${sharedPort ? 'value' : 'right'}` },
-    ...(controls ? [{ kind: 'control', from: 'left', to: 'merge' }, { kind: 'control', from: 'right', to: 'merge' }] : []),
-  ])
+  return graph(
+    [
+      { id: 'left', kind: 'input', outputs: { value: 'string' } },
+      { id: 'right', kind: 'input', outputs: { value: 'string' } },
+      {
+        id: 'merge',
+        kind: 'join',
+        ...(strategy === undefined ? {} : { join: strategy }),
+        inputs: sharedPort ? { value: 'string' } : { left: 'string', right: 'string' },
+        outputs: sharedPort ? { value: 'string' } : { left: 'string', right: 'string' }
+      }
+    ],
+    [
+      { kind: 'data', from: 'left.value', to: `merge.${sharedPort ? 'value' : 'left'}` },
+      { kind: 'data', from: 'right.value', to: `merge.${sharedPort ? 'value' : 'right'}` },
+      ...(controls
+        ? [
+            { kind: 'control', from: 'left', to: 'merge' },
+            { kind: 'control', from: 'right', to: 'merge' }
+          ]
+        : [])
+    ]
+  )
 }
 async function fixture(t, definition) {
   const root = mkdtempSync(join(tmpdir(), 'bp-deterministic-runtime-'))
-  const packageRoot = join(root, 'package'), runtimeRoot = join(root, 'runtime')
+  const packageRoot = join(root, 'package'),
+    runtimeRoot = join(root, 'runtime')
   mkdirSync(packageRoot, { recursive: true })
   writeFileSync(join(packageRoot, 'blueprint.json'), json(definition))
   const agentCalls = []
   let fiber
   const h = { root, packageRoot, runtimeRoot, definition, agentCalls }
-  h.close = async () => { if (fiber) { const previous = fiber; fiber = undefined; await previous.dispose() } }
+  h.close = async () => {
+    if (fiber) {
+      const previous = fiber
+      fiber = undefined
+      await previous.dispose()
+    }
+  }
   h.reopen = async () => {
     await h.close()
     const ctx = new Context()
-    ctx.provide('agents', { async create() { agentCalls.push('create'); throw new Error('unexpected structural Agent dispatch') } })
+    ctx.provide('agents', {
+      async create() {
+        agentCalls.push('create')
+        throw new Error('unexpected structural Agent dispatch')
+      }
+    })
     fiber = await ctx.plugin(BlueprintService, { blueprints: { [definition.id]: packageRoot }, runtimeRoot })
     h.service = ctx.blueprint
     h.handle = await h.service.runtimeFor(runtimeRoot)
     await h.handle.driverTail
   }
-  t.after(async () => { try { await h.close() } finally { rmSync(root, { recursive: true, force: true }) } })
+  t.after(async () => {
+    try {
+      await h.close()
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
   await h.reopen()
   return h
 }
@@ -94,13 +136,22 @@ async function publicStart(h, input, requestId = randomUUID()) {
   return { args, admission, record: await h.handle.store.get(admission.runId) }
 }
 async function seedRun(h, input = {}) {
-  const definitionJson = json(h.definition), inputJson = json(input)
-  return (await h.handle.store.createRun({ scope: 'run', requestId: randomUUID(), payloadFingerprint: digest(`${definitionJson}\0${inputJson}`) },
-    'seed-semantic', definitionJson, inputJson)).runId
+  const definitionJson = json(h.definition),
+    inputJson = json(input)
+  return (
+    await h.handle.store.createRun(
+      { scope: 'run', requestId: randomUUID(), payloadFingerprint: digest(`${definitionJson}\0${inputJson}`) },
+      'seed-semantic',
+      definitionJson,
+      inputJson
+    )
+  ).runId
 }
 async function seedParent(h, runId, nodeId, state, outcome = { outputs: {} }) {
   if (state === 'skipped') {
-    await h.handle.store.transition(runId, draft => { draft.attempts.push({ attemptId: `skipped-${nodeId}`, nodeId, attempt: 1, state: 'skipped' }) })
+    await h.handle.store.transition(runId, draft => {
+      draft.attempts.push({ attemptId: `skipped-${nodeId}`, nodeId, attempt: 1, state: 'skipped' })
+    })
     return
   }
   const node = h.definition.graph.nodes.find(node => node.id === nodeId)
@@ -120,7 +171,12 @@ async function rejectAdmissionAndDriveExisting(h, input, code) {
   assert.equal(report.canStart, false)
   assert.ok(report.checks.some(check => check.code === code && check.status === 'block'))
   await assert.rejects(h.service.startRun({ ...args, requestId: randomUUID() }), { code: 'blueprint/preflight-blocked' })
-  const { runId } = await h.handle.store.createRun({ scope: 'run', requestId: randomUUID(), payloadFingerprint: digest(document.definitionJson + args.inputJson) }, document.semanticRevision, document.definitionJson, args.inputJson)
+  const { runId } = await h.handle.store.createRun(
+    { scope: 'run', requestId: randomUUID(), payloadFingerprint: digest(document.definitionJson + args.inputJson) },
+    document.semanticRevision,
+    document.definitionJson,
+    args.inputJson
+  )
   await h.service.driveRun(h.handle, runId, h.definition)
   return { record: await h.handle.store.get(runId) }
 }
@@ -166,7 +222,8 @@ for (const strategy of [undefined, 'all']) {
       const h = await fixture(t, forkGraph(strategy))
       const { record, args, admission } = await publicStart(h, { predicate, value: 'USER_VALUE' })
       assert.equal(record.state, 'succeeded')
-      const selected = predicate ? 'yes' : 'no', unselected = predicate ? 'no' : 'yes'
+      const selected = predicate ? 'yes' : 'no',
+        unselected = predicate ? 'no' : 'yes'
       const choice = successful(record, 'choose')
       assert.equal(choice.result.outcome.branch, selected)
       assert.equal(choice.result.outcome.value, predicate)
@@ -180,7 +237,10 @@ for (const strategy of [undefined, 'all']) {
       assert.deepEqual(merged.result.outcome.outputs, { [selected]: 'USER_VALUE' })
       assert.deepEqual(merged.result.outcome.value, { [selected]: 'USER_VALUE' })
       assert.equal(availableDiagnostics(merged).input.sha256, digest(json({ [selected]: 'USER_VALUE' })))
-      assert.equal(record.attempts.some(attempt => attempt.state === 'waiting_input'), false)
+      assert.equal(
+        record.attempts.some(attempt => attempt.state === 'waiting_input'),
+        false
+      )
       const inspection = await h.service.inspectRun({ runId: record.runId })
       const projected = inspection.attempts.find(attempt => attempt.nodeId === 'merge')
       assert.ok(projected)
@@ -199,23 +259,32 @@ for (const strategy of [undefined, 'all']) {
   }
 }
 for (const [label, input] of [
-  ['string', { predicate: 'true', secret: 'PRIVATE_INPUT_MARKER' }], ['number', { predicate: 1 }],
-  ['null', { predicate: null }], ['absent', {}], ['whole null', null], ['array', [true]],
+  ['string', { predicate: 'true', secret: 'PRIVATE_INPUT_MARKER' }],
+  ['number', { predicate: 1 }],
+  ['null', { predicate: null }],
+  ['absent', {}],
+  ['whole null', null],
+  ['array', [true]]
 ]) {
   test(`C-05 strict predicate: ${label} persists condition-input-invalid without dispatching downstream`, async t => {
     const h = await fixture(t, conditionGraph())
     const { record } = await rejectAdmissionAndDriveExisting(h, input, 'condition-input-invalid')
     await rejected(h, record, 'choose', 'condition-input-invalid')
     assert.equal(record.attempts.length, 1)
-    assert.equal(record.attempts.some(attempt => attempt.state === 'waiting_input'), false)
+    assert.equal(
+      record.attempts.some(attempt => attempt.state === 'waiting_input'),
+      false
+    )
     const before = structuredClone(record)
     await h.reopen()
     assert.deepEqual(await h.handle.store.get(record.runId), before)
   })
 }
 test('C-05 bound predicate: declared boolean but malformed settled producer result is rejected durably', async t => {
-  const definition = graph([{ id: 'source', kind: 'input', outputs: { predicate: 'boolean' } }, choose()],
-    [{ kind: 'data', from: 'source.predicate', to: 'choose.predicate' }])
+  const definition = graph(
+    [{ id: 'source', kind: 'input', outputs: { predicate: 'boolean' } }, choose()],
+    [{ kind: 'data', from: 'source.predicate', to: 'choose.predicate' }]
+  )
   const h = await fixture(t, definition)
   const runId = await seedRun(h, { predicate: true })
   await seedParent(h, runId, 'source', 'succeeded', { outputs: { predicate: 'false' } })
@@ -272,15 +341,30 @@ test('C-06 selected parent failure remains Run failure; merge is never dispatche
   await seedParent(h, runId, 'right', 'skipped')
   const record = await drive(h, runId)
   assert.equal(record.state, 'failed')
-  assert.equal(record.attempts.some(attempt => attempt.nodeId === 'merge'), false)
+  assert.equal(
+    record.attempts.some(attempt => attempt.nodeId === 'merge'),
+    false
+  )
 })
 test('C-06 scheduler production oracle: default all waits for selected control parents, not only successful data parents', () => {
-  const definition = graph([
-    { id: 'data', kind: 'input', outputs: { value: 'string' } },
-    { id: 'approval', kind: 'humanDecision' },
-    { id: 'merge', kind: 'join', inputs: { value: 'string' }, outputs: { value: 'string' } },
-  ], [{ kind: 'data', from: 'data.value', to: 'merge.value' }, { kind: 'control', from: 'approval', to: 'merge' }])
-  const snapshot = { attempts: [{ nodeId: 'data', states: ['succeeded'] }, { nodeId: 'approval', states: ['waiting_input'] }], decisions: {} }
+  const definition = graph(
+    [
+      { id: 'data', kind: 'input', outputs: { value: 'string' } },
+      { id: 'approval', kind: 'humanDecision' },
+      { id: 'merge', kind: 'join', inputs: { value: 'string' }, outputs: { value: 'string' } }
+    ],
+    [
+      { kind: 'data', from: 'data.value', to: 'merge.value' },
+      { kind: 'control', from: 'approval', to: 'merge' }
+    ]
+  )
+  const snapshot = {
+    attempts: [
+      { nodeId: 'data', states: ['succeeded'] },
+      { nodeId: 'approval', states: ['waiting_input'] }
+    ],
+    decisions: {}
+  }
   const pending = readyNodes(definition, snapshot)
   assert.equal(pending.ready.includes('merge'), false)
   assert.ok(pending.blocked.includes('merge'))
@@ -289,8 +373,17 @@ test('C-06 scheduler production oracle: default all waits for selected control p
   assert.ok(readyNodes(definition, snapshot).ready.includes('merge'))
 })
 test('C-06 control-only join uses the selected sibling while skipped sibling has no result', async t => {
-  const definition = graph([{ id: 'left', kind: 'input' }, { id: 'right', kind: 'input' }, { id: 'merge', kind: 'join' }],
-    [{ kind: 'control', from: 'left', to: 'merge' }, { kind: 'control', from: 'right', to: 'merge' }])
+  const definition = graph(
+    [
+      { id: 'left', kind: 'input' },
+      { id: 'right', kind: 'input' },
+      { id: 'merge', kind: 'join' }
+    ],
+    [
+      { kind: 'control', from: 'left', to: 'merge' },
+      { kind: 'control', from: 'right', to: 'merge' }
+    ]
+  )
   const h = await fixture(t, definition)
   const runId = await seedRun(h)
   await seedParent(h, runId, 'left', 'succeeded')
@@ -308,7 +401,10 @@ test('C-06 typed binding: wrong actual string port value creates binding-invalid
   const attempt = await rejected(h, record, 'merge', 'binding-invalid')
   assert.deepEqual(attempt.diagnostics, { status: 'unavailable' })
 })
-for (const [label, input, code] of [['missing', {}, 'input-missing'], ['wrong type', { value: 1 }, 'input-invalid']]) {
+for (const [label, input, code] of [
+  ['missing', {}, 'input-missing'],
+  ['wrong type', { value: 1 }, 'input-invalid']
+]) {
   test(`C-06 typed input ${label}: failed Attempt survives restart with static errorCode`, async t => {
     const h = await fixture(t, graph([{ id: 'source', kind: 'input', inputs: { value: 'string' }, outputs: { value: 'string' } }]))
     const { record } = await rejectAdmissionAndDriveExisting(h, input, code)
@@ -321,23 +417,42 @@ for (const [label, input, code] of [['missing', {}, 'input-missing'], ['wrong ty
 }
 for (const [label, outputs, code] of [
   ['missing same-name value', { absent: 'string' }, 'output-missing'],
-  ['actual type mismatch', { value: 'number' }, 'output-invalid'],
+  ['actual type mismatch', { value: 'number' }, 'output-invalid']
 ]) {
   test(`C-06 typed join output ${label}: durable failure never substitutes the whole input`, async t => {
-    const h = await fixture(t, graph([
-      { id: 'source', kind: 'input', outputs: { value: 'string' } },
-      { id: 'merge', kind: 'join', inputs: { value: 'string' }, outputs },
-    ], [{ kind: 'data', from: 'source.value', to: 'merge.value' }]))
+    const h = await fixture(
+      t,
+      graph(
+        [
+          { id: 'source', kind: 'input', outputs: { value: 'string' } },
+          { id: 'merge', kind: 'join', inputs: { value: 'string' }, outputs }
+        ],
+        [{ kind: 'data', from: 'source.value', to: 'merge.value' }]
+      )
+    )
     const { record } = await publicStart(h, { value: 'PRIVATE_INPUT_MARKER' })
     await rejected(h, record, 'merge', code)
     successful(record, 'source')
   })
 }
-for (const [type, value] of [['json', null], ['json', [1, false, { text: 'USER_VALUE' }]], ['number', 7], ['boolean', false], ['string', 'USER_VALUE']]) {
+for (const [type, value] of [
+  ['json', null],
+  ['json', [1, false, { text: 'USER_VALUE' }]],
+  ['number', 7],
+  ['boolean', false],
+  ['string', 'USER_VALUE']
+]) {
   test(`C-06/C-08 pass-through preserves actual ${type}/${value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value} value and canonical digest`, async t => {
-    const h = await fixture(t, graph([{ id: 'source', kind: 'input', outputs: { value: type } },
-      { id: 'sink', kind: 'output', inputs: { value: type }, outputs: { value: type } }],
-    [{ kind: 'data', from: 'source.value', to: 'sink.value' }]))
+    const h = await fixture(
+      t,
+      graph(
+        [
+          { id: 'source', kind: 'input', outputs: { value: type } },
+          { id: 'sink', kind: 'output', inputs: { value: type }, outputs: { value: type } }
+        ],
+        [{ kind: 'data', from: 'source.value', to: 'sink.value' }]
+      )
+    )
     const { record } = await publicStart(h, { value })
     assert.equal(record.state, 'succeeded')
     const sink = successful(record, 'sink')
@@ -389,10 +504,20 @@ test('C-08 cancellation before deterministic dispatch creates no condition/join 
   assert.deepEqual(await h.handle.store.get(runId), before)
 })
 test('C-06/C-08 humanDecision waiting/restart/duplicate decision still gates default-all join through public service', async t => {
-  const definition = graph([
-    { id: 'approval', kind: 'humanDecision' }, { id: 'approved', kind: 'output' }, { id: 'rejected', kind: 'output' }, { id: 'merge', kind: 'join' },
-  ], [{ kind: 'control', from: 'approval@approve', to: 'approved' }, { kind: 'control', from: 'approval@reject', to: 'rejected' },
-    { kind: 'control', from: 'approved', to: 'merge' }, { kind: 'control', from: 'rejected', to: 'merge' }])
+  const definition = graph(
+    [
+      { id: 'approval', kind: 'humanDecision' },
+      { id: 'approved', kind: 'output' },
+      { id: 'rejected', kind: 'output' },
+      { id: 'merge', kind: 'join' }
+    ],
+    [
+      { kind: 'control', from: 'approval@approve', to: 'approved' },
+      { kind: 'control', from: 'approval@reject', to: 'rejected' },
+      { kind: 'control', from: 'approved', to: 'merge' },
+      { kind: 'control', from: 'rejected', to: 'merge' }
+    ]
+  )
   const h = await fixture(t, definition)
   const { record } = await publicStart(h, {})
   assert.equal(record.state, 'waiting_input')

@@ -23,7 +23,10 @@ export interface TeamTaskViewLike {
 export class TeamTaskBindingError extends Error {
   override readonly name = 'TeamTaskBindingError'
   readonly code: string
-  constructor(code: string, detail: string) { super(detail); this.code = code }
+  constructor(code: string, detail: string) {
+    super(detail)
+    this.code = code
+  }
 }
 
 function taskView(value: unknown): TeamTaskViewLike {
@@ -43,8 +46,12 @@ function taskRequest(request: unknown): TeamCreateTaskRequest {
     throw new TeamTaskBindingError('TEAM_TASK_INVALID', 'task request must be an object')
   }
   const candidate = request as Record<string, unknown>
-  if (typeof candidate.subject !== 'string' || candidate.subject.trim().length === 0
-    || typeof candidate.description !== 'string' || candidate.description.trim().length === 0) {
+  if (
+    typeof candidate.subject !== 'string' ||
+    candidate.subject.trim().length === 0 ||
+    typeof candidate.description !== 'string' ||
+    candidate.description.trim().length === 0
+  ) {
     throw new TeamTaskBindingError('TEAM_TASK_INVALID', 'task subject and description are required')
   }
   if (candidate.blockedBy !== undefined && (!Array.isArray(candidate.blockedBy) || candidate.blockedBy.some(item => typeof item !== 'string'))) {
@@ -56,8 +63,8 @@ function taskRequest(request: unknown): TeamCreateTaskRequest {
   return {
     subject: candidate.subject,
     description: candidate.description,
-    ...(candidate.blockedBy === undefined ? {} : { blockedBy: [...candidate.blockedBy as string[]] }),
-    ...(candidate.writeScopes === undefined ? {} : { writeScopes: [...candidate.writeScopes as string[]] }),
+    ...(candidate.blockedBy === undefined ? {} : { blockedBy: [...(candidate.blockedBy as string[])] }),
+    ...(candidate.writeScopes === undefined ? {} : { writeScopes: [...(candidate.writeScopes as string[])] })
   }
 }
 
@@ -103,13 +110,16 @@ export async function createBoundTeamTask(args: {
       if (replay.id !== existing.taskId) throw new TeamTaskBindingError('TEAM_TASK_INVALID', 'native replay returned a foreign task identity')
       return replay
     } catch (error) {
-      await args.store.updateTeamStage(args.runId, { state: 'recovery_required', recovery: { code: 'task-replay-unknown', detail: existing.taskId } }).catch(() => {})
+      await args.store
+        .updateTeamStage(args.runId, { state: 'recovery_required', recovery: { code: 'task-replay-unknown', detail: existing.taskId } })
+        .catch(() => {})
       if (error instanceof TeamTaskBindingError) throw error
       throw new TeamTaskBindingError('TEAM_EFFECT_UNKNOWN', 'native task replay outcome is unknown')
     }
   }
-  const activeCreate = existing?.effects?.find(effect => effect.kind === 'create'
-    && (effect.state === 'pending' || effect.state === 'succeeded' || effect.state === 'recovery_required'))
+  const activeCreate = existing?.effects?.find(
+    effect => effect.kind === 'create' && (effect.state === 'pending' || effect.state === 'succeeded' || effect.state === 'recovery_required')
+  )
   if (activeCreate !== undefined && activeCreate.effectId !== args.effectId) {
     throw new TeamTaskBindingError('TEAM_EFFECT_UNKNOWN', 'a Team task create effect is already settled or unresolved')
   }
@@ -129,7 +139,7 @@ export async function createBoundTeamTask(args: {
       return task
     },
     result: value => ({ ok: true, taskId: value.id, taskRevision: value.revision }),
-    unknown: error => error instanceof TeamTaskBindingError && error.code === 'TEAM_TASK_INVALID',
+    unknown: error => error instanceof TeamTaskBindingError && error.code === 'TEAM_TASK_INVALID'
   })
 
   try {
@@ -173,25 +183,29 @@ export async function updateBoundTeamTask(args: {
     actorSessionId: args.lead.agent.id,
     taskId: args.taskId,
     effect: async () => {
-      const task = taskView(await args.adapter.updateTask(args.lead, {
-        taskId: args.taskId,
-        expectedRevision: args.expectedRevision,
-        action: args.action,
-        ...args.fields,
-      }))
+      const task = taskView(
+        await args.adapter.updateTask(args.lead, {
+          taskId: args.taskId,
+          expectedRevision: args.expectedRevision,
+          action: args.action,
+          ...args.fields
+        })
+      )
       if (task.id !== args.taskId || task.revision !== args.expectedRevision + 1) {
         throw new TeamTaskBindingError('TEAM_TASK_STALE_REVISION', 'native task response did not advance exactly one revision')
       }
       return task
     },
     result: value => ({ ok: true, taskId: value.id, taskRevision: value.revision }),
-    unknown: error => error instanceof TeamTaskBindingError && (error.code === 'TEAM_TASK_INVALID' || error.code === 'TEAM_TASK_STALE_REVISION'),
+    unknown: error => error instanceof TeamTaskBindingError && (error.code === 'TEAM_TASK_INVALID' || error.code === 'TEAM_TASK_STALE_REVISION')
   })
 
   try {
     await args.store.updateTeamTaskRevision(args.runId, args.expectedRevision, task.revision)
   } catch (error) {
-    await args.store.updateTeamStage(args.runId, { state: 'recovery_required', recovery: { code: 'task-revision-unknown', detail: args.taskId } }).catch(() => {})
+    await args.store
+      .updateTeamStage(args.runId, { state: 'recovery_required', recovery: { code: 'task-revision-unknown', detail: args.taskId } })
+      .catch(() => {})
     if (error instanceof TeamTaskConflictError) throw error
     throw new TeamTaskConflictError(args.runId, 'native task update was committed but canonical revision binding failed')
   }

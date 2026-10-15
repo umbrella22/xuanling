@@ -8,7 +8,9 @@ import type { LeadHandle, TeamNativeAdapter } from './native-adapter.ts'
 export class TeamCancellationError extends Error {
   override readonly name = 'TeamCancellationError'
   readonly code = 'TEAM_CANCELLATION_FAILED'
-  constructor(detail: string) { super(detail) }
+  constructor(detail: string) {
+    super(detail)
+  }
 }
 
 export interface OwnedTeamCancellationArgs {
@@ -42,14 +44,20 @@ function unresolvedTeamEffects(record: RunRecord): PendingTeamEffect[] {
       teamId: effect.teamId,
       actorSessionId: effect.actorSessionId,
       ...(effect.taskId === undefined ? {} : { taskId: effect.taskId }),
-      ...(effect.memberId === undefined ? {} : { memberId: effect.memberId }),
+      ...(effect.memberId === undefined ? {} : { memberId: effect.memberId })
     }))
   }
   const pending = new Map<string, PendingTeamEffect>()
   for (const event of record.log) {
-    if (event.detail.teamEffect !== 'team' || typeof event.detail.effectId !== 'string'
-      || typeof event.detail.stageId !== 'string' || typeof event.detail.teamId !== 'string'
-      || typeof event.detail.kind !== 'string' || typeof event.detail.actorSessionId !== 'string') continue
+    if (
+      event.detail.teamEffect !== 'team' ||
+      typeof event.detail.effectId !== 'string' ||
+      typeof event.detail.stageId !== 'string' ||
+      typeof event.detail.teamId !== 'string' ||
+      typeof event.detail.kind !== 'string' ||
+      typeof event.detail.actorSessionId !== 'string'
+    )
+      continue
     const value = {
       effectId: event.detail.effectId,
       kind: event.detail.kind,
@@ -57,7 +65,7 @@ function unresolvedTeamEffects(record: RunRecord): PendingTeamEffect[] {
       teamId: event.detail.teamId,
       actorSessionId: event.detail.actorSessionId,
       ...(typeof event.detail.taskId === 'string' ? { taskId: event.detail.taskId } : {}),
-      ...(typeof event.detail.memberId === 'string' ? { memberId: event.detail.memberId } : {}),
+      ...(typeof event.detail.memberId === 'string' ? { memberId: event.detail.memberId } : {})
     }
     if (event.kind === 'intent') pending.set(value.effectId, value)
     if (event.kind === 'result' || event.kind === 'recovery') pending.delete(value.effectId)
@@ -155,14 +163,15 @@ type CancellationEffectState = 'missing' | 'succeeded' | 'recovery_required'
 function cancellationEffectState(record: RunRecord, expected: CancellationEffectExpectation): CancellationEffectState {
   const effect: TeamEffectSnapshot | undefined = record.teamStage?.effects?.find(item => item.effectId === expected.effectId)
   if (effect === undefined) return 'missing'
-  const bindingMatches = effect.kind === expected.kind
-    && effect.stageId === expected.stageId
-    && effect.teamId === expected.teamId
-    && effect.actorSessionId === expected.actorSessionId
-    && (expected.taskId === undefined ? effect.taskId === undefined : effect.taskId === expected.taskId)
+  const bindingMatches =
+    effect.kind === expected.kind &&
+    effect.stageId === expected.stageId &&
+    effect.teamId === expected.teamId &&
+    effect.actorSessionId === expected.actorSessionId &&
+    (expected.taskId === undefined ? effect.taskId === undefined : effect.taskId === expected.taskId)
   if (!bindingMatches || effect.state !== 'succeeded' || effect.ok !== true || effect.resultStatus !== expected.resultStatus) return 'recovery_required'
-  if (expected.taskId !== undefined
-    && (effect.resultTaskId !== expected.taskId || effect.resultTaskRevision !== expected.expectedTaskRevision! + 1)) return 'recovery_required'
+  if (expected.taskId !== undefined && (effect.resultTaskId !== expected.taskId || effect.resultTaskRevision !== expected.expectedTaskRevision! + 1))
+    return 'recovery_required'
   return 'succeeded'
 }
 
@@ -183,9 +192,11 @@ export async function cancelOwnedTeamStage(args: OwnedTeamCancellationArgs): Pro
   const targets = assertOwnedNames(stage, names)
   await args.store.updateTeamStage(args.runId, {
     state: 'cancelling',
-    ...(stage.cancel === undefined ? {
-      cancel: { requestedAt: Date.now(), ...(args.reason === undefined ? {} : { reason: args.reason.slice(0, 256) }) },
-    } : {}),
+    ...(stage.cancel === undefined
+      ? {
+          cancel: { requestedAt: Date.now(), ...(args.reason === undefined ? {} : { reason: args.reason.slice(0, 256) }) }
+        }
+      : {})
   })
 
   const cutover = await args.store.get(args.runId)
@@ -202,7 +213,7 @@ export async function cancelOwnedTeamStage(args: OwnedTeamCancellationArgs): Pro
         kind: effect.kind,
         actorSessionId: effect.actorSessionId,
         ...(effect.taskId === undefined ? {} : { taskId: effect.taskId }),
-        ...(effect.memberId === undefined ? {} : { memberId: effect.memberId }),
+        ...(effect.memberId === undefined ? {} : { memberId: effect.memberId })
       }).catch(() => {})
     }
     return await args.store.updateTeamStage(args.runId, { state: 'recovery_required', recovery: { code: 'team-effect-unknown', detail } })
@@ -247,7 +258,12 @@ export async function cancelOwnedTeamStage(args: OwnedTeamCancellationArgs): Pro
       if (stageId === undefined || teamId === undefined) return await recoverUnknown('stage-binding-missing-after-cancel-cutoff')
       const effectId = `cancel-drain:${stageId}`
       const expected: CancellationEffectExpectation = {
-        effectId, kind: 'drain', stageId, teamId, actorSessionId: args.lead.agent.id, resultStatus: 'drained',
+        effectId,
+        kind: 'drain',
+        stageId,
+        teamId,
+        actorSessionId: args.lead.agent.id,
+        resultStatus: 'drained'
       }
       const state = cancellationEffectState(current, expected)
       if (state === 'recovery_required') return await recoverUnknown('cancellation-drain-effect-not-replayable')
@@ -266,7 +282,7 @@ export async function cancelOwnedTeamStage(args: OwnedTeamCancellationArgs): Pro
             return true
           },
           result: () => ({ ok: true, status: 'drained' }),
-          unknown: () => true,
+          unknown: () => true
         })
       }
     } catch {
@@ -291,8 +307,14 @@ export async function cancelOwnedTeamStage(args: OwnedTeamCancellationArgs): Pro
       if (stageId === undefined || teamId === undefined) return await recoverUnknown('stage-binding-missing-before-task-delete')
       const effectId = `cancel-task-delete:${taskId}:${taskRevision}`
       const expected: CancellationEffectExpectation = {
-        effectId, kind: 'task-delete', stageId, teamId, actorSessionId: args.lead.agent.id,
-        taskId, expectedTaskRevision: taskRevision, resultStatus: 'deleted',
+        effectId,
+        kind: 'task-delete',
+        stageId,
+        teamId,
+        actorSessionId: args.lead.agent.id,
+        taskId,
+        expectedTaskRevision: taskRevision,
+        resultStatus: 'deleted'
       }
       const state = cancellationEffectState(current, expected)
       if (state === 'recovery_required') return await recoverUnknown('cancellation-task-delete-effect-not-replayable')
@@ -307,13 +329,18 @@ export async function cancelOwnedTeamStage(args: OwnedTeamCancellationArgs): Pro
           kind: 'task-delete',
           actorSessionId: args.lead.agent.id,
           taskId,
-          effect: async () => taskDeleteView(await adapter.updateTask!(args.lead!, {
-            taskId,
-            expectedRevision: taskRevision,
-            action: 'delete',
-          }), taskId, taskRevision),
+          effect: async () =>
+            taskDeleteView(
+              await adapter.updateTask!(args.lead!, {
+                taskId,
+                expectedRevision: taskRevision,
+                action: 'delete'
+              }),
+              taskId,
+              taskRevision
+            ),
           result: value => ({ ok: true, taskId: value.id, taskRevision: value.revision, status: value.status }),
-          unknown: () => true,
+          unknown: () => true
         })
       }
     } catch {

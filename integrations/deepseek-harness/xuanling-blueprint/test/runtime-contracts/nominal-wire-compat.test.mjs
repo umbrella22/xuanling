@@ -18,50 +18,69 @@ const nominal = 'DomainPayload'
 const values = [
   ['object', { text: 'PUBLIC_FIXTURE', nested: { enabled: false, empty: null } }],
   ['array', [0, 'PUBLIC_FIXTURE', false, null, { nested: [1, 2] }]],
-  ['string', 'PUBLIC_FIXTURE'], ['number', 23.5], ['boolean', false], ['null', null],
+  ['string', 'PUBLIC_FIXTURE'],
+  ['number', 23.5],
+  ['boolean', false],
+  ['null', null]
 ]
 function graph(nodes, edges = []) {
   return { schemaVersion: 1, id: 'nominal-wire', name: 'Nominal wire compatibility', resources: {}, graph: { nodes, edges } }
 }
 function passThrough(type = nominal) {
-  return graph([
-    { id: 'source', kind: 'input', outputs: { payload: type } },
-    { id: 'sink', kind: 'output', inputs: { payload: type }, outputs: { payload: type } },
-  ], [{ kind: 'data', from: 'source.payload', to: 'sink.payload' }])
+  return graph(
+    [
+      { id: 'source', kind: 'input', outputs: { payload: type } },
+      { id: 'sink', kind: 'output', inputs: { payload: type }, outputs: { payload: type } }
+    ],
+    [{ kind: 'data', from: 'source.payload', to: 'sink.payload' }]
+  )
 }
 function selectedJoin() {
-  return graph([
-    { id: 'source', kind: 'input', outputs: { predicate: 'boolean', payload: nominal } },
-    { id: 'choose', kind: 'condition', inputs: { predicate: 'boolean' }, branches: ['yes', 'no'],
-      condition: { inputPort: 'predicate', trueBranch: 'yes', falseBranch: 'no' } },
-    { id: 'yesPath', kind: 'output', inputs: { payload: nominal }, outputs: { payload: nominal } },
-    { id: 'noPath', kind: 'output', inputs: { payload: nominal }, outputs: { payload: nominal } },
-    // Both edges target the same name: a skipped sibling cannot omit it.
-    { id: 'merge', kind: 'join', inputs: { payload: nominal }, outputs: { payload: nominal } },
-    { id: 'sink', kind: 'output', inputs: { payload: nominal }, outputs: { payload: nominal } },
-  ], [
-    { kind: 'data', from: 'source.predicate', to: 'choose.predicate' },
-    { kind: 'data', from: 'source.payload', to: 'yesPath.payload' },
-    { kind: 'data', from: 'source.payload', to: 'noPath.payload' },
-    { kind: 'control', from: 'choose@yes', to: 'yesPath' },
-    { kind: 'control', from: 'choose@no', to: 'noPath' },
-    { kind: 'control', from: 'yesPath', to: 'merge' },
-    { kind: 'control', from: 'noPath', to: 'merge' },
-    { kind: 'data', from: 'yesPath.payload', to: 'merge.payload' },
-    { kind: 'data', from: 'noPath.payload', to: 'merge.payload' },
-    { kind: 'data', from: 'merge.payload', to: 'sink.payload' },
-  ])
+  return graph(
+    [
+      { id: 'source', kind: 'input', outputs: { predicate: 'boolean', payload: nominal } },
+      {
+        id: 'choose',
+        kind: 'condition',
+        inputs: { predicate: 'boolean' },
+        branches: ['yes', 'no'],
+        condition: { inputPort: 'predicate', trueBranch: 'yes', falseBranch: 'no' }
+      },
+      { id: 'yesPath', kind: 'output', inputs: { payload: nominal }, outputs: { payload: nominal } },
+      { id: 'noPath', kind: 'output', inputs: { payload: nominal }, outputs: { payload: nominal } },
+      // Both edges target the same name: a skipped sibling cannot omit it.
+      { id: 'merge', kind: 'join', inputs: { payload: nominal }, outputs: { payload: nominal } },
+      { id: 'sink', kind: 'output', inputs: { payload: nominal }, outputs: { payload: nominal } }
+    ],
+    [
+      { kind: 'data', from: 'source.predicate', to: 'choose.predicate' },
+      { kind: 'data', from: 'source.payload', to: 'yesPath.payload' },
+      { kind: 'data', from: 'source.payload', to: 'noPath.payload' },
+      { kind: 'control', from: 'choose@yes', to: 'yesPath' },
+      { kind: 'control', from: 'choose@no', to: 'noPath' },
+      { kind: 'control', from: 'yesPath', to: 'merge' },
+      { kind: 'control', from: 'noPath', to: 'merge' },
+      { kind: 'data', from: 'yesPath.payload', to: 'merge.payload' },
+      { kind: 'data', from: 'noPath.payload', to: 'merge.payload' },
+      { kind: 'data', from: 'merge.payload', to: 'sink.payload' }
+    ]
+  )
 }
 async function fixture(t, definition) {
   validateDefinition(decodeDefinition(json(definition)))
   const root = mkdtempSync(join(tmpdir(), 'bp-nominal-wire-'))
-  const packageRoot = join(root, 'package'), runtimeRoot = join(root, 'runtime')
+  const packageRoot = join(root, 'package'),
+    runtimeRoot = join(root, 'runtime')
   mkdirSync(packageRoot, { recursive: true })
   writeFileSync(join(packageRoot, 'blueprint.json'), json(definition))
   let fiber
   const h = { definition, runtimeRoot }
   h.close = async () => {
-    if (fiber) { const previous = fiber; fiber = undefined; await previous.dispose() }
+    if (fiber) {
+      const previous = fiber
+      fiber = undefined
+      await previous.dispose()
+    }
   }
   h.reopen = async () => {
     await h.close()
@@ -71,7 +90,13 @@ async function fixture(t, definition) {
     h.handle = await h.service.runtimeFor(runtimeRoot)
     await h.handle.driverTail
   }
-  t.after(async () => { try { await h.close() } finally { rmSync(root, { recursive: true, force: true }) } })
+  t.after(async () => {
+    try {
+      await h.close()
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
   await h.reopen()
   return h
 }
@@ -96,7 +121,18 @@ async function rejectAdmissionAndDriveExisting(h, input, code) {
   assert.equal(report.canStart, false)
   assert.ok(report.checks.some(check => check.code === code && check.status === 'block'))
   await assert.rejects(h.service.startRun({ ...args, requestId: randomUUID() }), { code: 'blueprint/preflight-blocked' })
-  const { runId } = await h.handle.store.createRun({ scope: 'run', requestId: randomUUID(), payloadFingerprint: createHash('sha256').update(document.definitionJson + args.inputJson).digest('hex') }, document.semanticRevision, document.definitionJson, args.inputJson)
+  const { runId } = await h.handle.store.createRun(
+    {
+      scope: 'run',
+      requestId: randomUUID(),
+      payloadFingerprint: createHash('sha256')
+        .update(document.definitionJson + args.inputJson)
+        .digest('hex')
+    },
+    document.semanticRevision,
+    document.definitionJson,
+    args.inputJson
+  )
   await h.service.driveRun(h.handle, runId, h.definition)
   return { record: await h.handle.store.get(runId) }
 }
@@ -109,8 +145,15 @@ async function success(t, h, started, expectedByNode) {
   const inspection = await h.service.inspectRun({ runId: started.record.runId })
   const source = inspection.attempts.find(item => item.nodeId === 'source')
   // Static facts only: no raw input, prompt, roots or tool arguments in receipts.
-  t.diagnostic(json({ oracle: 'nominal-runtime', preflightCanStart: started.preflightCanStart,
-    state: inspection.state, sourceState: source?.state, sourceErrorCode: source?.errorCode }))
+  t.diagnostic(
+    json({
+      oracle: 'nominal-runtime',
+      preflightCanStart: started.preflightCanStart,
+      state: inspection.state,
+      sourceState: source?.state,
+      sourceErrorCode: source?.errorCode
+    })
+  )
   assert.equal(started.record.state, 'succeeded', 'NOMINAL_RUNTIME_REJECTED: admitted opaque JSON label must survive the real driver')
   assert.equal(inspection.state, 'succeeded')
   for (const [nodeId, outputs] of Object.entries(expectedByNode)) {
@@ -195,8 +238,14 @@ for (const predicate of [true, false]) {
     test(`C-06 nominal selected join ${predicate}/${label}: skipped sibling cannot contribute or omit the selected value`, async t => {
       const h = await fixture(t, selectedJoin())
       const started = await start(h, { predicate, payload: value })
-      const selected = predicate ? 'yesPath' : 'noPath', skipped = predicate ? 'noPath' : 'yesPath'
-      await success(t, h, started, { source: { predicate, payload: value }, [selected]: { payload: value }, merge: { payload: value }, sink: { payload: value } })
+      const selected = predicate ? 'yesPath' : 'noPath',
+        skipped = predicate ? 'noPath' : 'yesPath'
+      await success(t, h, started, {
+        source: { predicate, payload: value },
+        [selected]: { payload: value },
+        merge: { payload: value },
+        sink: { payload: value }
+      })
       assert.equal(attempt(started.record, 'choose').result.outcome.branch, predicate ? 'yes' : 'no')
       const notSelected = attempt(started.record, skipped)
       assert.equal(notSelected.state, 'skipped')
@@ -209,21 +258,37 @@ for (const predicate of [true, false]) {
   }
 }
 test('C-06 nominal selected parent missing output: durable binding-missing, never a successful merge', async t => {
-  const definition = graph([
-    { id: 'left', kind: 'input', outputs: { payload: nominal } },
-    { id: 'right', kind: 'input', outputs: { payload: nominal } },
-    { id: 'merge', kind: 'join', inputs: { payload: nominal }, outputs: { payload: nominal } },
-  ], [{ kind: 'data', from: 'left.payload', to: 'merge.payload' }, { kind: 'data', from: 'right.payload', to: 'merge.payload' }])
+  const definition = graph(
+    [
+      { id: 'left', kind: 'input', outputs: { payload: nominal } },
+      { id: 'right', kind: 'input', outputs: { payload: nominal } },
+      { id: 'merge', kind: 'join', inputs: { payload: nominal }, outputs: { payload: nominal } }
+    ],
+    [
+      { kind: 'data', from: 'left.payload', to: 'merge.payload' },
+      { kind: 'data', from: 'right.payload', to: 'merge.payload' }
+    ]
+  )
   const h = await fixture(t, definition)
-  const definitionJson = json(definition), inputJson = '{}'
-  const report = await h.service.preflightRun({ blueprintId: definition.id,
-    expectedRevision: (await h.service.loadDefinition({ blueprintId: definition.id })).documentRevision, inputJson })
+  const definitionJson = json(definition),
+    inputJson = '{}'
+  const report = await h.service.preflightRun({
+    blueprintId: definition.id,
+    expectedRevision: (await h.service.loadDefinition({ blueprintId: definition.id })).documentRevision,
+    inputJson
+  })
   assert.equal(report.canStart, true)
-  const { runId } = await h.handle.store.createRun({ scope: 'run', requestId: randomUUID(),
-    payloadFingerprint: createHash('sha256').update(`${definitionJson}\0${inputJson}`).digest('hex') }, 'seed-missing-result', definitionJson, inputJson)
+  const { runId } = await h.handle.store.createRun(
+    { scope: 'run', requestId: randomUUID(), payloadFingerprint: createHash('sha256').update(`${definitionJson}\0${inputJson}`).digest('hex') },
+    'seed-missing-result',
+    definitionJson,
+    inputJson
+  )
   const intent = await h.handle.store.recordIntent(runId, { nodeId: 'left', kind: 'input' })
   await h.handle.store.recordResult(runId, intent.attemptId, { ok: true, outcome: { outputs: {} }, evidence: 'fixture-selected-no-output' })
-  await h.handle.store.transition(runId, draft => { draft.attempts.push({ attemptId: 'skipped-right', nodeId: 'right', attempt: 1, state: 'skipped' }) })
+  await h.handle.store.transition(runId, draft => {
+    draft.attempts.push({ attemptId: 'skipped-right', nodeId: 'right', attempt: 1, state: 'skipped' })
+  })
   const before = await h.handle.store.get(runId)
   assert.equal(attempt(before, 'left').state, 'succeeded')
   assert.equal(Object.hasOwn(attempt(before, 'left').result.outcome.outputs, 'payload'), false)
@@ -243,8 +308,10 @@ for (const destination of ['OtherDomainPayload', 'domainpayload']) {
   test(`C-06/C-08 nominal unequal label ${destination}: definition validator rejects before admission`, async t => {
     const definition = passThrough()
     definition.graph.nodes[1].inputs.payload = destination
-    assert.throws(() => validateDefinition(decodeDefinition(json(definition))), error =>
-      error.code === 'DEFINITION_INVALID' && error.issues.some(issue => issue.code === 'port-mismatch' && issue.pointer === '/graph/edges/0/to'))
+    assert.throws(
+      () => validateDefinition(decodeDefinition(json(definition))),
+      error => error.code === 'DEFINITION_INVALID' && error.issues.some(issue => issue.code === 'port-mismatch' && issue.pointer === '/graph/edges/0/to')
+    )
     const h = await fixture(t, passThrough())
     await assert.rejects(h.service.validate({ definitionJson: json(definition) }), error => error.code === 'blueprint/definition-invalid')
   })
@@ -253,10 +320,17 @@ test('C-06 missing or empty wire labels remain definition errors, not nominal au
   for (const invalid of ['', undefined]) {
     const definition = passThrough()
     definition.graph.nodes[0].outputs.payload = invalid
-    assert.throws(() => validateDefinition(decodeDefinition(json(definition))), error => error.code === 'DEFINITION_INVALID')
+    assert.throws(
+      () => validateDefinition(decodeDefinition(json(definition))),
+      error => error.code === 'DEFINITION_INVALID'
+    )
   }
 })
-for (const [type, invalid] of [['string', 7], ['number', '7'], ['boolean', 'false']]) {
+for (const [type, invalid] of [
+  ['string', 7],
+  ['number', '7'],
+  ['boolean', 'false']
+]) {
   for (const location of ['input', 'output']) {
     test(`C-06 builtin ${type} ${location}: nominal compatibility does not admit a mismatched primitive`, async t => {
       const node = { id: 'source', kind: 'input', ...(location === 'input' ? { inputs: { payload: type } } : {}), outputs: { payload: type } }
@@ -266,7 +340,13 @@ for (const [type, invalid] of [['string', 7], ['number', '7'], ['boolean', 'fals
     })
   }
 }
-for (const [type, value] of [['string', 'PUBLIC_FIXTURE'], ['number', 0], ['boolean', false], ['json', null], ['json', { nested: [false, null, 3] }]]) {
+for (const [type, value] of [
+  ['string', 'PUBLIC_FIXTURE'],
+  ['number', 0],
+  ['boolean', false],
+  ['json', null],
+  ['json', { nested: [false, null, 3] }]
+]) {
   test(`C-06 builtin ${type}/${value === null ? 'null' : typeof value}: valid exact values stay accepted`, async t => {
     const h = await fixture(t, passThrough(type))
     const started = await start(h, { payload: value })
@@ -275,21 +355,39 @@ for (const [type, value] of [['string', 'PUBLIC_FIXTURE'], ['number', 0], ['bool
 }
 for (const invalid of ['true', 1, null, {}, []]) {
   test(`C-05 condition ${json(invalid)}: opaque nominal labels do not relax the actual boolean predicate`, async t => {
-    const definition = graph([
-      { id: 'choose', kind: 'condition', inputs: { predicate: 'boolean' }, branches: ['yes', 'no'],
-        condition: { inputPort: 'predicate', trueBranch: 'yes', falseBranch: 'no' } },
-      { id: 'yesPath', kind: 'output' }, { id: 'noPath', kind: 'output' },
-    ], [{ kind: 'control', from: 'choose@yes', to: 'yesPath' }, { kind: 'control', from: 'choose@no', to: 'noPath' }])
+    const definition = graph(
+      [
+        {
+          id: 'choose',
+          kind: 'condition',
+          inputs: { predicate: 'boolean' },
+          branches: ['yes', 'no'],
+          condition: { inputPort: 'predicate', trueBranch: 'yes', falseBranch: 'no' }
+        },
+        { id: 'yesPath', kind: 'output' },
+        { id: 'noPath', kind: 'output' }
+      ],
+      [
+        { kind: 'control', from: 'choose@yes', to: 'yesPath' },
+        { kind: 'control', from: 'choose@no', to: 'noPath' }
+      ]
+    )
     const h = await fixture(t, definition)
     const { record } = await rejectAdmissionAndDriveExisting(h, { predicate: invalid }, 'condition-input-invalid')
     await rejected(h, record, 'choose', 'condition-input-invalid')
-    assert.equal(record.attempts.some(item => item.nodeId === 'yesPath' || item.nodeId === 'noPath'), false)
+    assert.equal(
+      record.attempts.some(item => item.nodeId === 'yesPath' || item.nodeId === 'noPath'),
+      false
+    )
   })
 }
 test('C-08 malformed JSON never enters the nominal JSON envelope or admits a Run', async t => {
   const h = await fixture(t, passThrough())
   const document = await h.service.loadDefinition({ blueprintId: h.definition.id })
   const args = { blueprintId: document.blueprintId, expectedRevision: document.documentRevision, inputJson: '{"payload":undefined}', requestId: 'bad-json' }
-  await assert.rejects(h.service.preflightRun({ blueprintId: args.blueprintId, expectedRevision: args.expectedRevision, inputJson: args.inputJson }), error => error.code === 'blueprint/definition-invalid')
+  await assert.rejects(
+    h.service.preflightRun({ blueprintId: args.blueprintId, expectedRevision: args.expectedRevision, inputJson: args.inputJson }),
+    error => error.code === 'blueprint/definition-invalid'
+  )
   await assert.rejects(h.service.startRun(args), error => error.code === 'blueprint/definition-invalid')
 })

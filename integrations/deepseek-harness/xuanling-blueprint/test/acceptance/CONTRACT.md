@@ -141,15 +141,15 @@ runner 对 L1 使用白名单结构化保存，不保存 outcome 内自由文本
 
 对应 actualAssertions 的全部必需 bool：
 
-| Case | 必须真实观察且为 true 的行为字段 |
-| --- | --- |
-| PL1 | packed |
-| PL2 | profileInitialized |
-| PL3 | installed、reconciled |
-| PL4 | booted、blueprintPingSucceeded |
-| PL5 | disabled、uninstalled |
-| PL6 | baselineBundlesPreserved |
-| PL7 | sourceUntouched、runtimeDataUntouched |
+| Case | 必须真实观察且为 true 的行为字段      |
+| ---- | ------------------------------------- |
+| PL1  | packed                                |
+| PL2  | profileInitialized                    |
+| PL3  | installed、reconciled                 |
+| PL4  | booted、blueprintPingSucceeded        |
+| PL5  | disabled、uninstalled                 |
+| PL6  | baselineBundlesPreserved              |
+| PL7  | sourceUntouched、runtimeDataUntouched |
 
 PL4 public service ping 由相应 web/headless 实际宿主路径采集，不能用 import/ready 替代。
 模式/产物不一致、缺任何行为或 false → typed fail `LIFECYCLE_BEHAVIOR_INVALID`。

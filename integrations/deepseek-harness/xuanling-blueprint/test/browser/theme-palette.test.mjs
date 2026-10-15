@@ -22,13 +22,13 @@ const aliases = {
   raised: '--dsw-alias-bg-layer-1',
   text: '--dsw-alias-label-primary',
   muted: '--dsw-alias-label-secondary',
-  accent: '--dsw-alias-brand-primary',
+  accent: '--dsw-alias-brand-primary'
 }
 const palettes = {
   light: { base: 'rgb(250, 251, 252)', raised: 'rgb(242, 244, 247)', text: 'rgb(25, 28, 34)', muted: 'rgb(91, 102, 116)', accent: 'rgb(49, 105, 201)' },
   dark: { base: 'rgb(18, 22, 28)', raised: 'rgb(30, 37, 46)', text: 'rgb(228, 236, 245)', muted: 'rgb(152, 167, 184)', accent: 'rgb(135, 174, 231)' },
   custom: { base: 'rgb(226, 248, 237)', raised: 'rgb(205, 238, 218)', text: 'rgb(30, 57, 43)', muted: 'rgb(66, 110, 85)', accent: 'rgb(179, 62, 132)' },
-  fallback: { base: 'rgb(24, 27, 32)', raised: 'rgb(34, 38, 44)', text: 'rgb(222, 223, 225)', muted: 'rgb(147, 154, 164)', accent: 'rgb(103, 154, 188)' },
+  fallback: { base: 'rgb(24, 27, 32)', raised: 'rgb(34, 38, 44)', text: 'rgb(222, 223, 225)', muted: 'rgb(147, 154, 164)', accent: 'rgb(103, 154, 188)' }
 }
 // These existing consumer classes exercise backgrounds, text, native controls,
 // React Flow handles and SVG edges. No fixture CSS sets their tested properties.
@@ -50,22 +50,28 @@ let browser, home
 
 before(async () => {
   home = mkdtempSync(join(tmpdir(), 'bp-theme-css-edge-'))
-  browser = await chromium.launch({ channel: 'msedge', headless: true,
-    env: { PATH: process.env.PATH, HOME: home, TMPDIR: home } })
+  browser = await chromium.launch({ channel: 'msedge', headless: true, env: { PATH: process.env.PATH, HOME: home, TMPDIR: home } })
 })
 after(async () => {
-  try { await browser?.close() } finally { if (home) rmSync(home, { recursive: true, force: true }) }
+  try {
+    await browser?.close()
+  } finally {
+    if (home) rmSync(home, { recursive: true, force: true })
+  }
 })
 
 async function setHostPalette(page, palette, scheme) {
-  await page.evaluate(({ palette, aliases, scheme }) => {
-    const root = document.documentElement
-    root.style.colorScheme = scheme
-    for (const [role, alias] of Object.entries(aliases)) {
-      if (palette) root.style.setProperty(alias, palette[role])
-      else root.style.removeProperty(alias)
-    }
-  }, { palette, aliases, scheme })
+  await page.evaluate(
+    ({ palette, aliases, scheme }) => {
+      const root = document.documentElement
+      root.style.colorScheme = scheme
+      for (const [role, alias] of Object.entries(aliases)) {
+        if (palette) root.style.setProperty(alias, palette[role])
+        else root.style.removeProperty(alias)
+      }
+    },
+    { palette, aliases, scheme }
+  )
 }
 
 async function observe(page) {
@@ -76,41 +82,48 @@ async function observe(page) {
     getComputedStyle(document.querySelector('.react-flow__controls-button')).getPropertyValue('background-color')
     await Promise.all(document.getAnimations().map(animation => animation.finished))
   })
-  return page.evaluate(({ aliases, styleId }) => {
-    const css = selector => getComputedStyle(document.querySelector(selector))
-    const rect = selector => {
-      const { x, y, width, height } = document.querySelector(selector).getBoundingClientRect()
-      return { x, y, width, height }
-    }
-    const style = document.getElementById(styleId)
-    return {
-      host: Object.fromEntries(Object.entries(aliases).map(([role, alias]) => [role, getComputedStyle(document.documentElement).getPropertyValue(alias).trim()])),
-      scheme: getComputedStyle(document.documentElement).colorScheme,
-      palette: {
-        base: css('.bp-workspace').backgroundColor,
-        raised: css('.bp-node').backgroundColor,
-        text: css('.bp-workspace').color,
-        muted: css('.bp-revision').color,
-        accent: css('.react-flow__handle').backgroundColor,
-      },
-      consumers: {
-        canvas: css('.bp-canvas').backgroundColor,
-        nodeText: css('.bp-node').color,
-        buttonRaised: css('.react-flow__controls-button').backgroundColor,
-        buttonText: css('.react-flow__controls-button').color,
-        help: css('.bp-help').color,
-        handleBorder: css('.react-flow__handle').borderTopColor,
-        edge: css('svg > .react-flow__edge-path').stroke,
-        controlEdge: css('.bp-edge-control .react-flow__edge-path').stroke,
-      },
-      geometry: Object.fromEntries(['.bp-workspace', '.bp-canvas', '.bp-node', '.react-flow__controls-button', '.react-flow__handle'].map(selector => [selector, rect(selector)])),
-      stylesheetCount: document.querySelectorAll(`#${styleId}`).length,
-      ruleCount: style.sheet.cssRules.length,
-      stylesheetText: style.textContent,
-      sameStylesheet: style === globalThis.__bpCssFixture.style,
-      installCalls: globalThis.__bpCssFixture.installCalls,
-    }
-  }, { aliases, styleId })
+  return page.evaluate(
+    ({ aliases, styleId }) => {
+      const css = selector => getComputedStyle(document.querySelector(selector))
+      const rect = selector => {
+        const { x, y, width, height } = document.querySelector(selector).getBoundingClientRect()
+        return { x, y, width, height }
+      }
+      const style = document.getElementById(styleId)
+      return {
+        host: Object.fromEntries(
+          Object.entries(aliases).map(([role, alias]) => [role, getComputedStyle(document.documentElement).getPropertyValue(alias).trim()])
+        ),
+        scheme: getComputedStyle(document.documentElement).colorScheme,
+        palette: {
+          base: css('.bp-workspace').backgroundColor,
+          raised: css('.bp-node').backgroundColor,
+          text: css('.bp-workspace').color,
+          muted: css('.bp-revision').color,
+          accent: css('.react-flow__handle').backgroundColor
+        },
+        consumers: {
+          canvas: css('.bp-canvas').backgroundColor,
+          nodeText: css('.bp-node').color,
+          buttonRaised: css('.react-flow__controls-button').backgroundColor,
+          buttonText: css('.react-flow__controls-button').color,
+          help: css('.bp-help').color,
+          handleBorder: css('.react-flow__handle').borderTopColor,
+          edge: css('svg > .react-flow__edge-path').stroke,
+          controlEdge: css('.bp-edge-control .react-flow__edge-path').stroke
+        },
+        geometry: Object.fromEntries(
+          ['.bp-workspace', '.bp-canvas', '.bp-node', '.react-flow__controls-button', '.react-flow__handle'].map(selector => [selector, rect(selector)])
+        ),
+        stylesheetCount: document.querySelectorAll(`#${styleId}`).length,
+        ruleCount: style.sheet.cssRules.length,
+        stylesheetText: style.textContent,
+        sameStylesheet: style === globalThis.__bpCssFixture.style,
+        installCalls: globalThis.__bpCssFixture.installCalls
+      }
+    },
+    { aliases, styleId }
+  )
 }
 
 async function withFixture(palette, scheme, callback) {
@@ -126,41 +139,72 @@ async function withFixture(palette, scheme, callback) {
     await setHostPalette(page, palette, scheme)
     // Execute the production TS module with only types erased. In particular,
     // installer/CSS bytes are neither extracted, replaced nor reimplemented.
-    await page.evaluate(async ({ source, styleId }) => {
-      const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
-      try {
-        const module = await import(url)
-        module.installCanvasStyles()
-        globalThis.__bpCssFixture = { module, style: document.getElementById(styleId), installCalls: 1 }
-      } finally { URL.revokeObjectURL(url) }
-    }, { source: browserModule, styleId })
+    await page.evaluate(
+      async ({ source, styleId }) => {
+        const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
+        try {
+          const module = await import(url)
+          module.installCanvasStyles()
+          globalThis.__bpCssFixture = { module, style: document.getElementById(styleId), installCalls: 1 }
+        } finally {
+          URL.revokeObjectURL(url)
+        }
+      },
+      { source: browserModule, styleId }
+    )
     const initial = await observe(page)
     assert.equal(initial.stylesheetCount, 1, 'production installer appends its actual stylesheet once')
     assert.ok(initial.ruleCount > 0, 'actual installed CSS must parse in Edge before palette assertions')
     assert.equal(initial.sameStylesheet, true)
     assert.ok(initial.geometry['.bp-node'].width > 0, 'CSS consumer fixture must be rendered, not absent DOM')
-    assert.deepEqual(initial.host, palette ?? { base: '', raised: '', text: '', muted: '', accent: '' }, 'official host token fixture is present before the product oracle')
+    assert.deepEqual(
+      initial.host,
+      palette ?? { base: '', raised: '', text: '', muted: '', accent: '' },
+      'official host token fixture is present before the product oracle'
+    )
     assert.equal(initial.scheme, scheme)
     await callback(page, initial)
     assert.deepEqual(networkRequests, [], 'isolated CSS integration makes no network requests')
-  } finally { await context.close() }
+  } finally {
+    await context.close()
+  }
 }
 
 function assertPalette(observed, expected, label) {
-  assert.deepEqual(observed.palette, expected,
-    `THEME_PALETTE_COMPUTED_MISMATCH (${label}): production CSS must follow official host aliases`)
-  assert.deepEqual(observed.consumers, {
-    canvas: expected.base, nodeText: expected.text,
-    buttonRaised: expected.raised, buttonText: expected.text,
-    help: expected.muted, handleBorder: expected.raised,
-    edge: expected.accent, controlEdge: expected.muted,
-  }, `real CSS consumers inherit the ${label} host palette`)
+  assert.deepEqual(observed.palette, expected, `THEME_PALETTE_COMPUTED_MISMATCH (${label}): production CSS must follow official host aliases`)
+  assert.deepEqual(
+    observed.consumers,
+    {
+      canvas: expected.base,
+      nodeText: expected.text,
+      buttonRaised: expected.raised,
+      buttonText: expected.text,
+      help: expected.muted,
+      handleBorder: expected.raised,
+      edge: expected.accent,
+      controlEdge: expected.muted
+    },
+    `real CSS consumers inherit the ${label} host palette`
+  )
 }
 
 function diagnose(t, label, observed) {
-  t.diagnostic(JSON.stringify({ provenance: 'source/browser CSS integration; not native DSH', browser: browser.version(), sourceSha256, label,
-    scheme: observed.scheme, host: observed.host, computed: observed.palette, consumers: observed.consumers,
-    stylesheetCount: observed.stylesheetCount, ruleCount: observed.ruleCount, installCalls: observed.installCalls, sameStylesheet: observed.sameStylesheet }))
+  t.diagnostic(
+    JSON.stringify({
+      provenance: 'source/browser CSS integration; not native DSH',
+      browser: browser.version(),
+      sourceSha256,
+      label,
+      scheme: observed.scheme,
+      host: observed.host,
+      computed: observed.palette,
+      consumers: observed.consumers,
+      stylesheetCount: observed.stylesheetCount,
+      ruleCount: observed.ruleCount,
+      installCalls: observed.installCalls,
+      sameStylesheet: observed.sameStylesheet
+    })
+  )
 }
 
 test('C-09 production styles installer is a no-op without a DOM', () => {
@@ -201,7 +245,10 @@ test('C-09 live light/dark/custom host token updates change computed CSS without
   await withFixture(palettes.light, 'light', async (page, initial) => {
     // Update tokens before the first product assertion so the unchanged-source
     // red directly proves the dynamic/custom mismatch, not fixture startup.
-    for (const [label, scheme] of [['dark', 'dark'], ['custom', 'light']]) {
+    for (const [label, scheme] of [
+      ['dark', 'dark'],
+      ['custom', 'light']
+    ]) {
       await setHostPalette(page, palettes[label], scheme)
       const observed = await observe(page)
       assert.deepEqual(observed.host, palettes[label])

@@ -13,7 +13,9 @@ export { TeamEffectReplayError } from '../persistence/run-store.ts'
 export class TeamEffectUnknownError extends Error {
   override readonly name = 'TeamEffectUnknownError'
   readonly code = 'TEAM_EFFECT_UNKNOWN'
-  constructor(detail = 'Team external effect outcome is unknown') { super(detail) }
+  constructor(detail = 'Team external effect outcome is unknown') {
+    super(detail)
+  }
 }
 
 export interface TeamEffectFacts {
@@ -53,9 +55,12 @@ function id(value: unknown, label: string): string {
 
 function effectFacts(value: TeamEffectFacts): TeamEffectFacts {
   const facts: TeamEffectFacts = {
-    runId: id(value.runId, 'runId'), stageId: id(value.stageId, 'stageId'),
-    teamId: id(value.teamId, 'teamId'), effectId: id(value.effectId, 'effectId'), kind: id(value.kind, 'kind'),
-    actorSessionId: id(value.actorSessionId, 'actorSessionId'),
+    runId: id(value.runId, 'runId'),
+    stageId: id(value.stageId, 'stageId'),
+    teamId: id(value.teamId, 'teamId'),
+    effectId: id(value.effectId, 'effectId'),
+    kind: id(value.kind, 'kind'),
+    actorSessionId: id(value.actorSessionId, 'actorSessionId')
   }
   if (value.memberName !== undefined) facts.memberName = id(value.memberName, 'memberName')
   if (value.taskId !== undefined) facts.taskId = id(value.taskId, 'taskId')
@@ -83,8 +88,10 @@ function resultFacts(value: TeamEffectResultFacts): TeamEffectResultFacts {
 }
 
 function errorCode(error: unknown): string {
-  const code = error !== null && typeof error === 'object' && typeof (error as { code?: unknown }).code === 'string'
-    ? (error as { code: string }).code : 'TEAM_EFFECT_FAILED'
+  const code =
+    error !== null && typeof error === 'object' && typeof (error as { code?: unknown }).code === 'string'
+      ? (error as { code: string }).code
+      : 'TEAM_EFFECT_FAILED'
   return /^[A-Z0-9_.:-]{1,96}$/u.test(code) ? code : 'TEAM_EFFECT_FAILED'
 }
 
@@ -101,7 +108,12 @@ function unresolved(record: RunRecord, facts: TeamEffectFacts): boolean {
   return pending
 }
 
-async function append(store: RunStore, facts: TeamEffectFacts, phase: 'intent' | 'result' | 'recovery', result: TeamEffectResultFacts = { ok: false }): Promise<RunRecord> {
+async function append(
+  store: RunStore,
+  facts: TeamEffectFacts,
+  phase: 'intent' | 'result' | 'recovery',
+  result: TeamEffectResultFacts = { ok: false }
+): Promise<RunRecord> {
   return await store.transition(facts.runId, draft => {
     const stage = draft.teamStage
     if (stage === undefined || stage.stageId !== facts.stageId || stage.teamId !== facts.teamId) {
@@ -119,9 +131,11 @@ async function append(store: RunStore, facts: TeamEffectFacts, phase: 'intent' |
       if (facts.kind === 'spawn' && facts.memberName === undefined) {
         throw new TeamStageConflictError(facts.runId, 'a Team member spawn requires its canonical member name')
       }
-      if (facts.kind === 'spawn' && facts.memberName !== undefined
-        && effects.some(effect => effect.kind === 'spawn' && effect.memberName === facts.memberName
-          && effect.state !== 'failed')) {
+      if (
+        facts.kind === 'spawn' &&
+        facts.memberName !== undefined &&
+        effects.some(effect => effect.kind === 'spawn' && effect.memberName === facts.memberName && effect.state !== 'failed')
+      ) {
         throw new TeamTaskConflictError(facts.runId, `member ${facts.memberName} already has a reserved spawn effect`)
       }
       const intent: TeamEffectSnapshot = {
@@ -134,7 +148,7 @@ async function append(store: RunStore, facts: TeamEffectFacts, phase: 'intent' |
         ...(facts.taskId === undefined ? {} : { taskId: facts.taskId }),
         ...(facts.memberId === undefined ? {} : { memberId: facts.memberId }),
         state: 'pending',
-        intentAt: Date.now(),
+        intentAt: Date.now()
       }
       effects.push(intent)
     } else {
@@ -147,20 +161,27 @@ async function append(store: RunStore, facts: TeamEffectFacts, phase: 'intent' |
         ...existing,
         state: phase === 'recovery' ? 'recovery_required' : result.ok ? 'succeeded' : 'failed',
         settledAt,
-        ...(checkedResult === undefined ? {} : {
-          ok: checkedResult.ok,
-          ...(checkedResult.errorCode === undefined ? {} : { errorCode: checkedResult.errorCode }),
-          ...(checkedResult.taskId === undefined ? {} : { resultTaskId: checkedResult.taskId }),
-          ...(checkedResult.taskRevision === undefined ? {} : { resultTaskRevision: checkedResult.taskRevision }),
-          ...(checkedResult.memberId === undefined ? {} : { resultMemberId: checkedResult.memberId }),
-          ...(checkedResult.status === undefined ? {} : { resultStatus: checkedResult.status }),
-        }),
+        ...(checkedResult === undefined
+          ? {}
+          : {
+              ok: checkedResult.ok,
+              ...(checkedResult.errorCode === undefined ? {} : { errorCode: checkedResult.errorCode }),
+              ...(checkedResult.taskId === undefined ? {} : { resultTaskId: checkedResult.taskId }),
+              ...(checkedResult.taskRevision === undefined ? {} : { resultTaskRevision: checkedResult.taskRevision }),
+              ...(checkedResult.memberId === undefined ? {} : { resultMemberId: checkedResult.memberId }),
+              ...(checkedResult.status === undefined ? {} : { resultStatus: checkedResult.status })
+            })
       }
       if (phase === 'result' && checkedResult === undefined) throw new TeamStageConflictError(facts.runId, 'result facts are missing')
     }
     const detail: Record<string, unknown> = {
-      teamEffect: 'team', phase, effectId: facts.effectId, kind: facts.kind,
-      stageId: facts.stageId, teamId: facts.teamId, actorSessionId: facts.actorSessionId,
+      teamEffect: 'team',
+      phase,
+      effectId: facts.effectId,
+      kind: facts.kind,
+      stageId: facts.stageId,
+      teamId: facts.teamId,
+      actorSessionId: facts.actorSessionId
     }
     if (facts.taskId !== undefined) detail.taskId = facts.taskId
     if (facts.memberId !== undefined) detail.memberId = facts.memberId
@@ -188,8 +209,9 @@ async function append(store: RunStore, facts: TeamEffectFacts, phase: 'intent' |
 
 export async function recordTeamEffectIntent(store: RunStore, facts: TeamEffectFacts): Promise<RunRecord> {
   const checked = effectFacts(facts)
-  try { return await append(store, checked, 'intent') }
-  catch (error) {
+  try {
+    return await append(store, checked, 'intent')
+  } catch (error) {
     if (error instanceof TeamTaskConflictError) throw new TeamEffectUnknownError(error.message)
     throw error
   }
@@ -197,8 +219,9 @@ export async function recordTeamEffectIntent(store: RunStore, facts: TeamEffectF
 
 export async function recordTeamEffectResult(store: RunStore, facts: TeamEffectFacts, result: TeamEffectResultFacts): Promise<RunRecord> {
   const checked = effectFacts(facts)
-  try { return await append(store, checked, 'result', result) }
-  catch (error) {
+  try {
+    return await append(store, checked, 'result', result)
+  } catch (error) {
     if (error instanceof TeamTaskConflictError) throw new TeamEffectUnknownError(error.message)
     throw error
   }
@@ -208,8 +231,9 @@ export async function recordTeamEffectRecovery(store: RunStore, facts: TeamEffec
   const checked = effectFacts(facts)
   const current = await store.get(checked.runId)
   if (!unresolved(current, checked)) return current
-  try { return await append(store, checked, 'recovery') }
-  catch (error) {
+  try {
+    return await append(store, checked, 'recovery')
+  } catch (error) {
     if (error instanceof TeamTaskConflictError) return await store.get(checked.runId)
     throw error
   }
@@ -255,5 +279,7 @@ export class TeamStageRunner {
   }
 
   /** Alias used by callers that name the operation rather than the transport. */
-  async run<T>(request: TeamEffectDispatch<T>): Promise<T> { return await this.dispatch(request) }
+  async run<T>(request: TeamEffectDispatch<T>): Promise<T> {
+    return await this.dispatch(request)
+  }
 }

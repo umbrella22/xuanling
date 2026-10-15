@@ -17,165 +17,234 @@ import { recordTeamEffectRecovery, TeamStageRunner } from '../../src/teamstage/r
 import { harness, definition, agentNode, agentResources, records, drain } from '../runtime-contracts/agent-fixtures.mjs'
 
 export function teamDefinition(count = 1, extra = {}) {
-  return definition([
-    agentNode({ outputSchemaRef: 'answerSchema', outputs: { object: 'json', text: 'string' },
-      teamStage: { task: { subject: 'Agree on answer', description: 'Produce the same structured answer together.' },
-        members: Array.from({ length: count }, (_, i) => ({ name: i === 0 ? 'producer' : `peer-${i}`,
-          description: i === 0 ? 'Primary producer' : 'Required collaborator', agentRef: i === 0 ? 'primaryAgent' : 'peerAgent', context: i === 0 ? 'fresh' : 'fork' })),
-        requiredChecks: ['schema'] }, ...extra }),
-    { id: 'sink', kind: 'output', inputs: { object: 'json', text: 'string' }, outputs: { object: 'json', text: 'string' } },
-  ], { ...agentResources, primaryAgent: { kind: 'agent', path: 'lib/agents/primary.md' },
-    peerAgent: { kind: 'agent', path: 'lib/agents/peer.md' }, answerSchema: { kind: 'schema', path: 'lib/schemas/answer.json' } }, [
-    { kind: 'data', from: 'work.object', to: 'sink.object' }, { kind: 'data', from: 'work.text', to: 'sink.text' },
-  ])
+  return definition(
+    [
+      agentNode({
+        outputSchemaRef: 'answerSchema',
+        outputs: { object: 'json', text: 'string' },
+        teamStage: {
+          task: { subject: 'Agree on answer', description: 'Produce the same structured answer together.' },
+          members: Array.from({ length: count }, (_, i) => ({
+            name: i === 0 ? 'producer' : `peer-${i}`,
+            description: i === 0 ? 'Primary producer' : 'Required collaborator',
+            agentRef: i === 0 ? 'primaryAgent' : 'peerAgent',
+            context: i === 0 ? 'fresh' : 'fork'
+          })),
+          requiredChecks: ['schema']
+        },
+        ...extra
+      }),
+      { id: 'sink', kind: 'output', inputs: { object: 'json', text: 'string' }, outputs: { object: 'json', text: 'string' } }
+    ],
+    {
+      ...agentResources,
+      primaryAgent: { kind: 'agent', path: 'lib/agents/primary.md' },
+      peerAgent: { kind: 'agent', path: 'lib/agents/peer.md' },
+      answerSchema: { kind: 'schema', path: 'lib/schemas/answer.json' }
+    },
+    [
+      { kind: 'data', from: 'work.object', to: 'sink.object' },
+      { kind: 'data', from: 'work.text', to: 'sink.text' }
+    ]
+  )
 }
 
 // Service runtime uses JSON. Both backend restart controls below restore the
 // exact production middleware snapshot into physical JSON/SQLite storage;
 // they do not claim that the service selects a SQLite runtime backend.
-for (const backend of ['json', 'sqlite']) for (const fault of ['cancel', 'pending-recovery', 'restart', 'result-write-failure']) {
-  test(`native task observation/result window ${backend} ${fault} preserves unknown effect without redispatch`, async t => {
-    const entered = Promise.withResolvers(), release = Promise.withResolvers(), spawned = Promise.withResolvers()
-    t.after(() => release.resolve())
-    let h, barrierCount = 0, writeFailures = 0, mutationResult, lateCaptureResult
-    const nativeObserve = RunStore.prototype.observeTeamTaskRevision
-    const nativeTransition = RunStore.prototype.transition
-    t.mock.method(RunStore.prototype, 'transition', async function (runId, reducer) {
-      const result = await nativeTransition.call(this, runId, reducer)
-      if (result.teamStage?.effects?.some(effect => effect.kind === 'spawn' && effect.state === 'succeeded')) spawned.resolve()
-      return result
-    })
-    t.mock.method(RunStore.prototype, 'observeTeamTaskRevision', async function (runId, task, previous) {
-      const observed = await nativeObserve.call(this, runId, task, previous)
-      if (task.taskRevision === 2 && barrierCount++ === 0) {
-        entered.resolve({ store: this, record: observed })
-        await release.promise
-      }
-      return observed
-    })
-    h = await teamHarness(t, { earlyReturn: true, onMember: async (call, team) => {
-      mutationResult = await team.capture(call, { task_id: team.task.id, expected_revision: team.task.revision, action: 'claim' }, 'team_task_update')
-      // A resumed native result must not allow output or another mutation.
-      lateCaptureResult = await team.capture(call, { answer: 42 })
-      call.finish({ kind: 'completed' }, '')
-    } })
-    const starting = h.start()
-    const { store, record: observation } = await entered.promise
-    await spawned.promise
-    const pending = await store.get(observation.runId)
-    const effect = pending.teamStage.effects.findLast(item => item.kind === 'task-update')
-    const originalAttempt = pending.attempts.find(item => item.nodeId === 'work')
-    assert.equal(pending.state, 'running')
-    assert.equal(pending.teamStage.taskRevision, 2, 'actual observation committed before the exact barrier')
-    assert.equal(h.team.task.revision, 2)
-    assert.equal(effect.state, 'pending', 'native result has not yet been persisted')
-    assert.equal(effect.resultTaskRevision, undefined)
-    assert.equal(pending.teamStage.effects.some(item => item.kind === 'spawn' && item.state === 'pending'), false,
-      'window oracle isolates the task result from native spawn uncertainty')
-    assert.equal(h.team.calls.filter(action => action === 'claim').length, 1)
-
-    // Preserve this exact in-flight record in a real backend, close its actual
-    // domain, and reopen with a fresh context/store before reconciliation.
-    const snapshotRoot = join(h.root, `task-result-window-${backend}-${fault}`)
-    mkdirSync(snapshotRoot, { recursive: true })
-    const snapshotPath = backend === 'json' ? snapshotRoot : join(snapshotRoot, 'runs.sqlite')
-    let opened = await openBlueprintDomain({ backend, path: snapshotPath })
-    await opened.domain.table('runs').put(pending.runId, pending)
-    const previousContext = opened.ctx, previousDomain = opened.domain
-    await opened.close()
-    opened = await openBlueprintDomain({ backend, path: snapshotPath })
-    t.after(() => opened.close())
-    assert.notEqual(opened.ctx, previousContext); assert.notEqual(opened.domain, previousDomain)
-    const restoredStore = new RunStore(opened.domain)
-    assert.deepEqual(await restoredStore.get(pending.runId), pending, 'reopen retains the exact production pending snapshot')
-    const restartReport = await reconcileOnStart(restoredStore)
-    const restored = await restoredStore.get(pending.runId)
-    assert.equal(restartReport.recoveryRequired.length, 1)
-    assert.equal(restartReport.recoveryRequired[0].attemptId, originalAttempt.attemptId)
-    assert.equal(restartReport.recoveryRequired[0].intentKind, 'task-update')
-    assert.equal(restored.teamStage.taskRevision, 2)
-    assert.equal(restored.state, 'recovery_required')
-    assert.equal(restored.attempts.find(item => item.attemptId === originalAttempt.attemptId).state, 'recovery_required')
-    assert.equal(restored.teamStage.effects.find(item => item.effectId === effect.effectId).state, 'pending')
-    noGraphSuccess(restored)
-    let replayDispatches = 0
-    await assert.rejects(new TeamStageRunner(restoredStore).dispatch({
-      ...effect, runId: pending.runId, store: restoredStore,
-      effect: () => { replayDispatches++; return {} },
-    }), error => error.code === 'TEAM_EFFECT_UNKNOWN')
-    assert.equal(replayDispatches, 0, 'restored pending native claim is never dispatched again')
-    assert.deepEqual(await restoredStore.get(pending.runId), restored)
-    assert.deepEqual((await reconcileOnStart(restoredStore)).untouched, [pending.runId])
-    assert.deepEqual(await restoredStore.get(pending.runId), restored, 'second reconciliation cannot invent late success')
-
-    if (fault === 'cancel') {
-      const result = await h.service.cancelRun({ runId: pending.runId })
-      assert.equal(result.state, 'recovery_required')
-      assert.equal((await store.get(pending.runId)).teamStage.effects.find(item => item.effectId === effect.effectId).state, 'recovery_required')
-    } else if (fault === 'pending-recovery') {
-      await recordTeamEffectRecovery(store, { ...effect, runId: pending.runId })
-      await reconcileOnStart(store)
-    } else if (fault === 'restart') {
-      // The restart oracle is the independently reopened physical snapshot
-      // above: a crashed process has no surviving continuation. Settle this
-      // still-live fixture separately with explicit effect recovery solely
-      // for teardown; do not call a live startup reconciliation a crash.
-      await recordTeamEffectRecovery(store, { ...effect, runId: pending.runId })
-      await reconcileOnStart(store)
-    } else {
-      t.mock.method(store, 'transition', async (runId, reducer) => nativeTransition.call(store, runId, draft => {
-        reducer(draft)
-        const changed = draft.teamStage?.effects?.find(item => item.effectId === effect.effectId)
-        if (writeFailures === 0 && changed?.state === 'succeeded') {
-          writeFailures++
-          throw new Error('INJECTED_TASK_RESULT_WRITE_FAILURE')
+for (const backend of ['json', 'sqlite'])
+  for (const fault of ['cancel', 'pending-recovery', 'restart', 'result-write-failure']) {
+    test(`native task observation/result window ${backend} ${fault} preserves unknown effect without redispatch`, async t => {
+      const entered = Promise.withResolvers(),
+        release = Promise.withResolvers(),
+        spawned = Promise.withResolvers()
+      t.after(() => release.resolve())
+      let h,
+        barrierCount = 0,
+        writeFailures = 0,
+        mutationResult,
+        lateCaptureResult
+      const nativeObserve = RunStore.prototype.observeTeamTaskRevision
+      const nativeTransition = RunStore.prototype.transition
+      t.mock.method(RunStore.prototype, 'transition', async function (runId, reducer) {
+        const result = await nativeTransition.call(this, runId, reducer)
+        if (result.teamStage?.effects?.some(effect => effect.kind === 'spawn' && effect.state === 'succeeded')) spawned.resolve()
+        return result
+      })
+      t.mock.method(RunStore.prototype, 'observeTeamTaskRevision', async function (runId, task, previous) {
+        const observed = await nativeObserve.call(this, runId, task, previous)
+        if (task.taskRevision === 2 && barrierCount++ === 0) {
+          entered.resolve({ store: this, record: observed })
+          await release.promise
         }
-      }))
-    }
-    release.resolve()
-    const { record, startArgs } = await starting
-    assert.equal(barrierCount, 1)
-    assert.equal(mutationResult.isError, true, fault === 'restart'
-      ? 'explicit fixture teardown recovery rejects its surviving continuation'
-      : 'late/failed effect result cannot return success to the model')
-    assert.equal(lateCaptureResult.isError, true, 'unknown result stops same-turn output')
-    assert.equal(writeFailures, fault === 'result-write-failure' ? 1 : 0, 'exactly the intended result write fails once')
-    assert.equal(h.team.calls.filter(action => action === 'claim').length, 1)
-    assert.equal(h.team.calls.includes('complete'), false)
-    assert.equal(record.state, 'recovery_required')
-    assert.equal(record.teamStage.taskRevision, 2)
-    assert.equal(record.teamStage.attemptId, originalAttempt.attemptId)
-    assert.equal(record.attempts.find(item => item.attemptId === originalAttempt.attemptId).state, 'recovery_required')
-    assert.notEqual(record.teamStage.effects.find(item => item.effectId === effect.effectId).state, 'succeeded')
-    assert.equal(record.teamStage.captures?.length ?? 0, 0)
-    const artifactPath = join(h.runtimeRoot, 'store/team-output-artifacts')
-    assert.deepEqual(existsSync(artifactPath) ? readdirSync(artifactPath) : [], [])
-    noGraphSuccess(record)
-    const callsBeforeReplay = [...h.team.calls], memberCount = h.host.calls.length
-    await h.service.startSessionRun(startArgs); await drain(h)
-    assert.deepEqual(h.team.calls, callsBeforeReplay)
-    assert.equal(h.host.calls.length, memberCount, 'public original-command replay starts no member/model turn')
-    assert.deepEqual((await records(h)).find(item => item.runId === record.runId), record)
-    t.diagnostic(JSON.stringify({ backend, fault, actual_scope_backend: 'json', native_claims: 1,
-      original_attempt: originalAttempt.attemptId, task_revision: 2, effect_state: record.teamStage.effects.find(item => item.effectId === effect.effectId).state,
-      restart_pending_snapshot: true, result_write_failures: writeFailures,
-      ...(fault === 'restart' ? { original_continuation_teardown: 'explicit-effect-recovery-independent-of-restart-oracle' } : {}) }))
-  })
-}
+        return observed
+      })
+      h = await teamHarness(t, {
+        earlyReturn: true,
+        onMember: async (call, team) => {
+          mutationResult = await team.capture(call, { task_id: team.task.id, expected_revision: team.task.revision, action: 'claim' }, 'team_task_update')
+          // A resumed native result must not allow output or another mutation.
+          lateCaptureResult = await team.capture(call, { answer: 42 })
+          call.finish({ kind: 'completed' }, '')
+        }
+      })
+      const starting = h.start()
+      const { store, record: observation } = await entered.promise
+      await spawned.promise
+      const pending = await store.get(observation.runId)
+      const effect = pending.teamStage.effects.findLast(item => item.kind === 'task-update')
+      const originalAttempt = pending.attempts.find(item => item.nodeId === 'work')
+      assert.equal(pending.state, 'running')
+      assert.equal(pending.teamStage.taskRevision, 2, 'actual observation committed before the exact barrier')
+      assert.equal(h.team.task.revision, 2)
+      assert.equal(effect.state, 'pending', 'native result has not yet been persisted')
+      assert.equal(effect.resultTaskRevision, undefined)
+      assert.equal(
+        pending.teamStage.effects.some(item => item.kind === 'spawn' && item.state === 'pending'),
+        false,
+        'window oracle isolates the task result from native spawn uncertainty'
+      )
+      assert.equal(h.team.calls.filter(action => action === 'claim').length, 1)
 
-export async function teamHarness(t, { count = 1, onMember, providers = true, nativeFault, earlyReturn = false, childTools = true, scopedSessions = false, ...options } = {}) {
+      // Preserve this exact in-flight record in a real backend, close its actual
+      // domain, and reopen with a fresh context/store before reconciliation.
+      const snapshotRoot = join(h.root, `task-result-window-${backend}-${fault}`)
+      mkdirSync(snapshotRoot, { recursive: true })
+      const snapshotPath = backend === 'json' ? snapshotRoot : join(snapshotRoot, 'runs.sqlite')
+      let opened = await openBlueprintDomain({ backend, path: snapshotPath })
+      await opened.domain.table('runs').put(pending.runId, pending)
+      const previousContext = opened.ctx,
+        previousDomain = opened.domain
+      await opened.close()
+      opened = await openBlueprintDomain({ backend, path: snapshotPath })
+      t.after(() => opened.close())
+      assert.notEqual(opened.ctx, previousContext)
+      assert.notEqual(opened.domain, previousDomain)
+      const restoredStore = new RunStore(opened.domain)
+      assert.deepEqual(await restoredStore.get(pending.runId), pending, 'reopen retains the exact production pending snapshot')
+      const restartReport = await reconcileOnStart(restoredStore)
+      const restored = await restoredStore.get(pending.runId)
+      assert.equal(restartReport.recoveryRequired.length, 1)
+      assert.equal(restartReport.recoveryRequired[0].attemptId, originalAttempt.attemptId)
+      assert.equal(restartReport.recoveryRequired[0].intentKind, 'task-update')
+      assert.equal(restored.teamStage.taskRevision, 2)
+      assert.equal(restored.state, 'recovery_required')
+      assert.equal(restored.attempts.find(item => item.attemptId === originalAttempt.attemptId).state, 'recovery_required')
+      assert.equal(restored.teamStage.effects.find(item => item.effectId === effect.effectId).state, 'pending')
+      noGraphSuccess(restored)
+      let replayDispatches = 0
+      await assert.rejects(
+        new TeamStageRunner(restoredStore).dispatch({
+          ...effect,
+          runId: pending.runId,
+          store: restoredStore,
+          effect: () => {
+            replayDispatches++
+            return {}
+          }
+        }),
+        error => error.code === 'TEAM_EFFECT_UNKNOWN'
+      )
+      assert.equal(replayDispatches, 0, 'restored pending native claim is never dispatched again')
+      assert.deepEqual(await restoredStore.get(pending.runId), restored)
+      assert.deepEqual((await reconcileOnStart(restoredStore)).untouched, [pending.runId])
+      assert.deepEqual(await restoredStore.get(pending.runId), restored, 'second reconciliation cannot invent late success')
+
+      if (fault === 'cancel') {
+        const result = await h.service.cancelRun({ runId: pending.runId })
+        assert.equal(result.state, 'recovery_required')
+        assert.equal((await store.get(pending.runId)).teamStage.effects.find(item => item.effectId === effect.effectId).state, 'recovery_required')
+      } else if (fault === 'pending-recovery') {
+        await recordTeamEffectRecovery(store, { ...effect, runId: pending.runId })
+        await reconcileOnStart(store)
+      } else if (fault === 'restart') {
+        // The restart oracle is the independently reopened physical snapshot
+        // above: a crashed process has no surviving continuation. Settle this
+        // still-live fixture separately with explicit effect recovery solely
+        // for teardown; do not call a live startup reconciliation a crash.
+        await recordTeamEffectRecovery(store, { ...effect, runId: pending.runId })
+        await reconcileOnStart(store)
+      } else {
+        t.mock.method(store, 'transition', async (runId, reducer) =>
+          nativeTransition.call(store, runId, draft => {
+            reducer(draft)
+            const changed = draft.teamStage?.effects?.find(item => item.effectId === effect.effectId)
+            if (writeFailures === 0 && changed?.state === 'succeeded') {
+              writeFailures++
+              throw new Error('INJECTED_TASK_RESULT_WRITE_FAILURE')
+            }
+          })
+        )
+      }
+      release.resolve()
+      const { record, startArgs } = await starting
+      assert.equal(barrierCount, 1)
+      assert.equal(
+        mutationResult.isError,
+        true,
+        fault === 'restart'
+          ? 'explicit fixture teardown recovery rejects its surviving continuation'
+          : 'late/failed effect result cannot return success to the model'
+      )
+      assert.equal(lateCaptureResult.isError, true, 'unknown result stops same-turn output')
+      assert.equal(writeFailures, fault === 'result-write-failure' ? 1 : 0, 'exactly the intended result write fails once')
+      assert.equal(h.team.calls.filter(action => action === 'claim').length, 1)
+      assert.equal(h.team.calls.includes('complete'), false)
+      assert.equal(record.state, 'recovery_required')
+      assert.equal(record.teamStage.taskRevision, 2)
+      assert.equal(record.teamStage.attemptId, originalAttempt.attemptId)
+      assert.equal(record.attempts.find(item => item.attemptId === originalAttempt.attemptId).state, 'recovery_required')
+      assert.notEqual(record.teamStage.effects.find(item => item.effectId === effect.effectId).state, 'succeeded')
+      assert.equal(record.teamStage.captures?.length ?? 0, 0)
+      const artifactPath = join(h.runtimeRoot, 'store/team-output-artifacts')
+      assert.deepEqual(existsSync(artifactPath) ? readdirSync(artifactPath) : [], [])
+      noGraphSuccess(record)
+      const callsBeforeReplay = [...h.team.calls],
+        memberCount = h.host.calls.length
+      await h.service.startSessionRun(startArgs)
+      await drain(h)
+      assert.deepEqual(h.team.calls, callsBeforeReplay)
+      assert.equal(h.host.calls.length, memberCount, 'public original-command replay starts no member/model turn')
+      assert.deepEqual(
+        (await records(h)).find(item => item.runId === record.runId),
+        record
+      )
+      t.diagnostic(
+        JSON.stringify({
+          backend,
+          fault,
+          actual_scope_backend: 'json',
+          native_claims: 1,
+          original_attempt: originalAttempt.attemptId,
+          task_revision: 2,
+          effect_state: record.teamStage.effects.find(item => item.effectId === effect.effectId).state,
+          restart_pending_snapshot: true,
+          result_write_failures: writeFailures,
+          ...(fault === 'restart' ? { original_continuation_teardown: 'explicit-effect-recovery-independent-of-restart-oracle' } : {})
+        })
+      )
+    })
+  }
+
+export async function teamHarness(
+  t,
+  { count = 1, onMember, providers = true, nativeFault, earlyReturn = false, childTools = true, scopedSessions = false, ...options } = {}
+) {
   let team
-  const h = await harness(t, { ...options, onTurn: async call => {
-    assert.ok(team, 'fixture native Team service installed before model turn')
-    if (onMember) return onMember(call, team)
-    const row = team.roster.find(row => row.id === call.agent.id)
-    if (row.logical === 'producer') {
-      await team.capture(call, { task_id: team.task.id, expected_revision: team.task.revision, action: 'claim' }, 'team_task_update')
-      await team.capture(call, { task_id: team.task.id, expected_revision: team.task.revision, action: 'complete' }, 'team_task_update')
+  const h = await harness(t, {
+    ...options,
+    onTurn: async call => {
+      assert.ok(team, 'fixture native Team service installed before model turn')
+      if (onMember) return onMember(call, team)
+      const row = team.roster.find(row => row.id === call.agent.id)
+      if (row.logical === 'producer') {
+        await team.capture(call, { task_id: team.task.id, expected_revision: team.task.revision, action: 'claim' }, 'team_task_update')
+        await team.capture(call, { task_id: team.task.id, expected_revision: team.task.revision, action: 'complete' }, 'team_task_update')
+      }
+      await team.capture(call, { answer: 42 })
+      call.finish({ kind: 'completed' }, '')
     }
-    await team.capture(call, { answer: 42 })
-    call.finish({ kind: 'completed' }, '')
-  } })
+  })
   mkdirSync(join(h.rootDir, 'lib/agents'), { recursive: true })
   writeFileSync(join(h.rootDir, 'lib/agents/primary.md'), 'PRIMARY_AGENT_FROZEN')
   writeFileSync(join(h.rootDir, 'lib/agents/peer.md'), 'PEER_AGENT_FROZEN')
@@ -189,20 +258,30 @@ export async function teamHarness(t, { count = 1, onMember, providers = true, na
   const originalCreate = h.host.registry.create.bind(h.host.registry)
   h.host.registry.create = async options => {
     const handle = await originalCreate(options)
-    if (scopedSessions) await handle.agent.ctx.inject(['sessions'], ctx => { handle.agent.ctx = ctx })
+    if (scopedSessions)
+      await handle.agent.ctx.inject(['sessions'], ctx => {
+        handle.agent.ctx = ctx
+      })
     live.set(handle.agent.id, handle.agent)
     const detach = handle.agent.ctx.sessions.enter(handle.agent.session)
     handle.agent.ctx.sessions.announce(handle.agent.session)
-    try { await h.ctx.serial('agent/created', { agent: handle.agent, source: 'fresh', signal: options.signal }) }
-    catch (error) { t.diagnostic(JSON.stringify({ creationFailure: error.code, issueCode: error.issueCode })); throw error }
+    try {
+      await h.ctx.serial('agent/created', { agent: handle.agent, source: 'fresh', signal: options.signal })
+    } catch (error) {
+      t.diagnostic(JSON.stringify({ creationFailure: error.code, issueCode: error.issueCode }))
+      throw error
+    }
     t.after(() => detach())
-    const owned = { ...handle, async dispose() {
-      await handle.dispose()
-      assert.equal(live.get(handle.agent.id), handle.agent, 'release owns the exact registered Agent')
-      live.delete(handle.agent.id)
-      h.ctx.emit('agent/disposed', { agent: handle.agent })
-      detach()
-    } }
+    const owned = {
+      ...handle,
+      async dispose() {
+        await handle.dispose()
+        assert.equal(live.get(handle.agent.id), handle.agent, 'release owns the exact registered Agent')
+        live.delete(handle.agent.id)
+        h.ctx.emit('agent/disposed', { agent: handle.agent })
+        detach()
+      }
+    }
     handles.set(handle.agent.id, owned)
     return owned
   }
@@ -211,7 +290,10 @@ export async function teamHarness(t, { count = 1, onMember, providers = true, na
   const roster = []
   const pendingPrompts = []
   team = {
-    root, calls, roster, pendingPrompts,
+    root,
+    calls,
+    roster,
+    pendingPrompts,
     async release(agent) {
       await agent.whenIdle()
       assert.equal(agent.status, 'idle')
@@ -226,7 +308,9 @@ export async function teamHarness(t, { count = 1, onMember, providers = true, na
       assert.ok(row, 'native child must have provisional roster row')
       return { root, id: root.id, role: 'teammate', name: row.name }
     },
-    listMembers() { return roster.map(({ logical: _logical, ...row }) => ({ ...row, status: live.get(row.id)?.status === 'running' ? 'running' : row.status })) },
+    listMembers() {
+      return roster.map(({ logical: _logical, ...row }) => ({ ...row, status: live.get(row.id)?.status === 'running' ? 'running' : row.status }))
+    },
     async createTask(caller, request) {
       assert.equal(caller, root)
       calls.push('create')
@@ -234,8 +318,13 @@ export async function teamHarness(t, { count = 1, onMember, providers = true, na
       team.task = { id: `task-${randomUUID()}`, revision: 1, status: 'pending', ...request }
       return structuredClone(team.task)
     },
-    getTask(caller, id) { assert.equal(id, team.task.id); return structuredClone(team.task) },
-    listTasks() { return team.task ? [structuredClone(team.task)] : [] },
+    getTask(caller, id) {
+      assert.equal(id, team.task.id)
+      return structuredClone(team.task)
+    },
+    listTasks() {
+      return team.task ? [structuredClone(team.task)] : []
+    },
     async updateTask(caller, request) {
       assert.equal(request.taskId, team.task.id)
       assert.equal(request.expectedRevision, team.task.revision)
@@ -266,53 +355,86 @@ export async function teamHarness(t, { count = 1, onMember, providers = true, na
       calls.push('message')
       return { messageId: randomUUID() }
     },
-    async waitForChange() {}, interrupt() { calls.push('interrupt'); return { previousStatus: 'inactive' } },
+    async waitForChange() {},
+    interrupt() {
+      calls.push('interrupt')
+      return { previousStatus: 'inactive' }
+    },
     async capture(call, value, name = 'structured_output', extra = {}) {
       const callId = ToolCallId(randomUUID())
       call.session.append('tool/call', { turn: 1, step: 1, callId, name, arguments: JSON.stringify(value) })
-      const result = await call.agent.ctx.tools.execute({ callId, name, arguments: value, agent: call.agent,
-        signal: new AbortController().signal, ...extra })
-      call.session.append('tool/result', { turn: 1, step: 1, message: createToolResultMessage({ callId,
-        content: result.content, isError: result.isError }) }, { surfaceOp: 'append' })
+      const result = await call.agent.ctx.tools.execute({ callId, name, arguments: value, agent: call.agent, signal: new AbortController().signal, ...extra })
+      call.session.append(
+        'tool/result',
+        { turn: 1, step: 1, message: createToolResultMessage({ callId, content: result.content, isError: result.isError }) },
+        { surfaceOp: 'append' }
+      )
       call.toolResults.push(result)
       return result
-    },
+    }
   }
   h.ctx.provide('agentTeams', team)
   const installNativeTools = agent => {
     for (const name of ['send_message', 'list_agents', 'wait_agent', 'team_task_list', 'team_task_get', 'team_task_update']) {
-      agent.ctx.tools.register({ name, description: 'Native Team boundary fixture',
-      parameters: { type: 'object', additionalProperties: true },
-      output: { schema: { type: 'object', additionalProperties: true }, render: () => [{ type: 'text', text: 'native Team result' }] },
-      async execute(args, exec) {
-        if (name === 'team_task_update') return team.updateTask(exec.agent, { taskId: args.task_id, expectedRevision: args.expected_revision, action: args.action })
-        if (name === 'team_task_get') return team.getTask(exec.agent, args.task_id)
-        if (name === 'send_message') return team.sendMessage(exec.agent, { target: args.target })
-        return { ok: true }
-      } })
+      agent.ctx.tools.register({
+        name,
+        description: 'Native Team boundary fixture',
+        parameters: { type: 'object', additionalProperties: true },
+        output: { schema: { type: 'object', additionalProperties: true }, render: () => [{ type: 'text', text: 'native Team result' }] },
+        async execute(args, exec) {
+          if (name === 'team_task_update')
+            return team.updateTask(exec.agent, { taskId: args.task_id, expectedRevision: args.expected_revision, action: args.action })
+          if (name === 'team_task_get') return team.getTask(exec.agent, args.task_id)
+          if (name === 'send_message') return team.sendMessage(exec.agent, { target: args.target })
+          return { ok: true }
+        }
+      })
     }
   }
   installNativeTools(root)
-  h.ctx.on('agent/created', ({ agent }) => { if (childTools) installNativeTools(agent) })
-  const providerMap = new Map(providers ? [['spawn', { name: 'spawn', inheritsParentContext: false, prepareContinuable() {} }],
-    ['fork', { name: 'fork', inheritsParentContext: true, prepareContinuable() {} }]] : [])
+  h.ctx.on('agent/created', ({ agent }) => {
+    if (childTools) installNativeTools(agent)
+  })
+  const providerMap = new Map(
+    providers
+      ? [
+          ['spawn', { name: 'spawn', inheritsParentContext: false, prepareContinuable() {} }],
+          ['fork', { name: 'fork', inheritsParentContext: true, prepareContinuable() {} }]
+        ]
+      : []
+  )
   h.ctx.provide('subagents', { getProvider: name => providerMap.get(name) })
-  return { ...h, team, rootAgent: root, providerMap, live,
+  return {
+    ...h,
+    team,
+    rootAgent: root,
+    providerMap,
+    live,
     async start(value = teamDefinition(count), requestId = randomUUID()) {
       const doc = await h.save(value)
       let admitted, refusal
-      const startArgs = { sessionId: root.id, blueprintId: doc.blueprintId,
-        expectedRevision: doc.documentRevision, inputJson: JSON.stringify({ task: 'answer' }), requestId }
-      try { admitted = await h.service.startSessionRun(startArgs) }
-      catch (error) { refusal = error }
+      const startArgs = {
+        sessionId: root.id,
+        blueprintId: doc.blueprintId,
+        expectedRevision: doc.documentRevision,
+        inputJson: JSON.stringify({ task: 'answer' }),
+        requestId
+      }
+      try {
+        admitted = await h.service.startSessionRun(startArgs)
+      } catch (error) {
+        refusal = error
+      }
       await drain(h)
       return { admitted, refusal, doc, startArgs, record: admitted ? (await records(h)).find(r => r.runId === admitted.runId) : undefined }
-    },
+    }
   }
 }
 
 test('TeamStage does not create a private total deadline; DSH owns provider and disposal timing', async t => {
-  t.mock.method(AbortSignal, 'timeout', () => { throw new Error('BLUEPRINT_PRIVATE_DEADLINE') })
+  t.mock.method(AbortSignal, 'timeout', () => {
+    throw new Error('BLUEPRINT_PRIVATE_DEADLINE')
+  })
   const h = await teamHarness(t)
   const { refusal, record } = await h.start()
   assert.equal(refusal, undefined)
@@ -324,75 +446,112 @@ test('TeamStage does not create a private total deadline; DSH owns provider and 
 
 test('native member parallel tools remain executing until the last owned tool completes', async t => {
   let h
-  h = await teamHarness(t, { earlyReturn: true, onMember: async (call, team) => {
-    const first = Promise.withResolvers(), second = Promise.withResolvers()
-    const entered = [Promise.withResolvers(), Promise.withResolvers()]
-    let ordinal = 0
-    const original = team.getTask.bind(team)
-    t.mock.method(team, 'getTask', (caller, id) => {
-      if (caller === team.root) return original(caller, id)
-      const index = ordinal++; entered[index].resolve()
-      return [first, second][index].promise.then(() => original(caller, id))
-    })
-    const inspect = async () => (await h.service.inspectSession({ sessionId: team.root.id })).selected.run
-    for (let i = 0; i < 100; i++) { const run = await inspect(); if (run.team?.members[0]?.phase === 'active') break; await new Promise(resolve => setImmediate(resolve)) }
-    const one = team.capture(call, { task_id: team.task.id }, 'team_task_get')
-    const two = team.capture(call, { task_id: team.task.id }, 'team_task_get')
-    await Promise.all(entered.map(value => value.promise))
-    let current
-    for (let i = 0; i < 100; i++) { current = await inspect(); if (current.team?.runtime?.members?.length) break; await new Promise(resolve => setImmediate(resolve)) }
-    assert.equal(current?.team?.runtime?.members[0]?.activity, 'executing_tool', JSON.stringify({ state: current?.state, team: current?.team }))
-    first.resolve(); await one
-    assert.equal((await inspect()).team.runtime.members[0].activity, 'executing_tool', 'a finished tool cannot hide another active tool')
-    second.resolve(); await two
-    assert.equal((await inspect()).team.runtime.members[0].activity, 'idle')
-    await team.capture(call, { task_id: team.task.id, expected_revision: team.task.revision, action: 'claim' }, 'team_task_update')
-    await team.capture(call, { task_id: team.task.id, expected_revision: team.task.revision, action: 'complete' }, 'team_task_update')
-    await team.capture(call, { answer: 42 }); call.finish({ kind: 'completed' }, '')
-  } })
+  h = await teamHarness(t, {
+    earlyReturn: true,
+    onMember: async (call, team) => {
+      const first = Promise.withResolvers(),
+        second = Promise.withResolvers()
+      const entered = [Promise.withResolvers(), Promise.withResolvers()]
+      let ordinal = 0
+      const original = team.getTask.bind(team)
+      t.mock.method(team, 'getTask', (caller, id) => {
+        if (caller === team.root) return original(caller, id)
+        const index = ordinal++
+        entered[index].resolve()
+        return [first, second][index].promise.then(() => original(caller, id))
+      })
+      const inspect = async () => (await h.service.inspectSession({ sessionId: team.root.id })).selected.run
+      for (let i = 0; i < 100; i++) {
+        const run = await inspect()
+        if (run.team?.members[0]?.phase === 'active') break
+        await new Promise(resolve => setImmediate(resolve))
+      }
+      const one = team.capture(call, { task_id: team.task.id }, 'team_task_get')
+      const two = team.capture(call, { task_id: team.task.id }, 'team_task_get')
+      await Promise.all(entered.map(value => value.promise))
+      let current
+      for (let i = 0; i < 100; i++) {
+        current = await inspect()
+        if (current.team?.runtime?.members?.length) break
+        await new Promise(resolve => setImmediate(resolve))
+      }
+      assert.equal(current?.team?.runtime?.members[0]?.activity, 'executing_tool', JSON.stringify({ state: current?.state, team: current?.team }))
+      first.resolve()
+      await one
+      assert.equal((await inspect()).team.runtime.members[0].activity, 'executing_tool', 'a finished tool cannot hide another active tool')
+      second.resolve()
+      await two
+      assert.equal((await inspect()).team.runtime.members[0].activity, 'idle')
+      await team.capture(call, { task_id: team.task.id, expected_revision: team.task.revision, action: 'claim' }, 'team_task_update')
+      await team.capture(call, { task_id: team.task.id, expected_revision: team.task.revision, action: 'complete' }, 'team_task_update')
+      await team.capture(call, { answer: 42 })
+      call.finish({ kind: 'completed' }, '')
+    }
+  })
   const { record } = await h.start()
   assert.equal(record.state, 'succeeded')
 })
 
 test('native stream events project waiting, reasoning, response and tool preparation only to the bound member', async t => {
   let h
-  h = await teamHarness(t, { earlyReturn: true, onMember: async (call, team) => {
-    const inspect = async () => (await h.service.inspectSession({ sessionId: team.root.id })).selected.run
-    for (let i = 0; i < 100; i++) { const run = await inspect(); if (run.team?.members[0]?.phase === 'active') break; await new Promise(resolve => setImmediate(resolve)) }
-    const entered = Promise.withResolvers(), progress = Promise.withResolvers()
-    const stream = h.ctx.waterfall(null, 'llm/stream', { sessionId: call.agent.id }, async function* () {
-      entered.resolve(); await progress.promise
-      yield { type: 'reasoning-delta', index: 0, text: 'RAW_REASONING_SENTINEL' }
-      yield { type: 'text-delta', index: 1, text: 'RAW_RESPONSE_SENTINEL' }
-      yield { type: 'tool-call-delta', index: 2, id: ToolCallId('stream-tool'), name: 'team_task_get', argumentsDelta: '{}' }
-      yield { type: 'finish', reason: { kind: 'tool-calls' } }
-    })[Symbol.asyncIterator]()
-    const initial = stream.next(); await entered.promise
-    let before = await inspect()
-    let ready = before
-    for (let i = 0; i < 100 && !ready.team?.runtime?.members?.length; i++) { await new Promise(resolve => setImmediate(resolve)); ready = await inspect() }
-    assert.equal(ready.team?.runtime?.members[0]?.activity, 'waiting_model', JSON.stringify({ state: ready.state, team: ready.team }))
-    before = ready
-    progress.resolve(); await initial
-    const thinking = await inspect()
-    assert.equal(thinking.team.runtime.members[0].activity, 'thinking')
-    assert.equal(thinking.team.runtime.members[0].reasoningDeltas, 1)
-    assert.equal(thinking.seq, before.seq)
-    for await (const _ of h.ctx.waterfall(null, 'llm/stream', { sessionId: 'foreign-session' }, async function* () {
-      yield { type: 'text-delta', index: 0, text: 'FOREIGN_RESPONSE' }
-    })) {}
-    assert.equal((await inspect()).team.runtime.members[0].activity, 'thinking')
-    await stream.next(); assert.equal((await inspect()).team.runtime.members[0].activity, 'responding')
-    await stream.next(); assert.equal((await inspect()).team.runtime.members[0].activity, 'tool_call')
-    await stream.next(); await stream.next()
-    const closed = await inspect()
-    assert.equal(closed.team.runtime.members[0].activity, 'idle')
-    assert.equal(closed.seq, before.seq, 'all stream activity remains transient')
-    assert.equal(JSON.stringify(closed).includes('SENTINEL'), false)
-    await team.capture(call, { task_id: team.task.id, expected_revision: team.task.revision, action: 'claim' }, 'team_task_update')
-    await team.capture(call, { task_id: team.task.id, expected_revision: team.task.revision, action: 'complete' }, 'team_task_update')
-    await team.capture(call, { answer: 42 }); call.finish({ kind: 'completed' }, '')
-  } })
+  h = await teamHarness(t, {
+    earlyReturn: true,
+    onMember: async (call, team) => {
+      const inspect = async () => (await h.service.inspectSession({ sessionId: team.root.id })).selected.run
+      for (let i = 0; i < 100; i++) {
+        const run = await inspect()
+        if (run.team?.members[0]?.phase === 'active') break
+        await new Promise(resolve => setImmediate(resolve))
+      }
+      const entered = Promise.withResolvers(),
+        progress = Promise.withResolvers()
+      const stream = h.ctx
+        .waterfall(null, 'llm/stream', { sessionId: call.agent.id }, async function* () {
+          entered.resolve()
+          await progress.promise
+          yield { type: 'reasoning-delta', index: 0, text: 'RAW_REASONING_SENTINEL' }
+          yield { type: 'text-delta', index: 1, text: 'RAW_RESPONSE_SENTINEL' }
+          yield { type: 'tool-call-delta', index: 2, id: ToolCallId('stream-tool'), name: 'team_task_get', argumentsDelta: '{}' }
+          yield { type: 'finish', reason: { kind: 'tool-calls' } }
+        })
+        [Symbol.asyncIterator]()
+      const initial = stream.next()
+      await entered.promise
+      let before = await inspect()
+      let ready = before
+      for (let i = 0; i < 100 && !ready.team?.runtime?.members?.length; i++) {
+        await new Promise(resolve => setImmediate(resolve))
+        ready = await inspect()
+      }
+      assert.equal(ready.team?.runtime?.members[0]?.activity, 'waiting_model', JSON.stringify({ state: ready.state, team: ready.team }))
+      before = ready
+      progress.resolve()
+      await initial
+      const thinking = await inspect()
+      assert.equal(thinking.team.runtime.members[0].activity, 'thinking')
+      assert.equal(thinking.team.runtime.members[0].reasoningDeltas, 1)
+      assert.equal(thinking.seq, before.seq)
+      for await (const _ of h.ctx.waterfall(null, 'llm/stream', { sessionId: 'foreign-session' }, async function* () {
+        yield { type: 'text-delta', index: 0, text: 'FOREIGN_RESPONSE' }
+      })) {
+      }
+      assert.equal((await inspect()).team.runtime.members[0].activity, 'thinking')
+      await stream.next()
+      assert.equal((await inspect()).team.runtime.members[0].activity, 'responding')
+      await stream.next()
+      assert.equal((await inspect()).team.runtime.members[0].activity, 'tool_call')
+      await stream.next()
+      await stream.next()
+      const closed = await inspect()
+      assert.equal(closed.team.runtime.members[0].activity, 'idle')
+      assert.equal(closed.seq, before.seq, 'all stream activity remains transient')
+      assert.equal(JSON.stringify(closed).includes('SENTINEL'), false)
+      await team.capture(call, { task_id: team.task.id, expected_revision: team.task.revision, action: 'claim' }, 'team_task_update')
+      await team.capture(call, { task_id: team.task.id, expected_revision: team.task.revision, action: 'complete' }, 'team_task_update')
+      await team.capture(call, { answer: 42 })
+      call.finish({ kind: 'completed' }, '')
+    }
+  })
   const { record } = await h.start()
   assert.equal(record.state, 'succeeded')
   const terminal = await h.service.inspectRun({ runId: record.runId })
@@ -413,10 +572,16 @@ test('F8 public Team preflight reports ready only while native capability is ava
   const blocked = await h.service.preflightRun(args)
   assert.equal(blocked.canStart, false)
   assert.ok(blocked.checks.some(check => check.nodeId === 'work' && check.code === 'teamstage-provider-unavailable' && check.status === 'block'))
-  assert.equal(blocked.checks.some(check => check.nodeId === 'work' && check.code === 'node-executor-ready'), false)
-  assert.equal(blocked.checks.some(check => check.code === 'teamstage-executor-ready'), false)
-  const otherChecks = report => report.checks.filter(check => !(check.nodeId === 'work'
-    && (check.code === 'node-executor-ready' || check.code.startsWith('teamstage-'))))
+  assert.equal(
+    blocked.checks.some(check => check.nodeId === 'work' && check.code === 'node-executor-ready'),
+    false
+  )
+  assert.equal(
+    blocked.checks.some(check => check.code === 'teamstage-executor-ready'),
+    false
+  )
+  const otherChecks = report =>
+    report.checks.filter(check => !(check.nodeId === 'work' && (check.code === 'node-executor-ready' || check.code.startsWith('teamstage-'))))
   assert.deepEqual(otherChecks(blocked), otherChecks(ready), 'blocked Team capability preserves all other preflight diagnostics')
   h.providerMap.set('spawn', provider)
   assert.deepEqual(await h.service.preflightRun(args), ready, 'public preflight reevaluates dynamic capability')
@@ -432,7 +597,10 @@ test('F8 ordinary agent preflight preserves executor-ready without Team diagnost
   const report = await h.service.preflightRun({ blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, inputJson: '{}' })
   assert.equal(report.canStart, true)
   assert.ok(report.checks.some(check => check.nodeId === 'work' && check.code === 'node-executor-ready' && check.status === 'pass'))
-  assert.equal(report.checks.some(check => check.code.startsWith('teamstage-')), false)
+  assert.equal(
+    report.checks.some(check => check.code.startsWith('teamstage-')),
+    false
+  )
   assert.deepEqual(h.host.calls, [])
   assert.deepEqual(h.effects, [])
   assert.deepEqual(await records(h), [])
@@ -440,18 +608,25 @@ test('F8 ordinary agent preflight preserves executor-ready without Team diagnost
 
 async function pluginDriverContext(t, h, selectSessions) {
   let observer
-  const fiber = await h.ctx.plugin({ name: 'teamstage-optional-observer-fixture', inject: [],
-    apply(ctx) { observer = ctx } })
+  const fiber = await h.ctx.plugin({
+    name: 'teamstage-optional-observer-fixture',
+    inject: [],
+    apply(ctx) {
+      observer = ctx
+    }
+  })
   t.after(() => fiber.dispose())
   assert.ok(observer.fiber.runtime, 'oracle uses an actual Cordis plugin runtime')
   assert.throws(() => observer.sessions, /cannot get property "sessions" without inject/)
   assert.equal(typeof observer.get('sessions').flush, 'function', 'optional service exists through public get')
   if (selectSessions) {
     const get = observer.get.bind(observer)
-    observer = observer.extend({ get(name) {
-      const value = get(name)
-      return name === 'sessions' ? selectSessions(value) : value
-    } })
+    observer = observer.extend({
+      get(name) {
+        const value = get(name)
+        return name === 'sessions' ? selectSessions(value) : value
+      }
+    })
   }
   const execute = TeamStageDriver.prototype.execute
   t.mock.method(TeamStageDriver.prototype, 'execute', function (args) {
@@ -481,19 +656,26 @@ test('F7 real inject-empty Cordis plugin context completes native capture throug
 test('F7 real Cordis plugin observer retains F6 proof after peer release before primary completion', async t => {
   const released = Promise.withResolvers()
   let peerId
-  const h = await teamHarness(t, { scopedSessions: true, count: 2, earlyReturn: true, onMember: async (call, team) => {
-    if (team.roster.find(row => row.id === call.agent.id).logical === 'producer') {
-      await released.promise
-      assert.equal(h.live.has(peerId), false)
-      await completeTask(call, team)
-      await team.capture(call, { answer: 42 }); call.finish({ kind: 'completed' }, '')
-    } else {
-      peerId = call.agent.id
-      await team.capture(call, { answer: 42 }); call.finish({ kind: 'completed' }, '')
-      await team.release(call.agent)
-      released.resolve()
+  const h = await teamHarness(t, {
+    scopedSessions: true,
+    count: 2,
+    earlyReturn: true,
+    onMember: async (call, team) => {
+      if (team.roster.find(row => row.id === call.agent.id).logical === 'producer') {
+        await released.promise
+        assert.equal(h.live.has(peerId), false)
+        await completeTask(call, team)
+        await team.capture(call, { answer: 42 })
+        call.finish({ kind: 'completed' }, '')
+      } else {
+        peerId = call.agent.id
+        await team.capture(call, { answer: 42 })
+        call.finish({ kind: 'completed' }, '')
+        await team.release(call.agent)
+        released.resolve()
+      }
     }
-  } })
+  })
   await pluginDriverContext(t, h)
   const { refusal, record } = await h.start()
   assert.equal(refusal, undefined)
@@ -505,28 +687,35 @@ test('F7 real Cordis plugin observer retains F6 proof after peer release before 
 for (const fault of ['unavailable', 'missing-flush', 'rejected-flush', 'nonparticipating-flush']) {
   test(`F7 real Cordis plugin optional SessionStore ${fault} has typed refusal`, async t => {
     let captureStarted = false
-    const h = await teamHarness(t, { scopedSessions: true, onMember: async (call, team) => {
-      await completeTask(call, team)
-      await team.capture(call, { answer: 42 })
-      captureStarted = true // Dynamic disappearance/failure after admission and creation.
-      call.finish({ kind: 'completed' }, '')
-    } })
+    const h = await teamHarness(t, {
+      scopedSessions: true,
+      onMember: async (call, team) => {
+        await completeTask(call, team)
+        await team.capture(call, { answer: 42 })
+        captureStarted = true // Dynamic disappearance/failure after admission and creation.
+        call.finish({ kind: 'completed' }, '')
+      }
+    })
     await pluginDriverContext(t, h, sessions => {
       if (!captureStarted) return sessions
       if (fault === 'unavailable') return undefined
       if (fault === 'missing-flush') return {}
-      return { async flush() {
-        if (fault === 'rejected-flush') throw new Error('RAW_FLUSH_FAILURE_SENTINEL')
-        return false
-      } }
+      return {
+        async flush() {
+          if (fault === 'rejected-flush') throw new Error('RAW_FLUSH_FAILURE_SENTINEL')
+          return false
+        }
+      }
     })
     const { refusal, record } = await h.start()
     assert.equal(refusal, undefined)
     assert.equal(captureStarted, true)
     noGraphSuccess(record)
     assert.equal(record.teamStage.captures, undefined)
-    assert.equal(record.teamStage.recovery.code, ['unavailable', 'missing-flush'].includes(fault)
-      ? 'teamstage-executor-unavailable' : 'teamstage-flush-unverified')
+    assert.equal(
+      record.teamStage.recovery.code,
+      ['unavailable', 'missing-flush'].includes(fault) ? 'teamstage-executor-unavailable' : 'teamstage-flush-unverified'
+    )
     assert.equal(JSON.stringify(record).includes('RAW_FLUSH_FAILURE_SENTINEL'), false)
   })
 }
@@ -595,7 +784,10 @@ test('F6 completed collaborator native release after finish preserves authoritat
     const result = await commitCapture.call(this, args)
     // Driver reaches this only after every scope.finish succeeded. Release the
     // peer while the primary artifact commits, before the peer's final check.
-    if (!didRelease) { await h.team.release(released); didRelease = true }
+    if (!didRelease) {
+      await h.team.release(released)
+      didRelease = true
+    }
     assert.equal(h.live.get(released.id), undefined, 'native cold release removes exact Agent')
     assert.equal(released.ctx.sessions.get(released.id), undefined, 'release also detaches Session')
     return result
@@ -616,24 +808,31 @@ test('F6 completed collaborator native release after finish preserves authoritat
 test('F6 barrier requires completed collaborator release before primary can finish', async t => {
   const released = Promise.withResolvers()
   const order = []
-  const h = await teamHarness(t, { count: 2, earlyReturn: true, onMember: async (call, team) => {
-    const row = team.roster.find(row => row.id === call.agent.id)
-    if (row.logical === 'producer') {
-      await released.promise
-      assert.equal(h.live.has(order[0].id), false)
-      await completeTask(call, team)
+  const h = await teamHarness(t, {
+    count: 2,
+    earlyReturn: true,
+    onMember: async (call, team) => {
+      const row = team.roster.find(row => row.id === call.agent.id)
+      if (row.logical === 'producer') {
+        await released.promise
+        assert.equal(h.live.has(order[0].id), false)
+        await completeTask(call, team)
+      }
+      await team.capture(call, { answer: 42 })
+      call.finish({ kind: 'completed' }, '')
+      if (row.logical !== 'producer') {
+        await team.release(call.agent)
+        order.push({ event: 'peer-disposed', id: call.agent.id })
+        released.resolve()
+      } else order.push({ event: 'primary-completed', id: call.agent.id })
     }
-    await team.capture(call, { answer: 42 })
-    call.finish({ kind: 'completed' }, '')
-    if (row.logical !== 'producer') {
-      await team.release(call.agent)
-      order.push({ event: 'peer-disposed', id: call.agent.id })
-      released.resolve()
-    } else order.push({ event: 'primary-completed', id: call.agent.id })
-  } })
+  })
   const { refusal, record } = await h.start()
   assert.equal(refusal, undefined)
-  assert.deepEqual(order.map(entry => entry.event), ['peer-disposed', 'primary-completed'])
+  assert.deepEqual(
+    order.map(entry => entry.event),
+    ['peer-disposed', 'primary-completed']
+  )
   assert.equal(record.state, 'succeeded')
   assert.equal(record.teamStage.captures.length, 2)
   assert.equal(record.teamStage.attemptId, record.attempts.find(a => a.nodeId === 'work').attemptId)
@@ -644,21 +843,28 @@ for (const participated of [true, false]) {
     const flushEntered = Promise.withResolvers()
     const flushOutcome = Promise.withResolvers()
     const released = Promise.withResolvers()
-    let peerId, delayed = false
-    const h = await teamHarness(t, { count: 2, earlyReturn: true, onMember: async (call, team) => {
-      const row = team.roster.find(row => row.id === call.agent.id)
-      if (row.logical === 'producer') { await released.promise; await completeTask(call, team) }
-      else peerId = call.agent.id
-      await team.capture(call, { answer: 42 })
-      call.finish({ kind: 'completed' }, '')
-      if (row.logical !== 'producer') {
-        await flushEntered.promise
-        await team.release(call.agent)
-        assert.equal(h.live.has(call.agent.id), false)
-        flushOutcome.resolve(participated)
-        released.resolve()
+    let peerId,
+      delayed = false
+    const h = await teamHarness(t, {
+      count: 2,
+      earlyReturn: true,
+      onMember: async (call, team) => {
+        const row = team.roster.find(row => row.id === call.agent.id)
+        if (row.logical === 'producer') {
+          await released.promise
+          await completeTask(call, team)
+        } else peerId = call.agent.id
+        await team.capture(call, { answer: 42 })
+        call.finish({ kind: 'completed' }, '')
+        if (row.logical !== 'producer') {
+          await flushEntered.promise
+          await team.release(call.agent)
+          assert.equal(h.live.has(call.agent.id), false)
+          flushOutcome.resolve(participated)
+          released.resolve()
+        }
       }
-    } })
+    })
     const nativeFlush = h.ctx.sessions.flush.bind(h.ctx.sessions)
     t.mock.method(h.ctx.sessions, 'flush', async session => {
       const actual = await nativeFlush(session)
@@ -684,17 +890,20 @@ for (const participated of [true, false]) {
 for (const fault of ['unproven-absence', 'foreign-replacement', 'same-id-recreated', 'later-running', 'late-message', 'incomplete-disposal', 'cancelled']) {
   test(`F6 ${fault} cannot borrow completed-release evidence`, async t => {
     let peer
-    const h = await teamHarness(t, { count: 2, onMember: async (call, team) => {
-      const row = team.roster.find(row => row.id === call.agent.id)
-      if (row.logical === 'producer') {
-        if (fault === 'cancelled') {
-          const run = (await records(h)).find(run => run.state === 'running')
-          await h.service.cancelRun({ runId: run.runId })
-        } else await completeTask(call, team)
+    const h = await teamHarness(t, {
+      count: 2,
+      onMember: async (call, team) => {
+        const row = team.roster.find(row => row.id === call.agent.id)
+        if (row.logical === 'producer') {
+          if (fault === 'cancelled') {
+            const run = (await records(h)).find(run => run.state === 'running')
+            await h.service.cancelRun({ runId: run.runId })
+          } else await completeTask(call, team)
+        }
+        if (row.logical === 'producer' || fault !== 'incomplete-disposal') await team.capture(call, { answer: 42 })
+        call.finish({ kind: 'completed' }, '')
       }
-      if (row.logical === 'producer' || fault !== 'incomplete-disposal') await team.capture(call, { answer: 42 })
-      call.finish({ kind: 'completed' }, '')
-    } })
+    })
     const nativeSpawn = h.team.spawnTeammate
     h.team.spawnTeammate = async (...args) => {
       const result = await nativeSpawn(...args)
@@ -720,8 +929,10 @@ for (const fault of ['unproven-absence', 'foreign-replacement', 'same-id-recreat
           h.live.delete(peer.id)
         }
         if (fault === 'later-running') {
-          peer.status = 'running'; h.ctx.emit('agent/status', { agent: peer, status: 'running' })
-          peer.status = 'idle'; h.ctx.emit('agent/status', { agent: peer, status: 'idle' })
+          peer.status = 'running'
+          h.ctx.emit('agent/status', { agent: peer, status: 'running' })
+          peer.status = 'idle'
+          h.ctx.emit('agent/status', { agent: peer, status: 'idle' })
         }
         if (fault === 'late-message') peer.inject(createUserMessage({ content: [{ type: 'text', text: 'late peer work' }], source: { kind: 'user' } }))
       }
@@ -744,7 +955,11 @@ function noGraphSuccess(record) {
   assert.notEqual(record.state, 'succeeded')
   assert.notEqual(record.teamStage?.state, 'succeeded')
   assert.notEqual(record.attempts.find(a => a.nodeId === 'work')?.state, 'succeeded')
-  assert.equal(record.attempts.some(a => a.nodeId === 'sink'), false, 'failed Team output never dispatches downstream')
+  assert.equal(
+    record.attempts.some(a => a.nodeId === 'sink'),
+    false,
+    'failed Team output never dispatches downstream'
+  )
   assert.equal(record.teamStage?.outputAcceptance, undefined)
 }
 
@@ -758,36 +973,46 @@ async function completeTask(call, team) {
 test('successful native member task mutations persist their revision before the next model operation', async t => {
   let h
   const observed = []
-  h = await teamHarness(t, { onMember: async (call, team) => {
-    for (const action of ['claim', 'complete']) {
-      const result = await team.capture(call, { task_id: team.task.id, expected_revision: team.task.revision, action }, 'team_task_update')
-      assert.equal(result.isError, false, 'native task CAS must actually succeed')
-      const current = (await records(h)).find(record => record.state === 'running')
-      observed.push({ action, nativeRevision: team.task.revision, canonicalRevision: current.teamStage.taskRevision,
-        resultRevision: current.teamStage.effects.findLast(effect => effect.kind === 'task-update').resultTaskRevision })
+  h = await teamHarness(t, {
+    onMember: async (call, team) => {
+      for (const action of ['claim', 'complete']) {
+        const result = await team.capture(call, { task_id: team.task.id, expected_revision: team.task.revision, action }, 'team_task_update')
+        assert.equal(result.isError, false, 'native task CAS must actually succeed')
+        const current = (await records(h)).find(record => record.state === 'running')
+        observed.push({
+          action,
+          nativeRevision: team.task.revision,
+          canonicalRevision: current.teamStage.taskRevision,
+          resultRevision: current.teamStage.effects.findLast(effect => effect.kind === 'task-update').resultTaskRevision
+        })
+      }
+      await team.capture(call, { answer: 42 })
+      call.finish({ kind: 'completed' }, '')
     }
-    await team.capture(call, { answer: 42 })
-    call.finish({ kind: 'completed' }, '')
-  } })
+  })
   const { record } = await h.start()
   assert.equal(record.state, 'succeeded')
   assert.deepEqual(observed, [
     { action: 'claim', nativeRevision: 2, canonicalRevision: 2, resultRevision: 2 },
-    { action: 'complete', nativeRevision: 3, canonicalRevision: 3, resultRevision: 3 },
+    { action: 'complete', nativeRevision: 3, canonicalRevision: 3, resultRevision: 3 }
   ])
 })
 
 for (const fault of ['foreign-id', 'revision-gap', 'wrong-status']) {
   test(`native member task result ${fault} cannot advance canonical revision or claim a known effect`, async t => {
-    const h = await teamHarness(t, { onMember: async (call, team) => {
-      await team.capture(call, { task_id: team.task.id, expected_revision: team.task.revision, action: 'claim' }, 'team_task_update')
-      call.finish({ kind: 'completed' }, '')
-    } })
+    const h = await teamHarness(t, {
+      onMember: async (call, team) => {
+        await team.capture(call, { task_id: team.task.id, expected_revision: team.task.revision, action: 'claim' }, 'team_task_update')
+        call.finish({ kind: 'completed' }, '')
+      }
+    })
     const update = h.team.updateTask.bind(h.team)
     h.team.updateTask = async (...args) => {
       const value = await update(...args)
-      return { ...value, ...(fault === 'foreign-id' ? { id: 'foreign-task' }
-        : fault === 'revision-gap' ? { revision: value.revision + 1 } : { status: 'completed' }) }
+      return {
+        ...value,
+        ...(fault === 'foreign-id' ? { id: 'foreign-task' } : fault === 'revision-gap' ? { revision: value.revision + 1 } : { status: 'completed' })
+      }
     }
     const { record } = await h.start()
     noGraphSuccess(record)
@@ -825,8 +1050,10 @@ test('native provider registration after plugin apply unlocks only a new valid s
   assert.equal((await records(h)).find(run => run.runId === admitted.runId).state, 'succeeded')
 })
 
-for (const badProvider of [{ name: 'spawn', inheritsParentContext: false },
-  { name: 'spawn', inheritsParentContext: true, prepareContinuable() {} }]) {
+for (const badProvider of [
+  { name: 'spawn', inheritsParentContext: false },
+  { name: 'spawn', inheritsParentContext: true, prepareContinuable() {} }
+]) {
   test(`native fresh admission rejects ${badProvider.prepareContinuable ? 'fork-context provider' : 'one-shot-only provider'} before any Run/effect`, async t => {
     const h = await teamHarness(t)
     h.providerMap.set('spawn', badProvider)
@@ -894,13 +1121,22 @@ for (const fault of ['create', 'spawn']) {
 
 for (const variant of ['prose', 'invalid', 'provider-error', 'aborted', 'no-end']) {
   test(`member ${variant} cannot satisfy native capture/completed-turn policy`, async t => {
-    const h = await teamHarness(t, { onMember: async (call, team) => {
-      if (variant === 'invalid') await team.capture(call, { answer: 'wrong type' })
-      else if (['provider-error', 'aborted', 'no-end'].includes(variant)) await team.capture(call, { answer: 42 })
-      if (variant === 'no-end') call.quiesceWithoutEnd()
-      else call.finish(variant === 'provider-error' ? { kind: 'error', error: { code: 'UNKNOWN', message: 'RAW_PROVIDER_SECRET_SENTINEL' } }
-        : variant === 'aborted' ? { kind: 'aborted', reason: { kind: 'parent' } } : { kind: 'completed' }, variant === 'prose' ? '{"answer":42}' : '')
-    } })
+    const h = await teamHarness(t, {
+      onMember: async (call, team) => {
+        if (variant === 'invalid') await team.capture(call, { answer: 'wrong type' })
+        else if (['provider-error', 'aborted', 'no-end'].includes(variant)) await team.capture(call, { answer: 42 })
+        if (variant === 'no-end') call.quiesceWithoutEnd()
+        else
+          call.finish(
+            variant === 'provider-error'
+              ? { kind: 'error', error: { code: 'UNKNOWN', message: 'RAW_PROVIDER_SECRET_SENTINEL' } }
+              : variant === 'aborted'
+                ? { kind: 'aborted', reason: { kind: 'parent' } }
+                : { kind: 'completed' },
+            variant === 'prose' ? '{"answer":42}' : ''
+          )
+      }
+    })
     const { refusal, record } = await h.start()
     assert.equal(refusal, undefined)
     noGraphSuccess(record)
@@ -913,12 +1149,14 @@ for (const variant of ['prose', 'invalid', 'provider-error', 'aborted', 'no-end'
 }
 
 test('a denied out-of-policy business tool never executes and cannot be hidden by later valid capture', async t => {
-  const h = await teamHarness(t, { onMember: async (call, team) => {
-    const denied = await team.capture(call, {}, 'write_other')
-    assert.equal(denied.isError, true)
-    await team.capture(call, { answer: 42 })
-    call.finish({ kind: 'completed' }, '')
-  } })
+  const h = await teamHarness(t, {
+    onMember: async (call, team) => {
+      const denied = await team.capture(call, {}, 'write_other')
+      assert.equal(denied.isError, true)
+      await team.capture(call, { answer: 42 })
+      call.finish({ kind: 'completed' }, '')
+    }
+  })
   const { refusal, record } = await h.start()
   assert.equal(refusal, undefined)
   noGraphSuccess(record)
@@ -927,16 +1165,27 @@ test('a denied out-of-policy business tool never executes and cannot be hidden b
 })
 
 test('scope-local registration and prepended pre-execute cannot widen member permissions', async t => {
-  const h = await teamHarness(t, { onMember: async (call, team) => {
-    let invoked = false
-    call.agent.ctx.tools.register({ name: 'new_business', description: 'policy adversary', parameters: { type: 'object' },
-      output: { schema: { type: 'object' }, render: () => [] }, async execute() { invoked = true; return {} } })
-    call.agent.ctx.on('tools/pre-execute', async () => ({ kind: 'allow' }), true)
-    const denied = await team.capture(call, {}, 'new_business')
-    assert.equal(denied.isError, true)
-    assert.equal(invoked, false, 'monotonic scoped guard remains authoritative')
-    await team.capture(call, { answer: 42 }); call.finish({ kind: 'completed' }, '')
-  } })
+  const h = await teamHarness(t, {
+    onMember: async (call, team) => {
+      let invoked = false
+      call.agent.ctx.tools.register({
+        name: 'new_business',
+        description: 'policy adversary',
+        parameters: { type: 'object' },
+        output: { schema: { type: 'object' }, render: () => [] },
+        async execute() {
+          invoked = true
+          return {}
+        }
+      })
+      call.agent.ctx.on('tools/pre-execute', async () => ({ kind: 'allow' }), true)
+      const denied = await team.capture(call, {}, 'new_business')
+      assert.equal(denied.isError, true)
+      assert.equal(invoked, false, 'monotonic scoped guard remains authoritative')
+      await team.capture(call, { answer: 42 })
+      call.finish({ kind: 'completed' }, '')
+    }
+  })
   const { record } = await h.start()
   noGraphSuccess(record)
   assert.equal(record.attempts.find(a => a.nodeId === 'work').result.outcome.kind, 'teamstage-tool-not-permitted')
@@ -946,24 +1195,32 @@ for (const denyParent of [false, true]) {
   test(`PTC nested native capture ${denyParent ? 'outer rejected' : 'outer authoritative success'} uses actual root-call provenance`, async t => {
     let nestedRan = false
     let outerResult
-    const h = await teamHarness(t, { mode: 'both', ptcRun: async request => {
-      assert.equal(request.cwd, h.rootDir, 'native PTC receives the owned fixture working directory')
-      await request.bindings.find(binding => binding.global === 'tools').functions.structured_output({ answer: 42 })
-      nestedRan = true
-      return { logs: [], value: 'submitted' }
-    }, onMember: async (call, team) => {
-      await completeTask(call, team)
-      outerResult = await team.capture(call, { description: 'structured native result', code: 'return tools.structured_output({answer:42})' }, 'run_code')
-      call.finish({ kind: 'completed' }, '')
-    } })
-    if (denyParent) h.ctx.on('tools/post-execute', exec => exec.name === 'run_code'
-      ? { kind: 'block', feedback: [{ type: 'text', text: 'PTC_OUTER_REJECTED' }] } : { kind: 'accept' })
+    const h = await teamHarness(t, {
+      mode: 'both',
+      ptcRun: async request => {
+        assert.equal(request.cwd, h.rootDir, 'native PTC receives the owned fixture working directory')
+        await request.bindings.find(binding => binding.global === 'tools').functions.structured_output({ answer: 42 })
+        nestedRan = true
+        return { logs: [], value: 'submitted' }
+      },
+      onMember: async (call, team) => {
+        await completeTask(call, team)
+        outerResult = await team.capture(call, { description: 'structured native result', code: 'return tools.structured_output({answer:42})' }, 'run_code')
+        call.finish({ kind: 'completed' }, '')
+      }
+    })
+    if (denyParent)
+      h.ctx.on('tools/post-execute', exec =>
+        exec.name === 'run_code' ? { kind: 'block', feedback: [{ type: 'text', text: 'PTC_OUTER_REJECTED' }] } : { kind: 'accept' }
+      )
     const { refusal, record } = await h.start()
     assert.equal(refusal, undefined)
     assert.equal(outerResult.isError, denyParent, JSON.stringify(outerResult.content))
     assert.equal(nestedRan, true, 'actual SDK structured sub-dispatch ran')
-    if (denyParent) { noGraphSuccess(record); assert.equal(record.teamStage.captures, undefined) }
-    else {
+    if (denyParent) {
+      noGraphSuccess(record)
+      assert.equal(record.teamStage.captures, undefined)
+    } else {
       assert.equal(record.state, 'succeeded')
       const evidence = record.teamStage.captures[0].evidence
       const events = h.team.pendingPrompts[0].agent.session.snapshotEvents()
@@ -983,12 +1240,15 @@ for (const denyParent of [false, true]) {
 }
 
 test('all members must agree on verified values, primary arrival alone never succeeds', async t => {
-  const h = await teamHarness(t, { count: 2, onMember: async (call, team) => {
-    const row = team.roster.find(row => row.id === call.agent.id)
-    if (row.logical === 'producer') await completeTask(call, team)
-    await team.capture(call, { answer: row.logical === 'producer' ? 42 : 7 })
-    call.finish({ kind: 'completed' }, '')
-  } })
+  const h = await teamHarness(t, {
+    count: 2,
+    onMember: async (call, team) => {
+      const row = team.roster.find(row => row.id === call.agent.id)
+      if (row.logical === 'producer') await completeTask(call, team)
+      await team.capture(call, { answer: row.logical === 'producer' ? 42 : 7 })
+      call.finish({ kind: 'completed' }, '')
+    }
+  })
   const { record } = await h.start()
   noGraphSuccess(record)
   assert.equal(record.teamStage.captures.length, 2, 'both real host fixture captures exist before agreement rejects')
@@ -1028,7 +1288,10 @@ test('Team preparation snapshots shared Skill exactly once for all members and m
   value.resources.shared = { kind: 'skill', source: { kind: 'shared', rootId: 'isolated', path: 'shared-review' } }
   value.graph.nodes[0].skillRefs = ['shared']
   let reads = 0
-  const snapshots = new RuntimeSnapshots(h.runtimeRoot, () => { reads++; return [{ rootId: 'isolated', rootPath: skillRoot }] })
+  const snapshots = new RuntimeSnapshots(h.runtimeRoot, () => {
+    reads++
+    return [{ rootId: 'isolated', rootPath: skillRoot }]
+  })
   await snapshots.freezePackage('isolated-run', value, h.rootDir)
   const prepared = await snapshots.prepareTeam('isolated-run', value, value.graph.nodes[0])
   assert.equal(reads, 1)
@@ -1063,17 +1326,21 @@ test('source scoped capability does not substitute for absent native tools on th
 })
 
 test('native Team message uses the actual registered peer and a durable member-owned effect', async t => {
-  const h = await teamHarness(t, { count: 2, onMember: async (call, team) => {
-    const row = team.roster.find(row => row.id === call.agent.id)
-    if (row.logical === 'producer') {
-      const peer = team.roster.find(row => row.logical !== 'producer')
-      assert.ok(peer)
-      const result = await team.capture(call, { target: peer.name, message: 'agreed answer is 42' }, 'send_message')
-      assert.equal(result.isError, false)
-      await completeTask(call, team)
+  const h = await teamHarness(t, {
+    count: 2,
+    onMember: async (call, team) => {
+      const row = team.roster.find(row => row.id === call.agent.id)
+      if (row.logical === 'producer') {
+        const peer = team.roster.find(row => row.logical !== 'producer')
+        assert.ok(peer)
+        const result = await team.capture(call, { target: peer.name, message: 'agreed answer is 42' }, 'send_message')
+        assert.equal(result.isError, false)
+        await completeTask(call, team)
+      }
+      await team.capture(call, { answer: 42 })
+      call.finish({ kind: 'completed' }, '')
     }
-    await team.capture(call, { answer: 42 }); call.finish({ kind: 'completed' }, '')
-  } })
+  })
   const { record } = await h.start()
   assert.equal(record.state, 'succeeded')
   assert.equal(h.team.calls.filter(c => c === 'message').length, 1)
@@ -1086,31 +1353,38 @@ test('native Team message uses the actual registered peer and a durable member-o
 })
 
 test('native member mutation error after dispatch remains canonical unknown, never ordinary failed/replayed', async t => {
-  const h = await teamHarness(t, { onMember: async (call, team) => {
-    const result = await team.capture(call, { task_id: team.task.id, expected_revision: team.task.revision, action: 'claim' }, 'team_task_update')
-    assert.equal(result.isError, true)
-    call.finish({ kind: 'completed' }, '')
-  } })
-  h.team.updateTask = async () => { throw new Error('ambiguous native append before flush') }
+  const h = await teamHarness(t, {
+    onMember: async (call, team) => {
+      const result = await team.capture(call, { task_id: team.task.id, expected_revision: team.task.revision, action: 'claim' }, 'team_task_update')
+      assert.equal(result.isError, true)
+      call.finish({ kind: 'completed' }, '')
+    }
+  })
+  h.team.updateTask = async () => {
+    throw new Error('ambiguous native append before flush')
+  }
   const { record, startArgs } = await h.start()
   noGraphSuccess(record)
   assert.equal(record.state, 'recovery_required')
   assert.ok(record.teamStage.effects.some(effect => effect.kind === 'task-update' && effect.state === 'recovery_required'))
   const calls = [...h.team.calls]
-  await h.service.startSessionRun(startArgs); await drain(h)
+  await h.service.startSessionRun(startArgs)
+  await drain(h)
   assert.deepEqual(h.team.calls, calls)
 })
 
 test('cancelled production Team capture never becomes accepted, and source Lead is untouched', async t => {
   let h
-  h = await teamHarness(t, { onMember: async (call, team) => {
-    const active = (await records(h)).find(record => record.state === 'running')
-    assert.ok(active)
-    await h.service.cancelRun({ runId: active.runId })
-    const result = await team.capture(call, { answer: 42 })
-    assert.equal(result.isError, true, 'aborted stage scope blocks late capture')
-    call.finish({ kind: 'aborted', reason: { kind: 'parent' } }, '')
-  } })
+  h = await teamHarness(t, {
+    onMember: async (call, team) => {
+      const active = (await records(h)).find(record => record.state === 'running')
+      assert.ok(active)
+      await h.service.cancelRun({ runId: active.runId })
+      const result = await team.capture(call, { answer: 42 })
+      assert.equal(result.isError, true, 'aborted stage scope blocks late capture')
+      call.finish({ kind: 'aborted', reason: { kind: 'parent' } }, '')
+    }
+  })
   const { record } = await h.start()
   noGraphSuccess(record)
   assert.equal(record.state, 'recovery_required', 'complete owned drain/task cancel belongs to W2.7.3')
@@ -1121,14 +1395,19 @@ test('cancelled production Team capture never becomes accepted, and source Lead 
 
 test('unknown member mutation immediately stops further native dispatch in the same model turn', async t => {
   let nativeInvocations = 0
-  const h = await teamHarness(t, { onMember: async (call, team) => {
-    for (let i = 0; i < 2; i++) {
-      const result = await team.capture(call, { task_id: team.task.id, expected_revision: team.task.revision, action: 'claim' }, 'team_task_update')
-      assert.equal(result.isError, true)
+  const h = await teamHarness(t, {
+    onMember: async (call, team) => {
+      for (let i = 0; i < 2; i++) {
+        const result = await team.capture(call, { task_id: team.task.id, expected_revision: team.task.revision, action: 'claim' }, 'team_task_update')
+        assert.equal(result.isError, true)
+      }
+      call.finish({ kind: 'completed' }, '')
     }
-    call.finish({ kind: 'completed' }, '')
-  } })
-  h.team.updateTask = async () => { nativeInvocations++; throw new Error('native append/flush rejected ambiguously') }
+  })
+  h.team.updateTask = async () => {
+    nativeInvocations++
+    throw new Error('native append/flush rejected ambiguously')
+  }
   const { record } = await h.start()
   assert.equal(nativeInvocations, 1, 'unknown external mutation must not be attempted again, even inside the original turn')
   noGraphSuccess(record)
@@ -1140,7 +1419,10 @@ test('public native SpawnTeammateResult member wrapper preserves exact child/nam
   const h = await teamHarness(t)
   const spawn = h.team.spawnTeammate.bind(h.team)
   let returned
-  h.team.spawnTeammate = async (...args) => { returned = await spawn(...args); return returned }
+  h.team.spawnTeammate = async (...args) => {
+    returned = await spawn(...args)
+    return returned
+  }
   const { refusal, record } = await h.start()
   assert.equal(refusal, undefined)
   assert.deepEqual(Object.keys(returned), ['member'], 'public native API wraps the TeamMemberView')
@@ -1158,7 +1440,7 @@ for (const [kind, corrupt] of [
   ['missing member', () => ({})],
   ['array member', () => ({ member: [] })],
   ['foreign child', result => ({ member: { ...result.member, id: SessionId(randomUUID()) } })],
-  ['foreign native name', result => ({ member: { ...result.member, name: `bp-${randomUUID()}` } })],
+  ['foreign native name', result => ({ member: { ...result.member, name: `bp-${randomUUID()}` } })]
 ]) {
   test(`public native SpawnTeammateResult rejects ${kind} without weakening exact identity or replaying spawn`, async t => {
     const h = await teamHarness(t)
@@ -1174,7 +1456,8 @@ for (const [kind, corrupt] of [
     assert.equal(record.log.at(-1).detail.reason, 'teamstage-member-identity-unavailable')
     assert.equal(record.teamStage.captures, undefined)
     const calls = [...h.team.calls]
-    await h.service.startSessionRun(startArgs); await drain(h)
+    await h.service.startSessionRun(startArgs)
+    await drain(h)
     assert.deepEqual(h.team.calls, calls, 'replay never creates a replacement native child')
   })
 }

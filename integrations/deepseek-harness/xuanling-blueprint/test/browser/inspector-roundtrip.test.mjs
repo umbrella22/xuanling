@@ -8,27 +8,54 @@ import { GraphEditor } from '../../src/client/graph-editor.ts'
 import { decodeDefinition } from '../../src/definition/codec.ts'
 import { validateDefinition } from '../../src/definition/validator.ts'
 import { en, zh } from '../../src/client/locales.ts'
-import { NodeInspector, InspectorSession, renderNodeInspector, parseInspectorJson, applyInspectorPatch, referenceMembership } from '../../src/client/inspector.ts'
+import {
+  NodeInspector,
+  InspectorSession,
+  renderNodeInspector,
+  parseInspectorJson,
+  applyInspectorPatch,
+  referenceMembership
+} from '../../src/client/inspector.ts'
 
 const definition = {
-  schemaVersion: 1, id: 'Inspector_Roundtrip', name: '用户蓝图 / never translated',
+  schemaVersion: 1,
+  id: 'Inspector_Roundtrip',
+  name: '用户蓝图 / never translated',
   resources: {
     Agent_A1: { kind: 'agent', path: 'agents/first.md' },
     Agent_B2: { kind: 'agent', path: 'agents/second.md' },
     Skill_A1: { kind: 'skill', source: { kind: 'shared', rootId: 'shared-root', path: '中文 path / SKILL.md' } },
     Skill_B2: { kind: 'skill', path: 'skills/second/SKILL.md' },
-    MCP_A1: { kind: 'mcp', bindingId: 'Scope_A1' }, MCP_B2: { kind: 'mcp', bindingId: 'Scope_B2' },
-    Schema_A1: { kind: 'schema', path: 'schemas/a.json' }, Schema_B2: { kind: 'schema', path: 'schemas/b.json' },
-    Prompt_A1: { kind: 'prompt', path: 'prompts/user.md' },
+    MCP_A1: { kind: 'mcp', bindingId: 'Scope_A1' },
+    MCP_B2: { kind: 'mcp', bindingId: 'Scope_B2' },
+    Schema_A1: { kind: 'schema', path: 'schemas/a.json' },
+    Schema_B2: { kind: 'schema', path: 'schemas/b.json' },
+    Prompt_A1: { kind: 'prompt', path: 'prompts/user.md' }
   },
-  graph: { nodes: [{ id: 'task', kind: 'agentTask', agentRef: 'Agent_A1', skillRefs: ['Skill_A1'], toolsetRefs: ['MCP_A1'], outputSchemaRef: 'Schema_A1',
-    inputs: { '用户.port [中文] / %': '用户 wire type / exact', ' spaced ': 'string' },
-    outputs: { 'result.part': 'string' }, branches: ['Branch_A1', 'Branch_B2'], budget: { maxIterations: 17, maxDurationMs: 42000 },
-  }], edges: [] },
+  graph: {
+    nodes: [
+      {
+        id: 'task',
+        kind: 'agentTask',
+        agentRef: 'Agent_A1',
+        skillRefs: ['Skill_A1'],
+        toolsetRefs: ['MCP_A1'],
+        outputSchemaRef: 'Schema_A1',
+        inputs: { '用户.port [中文] / %': '用户 wire type / exact', ' spaced ': 'string' },
+        outputs: { 'result.part': 'string' },
+        branches: ['Branch_A1', 'Branch_B2'],
+        budget: { maxIterations: 17, maxDurationMs: 42000 }
+      }
+    ],
+    edges: []
+  },
   presentation: { nodes: { task: { x: -42.125, y: 90.25 } } },
-  metadata: { retained: ['中文 Prompt 在资源内容中，不是 node 字段', { b: 2, a: 1 }] },
+  metadata: { retained: ['中文 Prompt 在资源内容中，不是 node 字段', { b: 2, a: 1 }] }
 }
-const t = language => (key, params = {}) => (language === 'zh' ? zh : en)[key]?.replace(/\{(\w+)\}/g, (_, name) => String(params[name])) ?? key
+const t =
+  language =>
+  (key, params = {}) =>
+    (language === 'zh' ? zh : en)[key]?.replace(/\{(\w+)\}/g, (_, name) => String(params[name])) ?? key
 function fixture() {
   const editor = GraphEditor.fromDefinition(definition)
   const session = new InspectorSession(editor, 'task')
@@ -65,13 +92,15 @@ function retained(actual) {
 }
 
 test('C-04 fixture and unmodified Inspector definition roundtrip through the real Host decoder and validator', t => {
-  const f = fixture(); t.after(f.off)
+  const f = fixture()
+  t.after(f.off)
   retained(hostRoundtrip(f.editor))
   assert.equal(f.editor.canUndo, false)
 })
 
 test('C-04 NodeInspector uses actual React props/hooks, legal structured fields and collapsed stable advanced hooks', t => {
-  const f = fixture(); t.after(f.off)
+  const f = fixture()
+  t.after(f.off)
   const props = f.props('en')
   const html = renderToStaticMarkup(React.createElement(NodeInspector, props))
   assert.ok(html.includes('data-bp-json-editor="true"'))
@@ -90,12 +119,16 @@ test('C-04 NodeInspector uses actual React props/hooks, legal structured fields 
     assert.equal(typeof input.props.onBlur, 'function')
   }
   assert.equal(typeof find(tree, 'data-bp-action', 'apply-node-options').props.onClick, 'function')
-  assert.equal(elements(tree).some(item => ['name', 'prompt'].includes(item.props['data-bp-field'])), false)
+  assert.equal(
+    elements(tree).some(item => ['name', 'prompt'].includes(item.props['data-bp-field'])),
+    false
+  )
   assert.equal(f.editor.canUndo, false)
 })
 
 test('C-04 Agent/output schema React select handlers patch only their field and retain imported branches/budget', t => {
-  const f = fixture(); t.after(f.off)
+  const f = fixture()
+  t.after(f.off)
   find(f.render(), 'data-bp-field', 'agentRef').props.onChange(event('Agent_B2'))
   find(f.render(), 'data-bp-field', 'outputSchemaRef').props.onChange(event('Schema_B2'))
   const result = hostRoundtrip(f.editor)
@@ -106,13 +139,18 @@ test('C-04 Agent/output schema React select handlers patch only their field and 
 })
 
 test('C-04 Skill/MCP declaration checkbox handlers preserve exact refs and array order, without probes', t => {
-  const f = fixture(); t.after(f.off)
-  for (const [field, ref] of [['skillRefs', 'Skill_B2'], ['toolsetRefs', 'MCP_B2']]) {
+  const f = fixture()
+  t.after(f.off)
+  for (const [field, ref] of [
+    ['skillRefs', 'Skill_B2'],
+    ['toolsetRefs', 'MCP_B2']
+  ]) {
     const checkbox = find(f.render(), 'data-bp-field', field, item => item.props['data-bp-ref'] === ref)
     assert.equal(checkbox.props.type, 'checkbox')
     checkbox.props.onChange({ currentTarget: { checked: true } })
   }
-  let result = hostRoundtrip(f.editor); retained(result)
+  let result = hostRoundtrip(f.editor)
+  retained(result)
   assert.deepEqual(result.graph.nodes[0].skillRefs, ['Skill_A1', 'Skill_B2'])
   assert.deepEqual(result.graph.nodes[0].toolsetRefs, ['MCP_A1', 'MCP_B2'])
   const before = JSON.stringify(f.editor.exportDefinition())
@@ -123,7 +161,8 @@ test('C-04 Skill/MCP declaration checkbox handlers preserve exact refs and array
 })
 
 test('C-04 structured port rows preserve awkward legal keys/types and never normalize identity', t => {
-  const f = fixture(); t.after(f.off)
+  const f = fixture()
+  t.after(f.off)
   find(f.render(), 'data-bp-field', 'inputs.name').props.onChange(event('  renamed.part [中文] / %  '))
   find(f.render(), 'data-bp-field', 'inputs.type').props.onChange(event(' exact custom/type [中文] '))
   assert.deepEqual(f.editor.exportDefinition().graph.nodes[0].inputs, definition.graph.nodes[0].inputs, 'unfinished rows do not mutate the graph')
@@ -139,7 +178,8 @@ test('C-04 structured port rows preserve awkward legal keys/types and never norm
 })
 
 test('C-04 advanced input/output JSON handles awkward valid ports and applies only the targeted field', t => {
-  const f = fixture(); t.after(f.off)
+  const f = fixture()
+  t.after(f.off)
   const ports = { 'awkward.port [中文]': ' raw:type / 中文 ', '': 'string' }
   for (const field of ['inputs', 'outputs']) {
     const textarea = find(f.render(), 'data-bp-json', field)
@@ -152,7 +192,8 @@ test('C-04 advanced input/output JSON handles awkward valid ports and applies on
 })
 
 test('C-04 malformed JSON and invalid field shapes retain definition/history and unfinished text, with stable non-raw errors', t => {
-  const f = fixture(); t.after(f.off)
+  const f = fixture()
+  t.after(f.off)
   const before = JSON.stringify(f.editor.exportDefinition())
   for (const [field, text, expectedKey] of [
     ['inputs', '{raw /private/secret', 'inspector.invalidJsonRetained'],
@@ -162,7 +203,7 @@ test('C-04 malformed JSON and invalid field shapes retain definition/history and
     ['options', JSON.stringify({ id: 'task', kind: 'agentTask', budget: { maxIterations: 'wrong', maxDurationMs: 12 } }), 'inspector.invalidJson'],
     ['options', JSON.stringify({ id: 'other', kind: 'agentTask' }), 'inspector.identityNotOption'],
     ['options', JSON.stringify({ id: 'task', kind: 'agentTask', name: 'unsupported node name' }), 'inspector.invalidJson'],
-    ['options', JSON.stringify({ id: 'task', kind: 'agentTask', prompt: 'unsupported prompt' }), 'inspector.invalidJson'],
+    ['options', JSON.stringify({ id: 'task', kind: 'agentTask', prompt: 'unsupported prompt' }), 'inspector.invalidJson']
   ]) {
     const area = find(f.render(), 'data-bp-json', field)
     area.props.onChange(text)
@@ -176,7 +217,8 @@ test('C-04 malformed JSON and invalid field shapes retain definition/history and
 })
 
 test('C-04 duplicate structured port names reject atomically and keep unfinished rows', t => {
-  const f = fixture(); t.after(f.off)
+  const f = fixture()
+  t.after(f.off)
   const before = JSON.stringify(f.editor.exportDefinition())
   find(f.render(), 'data-bp-field', 'inputs.name').props.onChange(event(' spaced '))
   find(f.render(), 'data-bp-action', 'apply-input-ports').props.onClick()
@@ -187,7 +229,8 @@ test('C-04 duplicate structured port names reject atomically and keep unfinished
 })
 
 test('C-04 options onBlur and explicit Apply are compatible without duplicate history; omitted imported fields stay intact', t => {
-  const f = fixture(); t.after(f.off)
+  const f = fixture()
+  t.after(f.off)
   const before = JSON.stringify(f.editor.exportDefinition())
   const text = JSON.stringify({ id: 'task', kind: 'agentTask', outputs: { 'new.port / 中文': 'string' } })
   find(f.render(), 'data-bp-json', 'options').props.onChange(text)
@@ -202,7 +245,8 @@ test('C-04 options onBlur and explicit Apply are compatible without duplicate hi
 })
 
 test('C-04 unfinished full options JSON patches only fields edited relative to its base, preserving newer structured edits', t => {
-  const f = fixture(); t.after(f.off)
+  const f = fixture()
+  t.after(f.off)
   const candidate = { ...f.editor.exportDefinition().graph.nodes[0], outputs: { 'edited.port': 'string' } }
   find(f.render(), 'data-bp-json', 'options').props.onChange(JSON.stringify(candidate))
   find(f.render(), 'data-bp-field', 'agentRef').props.onChange(event('Agent_B2'))
@@ -214,14 +258,17 @@ test('C-04 unfinished full options JSON patches only fields edited relative to i
 })
 
 test('C-02/C-04 zh/en view updates preserve ALL unfinished JSON/port buffers, keys, definition, history and selection', t => {
-  const f = fixture(); t.after(f.off)
+  const f = fixture()
+  t.after(f.off)
   f.editor.setSelection(['task'])
   for (const field of ['inputs', 'outputs', 'options']) find(f.render(), 'data-bp-json', field).props.onChange(`{ unfinished ${field} / 中文`)
   find(f.render(), 'data-bp-field', 'inputs.name').props.onChange(event(' pending 用户.port '))
   find(f.render(), 'data-bp-field', 'outputs.type').props.onChange(event(' unfinished / 用户.type '))
   const snapshot = f.session.getSnapshot()
   const bytes = JSON.stringify(f.editor.exportDefinition())
-  const keys = elements(f.render()).filter(item => item.props['data-bp-json']).map(item => item.key)
+  const keys = elements(f.render())
+    .filter(item => item.props['data-bp-json'])
+    .map(item => item.key)
   for (const language of ['zh', 'en', 'zh']) {
     const tree = f.render(language)
     const html = renderToStaticMarkup(tree)
@@ -230,7 +277,12 @@ test('C-02/C-04 zh/en view updates preserve ALL unfinished JSON/port buffers, ke
     assert.equal(f.session.getSnapshot(), snapshot, 'translation does not reset buffers or session snapshot')
     assert.equal(find(tree, 'data-bp-json', 'options').props.value, '{ unfinished options / 中文')
     assert.equal(find(tree, 'data-bp-field', 'inputs.name').props.value, ' pending 用户.port ')
-    assert.deepEqual(elements(tree).filter(item => item.props['data-bp-json']).map(item => item.key), keys)
+    assert.deepEqual(
+      elements(tree)
+        .filter(item => item.props['data-bp-json'])
+        .map(item => item.key),
+      keys
+    )
     assert.equal(JSON.stringify(f.editor.exportDefinition()), bytes)
     assert.deepEqual([...f.editor.selection], ['task'])
     assert.equal(f.editor.canUndo, false)
@@ -239,7 +291,8 @@ test('C-02/C-04 zh/en view updates preserve ALL unfinished JSON/port buffers, ke
 })
 
 test('C-04 pristine buffers follow Undo/Redo; external updates do not discard an unfinished alternative buffer', t => {
-  const f = fixture(); t.after(f.off)
+  const f = fixture()
+  t.after(f.off)
   find(f.render(), 'data-bp-field', 'agentRef').props.onChange(event('Agent_B2'))
   assert.equal(JSON.parse(f.session.getSnapshot().json.options).agentRef, 'Agent_B2')
   find(f.render(), 'data-bp-json', 'inputs').props.onChange('{ unfinished')
@@ -252,7 +305,8 @@ test('C-04 pristine buffers follow Undo/Redo; external updates do not discard an
 })
 
 test('C-04 optional schema can be cleared without an empty invalid ref; equivalent patches never add history', t => {
-  const f = fixture(); t.after(f.off)
+  const f = fixture()
+  t.after(f.off)
   find(f.render(), 'data-bp-field', 'outputSchemaRef').props.onChange(event(''))
   assert.equal(Object.hasOwn(hostRoundtrip(f.editor).graph.nodes[0], 'outputSchemaRef'), false)
   f.editor.undo()
@@ -269,7 +323,7 @@ test('C-04 imported condition/iteration/subflow options roundtrip without recons
   imported.graph.nodes.push(
     { id: 'condition', kind: 'condition', branches: ['Approved_A1', 'Rejected_B2'], outputs: { '分支.port': 'string' } },
     { id: 'iteration', kind: 'iteration', budget: { maxIterations: 5, maxDurationMs: 54000 }, outputs: { 'loop.port': 'string' } },
-    { id: 'subflow', kind: 'subflow', subflowRef: 'Subflow_A1', outputs: { 'sub.port': 'string' } },
+    { id: 'subflow', kind: 'subflow', subflowRef: 'Subflow_A1', outputs: { 'sub.port': 'string' } }
   )
   const editor = GraphEditor.fromDefinition(imported)
   for (const id of ['condition', 'iteration', 'subflow']) {
@@ -283,18 +337,23 @@ test('C-04 imported condition/iteration/subflow options roundtrip without recons
 })
 
 test('C-04 declaration shape preflight is not Host validation: dangling refs still fail the Host oracle', t => {
-  const f = fixture(); t.after(f.off)
+  const f = fixture()
+  t.after(f.off)
   const parsed = parseInspectorJson(f.node(), 'options', '{"id":"task","kind":"agentTask","agentRef":"Missing_Agent"}')
   assert.equal(parsed.ok, true, 'JSON/field shape is local, reference semantics remain Host-owned')
   assert.equal(applyInspectorPatch(f.editor, 'task', parsed.patch).ok, true)
-  assert.throws(() => hostRoundtrip(f.editor), error => error.issues.some(issue => issue.code === 'dangling-ref'))
+  assert.throws(
+    () => hostRoundtrip(f.editor),
+    error => error.issues.some(issue => issue.code === 'dangling-ref')
+  )
   assert.equal(find(f.render(), 'data-bp-field', 'agentRef').props.value, 'Missing_Agent', 'display never silently replaces an unresolved declaration')
 })
 
 // Host's current Zod record codec drops this key. Do not normalize the client
 // declaration to work around that separate Host boundary (outside W3.2).
 test('C-04 prototype-looking port keys remain own client data; Host codec behavior is explicit', t => {
-  const f = fixture(); t.after(f.off)
+  const f = fixture()
+  t.after(f.off)
   const text = '{"__proto__":"string","constructor":"string","中文.port":"wire / exact"}'
   find(f.render(), 'data-bp-json', 'outputs').props.onChange(text)
   find(f.render(), 'data-bp-json', 'outputs').props.onBlur(event(text))
@@ -308,13 +367,15 @@ test('C-04 prototype-looking port keys remain own client data; Host codec behavi
 })
 
 test('C-02/C-04 locale updates preserve dirty saved semantics, selection and nonempty Undo/Redo stacks', t => {
-  const f = fixture(); t.after(f.off)
+  const f = fixture()
+  t.after(f.off)
   const baseline = hostRoundtrip(f.editor)
   find(f.render(), 'data-bp-field', 'agentRef').props.onChange(event('Agent_B2'))
   find(f.render(), 'data-bp-field', 'outputSchemaRef').props.onChange(event('Schema_B2'))
   f.editor.undo()
   f.editor.setSelection(['task'])
-  assert.equal(f.editor.canUndo, true); assert.equal(f.editor.canRedo, true)
+  assert.equal(f.editor.canUndo, true)
+  assert.equal(f.editor.canRedo, true)
   for (const field of ['inputs', 'outputs', 'options']) find(f.render(), 'data-bp-json', field).props.onChange(`unfinished ${field}`)
   const before = JSON.stringify(f.editor.exportDefinition())
   const snapshot = f.session.getSnapshot()
@@ -323,18 +384,21 @@ test('C-02/C-04 locale updates preserve dirty saved semantics, selection and non
     assert.equal(f.session.getSnapshot(), snapshot)
     assert.equal(JSON.stringify(f.editor.exportDefinition()), before)
     assert.deepEqual([...f.editor.selection], ['task'])
-    assert.equal(f.editor.canUndo, true); assert.equal(f.editor.canRedo, true)
+    assert.equal(f.editor.canUndo, true)
+    assert.equal(f.editor.canRedo, true)
     for (const field of ['inputs', 'outputs', 'options']) assert.equal(find(tree, 'data-bp-json', field).props.value, `unfinished ${field}`)
   }
   f.editor.redo()
   retained(hostRoundtrip(f.editor))
   assert.equal(f.editor.exportDefinition().graph.nodes[0].outputSchemaRef, 'Schema_B2')
-  f.editor.undo(); f.editor.undo()
+  f.editor.undo()
+  f.editor.undo()
   assert.deepEqual(hostRoundtrip(f.editor), baseline)
 })
 
 test('C-04 public patch helper cannot introduce unsupported Host fields or invalid shapes', t => {
-  const f = fixture(); t.after(f.off)
+  const f = fixture()
+  t.after(f.off)
   const before = JSON.stringify(f.editor.exportDefinition())
   for (const patch of [{ name: 'unsupported' }, { prompt: 'unsupported' }, { id: 'other' }, { inputs: [] }, { skillRefs: 'wrong' }]) {
     assert.deepEqual(applyInspectorPatch(f.editor, 'task', patch), { ok: false, issue: 'node-options-shape' })
@@ -346,21 +410,23 @@ test('C-04 public patch helper cannot introduce unsupported Host fields or inval
 })
 
 test('C-04 session subscription disposes editor listeners and separate editor identity isolates unfinished buffers', t => {
-  const f = fixture(); t.after(f.off)
+  const f = fixture()
+  t.after(f.off)
   let emissions = 0
   const off = f.session.subscribe(() => emissions++)
   const before = f.session.getSnapshot()
-  f.off(); off()
+  f.off()
+  off()
   f.editor.updateNode('task', { agentRef: 'Agent_B2' })
   assert.equal(emissions, 0)
   assert.equal(f.session.getSnapshot(), before)
   find(f.render(), 'data-bp-json', 'options').props.onChange('{ unfinished / original')
-  const replacement = fixture(); t.after(replacement.off)
+  const replacement = fixture()
+  t.after(replacement.off)
   assert.notEqual(replacement.editor, f.editor)
   assert.notEqual(replacement.session.getSnapshot().json.options, f.session.getSnapshot().json.options)
   assert.equal(replacement.editor.canUndo, false)
 })
-
 
 test('W3-UI-01 real React labels and SSR retain exact Skill · skill checkbox name without changing refs', context => {
   const imported = structuredClone(definition)
@@ -375,7 +441,11 @@ test('W3-UI-01 real React labels and SSR retain exact Skill · skill checkbox na
   for (const language of ['en', 'zh', 'en']) {
     const props = { node: editor.nodes[0], editor, resources: imported.resources, t: t(language) }
     const tree = renderNodeInspector(props, session, session.getSnapshot())
-    const label = (field, ref) => elements(tree).find(item => item.type === 'label' && elements(item.props.children).some(child => child.props['data-bp-field'] === field && child.props['data-bp-ref'] === ref))
+    const label = (field, ref) =>
+      elements(tree).find(
+        item =>
+          item.type === 'label' && elements(item.props.children).some(child => child.props['data-bp-field'] === field && child.props['data-bp-ref'] === ref)
+      )
     const html = renderToStaticMarkup(React.createElement(NodeInspector, props))
     assert.equal(label('skillRefs', 'skill').props.children.at(-1), 'Skill · skill', 'existing exact checkbox name requires the Skill prefix')
     assert.ok(html.includes('/>Skill · skill</label>'), 'actual NodeInspector SSR has the wrapping label text, not an aria-label workaround')

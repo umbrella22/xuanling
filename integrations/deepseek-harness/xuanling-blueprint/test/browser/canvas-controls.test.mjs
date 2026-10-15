@@ -18,8 +18,7 @@ let browser, page, home
 
 before(async () => {
   home = mkdtempSync(join(tmpdir(), 'bp-installed-fit-control-'))
-  browser = await chromium.launch({ channel: 'msedge', headless: true,
-    env: { PATH: process.env.PATH, HOME: home, TMPDIR: home } })
+  browser = await chromium.launch({ channel: 'msedge', headless: true, env: { PATH: process.env.PATH, HOME: home, TMPDIR: home } })
   const context = await browser.newContext()
   await context.route('**/*', route => route.abort())
   page = await context.newPage()
@@ -29,14 +28,19 @@ before(async () => {
   await page.setContent(html)
 })
 after(async () => {
-  try { await browser?.close() } finally { if (home) rmSync(home, { recursive: true, force: true }) }
+  try {
+    await browser?.close()
+  } finally {
+    if (home) rmSync(home, { recursive: true, force: true })
+  }
 })
 
 function journeyFitOracle() {
-  const lines = readFileSync(journey, 'utf8').split('\n')
-  const index = lines.findIndex(line => line.startsWith("  assert('B-VIEWPORT',"))
-  assert.ok(index > 0, 'fixture must read the existing B-VIEWPORT assertion')
-  const match = /^  await page\.getByRole\('button', \{ name: '([^']+)', exact: true \}\)\.click\(\)$/.exec(lines[index - 1])
+  const source = readFileSync(journey, 'utf8')
+  const assertion = /assert\s*\(\s*['"]B-VIEWPORT['"]/.exec(source)
+  assert.ok(assertion, 'fixture must read the existing B-VIEWPORT assertion')
+  const matches = [...source.slice(0, assertion.index).matchAll(/page\.getByRole\('button',\s*\{\s*name:\s*'([^']+)',\s*exact:\s*true\s*\}\)\.click\(\)/g)]
+  const match = matches.at(-1)
   assert.ok(match, 'Fit View journey retains its exact role locator and ordinary .click()')
   return { name: match[1], exact: true }
 }
@@ -53,18 +57,34 @@ test('C-09 actual installed Controls renders Fit View; old lowercase exact name 
   const installed = page.getByRole('button', { name: 'Fit View', exact: true })
   assert.equal(oldCount, 0, 'old lowercase exact selector cannot match the installed accessible name')
   assert.equal(await installed.count(), 1)
-  assert.equal(await installed.evaluate(element => element === document.querySelector('button.react-flow__controls-fitview')), true,
-    'not just any button: official name resolves the actual Fit View control')
-  t.diagnostic(JSON.stringify({ browser: browser.version(), labels: await page.getByRole('button').evaluateAll(elements => elements.map(el => el.getAttribute('aria-label'))), oldExactMatches: oldCount, officialExactMatches: await installed.count() }))
+  assert.equal(
+    await installed.evaluate(element => element === document.querySelector('button.react-flow__controls-fitview')),
+    true,
+    'not just any button: official name resolves the actual Fit View control'
+  )
+  t.diagnostic(
+    JSON.stringify({
+      browser: browser.version(),
+      labels: await page.getByRole('button').evaluateAll(elements => elements.map(el => el.getAttribute('aria-label'))),
+      oldExactMatches: oldCount,
+      officialExactMatches: await installed.count()
+    })
+  )
 })
 
 test('C-09 current journey exact Fit View oracle resolves the installed rendered control without changing ordinary click semantics', async t => {
   const oracle = journeyFitOracle()
   const locator = page.getByRole('button', oracle)
-  assert.equal(await locator.count(), 1,
-    `JOURNEY_FIT_VIEW_EXACT_LABEL_MISMATCH: journey name ${JSON.stringify(oracle.name)} must locate installed Controls Fit View`)
-  assert.equal(await locator.evaluate(element => element === document.querySelector('button.react-flow__controls-fitview')), true,
-    'journey oracle must resolve that precise installed control, not any successful match')
+  assert.equal(
+    await locator.count(),
+    1,
+    `JOURNEY_FIT_VIEW_EXACT_LABEL_MISMATCH: journey name ${JSON.stringify(oracle.name)} must locate installed Controls Fit View`
+  )
+  assert.equal(
+    await locator.evaluate(element => element === document.querySelector('button.react-flow__controls-fitview')),
+    true,
+    'journey oracle must resolve that precise installed control, not any successful match'
+  )
   assert.equal(await locator.getAttribute('aria-label'), 'Fit View')
   t.diagnostic(JSON.stringify({ journeyOracle: oracle, matches: await locator.count(), nativeClickSourcePreserved: true, performedClick: false }))
 })

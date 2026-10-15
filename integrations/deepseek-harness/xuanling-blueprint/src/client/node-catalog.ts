@@ -1,4 +1,5 @@
 /** Builtin palette metadata; translated display values are never node definitions. */
+import { nodeDisplayCapabilities } from './node-capabilities.ts'
 import type { NodeKind } from '../definition/types.ts'
 import type { ViewMessageKey, ViewTranslator } from './view-contract.ts'
 
@@ -13,10 +14,15 @@ export interface BuiltinNodeMetadata {
 export const BUILTIN_NODE_CATALOG = [
   { kind: 'input', titleKey: 'node.input.title', descriptionKey: 'node.input.description', searchTerms: ['Input', '输入', '入口'] },
   { kind: 'agentTask', titleKey: 'node.agentTask.title', descriptionKey: 'node.agentTask.description', searchTerms: ['Agent task', '代理任务', '智能体任务'] },
-  { kind: 'humanDecision', titleKey: 'node.humanDecision.title', descriptionKey: 'node.humanDecision.description', searchTerms: ['Approval', 'Human decision', '审批', '人工决策', '人工确认'] },
+  {
+    kind: 'humanDecision',
+    titleKey: 'node.humanDecision.title',
+    descriptionKey: 'node.humanDecision.description',
+    searchTerms: ['Approval', 'Human decision', '审批', '人工决策', '人工确认']
+  },
   { kind: 'condition', titleKey: 'node.condition.title', descriptionKey: 'node.condition.description', searchTerms: ['Condition', '条件', '布尔分支'] },
   { kind: 'join', titleKey: 'node.join.title', descriptionKey: 'node.join.description', searchTerms: ['Join all', '汇合', '合流'] },
-  { kind: 'output', titleKey: 'node.output.title', descriptionKey: 'node.output.description', searchTerms: ['Output', '输出', '结果'] },
+  { kind: 'output', titleKey: 'node.output.title', descriptionKey: 'node.output.description', searchTerms: ['Output', '输出', '结果'] }
 ] as const satisfies readonly BuiltinNodeMetadata[]
 
 export function builtinNodeMetadata(kind: string): BuiltinNodeMetadata | undefined {
@@ -25,8 +31,13 @@ export function builtinNodeMetadata(kind: string): BuiltinNodeMetadata | undefin
 export function searchBuiltinNodes(query: string, translate?: ViewTranslator): readonly BuiltinNodeMetadata[] {
   // Case folding/whitespace affect only the search query; never IDs, refs or ports.
   const needle = query.trim().toLowerCase()
-  return BUILTIN_NODE_CATALOG.filter(node => [node.kind, ...node.searchTerms, ...(translate ? [translate(node.titleKey), translate(node.descriptionKey)] : [])]
-    .some(term => term.toLowerCase().includes(needle)))
+  return BUILTIN_NODE_CATALOG.filter(
+    node =>
+      nodeDisplayCapabilities(node).palette &&
+      [node.kind, ...node.searchTerms, ...(translate ? [translate(node.titleKey), translate(node.descriptionKey)] : [])].some(term =>
+        term.toLowerCase().includes(needle)
+      )
+  )
 }
 export function nodeKindTitle(kind: string, translate: ViewTranslator): string {
   const metadata = builtinNodeMetadata(kind)

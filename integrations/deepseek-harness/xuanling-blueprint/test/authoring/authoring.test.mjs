@@ -13,24 +13,47 @@ import { publishPackage } from '../../src/definition/package-create.ts'
 async function fixture(t, config = {}) {
   const root = mkdtempSync(join(tmpdir(), 'bp-authoring-'))
   const contexts = []
-  t.after(async () => { for (const ctx of contexts) await ctx.fiber.dispose(); rmSync(root, { recursive: true, force: true }) })
+  t.after(async () => {
+    for (const ctx of contexts) await ctx.fiber.dispose()
+    rmSync(root, { recursive: true, force: true })
+  })
   const open = async () => {
-    const ctx = new Context(); ctx.baseUrl = pathToFileURL(`${root}/`).href
-    ctx.provide('systemPrompt', { tools() { return () => {} } })
+    const ctx = new Context()
+    ctx.baseUrl = pathToFileURL(`${root}/`).href
+    ctx.provide('systemPrompt', {
+      tools() {
+        return () => {}
+      }
+    })
     new ToolRuntime(ctx, { mode: 'native' })
     const caller = { session: { id: 'author', header: {} }, ctx }
-    ctx.provide('agents', { get: id => id === caller.session.id ? caller : undefined })
-    await ctx.plugin(BlueprintService, config); contexts.push(ctx)
-    const tool = (name, args = {}, signal = new AbortController().signal) => ctx.tools.execute({ name, arguments: args, agent: caller, callId: `${name}-call`, signal })
+    ctx.provide('agents', { get: id => (id === caller.session.id ? caller : undefined) })
+    await ctx.plugin(BlueprintService, config)
+    contexts.push(ctx)
+    const tool = (name, args = {}, signal = new AbortController().signal) =>
+      ctx.tools.execute({ name, arguments: args, agent: caller, callId: `${name}-call`, signal })
     return { ctx, service: ctx.blueprint, tool }
   }
-  return { root, open, ...await open() }
+  return { root, open, ...(await open()) }
 }
-const definition = (type = 'json') => ({ schemaVersion: 1, id: 'draft', name: 'Authoring fixture', resources: {},
-  graph: { nodes: [{ id: 'input', kind: 'input', outputs: { result: type } }, { id: 'output', kind: 'output', inputs: { result: type } }],
-    edges: [{ kind: 'data', from: 'input.result', to: 'output.result' }] } })
+const definition = (type = 'json') => ({
+  schemaVersion: 1,
+  id: 'draft',
+  name: 'Authoring fixture',
+  resources: {},
+  graph: {
+    nodes: [
+      { id: 'input', kind: 'input', outputs: { result: type } },
+      { id: 'output', kind: 'output', inputs: { result: type } }
+    ],
+    edges: [{ kind: 'data', from: 'input.result', to: 'output.result' }]
+  }
+})
 const args = doc => ({ blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, inputJson: '{}' })
-function value(result) { assert.equal(result.isError, false, JSON.stringify(result)); return JSON.parse(result.content.map(x => x.text ?? '').join('')) }
+function value(result) {
+  assert.equal(result.isError, false, JSON.stringify(result))
+  return JSON.parse(result.content.map(x => x.text ?? '').join(''))
+}
 
 test('D01: default profile runtime admits a valid graph without relocating its library', async t => {
   const f = await fixture(t)
@@ -67,7 +90,8 @@ test('A01-A04: native tools describe, validate and create an entire declared Age
   assert.equal(value(await reopened.tool('blueprint_create', { ...candidate, requestId: 'agent-fixture' })).blueprintId, doc.blueprintId)
   const loaded = await f.service.loadDefinition({ blueprintId: doc.blueprintId })
   assert.ok(JSON.parse(loaded.definitionJson).graph.nodes.some(n => n.agentRef))
-  for (const file of candidate.files) assert.equal(readFileSync(join(f.root, 'data/xuanling-blueprint/definitions', doc.blueprintId, file.path), 'utf8'), file.text)
+  for (const file of candidate.files)
+    assert.equal(readFileSync(join(f.root, 'data/xuanling-blueprint/definitions', doc.blueprintId, file.path), 'utf8'), file.text)
   assert.equal(f.service.runtimes.size, 0)
 })
 
@@ -75,7 +99,8 @@ test('A05: candidate diagnostics reject missing and escaping files without publi
   const f = await fixture(t)
   const candidate = value(await f.tool('blueprint_describe')).example
   const missing = value(await f.tool('blueprint_validate', { ...candidate, files: [] }))
-  assert.equal(missing.ok, false); assert.ok(missing.issues.some(i => i.code === 'resource-file-missing'))
+  assert.equal(missing.ok, false)
+  assert.ok(missing.issues.some(i => i.code === 'resource-file-missing'))
   const invalid = value(await f.tool('blueprint_validate', { ...candidate, files: [{ path: '../outside', text: 'rejected' }] }))
   assert.equal(invalid.ok, false)
   assert.equal((await f.tool('blueprint_create', { ...candidate, files: [], requestId: 'bad' })).isError, true)
@@ -84,14 +109,16 @@ test('A05: candidate diagnostics reject missing and escaping files without publi
 
 test('A05: subflow directories admit only their recursively declared resource closure', async t => {
   const f = await fixture(t)
-  const outer = definition(), child = definition(), leaf = definition()
+  const outer = definition(),
+    child = definition(),
+    leaf = definition()
   outer.resources.child = { kind: 'subflow', path: 'lib/subflows/child' }
   child.resources.leaf = { kind: 'subflow', path: 'lib/subflows/leaf' }
   leaf.resources.agent = { kind: 'agent', path: 'lib/agents/worker.md' }
   const files = [
     { path: 'lib/subflows/child/blueprint.json', text: JSON.stringify(child) },
     { path: 'lib/subflows/child/lib/subflows/leaf/blueprint.json', text: JSON.stringify(leaf) },
-    { path: 'lib/subflows/child/lib/subflows/leaf/lib/agents/worker.md', text: 'Declared worker.' },
+    { path: 'lib/subflows/child/lib/subflows/leaf/lib/agents/worker.md', text: 'Declared worker.' }
   ]
   const candidate = { definition: outer, files }
   assert.equal(value(await f.tool('blueprint_validate', candidate)).ok, true)
@@ -111,7 +138,8 @@ test('A04/A06: native create rejects changed retries and cancelled requests; sta
   const created = value(await f.tool('blueprint_create', { ...candidate, requestId: 'once' }))
   const changed = await f.tool('blueprint_create', { ...candidate, definition: { ...candidate.definition, name: 'changed' }, requestId: 'once' })
   assert.equal(changed.error.info.code, 'blueprint/revision-conflict')
-  const controller = new AbortController(); controller.abort()
+  const controller = new AbortController()
+  controller.abort()
   assert.equal((await f.tool('blueprint_create', { ...candidate, requestId: 'cancelled' }, controller.signal)).isError, true)
   assert.equal((await f.service.listDefinitions()).definitions.length, 1)
   const runArgs = { blueprintId: created.blueprintId, expectedRevision: created.documentRevision, input: { nested: ['exact', 2, null] } }
@@ -137,7 +165,9 @@ test('L01-L04: delete persists, replays, rejects stale save/create and preserves
   const reopened = await f.open()
   assert.equal((await reopened.service.listDefinitions()).definitions.length, 0)
   await assert.rejects(reopened.service.loadDefinition({ blueprintId: doc.blueprintId }), { code: 'blueprint/definition-deleted' })
-  await assert.rejects(f.service.saveDefinition({ blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, definitionJson: doc.definitionJson }), { code: 'blueprint/definition-deleted' })
+  await assert.rejects(f.service.saveDefinition({ blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, definitionJson: doc.definitionJson }), {
+    code: 'blueprint/definition-deleted'
+  })
   await assert.rejects(f.service.createDefinition(request), { code: 'blueprint/definition-deleted' })
   assert.equal((await f.service.inspectRun({ runId: run.runId })).state, 'succeeded')
 })
@@ -155,7 +185,7 @@ test('L03: save/delete ordering uses revision CAS and deletion blocks admission 
   const next = { ...definition(), id: doc.blueprintId, name: 'Changed before delete' }
   const [saved, deleted] = await Promise.allSettled([
     f.service.saveDefinition({ blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, definitionJson: JSON.stringify(next) }),
-    f.service.deleteDefinition({ blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, requestId: 'race-delete' }),
+    f.service.deleteDefinition({ blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, requestId: 'race-delete' })
   ])
   assert.equal(saved.status, 'fulfilled')
   assert.equal(deleted.status, 'rejected')
@@ -165,14 +195,15 @@ test('L03: save/delete ordering uses revision CAS and deletion blocks admission 
   await assert.rejects(f.service.exportDefinition({ blueprintId: doc.blueprintId }), { code: 'blueprint/definition-deleted' })
 })
 
-
 test('L05: failed state write leaves document visible; corrupt state fails closed; backup retains deletion', async t => {
   const f = await fixture(t)
   const doc = await f.service.createDefinition({ requestId: 'state', definitionJson: JSON.stringify(definition()) })
   const library = join(f.root, 'data/xuanling-blueprint/definitions')
   const state = join(library, '.library-state')
   writeFileSync(join(state, 'deleted'), 'not a directory')
-  await assert.rejects(f.service.deleteDefinition({ blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, requestId: 'del' }), { code: 'blueprint/library-state-invalid' })
+  await assert.rejects(f.service.deleteDefinition({ blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, requestId: 'del' }), {
+    code: 'blueprint/library-state-invalid'
+  })
   rmSync(join(state, 'deleted'))
   assert.equal((await f.service.listDefinitions()).definitions.length, 1)
   await f.service.deleteDefinition({ blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, requestId: 'del' })
@@ -180,7 +211,8 @@ test('L05: failed state write leaves document visible; corrupt state fails close
   const file = join(state, 'deleted', readdirSync(join(state, 'deleted'))[0])
   writeFileSync(file, '{}')
   await assert.rejects(f.service.listDefinitions(), { code: 'blueprint/library-state-invalid' })
-  rmSync(library, { recursive: true }); cpSync(join(f.root, 'backup'), library, { recursive: true })
+  rmSync(library, { recursive: true })
+  cpSync(join(f.root, 'backup'), library, { recursive: true })
   assert.equal((await (await f.open()).service.listDefinitions()).definitions.length, 0)
 })
 
@@ -189,8 +221,11 @@ test('A04/L05: exclusive library writer rejects competing mutation and releases 
   const library = join(f.root, 'data/xuanling-blueprint/definitions')
   const lease = acquireLibraryWriter(library)
   const request = { requestId: 'lease', definitionJson: JSON.stringify(definition()) }
-  try { await assert.rejects(f.service.createDefinition(request), { code: 'blueprint/library-busy' }) }
-  finally { lease.release() }
+  try {
+    await assert.rejects(f.service.createDefinition(request), { code: 'blueprint/library-busy' })
+  } finally {
+    lease.release()
+  }
   const doc = await f.service.createDefinition(request)
   assert.equal((await f.service.loadDefinition({ blueprintId: doc.blueprintId })).documentRevision, doc.documentRevision)
 })
@@ -198,9 +233,17 @@ test('A04/L05: exclusive library writer rejects competing mutation and releases 
 test('A04: staging failure publishes no partial package and same target can be retried', async t => {
   const f = await fixture(t)
   const root = join(f.root, 'package')
-  assert.throws(() => publishPackage(root, definition(), [{ path: 'lib/file', text: 'first' }, { path: 'lib/file/child', text: 'cannot write under a file' }]))
+  assert.throws(() =>
+    publishPackage(root, definition(), [
+      { path: 'lib/file', text: 'first' },
+      { path: 'lib/file/child', text: 'cannot write under a file' }
+    ])
+  )
   assert.equal(existsSync(root), false)
-  assert.equal(readdirSync(f.root).some(name => name.startsWith('.authoring-stage-')), false)
+  assert.equal(
+    readdirSync(f.root).some(name => name.startsWith('.authoring-stage-')),
+    false
+  )
   const doc = publishPackage(root, definition(), [])
   assert.equal(doc.blueprintId, 'draft')
 })
@@ -208,7 +251,8 @@ test('A04: staging failure publishes no partial package and same target can be r
 test('L06: deletion does not remove configured package bytes or bypass existing alias ID validation', async t => {
   const f = await fixture(t)
   const doc = await f.service.createDefinition({ requestId: 'alias', definitionJson: JSON.stringify(definition()) })
-  const library = join(f.root, 'data/xuanling-blueprint/definitions'), root = join(library, doc.blueprintId)
+  const library = join(f.root, 'data/xuanling-blueprint/definitions'),
+    root = join(library, doc.blueprintId)
   f.service.config.blueprints = { alias: root }
   const before = readFileSync(join(root, 'blueprint.json'))
   await assert.rejects(f.service.loadDefinition({ blueprintId: 'alias' }), { code: 'blueprint/definition-invalid' })

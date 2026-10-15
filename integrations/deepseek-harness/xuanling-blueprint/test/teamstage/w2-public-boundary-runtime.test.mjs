@@ -15,12 +15,17 @@ let fixtureNumber = 0
 const teamStage = {
   task: { subject: 'Review frozen output', description: 'Review the frozen output and report the structured result.' },
   members: [{ name: 'worker-one', description: 'Review the output.', agentRef: 'worker', context: 'fresh' }],
-  requiredChecks: ['schema'],
+  requiredChecks: ['schema']
 }
 const teamDefinition = {
-  schemaVersion: 1, id: 'public-team-runtime', name: 'Public Team runtime',
+  schemaVersion: 1,
+  id: 'public-team-runtime',
+  name: 'Public Team runtime',
   resources: { worker: { kind: 'agent', path: 'lib/agents/worker.md' }, resultSchema: { kind: 'schema', path: 'lib/schemas/result.json' } },
-  graph: { nodes: [{ id: 'stage-1', kind: 'agentTask', agentRef: 'worker', outputSchemaRef: 'resultSchema', outputs: { result: 'json' }, teamStage }], edges: [] },
+  graph: {
+    nodes: [{ id: 'stage-1', kind: 'agentTask', agentRef: 'worker', outputSchemaRef: 'resultSchema', outputs: { result: 'json' }, teamStage }],
+    edges: []
+  }
 }
 
 function makeTeamHarness({ available = true } = {}) {
@@ -34,9 +39,15 @@ function makeTeamHarness({ available = true } = {}) {
     membership(agent) {
       return { root: agent, id: 'team-1', role: 'lead', name: 'lead' }
     },
-    listMembers() { return [] },
-    spawnTeammate() { return Promise.resolve({}) },
-    sendMessage() { return Promise.resolve({}) },
+    listMembers() {
+      return []
+    },
+    spawnTeammate() {
+      return Promise.resolve({})
+    },
+    sendMessage() {
+      return Promise.resolve({})
+    },
     createTask(_agent, request) {
       creates++
       const task = { id: `task-${creates}`, revision: 1, status: 'pending', subject: request.subject }
@@ -49,23 +60,44 @@ function makeTeamHarness({ available = true } = {}) {
       if (!task) throw new Error('task missing')
       return { ...task, status: 'completed' }
     },
-    listTasks() { return [...tasks.values()] },
+    listTasks() {
+      return [...tasks.values()]
+    },
     updateTask(_agent, request) {
       const task = {
         id: request.taskId,
         revision: request.expectedRevision + 1,
-        status: request.action === 'delete' ? 'deleted' : 'completed',
+        status: request.action === 'delete' ? 'deleted' : 'completed'
       }
       tasks.set(task.id, task)
       return Promise.resolve(task)
     },
-    waitForChange() { return Promise.resolve({ timedOut: true }) },
-    interrupt() { interrupts++; return { previousStatus: 'inactive' } },
+    waitForChange() {
+      return Promise.resolve({ timedOut: true })
+    },
+    interrupt() {
+      interrupts++
+      return { previousStatus: 'inactive' }
+    }
   }
   const values = new Map([['agents', { get: id => agents.get(id) }]])
   if (available) values.set('agentTeams', service)
   const ctx = { get: key => values.get(key) }
-  return { ctx, lead, service, get creates() { return creates }, get reads() { return reads }, get interrupts() { return interrupts }, tasks }
+  return {
+    ctx,
+    lead,
+    service,
+    get creates() {
+      return creates
+    },
+    get reads() {
+      return reads
+    },
+    get interrupts() {
+      return interrupts
+    },
+    tasks
+  }
 }
 
 async function fixture(t, harness = makeTeamHarness()) {
@@ -73,7 +105,13 @@ async function fixture(t, harness = makeTeamHarness()) {
   const opened = await openBlueprintDomain({ backend: 'json', path: join(root, 'store') })
   const store = new RunStore(opened.domain)
   const definitionJson = JSON.stringify(teamDefinition)
-  const { runId } = await store.createRun({ scope: 'teamstage', requestId: `run-${fixtureNumber}`, payloadFingerprint: digest(`run-${fixtureNumber}`) }, 'rev-1', definitionJson, '{}', { source: { sessionId: 'lead-session', kind: 'ui' } })
+  const { runId } = await store.createRun(
+    { scope: 'teamstage', requestId: `run-${fixtureNumber}`, payloadFingerprint: digest(`run-${fixtureNumber}`) },
+    'rev-1',
+    definitionJson,
+    '{}',
+    { source: { sessionId: 'lead-session', kind: 'ui' } }
+  )
   await store.recordIntent(runId, { nodeId: 'stage-1', kind: 'agentTask', resourceDigests: { worker: 'a'.repeat(64), resultSchema: 'b'.repeat(64) } })
   const service = Object.create(BlueprintService.prototype)
   service.ctx = harness.ctx
@@ -84,10 +122,18 @@ async function fixture(t, harness = makeTeamHarness()) {
     return parsed
   }
   service.configuredRuntime = async () => ({ store, controllers: new Map(), cancellationTails: new Map() })
-  t.after(async () => { await opened.close(); await rm(root, { recursive: true, force: true }) })
-  const stageArgs = run => ({ sessionId: 'lead-session', runId: run, stageId: 'stage-1',
+  t.after(async () => {
+    await opened.close()
+    await rm(root, { recursive: true, force: true })
+  })
+  const stageArgs = run => ({
+    sessionId: 'lead-session',
+    runId: run,
+    stageId: 'stage-1',
     taskSpecificationFingerprint: frozenTeamTaskSpecificationFingerprint(teamStage, { worker: 'a'.repeat(64), resultSchema: 'b'.repeat(64) }),
-    subject: teamStage.task.subject, description: teamStage.task.description })
+    subject: teamStage.task.subject,
+    description: teamStage.task.description
+  })
   return { service, store, runId, harness, stageArgs }
 }
 
@@ -111,7 +157,7 @@ test('W2.6 C-08 missing Team capability fails before durable stage binding', asy
   const { service, store, runId, stageArgs } = await fixture(t, harness)
   await assert.rejects(
     () => service.startTeamStage(stageArgs(runId)),
-    error => error.code === 'blueprint/team-unavailable',
+    error => error.code === 'blueprint/team-unavailable'
   )
   assert.equal((await store.get(runId)).teamStage, undefined)
 })
@@ -128,12 +174,20 @@ test('W2.7.1 C-04 public acceptance rejects client-only artifact evidence', asyn
   const { service, store, runId, stageArgs } = await fixture(t)
   const started = await service.startTeamStage(stageArgs(runId))
   await assert.rejects(
-    () => service.acceptTeamStageOutput({
-      sessionId: 'lead-session', runId, stageId: 'stage-1', taskId: started.task.id,
-      code: 'accepted', schemaVersion: 1, artifactId: 'artifact-1', digest: digest('artifact'),
-      evidenceDigest: digest('evidence'), checks: ['schema'],
-    }),
-    error => error.code === 'blueprint/team-output-rejected',
+    () =>
+      service.acceptTeamStageOutput({
+        sessionId: 'lead-session',
+        runId,
+        stageId: 'stage-1',
+        taskId: started.task.id,
+        code: 'accepted',
+        schemaVersion: 1,
+        artifactId: 'artifact-1',
+        digest: digest('artifact'),
+        evidenceDigest: digest('evidence'),
+        checks: ['schema']
+      }),
+    error => error.code === 'blueprint/team-output-rejected'
   )
   const record = await store.get(runId)
   assert.equal(record.teamStage.state, 'active')
@@ -143,11 +197,21 @@ test('W2.7.1 C-04 public acceptance rejects client-only artifact evidence', asyn
 test('W2.6 C-04 rejected output records without reading native task state', async t => {
   const { service, runId, harness, stageArgs } = await fixture(t)
   await service.startTeamStage(stageArgs(runId))
-  harness.service.getTask = () => { throw new Error('native task read must not gate a rejection') }
+  harness.service.getTask = () => {
+    throw new Error('native task read must not gate a rejection')
+  }
   const result = await service.acceptTeamStageOutput({
-    sessionId: 'lead-session', runId, stageId: 'stage-1', taskId: 'task-1',
-    code: 'rejected', schemaVersion: 1, artifactId: 'artifact-1', digest: digest('artifact'),
-    evidenceDigest: digest('evidence'), checks: ['schema'], issueCode: 'schema-invalid',
+    sessionId: 'lead-session',
+    runId,
+    stageId: 'stage-1',
+    taskId: 'task-1',
+    code: 'rejected',
+    schemaVersion: 1,
+    artifactId: 'artifact-1',
+    digest: digest('artifact'),
+    evidenceDigest: digest('evidence'),
+    checks: ['schema'],
+    issueCode: 'schema-invalid'
   })
   assert.equal(result.team.state, 'failed')
   assert.equal(result.team.outputAcceptance.code, 'rejected')

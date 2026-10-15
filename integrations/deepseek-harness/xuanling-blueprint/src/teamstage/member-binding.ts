@@ -8,7 +8,10 @@ import { memberSnapshot, type LeadHandle, type TeamNativeAdapter, type TeamSpawn
 export class TeamMemberBindingError extends Error {
   override readonly name = 'TeamMemberBindingError'
   readonly code: string
-  constructor(code: string, detail: string) { super(detail); this.code = code }
+  constructor(code: string, detail: string) {
+    super(detail)
+    this.code = code
+  }
 }
 
 function spawnRequest(value: unknown): TeamSpawnTeammateRequest {
@@ -24,7 +27,8 @@ function spawnRequest(value: unknown): TeamSpawnTeammateRequest {
   }
   if (!Array.isArray(request.prompt)) throw new TeamMemberBindingError('TEAM_MEMBER_INVALID', 'member prompt must be an array')
   if (request.context !== 'fresh' && request.context !== 'fork') throw new TeamMemberBindingError('TEAM_MEMBER_INVALID', 'member context is invalid')
-  if (typeof request.provider !== 'string' || request.provider.trim().length === 0) throw new TeamMemberBindingError('TEAM_MEMBER_INVALID', 'member provider is required')
+  if (typeof request.provider !== 'string' || request.provider.trim().length === 0)
+    throw new TeamMemberBindingError('TEAM_MEMBER_INVALID', 'member provider is required')
   if (!(request.signal instanceof AbortSignal)) throw new TeamMemberBindingError('TEAM_MEMBER_INVALID', 'member signal is required')
   return {
     name: request.name,
@@ -32,7 +36,7 @@ function spawnRequest(value: unknown): TeamSpawnTeammateRequest {
     prompt: request.prompt,
     context: request.context,
     provider: request.provider,
-    signal: request.signal,
+    signal: request.signal
   }
 }
 
@@ -74,14 +78,16 @@ export async function spawnBoundTeamMember(args: {
     memberName: request.name,
     effect: async () => memberResult(await args.adapter.spawnTeammate(args.lead, request), request.name),
     result: value => ({ ok: value.phase !== 'failed', memberId: value.memberId, status: value.status }),
-    unknown: error => error instanceof TeamMemberBindingError || error instanceof TeamStageConflictError,
+    unknown: error => error instanceof TeamMemberBindingError || error instanceof TeamStageConflictError
   })
 
   try {
     await args.store.upsertTeamMember(args.runId, member)
     if (member.phase === 'failed') await args.store.updateTeamStage(args.runId, { state: 'failed' as const })
   } catch (error) {
-    await args.store.updateTeamStage(args.runId, { state: 'recovery_required', recovery: { code: 'member-binding-unknown', detail: member.memberId } }).catch(() => {})
+    await args.store
+      .updateTeamStage(args.runId, { state: 'recovery_required', recovery: { code: 'member-binding-unknown', detail: member.memberId } })
+      .catch(() => {})
     if (error instanceof TeamMemberBindingError) throw error
     throw new TeamMemberBindingError('TEAM_EFFECT_UNKNOWN', 'native member was created but canonical binding failed')
   }

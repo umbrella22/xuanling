@@ -102,7 +102,8 @@ export function exportBlueprint(rootDir: string, options: ExportOptions): Export
       if (source?.kind === 'host') {
         const id = source.id
         if (typeof id !== 'string' || id.length === 0) throw new PortabilityConflictError(`Host resource ${refId} has no stable identity`)
-        if (ref.kind !== 'agent' && ref.kind !== 'skill' && ref.kind !== 'mcp') throw new PortabilityConflictError(`Host resource ${refId} has unsupported kind`)
+        if (ref.kind !== 'agent' && ref.kind !== 'skill' && ref.kind !== 'mcp')
+          throw new PortabilityConflictError(`Host resource ${refId} has unsupported kind`)
         const resolved = options.hostResources?.get(hostExportKey(ref.kind, id))
         if (resolved === undefined) throw new ExportDependencyMissingError(refId, 'Host export provenance unavailable')
         if (resolved.provenance === 'builtin') {
@@ -124,9 +125,7 @@ export function exportBlueprint(rootDir: string, options: ExportOptions): Export
           materializedSkills[refId] = stem
         } else {
           const path = `${stem}.json`
-          const artifact = resolved.kind === 'agent'
-            ? validatePackagedPreset(resolved.preset)
-            : validatePackagedMcp(resolved.definition)
+          const artifact = resolved.kind === 'agent' ? validatePackagedPreset(resolved.preset) : validatePackagedMcp(resolved.definition)
           if (files.has(path)) throw new PortabilityConflictError('Host artifact archive path collision')
           files.set(path, { path, bytes: Buffer.from(`${JSON.stringify(artifact, null, 2)}\n`) })
           delete ref.source
@@ -186,9 +185,10 @@ export function exportBlueprint(rootDir: string, options: ExportOptions): Export
         if (ref.format === 'agent-preset' || ref.format === 'mcp-definition') {
           let artifact: ReturnType<typeof validatePackagedPreset> | ReturnType<typeof validatePackagedMcp>
           try {
-            artifact = ref.format === 'agent-preset'
-              ? validatePackagedPreset(JSON.parse(bytes.toString('utf8')))
-              : validatePackagedMcp(JSON.parse(bytes.toString('utf8')))
+            artifact =
+              ref.format === 'agent-preset'
+                ? validatePackagedPreset(JSON.parse(bytes.toString('utf8')))
+                : validatePackagedMcp(JSON.parse(bytes.toString('utf8')))
           } catch {
             throw new PortabilityConflictError(`packaged ${ref.format} artifact is invalid (${prefixed})`)
           }
@@ -236,10 +236,14 @@ export function exportBlueprint(rootDir: string, options: ExportOptions): Export
 
   const revision = computeRevision({ rootDir: root, definition })
   const manifestFiles: Record<string, string> = {}
-  for (const [path, file] of [...files.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) {
+  for (const [path, file] of [...files.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
     manifestFiles[path] = sha256(file.bytes)
   }
-  const closureDigest = sha256(Object.entries(manifestFiles).map(([p, d]) => `${p}\u0000${d}\n`).join(''))
+  const closureDigest = sha256(
+    Object.entries(manifestFiles)
+      .map(([p, d]) => `${p}\u0000${d}\n`)
+      .join('')
+  )
   const manifest: PortabilityManifest = {
     schemaVersion: 1,
     blueprintId: definition.id,
@@ -249,7 +253,7 @@ export function exportBlueprint(rootDir: string, options: ExportOptions): Export
     ...(hostResources.length === 0 ? {} : { hostResources }),
     runDependencies,
     closureDigest,
-    exportedAt: options.exportedAt ?? new Date().toISOString(),
+    exportedAt: options.exportedAt ?? new Date().toISOString()
   }
   const archive = writeZipWithManifest(files, manifest)
   return { archive, manifest, revision, materializedSkills }

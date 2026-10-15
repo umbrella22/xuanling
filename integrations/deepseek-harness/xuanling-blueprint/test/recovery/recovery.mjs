@@ -20,13 +20,16 @@ export async function getCases(helpers) {
     const persistence = await import(join(packageRoot, 'lib', 'persistence.js'))
     const portability = await import(join(packageRoot, 'lib', 'portability.js'))
 
-    const makeStore = async (root) => {
+    const makeStore = async root => {
       const opened = await persistence.openBlueprintDomain({ backend: 'json', path: join(root, 'store') })
       return { opened, store: new persistence.RunStore(opened.domain) }
     }
 
     cases.push({
-      id: 'RC1', title: 'T15: private backup/restore roundtrip preserves every run record byte-for-byte', contract: 'C-15', expect: 'pass',
+      id: 'RC1',
+      title: 'T15: private backup/restore roundtrip preserves every run record byte-for-byte',
+      contract: 'C-15',
+      expect: 'pass',
       run: async () => {
         const root = mkdtempSync('/tmp/bp-backup-')
         try {
@@ -43,28 +46,37 @@ export async function getCases(helpers) {
           const { opened: reopened, store: store2 } = await makeStore(join(root, 'restored'))
           const record = await store2.get(created.runId)
           await reopened.close()
-          return restored.resumed === false
-            && record.state === 'succeeded'
-            && record.attempts[0]?.intent?.kind === 'toolCall'
-            && record.attempts[0]?.result?.evidence === 'done'
-            && restored.filesRestored.length >= 1
+          return (
+            restored.resumed === false &&
+            record.state === 'succeeded' &&
+            record.attempts[0]?.intent?.kind === 'toolCall' &&
+            record.attempts[0]?.result?.evidence === 'done' &&
+            restored.filesRestored.length >= 1
+          )
         } finally {
           rmSync(root, { recursive: true, force: true })
         }
-      },
+      }
     })
 
     cases.push({
-      id: 'RC2', title: 'T15: unknown backup formatVersion fails closed without touching existing target data', contract: 'C-15', expect: 'pass',
+      id: 'RC2',
+      title: 'T15: unknown backup formatVersion fails closed without touching existing target data',
+      contract: 'C-15',
+      expect: 'pass',
       run: () => {
         const root = mkdtempSync('/tmp/bp-backup-')
         try {
           mkdirSync(join(root, 'runtime', 'store'), { recursive: true })
           writeFileSync(join(root, 'runtime', 'store', 'keep.json'), '{"keep":true}')
           const backup = persistence.createBackup(join(root, 'runtime'))
-          const entries = portability.readZip(backup.archive).map(e => e.name === 'backup.json'
-            ? { name: e.name, data: Buffer.from(e.data.toString('utf8').replace('"formatVersion": 1', '"formatVersion": 999')), mode: e.mode }
-            : { name: e.name, data: e.data, mode: e.mode })
+          const entries = portability
+            .readZip(backup.archive)
+            .map(e =>
+              e.name === 'backup.json'
+                ? { name: e.name, data: Buffer.from(e.data.toString('utf8').replace('"formatVersion": 1', '"formatVersion": 999')), mode: e.mode }
+                : { name: e.name, data: e.data, mode: e.mode }
+            )
           const bumped = portability.writeZip(entries)
           const target = join(root, 'target')
           mkdirSync(target, { recursive: true })
@@ -81,11 +93,14 @@ export async function getCases(helpers) {
         } finally {
           rmSync(root, { recursive: true, force: true })
         }
-      },
+      }
     })
 
     cases.push({
-      id: 'RC3', title: 'T15: interrupted restore resumes from the journal and keeps previous data until publication', contract: 'C-15', expect: 'pass',
+      id: 'RC3',
+      title: 'T15: interrupted restore resumes from the journal and keeps previous data until publication',
+      contract: 'C-15',
+      expect: 'pass',
       run: () => {
         const root = mkdtempSync('/tmp/bp-backup-')
         try {
@@ -102,18 +117,23 @@ export async function getCases(helpers) {
           writeFileSync(join(root, '.bp-restore-journal-target.json'), JSON.stringify({ phase: 'staging-done', target, staging }))
           const resumed = persistence.restoreBackup(backup.archive, target)
           const restoredData = readFileSync(join(target, 'store', 'data.json'), 'utf8')
-          return resumed.resumed === true
-            && restoredData.includes('"v":2')
-            && !existsSync(join(root, '.bp-restore-journal-target.json'))
-            && !existsSync(join(root, '.bp-restore-staging-target'))
+          return (
+            resumed.resumed === true &&
+            restoredData.includes('"v":2') &&
+            !existsSync(join(root, '.bp-restore-journal-target.json')) &&
+            !existsSync(join(root, '.bp-restore-staging-target'))
+          )
         } finally {
           rmSync(root, { recursive: true, force: true })
         }
-      },
+      }
     })
 
     cases.push({
-      id: 'RC4', title: 'T15: restore safety gate reports an active lease (no restore over a live writer)', contract: 'C-15', expect: 'pass',
+      id: 'RC4',
+      title: 'T15: restore safety gate reports an active lease (no restore over a live writer)',
+      contract: 'C-15',
+      expect: 'pass',
       run: () => {
         const root = mkdtempSync('/tmp/bp-backup-')
         try {
@@ -125,7 +145,7 @@ export async function getCases(helpers) {
         } finally {
           rmSync(root, { recursive: true, force: true })
         }
-      },
+      }
     })
   }
 

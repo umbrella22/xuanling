@@ -4,6 +4,25 @@ All notable release changes are recorded here. XuanLing uses immutable release
 tags and publishes the launcher, native packages, DeepSeek Harness bundles, and
 ZCode projection from the same source commit.
 
+## 0.6.1 - 2026-10-15
+
+### Changed
+
+- Blueprint node and group layout now measures rendered geometry before collision,
+  fit and visibility decisions, with stable group headers and runtime canvas sizing.
+- Node inspectors expose bindings by capability, port visibility switches guard new
+  connections while protecting existing edges, and resources are grouped with safe
+  Agent/Skill/MCP details and editable advanced JSON.
+- Blueprint source and tests are managed with Vite+ Oxfmt/Oxlint; the release keeps
+  the DSH `0.2.1-alpha.3` dependency tuple and the validated pnpm lockfile.
+
+### Fixed
+
+- Post-format review removed stale geometry/oracle assumptions and dead compatibility
+  helpers without changing the runtime execution or resource safety contracts.
+- Invalid advanced resource JSON remains editable without crashing the resource
+  dialog; release verification accepts the exact formatting script contract.
+
 ## 0.6.0 - 2026-10-14
 
 ### Added

@@ -3,7 +3,14 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createReportDir, validateNewReportDir, validateCollectorGate, PLAN_ID, secretCategories, errorCategory } from '../../../../../test/blueprint/capabilities/conversation-evidence.mjs'
+import {
+  createReportDir,
+  validateNewReportDir,
+  validateCollectorGate,
+  PLAN_ID,
+  secretCategories,
+  errorCategory
+} from '../../../../../test/blueprint/capabilities/conversation-evidence.mjs'
 
 test('fresh report refuses existing, traversal, symlink and dangling symlink paths', () => {
   const root = mkdtempSync(join(realpathSync(tmpdir()), 'conversation-path-test-'))
@@ -17,13 +24,18 @@ test('fresh report refuses existing, traversal, symlink and dangling symlink pat
     symlinkSync(join(root, 'absent'), join(root, 'dangling'))
     assert.throws(() => validateNewReportDir(join(root, 'dangling'), root), /PATH_SYMLINK/)
     assert.throws(() => validateNewReportDir(root, root), /REPORT_OUTSIDE_ROOT/)
-  } finally { rmSync(root, { recursive: true, force: true }) }
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })
 
 test('synthetic passed receipt cannot substitute for native browser and provider evidence', () => {
   const fp = { revision: 'a'.repeat(40), source_sha256: 'b'.repeat(64), artifact_sha256: 'c'.repeat(64) }
-  assert.throws(() => validateCollectorGate({ planId: PLAN_ID, mode: 'live', status: 'passed', cases: [] },
-    { reportDir: '/absent', fingerprint: fp, fingerprintAfter: fp }), /EVIDENCE_/)
+  assert.throws(
+    () =>
+      validateCollectorGate({ planId: PLAN_ID, mode: 'live', status: 'passed', cases: [] }, { reportDir: '/absent', fingerprint: fp, fingerprintAfter: fp }),
+    /EVIDENCE_/
+  )
 })
 
 test('upstream failure output and secret findings expose categories only', () => {

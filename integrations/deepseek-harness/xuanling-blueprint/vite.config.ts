@@ -1,6 +1,13 @@
 import { defineConfig } from 'vite-plus'
 
 export default defineConfig({
+  fmt: {
+    arrowParens: 'avoid',
+    printWidth: 160,
+    semi: false,
+    singleQuote: true,
+    trailingComma: 'none'
+  },
   pack: [
     {
       // Host face: public service entry + hand-written typert artifact. ESM
@@ -18,7 +25,7 @@ export default defineConfig({
         'client-model': 'src/client/model.ts',
         'client-editor': 'src/client/graph-editor.ts',
         persistence: 'src/persistence/index.ts',
-        orchestration: 'src/orchestration/index.ts',
+        orchestration: 'src/orchestration/index.ts'
       },
       format: 'esm',
       outDir: 'lib',
@@ -27,7 +34,7 @@ export default defineConfig({
       external: [/^@deepseek-ai\//, /^node:/, 'zod'],
       dts: false,
       clean: true,
-      minify: false,
+      minify: false
     },
     {
       // Client face: the official closure-factory bundle format consumed by
@@ -48,17 +55,17 @@ export default defineConfig({
       footer: `return module.exports; } });`,
       dts: false,
       clean: false,
-      minify: true,
-    },
+      minify: true
+    }
   ],
   lint: {
     categories: {
-      correctness: 'error',
+      correctness: 'error'
     },
     rules: {
       'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
-      'consistent-type-imports': 'error',
+      'consistent-type-imports': 'error'
     },
-    ignorePatterns: ['lib/**', 'node_modules/**', 'dist/**'],
-  },
+    ignorePatterns: ['lib/**', 'node_modules/**', 'dist/**']
+  }
 })

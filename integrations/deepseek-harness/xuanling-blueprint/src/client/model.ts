@@ -88,11 +88,12 @@ export class BlueprintClientModel {
   applySnapshot(snapshot: RunSnapshotView): void {
     // Validate before changing any projection; unknown raw fields are not facts.
     const detached = structuredClone(snapshot)
-    for (const attempt of detached.attempts) if (attempt.diagnostics !== undefined) {
-      const parsed = attemptDiagnosticsCodec().safeParse(attempt.diagnostics)
-      if (!parsed.success) throw new Error('blueprint/diagnostics-invalid')
-      attempt.diagnostics = parsed.data
-    }
+    for (const attempt of detached.attempts)
+      if (attempt.diagnostics !== undefined) {
+        const parsed = attemptDiagnosticsCodec().safeParse(attempt.diagnostics)
+        if (!parsed.success) throw new Error('blueprint/diagnostics-invalid')
+        attempt.diagnostics = parsed.data
+      }
     this.snapshot = detached
     this.lastSeq = snapshot.seq
     this.stale = false
@@ -165,9 +166,12 @@ export interface ResourceView {
   detail?: string
 }
 
-export function projectResources(definition: {
-  resources: Record<string, { kind: string; path?: string; source?: { kind: 'shared'; rootId: string; path: string }; bindingId?: string }>
-}, observed?: Record<string, { availability: 'available' | 'unavailable'; detail?: string }>): ResourceView[] {
+export function projectResources(
+  definition: {
+    resources: Record<string, { kind: string; path?: string; source?: { kind: 'shared'; rootId: string; path: string }; bindingId?: string }>
+  },
+  observed?: Record<string, { availability: 'available' | 'unavailable'; detail?: string }>
+): ResourceView[] {
   return Object.entries(definition.resources).map(([refId, ref]) => {
     if (ref.kind === 'mcp') {
       const seen = observed?.[refId]
@@ -178,7 +182,7 @@ export function projectResources(definition: {
         sourceLabel: `binding:${ref.bindingId ?? '(none)'}`,
         availability: seen?.availability ?? 'unknown',
         followsSharedSource: false,
-        ...(seen?.detail !== undefined ? { detail: seen.detail } : {}),
+        ...(seen?.detail !== undefined ? { detail: seen.detail } : {})
       }
     }
     if (ref.source?.kind === 'shared') {
@@ -190,7 +194,7 @@ export function projectResources(definition: {
         sourceLabel: `${ref.source.rootId}/${ref.source.path}`,
         availability: seen?.availability ?? 'unknown',
         followsSharedSource: true,
-        ...(seen?.detail !== undefined ? { detail: seen.detail } : {}),
+        ...(seen?.detail !== undefined ? { detail: seen.detail } : {})
       }
     }
     const seen = observed?.[refId]
@@ -201,7 +205,7 @@ export function projectResources(definition: {
       sourceLabel: ref.path ?? '(missing path)',
       availability: seen?.availability ?? 'unknown',
       followsSharedSource: false,
-      ...(seen?.detail !== undefined ? { detail: seen.detail } : {}),
+      ...(seen?.detail !== undefined ? { detail: seen.detail } : {})
     }
   })
 }

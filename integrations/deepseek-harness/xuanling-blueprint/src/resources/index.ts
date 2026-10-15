@@ -6,7 +6,7 @@ export {
   type ResolveContext,
   type ResourceResolution,
   type SkillProviderLike,
-  type SkillRoot,
+  type SkillRoot
 } from './resolver.ts'
 export {
   ResourceChangedDuringReadError,
@@ -14,5 +14,5 @@ export {
   snapshotFile,
   type ResourceSnapshot,
   type SnapshotFile,
-  type SnapshotOptions,
+  type SnapshotOptions
 } from './snapshotter.ts'

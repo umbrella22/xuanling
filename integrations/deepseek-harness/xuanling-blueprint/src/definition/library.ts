@@ -21,7 +21,8 @@ export function libraryDocumentRoot(library: string, id: string): string | undef
 export function libraryIds(library: string): string[] {
   try {
     return readdirSync(library, { withFileTypes: true })
-      .filter(entry => managedId.test(entry.name) && entry.isDirectory()).map(entry => entry.name)
+      .filter(entry => managedId.test(entry.name) && entry.isDirectory())
+      .map(entry => entry.name)
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
     throw error

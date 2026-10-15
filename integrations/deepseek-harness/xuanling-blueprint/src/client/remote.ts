@@ -1,12 +1,7 @@
 /** Browser wire adapter. IDs are opaque identities, never filesystem locators. */
 import { BLUEPRINT_INVOCATIONS } from '../typert-descriptors.ts'
 import type { PreflightRunValue } from '../host/preflight.ts'
-import type {
-  AcceptTeamStageOutputArgs,
-  CancelTeamStageArgs,
-  StartTeamStageArgs,
-  TeamStageActionView,
-} from '../conversation/contracts.ts'
+import type { AcceptTeamStageOutputArgs, CancelTeamStageArgs, StartTeamStageArgs, TeamStageActionView } from '../conversation/contracts.ts'
 export type { PreflightRunValue, PreflightCheck } from '../host/preflight.ts'
 import type { RunSnapshotView } from './model.ts'
 
@@ -31,15 +26,41 @@ export interface HostResourceCatalogEntry {
   provenance: 'builtin' | 'custom' | 'unknown'
   bindingId?: string
 }
-export interface ResourceCatalogValue { resources: HostResourceCatalogEntry[] }
-export interface RunAdmission { runId: string; semanticRevision: string; state: string; replayed: boolean }
-export interface BlueprintArchive { blueprintId: string; closureDigest: string; files: number; archiveSha256: string; archiveBase64: string; requiredBindings: string[] }
-export interface BlueprintImport { blueprintId: string; filesWritten: number; closureDigest: string }
-export interface RemoteResult { ok: boolean; value?: unknown; error?: { code: string } }
+export interface ResourceCatalogValue {
+  resources: HostResourceCatalogEntry[]
+}
+export interface RunAdmission {
+  runId: string
+  semanticRevision: string
+  state: string
+  replayed: boolean
+}
+export interface BlueprintArchive {
+  blueprintId: string
+  closureDigest: string
+  files: number
+  archiveSha256: string
+  archiveBase64: string
+  requiredBindings: string[]
+}
+export interface BlueprintImport {
+  blueprintId: string
+  filesWritten: number
+  closureDigest: string
+}
+export interface RemoteResult {
+  ok: boolean
+  value?: unknown
+  error?: { code: string }
+}
 export type RemoteNamespace = Record<string, ((args?: Record<string, unknown>) => Promise<RemoteResult>) | undefined>
 export class BlueprintRemoteError extends Error {
   readonly code: string
-  constructor(code: string) { super(code); this.name = 'BlueprintRemoteError'; this.code = code }
+  constructor(code: string) {
+    super(code)
+    this.name = 'BlueprintRemoteError'
+    this.code = code
+  }
 }
 export interface HostLink {
   listDefinitions(): Promise<CatalogValue>
@@ -69,10 +90,21 @@ export function resolveBlueprintHost(context: { get?: (key: string) => unknown }
     if (typeof fn !== 'function') throw new BlueprintRemoteError('blueprint/capability-unavailable')
     // Preserve method receiver: the host may implement namespace methods on a proxy.
     const result = args === undefined ? await fn.call(namespace) : await fn.call(namespace, args)
-    if (!result || typeof result !== 'object' || Array.isArray(result) || typeof result.ok !== 'boolean') throw new BlueprintRemoteError('blueprint/dto-invalid')
+    if (!result || typeof result !== 'object' || Array.isArray(result) || typeof result.ok !== 'boolean')
+      throw new BlueprintRemoteError('blueprint/dto-invalid')
     if (!result.ok) throw new BlueprintRemoteError(typeof result.error?.code === 'string' ? result.error.code : 'blueprint/remote-failed')
-    if (method === 'deleteDefinition' || method === 'createDefinition' || method === 'preflightRun' || method === 'inspectRun' || method === 'exportDefinition' || method === 'importDefinition' || method === 'listResources'
-      || method === 'startTeamStage' || method === 'cancelTeamStage' || method === 'acceptTeamStageOutput') {
+    if (
+      method === 'deleteDefinition' ||
+      method === 'createDefinition' ||
+      method === 'preflightRun' ||
+      method === 'inspectRun' ||
+      method === 'exportDefinition' ||
+      method === 'importDefinition' ||
+      method === 'listResources' ||
+      method === 'startTeamStage' ||
+      method === 'cancelTeamStage' ||
+      method === 'acceptTeamStageOutput'
+    ) {
       const descriptor = BLUEPRINT_INVOCATIONS.find(item => item.method === method)!
       const parsed = descriptor.result.create().safeParse(result.value)
       if (!parsed.success) throw new BlueprintRemoteError('blueprint/dto-invalid')
@@ -97,6 +129,6 @@ export function resolveBlueprintHost(context: { get?: (key: string) => unknown }
     decide: (runId, decisionId, action) => invoke('decide', { runId, decisionId, action }),
     startTeamStage: args => invoke('startTeamStage', args),
     cancelTeamStage: args => invoke('cancelTeamStage', args),
-    acceptTeamStageOutput: args => invoke('acceptTeamStageOutput', args),
+    acceptTeamStageOutput: args => invoke('acceptTeamStageOutput', args)
   }
 }

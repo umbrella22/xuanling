@@ -2,7 +2,9 @@
 import { BLUEPRINT_PACKAGE, BLUEPRINT_INVOCATIONS } from './typert-descriptors.ts'
 
 export const TYPERT = {
-  package: BLUEPRINT_PACKAGE, face: 'host' as const, schemas: [],
+  package: BLUEPRINT_PACKAGE,
+  face: 'host' as const,
+  schemas: [],
   invocations: BLUEPRINT_INVOCATIONS,
-  model: { services: [], events: [], objects: [] },
+  model: { services: [], events: [], objects: [] }
 }

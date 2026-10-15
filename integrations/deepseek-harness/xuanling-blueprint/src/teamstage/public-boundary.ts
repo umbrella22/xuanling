@@ -17,7 +17,10 @@ type ActiveAgentAttempt = AttemptRecord & {
 export class FrozenTeamStageBoundaryError extends Error {
   override readonly name = 'FrozenTeamStageBoundaryError'
   readonly code = 'TEAM_STAGE_CONFLICT'
-  constructor(readonly runId: string, readonly issueCode: string) {
+  constructor(
+    readonly runId: string,
+    readonly issueCode: string
+  ) {
     super(`frozen TeamStage boundary rejected for ${runId}: ${issueCode}`)
   }
 }
@@ -42,7 +45,9 @@ export interface FrozenTeamStageAdmission {
 
 /** The fingerprint has the same semantic inputs as the automatic driver. */
 export function frozenTeamTaskSpecificationFingerprint(config: TeamStageConfig, resourceDigests: Record<string, string>): string {
-  return createHash('sha256').update(JSON.stringify({ config, resources: resourceDigests })).digest('hex')
+  return createHash('sha256')
+    .update(JSON.stringify({ config, resources: resourceDigests }))
+    .digest('hex')
 }
 
 function reject(runId: string, issueCode: string): never {
@@ -74,13 +79,14 @@ export function resolveFrozenTeamStageAdmission(record: RunRecord, definition: B
   if (candidate === undefined) reject(record.runId, 'teamstage-node-not-found')
   if (candidate.kind !== 'agentTask' || candidate.teamStage === undefined) reject(record.runId, 'teamstage-node-kind-mismatch')
 
-  const attempt = record.teamStage?.attemptId === undefined
-    ? activeAttempt(record, request.stageId)
-    : (() => {
-        const bound = record.attempts.find(value => value.attemptId === record.teamStage!.attemptId && value.nodeId === request.stageId)
-        if (bound === undefined) reject(record.runId, 'teamstage-attempt-binding-missing')
-        return bound
-      })()
+  const attempt =
+    record.teamStage?.attemptId === undefined
+      ? activeAttempt(record, request.stageId)
+      : (() => {
+          const bound = record.attempts.find(value => value.attemptId === record.teamStage!.attemptId && value.nodeId === request.stageId)
+          if (bound === undefined) reject(record.runId, 'teamstage-attempt-binding-missing')
+          return bound
+        })()
   const active = assertActiveAttempt(record, attempt)
 
   const fingerprint = frozenTeamTaskSpecificationFingerprint(candidate.teamStage, active.intent.resourceDigests)
@@ -92,8 +98,8 @@ export function resolveFrozenTeamStageAdmission(record: RunRecord, definition: B
 
   const existingStage = record.teamStage
   if (existingStage !== undefined) {
-    if (existingStage.stageId !== candidate.id || existingStage.attemptId !== active.attemptId
-      || existingStage.taskSpecificationFingerprint !== fingerprint) reject(record.runId, 'teamstage-binding-mismatch')
+    if (existingStage.stageId !== candidate.id || existingStage.attemptId !== active.attemptId || existingStage.taskSpecificationFingerprint !== fingerprint)
+      reject(record.runId, 'teamstage-binding-mismatch')
     if (TERMINAL_STAGE_STATES.has(existingStage.state) && existingStage.state === 'recovery_required') {
       reject(record.runId, 'teamstage-recovery-required')
     }
@@ -106,6 +112,6 @@ export function resolveFrozenTeamStageAdmission(record: RunRecord, definition: B
     attempt: active,
     task: structuredClone(candidate.teamStage.task),
     taskSpecificationFingerprint: fingerprint,
-    ...(existingStage === undefined ? {} : { existingStage }),
+    ...(existingStage === undefined ? {} : { existingStage })
   }
 }

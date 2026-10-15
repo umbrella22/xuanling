@@ -4,14 +4,27 @@ import { join } from 'node:path'
 import { z } from 'zod'
 import { WriterLease } from '../persistence/lease.ts'
 
-const deletionCodec = z.strictObject({ stateVersion: z.literal(1), blueprintId: z.string(), documentRevision: z.string(), requestId: z.string(), deletedAt: z.number().finite() })
+const deletionCodec = z.strictObject({
+  stateVersion: z.literal(1),
+  blueprintId: z.string(),
+  documentRevision: z.string(),
+  requestId: z.string(),
+  deletedAt: z.number().finite()
+})
 export type LibraryDeletion = z.infer<typeof deletionCodec>
-export class LibraryStateError extends Error { readonly code = 'blueprint/library-state-invalid' }
+export class LibraryStateError extends Error {
+  readonly code = 'blueprint/library-state-invalid'
+}
 function directory(path: string, create: boolean): boolean {
-  try { if (!lstatSync(path).isDirectory()) throw new LibraryStateError(); return true }
-  catch (error) {
+  try {
+    if (!lstatSync(path).isDirectory()) throw new LibraryStateError()
+    return true
+  } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-    if (create) { mkdirSync(path, { recursive: true, mode: 0o700 }); return true }
+    if (create) {
+      mkdirSync(path, { recursive: true, mode: 0o700 })
+      return true
+    }
     return false
   }
 }
@@ -43,9 +56,14 @@ export function writeLibraryDeletion(library: string, value: LibraryDeletion): v
   const temporary = join(root, `.delete-${randomUUID()}`)
   try {
     const fd = openSync(temporary, 'wx', 0o600)
-    try { writeFileSync(fd, JSON.stringify(deletionCodec.parse(value))); fsyncSync(fd) }
-    finally { closeSync(fd) }
+    try {
+      writeFileSync(fd, JSON.stringify(deletionCodec.parse(value)))
+      fsyncSync(fd)
+    } finally {
+      closeSync(fd)
+    }
     renameSync(temporary, join(root, deletionName(value.blueprintId)))
+  } finally {
+    rmSync(temporary, { force: true })
   }
-  finally { rmSync(temporary, { force: true }) }
 }

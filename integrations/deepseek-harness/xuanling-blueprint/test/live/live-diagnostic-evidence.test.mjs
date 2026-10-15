@@ -5,20 +5,29 @@ import { test } from 'node:test'
 import { pathToFileURL } from 'node:url'
 import { runCases, VerificationNotRunError } from '../../scripts/verify.mjs'
 import { LIVE_BEHAVIOR_FLAGS } from '../acceptance/behavior-evidence.mjs'
+import { LiveJourneyError as JourneyError, isolatedEnvironment, isolatedJourneyEnvironment, runIsolatedJourney } from './journey.mjs'
 import {
-  LiveJourneyError as JourneyError, isolatedEnvironment,
-  isolatedJourneyEnvironment, runIsolatedJourney,
-} from './journey.mjs'
-import {
-  LiveJourneyError, LIVE_JOURNEY_ERROR_CODES, LIVE_FAILURE_STAGES,
-  LIVE_OBSERVER_FLAGS, LIVE_PROVIDER_FAILURE_CODES,
-  collectLiveFailureEvidence, projectLiveFailureEvidence, projectLiveJourneyFailure,
+  LiveJourneyError,
+  LIVE_JOURNEY_ERROR_CODES,
+  LIVE_FAILURE_STAGES,
+  LIVE_OBSERVER_FLAGS,
+  LIVE_PROVIDER_FAILURE_CODES,
+  collectLiveFailureEvidence,
+  projectLiveFailureEvidence,
+  projectLiveJourneyFailure
 } from './live-diagnostic-evidence.mjs'
 
 // Synthetic calibration only: no credentials, Host, SDK, provider or live claim.
 const sentinel = 'W4_DIAGNOSTIC_RAW_SENTINEL_DO_NOT_SERIALIZE'
 const rawPath = '/private/diagnostic-sentinel-root'
-const passCase = error => ({ id: 'L1', title: 'typed ordinary failure', expect: 'pass', run: () => { throw error } })
+const passCase = error => ({
+  id: 'L1',
+  title: 'typed ordinary failure',
+  expect: 'pass',
+  run: () => {
+    throw error
+  }
+})
 const noRaw = value => {
   const text = JSON.stringify(value)
   assert.equal(text.includes(sentinel), false)
@@ -28,15 +37,24 @@ const source = readFileSync(new URL('./journey.mjs', import.meta.url), 'utf8')
 
 function actualFacts(stage = 'observer_read') {
   const flags = Object.fromEntries(LIVE_OBSERVER_FLAGS.map(name => [name, name !== 'requestAborted']))
-  return { stage, snapshot: {
-    runId: sentinel, state: 'failed', inputJson: sentinel,
-    attempts: [
-      { nodeId: 'model', attemptId: sentinel, state: 'failed', resultKind: 'provider-failed', outputJson: sentinel, diagnostics: { prompt: sentinel } },
-      { nodeId: 'downstream', attemptId: sentinel, state: 'skipped', resultKind: undefined, outputJson: sentinel },
-    ],
-  }, observed: { sessions: [
-    { ...flags, sessionId: sentinel, failureCode: 'HTTP_401', failureStatus: 401, raw: sentinel, error: sentinel, path: rawPath },
-  ], prompt: sentinel, body: sentinel, root: rawPath } }
+  return {
+    stage,
+    snapshot: {
+      runId: sentinel,
+      state: 'failed',
+      inputJson: sentinel,
+      attempts: [
+        { nodeId: 'model', attemptId: sentinel, state: 'failed', resultKind: 'provider-failed', outputJson: sentinel, diagnostics: { prompt: sentinel } },
+        { nodeId: 'downstream', attemptId: sentinel, state: 'skipped', resultKind: undefined, outputJson: sentinel }
+      ]
+    },
+    observed: {
+      sessions: [{ ...flags, sessionId: sentinel, failureCode: 'HTTP_401', failureStatus: 401, raw: sentinel, error: sentinel, path: rawPath }],
+      prompt: sentinel,
+      body: sentinel,
+      root: rawPath
+    }
+  }
 }
 
 function decoratedError(code) {
@@ -62,7 +80,8 @@ test('D-01: journey re-exports the exact trusted pure error class, without a ver
 test('D-01: exact static code vocabulary covers every current journey throw, not an arbitrary LIVE prefix', () => {
   // Include the existing ternary failure expression; the two NotRun literals
   // belong to VerificationNotRunError, not the LiveJourneyError vocabulary.
-  const emitted = [...source.matchAll(/'(LIVE_[A-Z_]+)'/g)].map(match => match[1])
+  const emitted = [...source.matchAll(/'(LIVE_[A-Z_]+)'/g)]
+    .map(match => match[1])
     .filter(code => !['LIVE_CONFIGURATION_MISSING', 'LIVE_HOST_OR_ARTIFACT_MISSING'].includes(code))
   assert.deepEqual([...new Set(emitted)].sort(), [...LIVE_JOURNEY_ERROR_CODES].sort())
   assert.equal(Object.isFrozen(LIVE_JOURNEY_ERROR_CODES), true)
@@ -84,15 +103,37 @@ for (const code of LIVE_JOURNEY_ERROR_CODES) {
 }
 
 test('D-01: all six main correct-red reasons pass through the actual runCases error exit', async () => {
-  const codes = ['LIVE_PROVIDER_TIMEOUT', 'LIVE_PROVIDER_FAILED', 'LIVE_AGENT_NONCE_MISSING', 'LIVE_AGENT_FACTS_MISSING', 'LIVE_HOST_BOOT_TIMEOUT', 'LIVE_JOURNEY_FAILED']
+  const codes = [
+    'LIVE_PROVIDER_TIMEOUT',
+    'LIVE_PROVIDER_FAILED',
+    'LIVE_AGENT_NONCE_MISSING',
+    'LIVE_AGENT_FACTS_MISSING',
+    'LIVE_HOST_BOOT_TIMEOUT',
+    'LIVE_JOURNEY_FAILED'
+  ]
   const rows = await runCases(codes.map(code => passCase(new JourneyError(code))))
-  assert.deepEqual(rows.map(row => row.reason_code), codes)
-  assert.deepEqual(rows.map(row => row.status), codes.map(() => 'fail'))
-  assert.equal(rows.every(row => !Object.hasOwn(row, 'failure_evidence')), true)
+  assert.deepEqual(
+    rows.map(row => row.reason_code),
+    codes
+  )
+  assert.deepEqual(
+    rows.map(row => row.status),
+    codes.map(() => 'fail')
+  )
+  assert.equal(
+    rows.every(row => !Object.hasOwn(row, 'failure_evidence')),
+    true
+  )
 })
 
 test('D-01: forged names, ordinary errors, prototype forgeries and strings stay generic at runCases', async () => {
-  const plain = { name: 'LiveJourneyError', code: 'LIVE_PROVIDER_TIMEOUT', reason_code: 'LIVE_PROVIDER_TIMEOUT', message: sentinel, failure_evidence: collectLiveFailureEvidence(actualFacts()) }
+  const plain = {
+    name: 'LiveJourneyError',
+    code: 'LIVE_PROVIDER_TIMEOUT',
+    reason_code: 'LIVE_PROVIDER_TIMEOUT',
+    message: sentinel,
+    failure_evidence: collectLiveFailureEvidence(actualFacts())
+  }
   const namedError = Object.assign(new Error(sentinel), plain)
   const prototypeForgery = Object.assign(Object.create(LiveJourneyError.prototype), plain)
   const inputs = [plain, namedError, prototypeForgery, sentinel, null, undefined]
@@ -122,8 +163,12 @@ test('D-01: trusted instances with unknown / malformed codes do not expand the s
 
 test('D-01: accessor codes and malicious toJSON/raw fields cannot cross the evidence boundary', async () => {
   const error = decoratedError('LIVE_PROVIDER_FAILED')
-  error.toJSON = () => { throw new Error(sentinel) }
-  error.failure_evidence.toJSON = () => { throw new Error(sentinel) }
+  error.toJSON = () => {
+    throw new Error(sentinel)
+  }
+  error.failure_evidence.toJSON = () => {
+    throw new Error(sentinel)
+  }
   const [row] = await runCases([passCase(error)])
   noRaw(row)
   assert.equal(row.reason_code, 'LIVE_PROVIDER_FAILED')
@@ -139,19 +184,33 @@ test('D-01: not-run, exact expected-red, wrong red and unexpected green classifi
     { ...passCase(decoratedError('LIVE_PROVIDER_TIMEOUT')), expect: 'red', redCode: 'LIVE_PROVIDER_TIMEOUT' },
     { ...passCase(new Error(sentinel)), expect: 'red', redCode: 'LIVE_PROVIDER_TIMEOUT' },
     { id: 'green', title: 'unexpected green', expect: 'red', redCode: 'LIVE_PROVIDER_TIMEOUT', run: () => true },
-    { ...passCase({ code: 'LIVE_PROVIDER_TIMEOUT', message: sentinel }), expect: 'red', redCode: 'LIVE_PROVIDER_TIMEOUT' },
+    { ...passCase({ code: 'LIVE_PROVIDER_TIMEOUT', message: sentinel }), expect: 'red', redCode: 'LIVE_PROVIDER_TIMEOUT' }
   ])
-  assert.deepEqual(rows.map(row => row.status), ['not-run', 'expected-red', 'fail', 'fail', 'expected-red'])
+  assert.deepEqual(
+    rows.map(row => row.status),
+    ['not-run', 'expected-red', 'fail', 'fail', 'expected-red']
+  )
   assert.equal(rows[0].reason_code, 'LIVE_CONFIGURATION_MISSING')
   assert.equal(rows[1].detail, 'exact expected failure')
   assert.equal(rows[2].detail, 'wrong failure')
   assert.equal(rows[3].detail, 'unexpected green')
-  assert.equal(rows.every(row => !Object.hasOwn(row, 'failure_evidence')), true)
+  assert.equal(
+    rows.every(row => !Object.hasOwn(row, 'failure_evidence')),
+    true
+  )
   noRaw(rows)
 })
 
 test('D-01: L1 success still requires the original complete authority / nonce facts', async () => {
-  const facts = { runId: 'run-fixture', attemptId: 'att-model', downstreamAttemptId: 'att-downstream', sessionId: 'bp-run-fixture-att-model-session', output_sha256: 'a'.repeat(64), nonce_sha256: 'a'.repeat(64), ...Object.fromEntries(LIVE_BEHAVIOR_FLAGS.map(name => [name, true])) }
+  const facts = {
+    runId: 'run-fixture',
+    attemptId: 'att-model',
+    downstreamAttemptId: 'att-downstream',
+    sessionId: 'bp-run-fixture-att-model-session',
+    output_sha256: 'a'.repeat(64),
+    nonce_sha256: 'a'.repeat(64),
+    ...Object.fromEntries(LIVE_BEHAVIOR_FLAGS.map(name => [name, true]))
+  }
   const valid = { ok: true, behavior_assertions: facts, prompt: sentinel }
   const [green] = await runCases([{ id: 'L1', expect: 'pass', run: () => valid }])
   assert.equal(green.status, 'pass')
@@ -167,7 +226,17 @@ test('D-01: L1 success still requires the original complete authority / nonce fa
 
 test('D-02: fixed schema contains only observed stage / states / counts / public booleans / provider classification', () => {
   const evidence = collectLiveFailureEvidence(actualFacts())
-  assert.deepEqual(Object.keys(evidence), ['schemaVersion', 'stage', 'run_state', 'attempt_count', 'model', 'downstream', 'session_count', 'observer', 'provider_failure'])
+  assert.deepEqual(Object.keys(evidence), [
+    'schemaVersion',
+    'stage',
+    'run_state',
+    'attempt_count',
+    'model',
+    'downstream',
+    'session_count',
+    'observer',
+    'provider_failure'
+  ])
   assert.equal(evidence.schemaVersion, 1)
   assert.equal(evidence.stage, 'observer_read')
   assert.equal(evidence.run_state, 'failed')
@@ -176,7 +245,8 @@ test('D-02: fixed schema contains only observed stage / states / counts / public
   assert.deepEqual(evidence.downstream, { state: 'skipped', resultKind: null })
   assert.equal(evidence.session_count, 1)
   assert.deepEqual(evidence.provider_failure, { code: 'HTTP_401', status: 401 })
-  for (const name of LIVE_OBSERVER_FLAGS) assert.deepEqual(evidence.observer[name], { seen: name !== 'requestAborted', count: name === 'requestAborted' ? 0 : 1 })
+  for (const name of LIVE_OBSERVER_FLAGS)
+    assert.deepEqual(evidence.observer[name], { seen: name !== 'requestAborted', count: name === 'requestAborted' ? 0 : 1 })
   assert.deepEqual(projectLiveFailureEvidence(evidence), evidence)
   noRaw(evidence)
 })
@@ -204,7 +274,11 @@ test('D-02: unavailable facts are null / unknown, not invented zeros or events f
 test('D-02: all stage enums survive exactly, arbitrary stages / states / resultKinds do not', () => {
   for (const stage of LIVE_FAILURE_STAGES) assert.equal(collectLiveFailureEvidence({ stage }).stage, stage)
   for (const stage of [sentinel, 'provider_timeout', '', null, {}, []]) assert.equal(collectLiveFailureEvidence({ stage }).stage, 'unknown')
-  const evidence = collectLiveFailureEvidence({ stage: sentinel, snapshot: { state: sentinel, attempts: [{ nodeId: 'model', state: sentinel, resultKind: sentinel }] }, observed: { sessions: [{ sessionId: sentinel, agentCreated: 'true', failureCode: sentinel, failureStatus: '401' }] } })
+  const evidence = collectLiveFailureEvidence({
+    stage: sentinel,
+    snapshot: { state: sentinel, attempts: [{ nodeId: 'model', state: sentinel, resultKind: sentinel }] },
+    observed: { sessions: [{ sessionId: sentinel, agentCreated: 'true', failureCode: sentinel, failureStatus: '401' }] }
+  })
   assert.equal(evidence.run_state, 'unknown')
   assert.deepEqual(evidence.model, { state: 'unknown', resultKind: null })
   assert.deepEqual(evidence.observer.agentCreated, { seen: false, count: 0 })
@@ -213,11 +287,16 @@ test('D-02: all stage enums survive exactly, arbitrary stages / states / resultK
 })
 
 test('D-02: observer counts require exact public boolean true, never raw IDs or truthy strings', () => {
-  const evidence = collectLiveFailureEvidence({ stage: 'run_observed', observed: { sessions: [
-    { agentCreated: true, requestSeen: true, responseSeen: false, sessionId: sentinel },
-    { agentCreated: false, requestSeen: 'true', responseSeen: true, sessionId: rawPath },
-    { agentCreated: 1, requestSeen: {}, responseSeen: true, raw: sentinel },
-  ] } })
+  const evidence = collectLiveFailureEvidence({
+    stage: 'run_observed',
+    observed: {
+      sessions: [
+        { agentCreated: true, requestSeen: true, responseSeen: false, sessionId: sentinel },
+        { agentCreated: false, requestSeen: 'true', responseSeen: true, sessionId: rawPath },
+        { agentCreated: 1, requestSeen: {}, responseSeen: true, raw: sentinel }
+      ]
+    }
+  })
   assert.equal(evidence.session_count, 3)
   assert.deepEqual(evidence.observer.agentCreated, { seen: true, count: 1 })
   assert.deepEqual(evidence.observer.requestSeen, { seen: true, count: 1 })
@@ -251,7 +330,20 @@ test('D-02: malformed schema and evidence values cannot leak or impersonate vali
     noRaw(row)
   }
   for (const invalid of [-1, 0.5, '1', sentinel, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, {}, []]) {
-    const evidence = projectLiveFailureEvidence({ schemaVersion: 1, stage: sentinel, run_state: {}, attempt_count: invalid, session_count: invalid, model: { state: [], resultKind: sentinel }, downstream: sentinel, observer: Object.fromEntries(LIVE_OBSERVER_FLAGS.map(name => [name, { seen: 'true', count: invalid, raw: sentinel }])), provider_failure: { code: sentinel, status: invalid }, error: sentinel, body: sentinel, root: rawPath })
+    const evidence = projectLiveFailureEvidence({
+      schemaVersion: 1,
+      stage: sentinel,
+      run_state: {},
+      attempt_count: invalid,
+      session_count: invalid,
+      model: { state: [], resultKind: sentinel },
+      downstream: sentinel,
+      observer: Object.fromEntries(LIVE_OBSERVER_FLAGS.map(name => [name, { seen: 'true', count: invalid, raw: sentinel }])),
+      provider_failure: { code: sentinel, status: invalid },
+      error: sentinel,
+      body: sentinel,
+      root: rawPath
+    })
     assert.equal(evidence.attempt_count, null)
     assert.equal(evidence.session_count, null)
     assert.equal(evidence.stage, 'unknown')
@@ -264,8 +356,14 @@ test('D-02: malformed schema and evidence values cannot leak or impersonate vali
 test('D-02: inherited fields, getters and toJSON are not public evidence data', () => {
   const value = Object.create({ stage: 'run_observed', run_state: 'succeeded', attempt_count: 9 })
   value.schemaVersion = 1
-  Object.defineProperty(value, 'model', { get: () => { throw new Error(sentinel) } })
-  value.toJSON = () => { throw new Error(sentinel) }
+  Object.defineProperty(value, 'model', {
+    get: () => {
+      throw new Error(sentinel)
+    }
+  })
+  value.toJSON = () => {
+    throw new Error(sentinel)
+  }
   const evidence = projectLiveFailureEvidence(value)
   assert.equal(evidence.stage, 'unknown')
   assert.equal(evidence.run_state, 'unknown')
@@ -275,7 +373,17 @@ test('D-02: inherited fields, getters and toJSON are not public evidence data', 
 })
 
 test('D-02: ordinary early failure uses runIsolatedJourney + runCases without Host or provider and does not invent completed stages', async () => {
-  const [row] = await runCases([{ id: 'L1', expect: 'pass', run: () => runIsolatedJourney({}, { key: 'controlled-opaque-value', baseUrl: 'https://user:password@provider.invalid', model: 'fixture', protocol: 'openai-responses' }) }])
+  const [row] = await runCases([
+    {
+      id: 'L1',
+      expect: 'pass',
+      run: () =>
+        runIsolatedJourney(
+          {},
+          { key: 'controlled-opaque-value', baseUrl: 'https://user:password@provider.invalid', model: 'fixture', protocol: 'openai-responses' }
+        )
+    }
+  ])
   assert.equal(row.status, 'fail')
   assert.equal(row.reason_code, 'LIVE_ENDPOINT_INVALID')
   assert.equal(row.failure_evidence.stage, 'initial')
@@ -286,7 +394,9 @@ test('D-02: ordinary early failure uses runIsolatedJourney + runCases without Ho
 })
 
 test('D-02: ordinary missing config remains typed not-run without a fake failure_evidence', async () => {
-  const [row] = await runCases([{ id: 'L1', expect: 'pass', run: () => runIsolatedJourney({}, { key: '', baseUrl: '', model: '', protocol: 'openai-responses' }) }])
+  const [row] = await runCases([
+    { id: 'L1', expect: 'pass', run: () => runIsolatedJourney({}, { key: '', baseUrl: '', model: '', protocol: 'openai-responses' }) }
+  ])
   assert.equal(row.status, 'not-run')
   assert.equal(row.reason_code, 'LIVE_CONFIGURATION_MISSING')
   assert.equal(Object.hasOwn(row, 'failure_evidence'), false)
@@ -294,7 +404,10 @@ test('D-02: ordinary missing config remains typed not-run without a fake failure
 
 test('D-02: ordinary projection precedes original cleanup; negativeOnly synthetic_evidence is unchanged', () => {
   assert.match(source, /if \(negativeOnly\) safeObserved = \{ \.\.\.observed, run_snapshot: safeRunSnapshot\(snapshot\) \}/)
-  assert.match(source, /if \(\(error instanceof LiveJourneyError \|\| error instanceof VerificationNotRunError\) && safeObserved\) failure\.synthetic_evidence = safeObserved/)
+  assert.match(
+    source,
+    /if \(\(error instanceof LiveJourneyError \|\| error instanceof VerificationNotRunError\) && safeObserved\) failure\.synthetic_evidence = safeObserved/
+  )
   const capture = source.indexOf('failure.failure_evidence = collectLiveFailureEvidence')
   const cleanup = source.indexOf('} finally {', capture)
   assert.equal(capture > 0, true)
@@ -309,7 +422,14 @@ test('D-02: ordinary projection precedes original cleanup; negativeOnly syntheti
 })
 
 const config = { key: 'synthetic-environment-only', baseUrl: 'https://provider.invalid/v1', model: 'fixture', protocol: 'openai-responses' }
-const inherited = { PATH: '/bin', NODE_OPTIONS: '--require hostile', BP_LIVE_DIAGNOSTIC_BUDGET_FILE: '/private/hostile', BP_LIVE_PROVIDER_KEY: sentinel, OPENAI_API_KEY: sentinel, HTTPS_PROXY: sentinel }
+const inherited = {
+  PATH: '/bin',
+  NODE_OPTIONS: '--require hostile',
+  BP_LIVE_DIAGNOSTIC_BUDGET_FILE: '/private/hostile',
+  BP_LIVE_PROVIDER_KEY: sentinel,
+  OPENAI_API_KEY: sentinel,
+  HTTPS_PROXY: sentinel
+}
 const isolatedHome = resolve('/isolated/live-diagnostic-fixture')
 
 test('D-03 seam: normal isolated journey inherits neither Node options nor an ambient budget', () => {
@@ -325,15 +445,28 @@ test('D-03 seam: only explicit budget injects a fileURL preload after isolation,
   const reportPath = resolve('/isolated/report-budget.json')
   const budget = { preloadPath, reportPath }
   const env = isolatedJourneyEnvironment(isolatedHome, config, budget, inherited)
-  assert.deepEqual(env, { ...isolatedEnvironment(isolatedHome, config, inherited), NODE_OPTIONS: '--import ' + pathToFileURL(preloadPath).href, BP_LIVE_DIAGNOSTIC_BUDGET_FILE: reportPath })
+  assert.deepEqual(env, {
+    ...isolatedEnvironment(isolatedHome, config, inherited),
+    NODE_OPTIONS: '--import ' + pathToFileURL(preloadPath).href,
+    BP_LIVE_DIAGNOSTIC_BUDGET_FILE: reportPath
+  })
   assert.equal(env.NODE_OPTIONS.includes('hostile'), false)
   assert.deepEqual(budget, { preloadPath, reportPath })
   assert.equal(source.includes('const env = isolatedJourneyEnvironment(home, config, diagnosticBudget)'), true)
-  assert.equal(source.indexOf('const env = isolatedJourneyEnvironment(home, config, diagnosticBudget)') < source.indexOf('const host = boot(cli, profile, env, cwd)'), true)
+  assert.equal(
+    source.indexOf('const env = isolatedJourneyEnvironment(home, config, diagnosticBudget)') < source.indexOf('const host = boot(cli, profile, env, cwd)'),
+    true
+  )
 })
 
 test('D-03 seam: malformed / implicit budget cannot create Node option inheritance', () => {
-  for (const budget of [null, {}, { preloadPath: 'relative.mjs', reportPath: resolve('/isolated/report') }, { preloadPath: resolve('/isolated/preload'), reportPath: 'relative.json' }, { preloadPath: 1, reportPath: resolve('/isolated/report') }]) {
+  for (const budget of [
+    null,
+    {},
+    { preloadPath: 'relative.mjs', reportPath: resolve('/isolated/report') },
+    { preloadPath: resolve('/isolated/preload'), reportPath: 'relative.json' },
+    { preloadPath: 1, reportPath: resolve('/isolated/report') }
+  ]) {
     assert.throws(() => isolatedJourneyEnvironment(isolatedHome, config, budget, inherited), { name: 'TypeError', message: 'invalid diagnostic budget paths' })
   }
 })

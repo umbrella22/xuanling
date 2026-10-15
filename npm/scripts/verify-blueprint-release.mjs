@@ -42,6 +42,8 @@ try {
   assert.equal(packageJson.publishConfig?.registry, "https://registry.npmjs.org");
   assert.deepEqual(packageJson.scripts, {
     build: "vp pack",
+    format: "vp fmt src test vite.config.ts package.json '!src/host/dsh-structured-compat.ts'",
+    "format:check": "vp fmt src test vite.config.ts package.json '!src/host/dsh-structured-compat.ts' --check",
     typecheck: "tsc --noEmit -p tsconfig.json",
     lint: "vp lint",
     test: "node --experimental-transform-types --test --test-concurrency=1 \"test/**/*.test.mjs\"",

@@ -16,7 +16,21 @@ import { TYPERT } from '../../src/typert.host.ts'
 import * as persist from '../../src/definition/persist.ts'
 import { decodeDefinition, validateDefinition } from '../../src/definition/index.ts'
 
-const doc = (more = {}) => ({ schemaVersion: 1, id: 'sample', name: 'Actual configured blueprint', resources: {}, graph: { nodes: [{ id: 'input', kind: 'input', outputs: { value: 'json' } }, { id: 'output', kind: 'output', inputs: { value: 'json' } }], edges: [{ kind: 'data', from: 'input.value', to: 'output.value' }] }, presentation: { nodes: { input: { x: 0, y: 0 }, output: { x: 200, y: 0 } } }, ...more })
+const doc = (more = {}) => ({
+  schemaVersion: 1,
+  id: 'sample',
+  name: 'Actual configured blueprint',
+  resources: {},
+  graph: {
+    nodes: [
+      { id: 'input', kind: 'input', outputs: { value: 'json' } },
+      { id: 'output', kind: 'output', inputs: { value: 'json' } }
+    ],
+    edges: [{ kind: 'data', from: 'input.value', to: 'output.value' }]
+  },
+  presentation: { nodes: { input: { x: 0, y: 0 }, output: { x: 200, y: 0 } } },
+  ...more
+})
 const codec = method => TYPERT.invocations.find(i => i.method === method)?.parameters[0]?.codec.create()
 async function fixture(t, { missing = false, empty = false, host } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'bp-w3-doc-'))
@@ -25,17 +39,29 @@ async function fixture(t, { missing = false, empty = false, host } = {}) {
   mkdirSync(rootDir)
   if (!missing) writeFileSync(join(rootDir, 'blueprint.json'), JSON.stringify(doc()))
   const ctx = new Context()
-  ctx.provide('systemPrompt', { tools() { return () => {} } })
+  ctx.provide('systemPrompt', {
+    tools() {
+      return () => {}
+    }
+  })
   new ToolRuntime(ctx, { mode: 'native' })
-  if (host) { host.attach(ctx); ctx.provide('agents', host.registry) }
+  if (host) {
+    host.attach(ctx)
+    ctx.provide('agents', host.registry)
+  }
   const config = { blueprints: empty ? {} : { sample: rootDir }, runtimeRoot, skillRoots: [] }
   const fiber = await ctx.plugin(BlueprintService, config)
   const service = ctx.blueprint
-  t.after(async () => { await fiber.dispose(); await ctx.fiber.dispose(); rmSync(root, { recursive: true, force: true }) })
+  t.after(async () => {
+    await fiber.dispose()
+    await ctx.fiber.dispose()
+    rmSync(root, { recursive: true, force: true })
+  })
   return { service, root, rootDir, runtimeRoot, config }
 }
 const requireDocumentApi = service => {
-  for (const method of ['listDefinitions', 'loadDefinition', 'saveDefinition']) assert.equal(typeof service[method], 'function', `TARGET: public ${method} is implemented`)
+  for (const method of ['listDefinitions', 'loadDefinition', 'saveDefinition'])
+    assert.equal(typeof service[method], 'function', `TARGET: public ${method} is implemented`)
 }
 async function drain(service) {
   for (const handle of service.runtimes.values()) {
@@ -48,11 +74,13 @@ const publicArgs = {
   saveDefinition: { blueprintId: 'sample', definitionJson: JSON.stringify(doc()), expectedRevision: null },
   validate: { definitionJson: JSON.stringify(doc()) },
   startRun: { blueprintId: 'sample', expectedRevision: 'document', inputJson: '{}', requestId: 'request' },
-  inspectRun: { runId: 'run' }, cancelRun: { runId: 'run' },
+  inspectRun: { runId: 'run' },
+  cancelRun: { runId: 'run' },
   decide: { runId: 'run', decisionId: 'decision', action: 'approve' },
   hostProbe: { blueprintId: 'sample', resourceId: 'skill', input: 'probe' },
   mcpProbe: { serverName: 'registered', toolName: 'read', args: {} },
-  exportDefinition: { blueprintId: 'sample' }, importDefinition: { blueprintId: 'sample', archiveBase64: 'YQ==' },
+  exportDefinition: { blueprintId: 'sample' },
+  importDefinition: { blueprintId: 'sample', archiveBase64: 'YQ==' }
 }
 for (const [method, args] of Object.entries(publicArgs)) {
   test(`wire ${method}: rejects unknown locator fields without silently stripping`, () => {
@@ -72,7 +100,9 @@ test('service catalog: empty config is empty, missing configured document has nu
   await assert.rejects(h.service.loadDefinition({ blueprintId: 'sample' }), { code: 'blueprint/definition-not-found' })
   h.config.blueprints = { sample: h.rootDir }
   rmSync(join(h.rootDir, 'blueprint.json'))
-  assert.deepEqual(await h.service.listDefinitions(), { definitions: [{ blueprintId: 'sample', name: 'sample', documentRevision: null, semanticRevision: null }] })
+  assert.deepEqual(await h.service.listDefinitions(), {
+    definitions: [{ blueprintId: 'sample', name: 'sample', documentRevision: null, semanticRevision: null }]
+  })
   assert.equal(existsSync(join(h.rootDir, 'blueprint.json')), false)
 })
 test('service document CAS: layout-only changes conflict without changing semantic, stale write preserves file', async t => {
@@ -86,17 +116,34 @@ test('service document CAS: layout-only changes conflict without changing semant
   assert.notEqual(saved.layoutRevision, loaded.layoutRevision)
   assert.notEqual(saved.documentRevision, loaded.documentRevision)
   const bytes = readFileSync(join(h.rootDir, 'blueprint.json'))
-  await assert.rejects(h.service.saveDefinition({ blueprintId: 'sample', expectedRevision: loaded.documentRevision, definitionJson: JSON.stringify(doc({ name: 'STALE_REPLACEMENT' })) }), { code: 'blueprint/revision-conflict' })
+  await assert.rejects(
+    h.service.saveDefinition({
+      blueprintId: 'sample',
+      expectedRevision: loaded.documentRevision,
+      definitionJson: JSON.stringify(doc({ name: 'STALE_REPLACEMENT' }))
+    }),
+    { code: 'blueprint/revision-conflict' }
+  )
   assert.deepEqual(readFileSync(join(h.rootDir, 'blueprint.json')), bytes)
   assert.deepEqual(await h.service.loadDefinition({ blueprintId: 'sample' }), saved)
-  assert.deepEqual(await h.service.saveDefinition({ blueprintId: 'sample', expectedRevision: saved.documentRevision, definitionJson: saved.definitionJson }), saved)
+  assert.deepEqual(
+    await h.service.saveDefinition({ blueprintId: 'sample', expectedRevision: saved.documentRevision, definitionJson: saved.definitionJson }),
+    saved
+  )
 })
 test('service start: only configured saved document, document CAS, real input and output projection', async t => {
   const h = await fixture(t)
   requireDocumentApi(h.service)
   const loaded = await h.service.loadDefinition({ blueprintId: 'sample' })
-  await assert.rejects(h.service.startRun({ blueprintId: 'sample', expectedRevision: 'stale', inputJson: '{}', requestId: 'wrong' }), { code: 'blueprint/revision-conflict' })
-  const admitted = await h.service.startRun({ blueprintId: 'sample', expectedRevision: loaded.documentRevision, inputJson: '{"actual":42}', requestId: randomUUID() })
+  await assert.rejects(h.service.startRun({ blueprintId: 'sample', expectedRevision: 'stale', inputJson: '{}', requestId: 'wrong' }), {
+    code: 'blueprint/revision-conflict'
+  })
+  const admitted = await h.service.startRun({
+    blueprintId: 'sample',
+    expectedRevision: loaded.documentRevision,
+    inputJson: '{"actual":42}',
+    requestId: randomUUID()
+  })
   assert.equal(admitted.semanticRevision, loaded.semanticRevision)
   await drain(h.service)
   const inspected = await h.service.inspectRun({ runId: admitted.runId })
@@ -110,7 +157,9 @@ test('service first save: absent-only null CAS, ID/schema mismatch no overwrite 
   const h = await fixture(t, { missing: true })
   requireDocumentApi(h.service)
   const saved = await h.service.saveDefinition({ blueprintId: 'sample', expectedRevision: null, definitionJson: JSON.stringify(doc()) })
-  await assert.rejects(h.service.saveDefinition({ blueprintId: 'sample', expectedRevision: null, definitionJson: saved.definitionJson }), { code: 'blueprint/revision-conflict' })
+  await assert.rejects(h.service.saveDefinition({ blueprintId: 'sample', expectedRevision: null, definitionJson: saved.definitionJson }), {
+    code: 'blueprint/revision-conflict'
+  })
   const before = readFileSync(join(h.rootDir, 'blueprint.json'))
   for (const definitionJson of [JSON.stringify(doc({ id: 'other' })), 'RAW_DOCUMENT_SECRET_INVALID_JSON']) {
     await assert.rejects(h.service.saveDefinition({ blueprintId: 'sample', expectedRevision: saved.documentRevision, definitionJson }), error => {
@@ -184,55 +233,95 @@ const safeError = (code, root) => error => {
 function hostRegistry(onDispatch = call => call.finish({ kind: 'completed' }, 'REAL_OUTPUT')) {
   const calls = []
   let parentCtx
-  return { calls, attach(ctx) { parentCtx = ctx }, registry: {
-    async create(options) {
-      options.signal?.throwIfAborted()
-      const id = SessionId(options.sessionId)
-      const session = Session.create(id, options.seed, { version: SESSION_FORMAT_VERSION, id, createdAt: Date.now(), isSeeded: false, ...options.meta }, options.inheritedEventCount)
-      let running = false
-      const idle = Promise.withResolvers()
-      const call = { options, session, injections: [], input: '',
-        finish(reason, output = '') {
-          if (!running) return
-          if (output) session.append('assistant/message', { turn: 1, step: 1, stream: [], message: createMessage({ role: 'assistant', content: [{ type: 'text', text: output }] }) }, { surfaceOp: 'append' })
-          session.append('turn/end', { turn: 1, reason })
-          running = false; idle.resolve()
-        },
-      }
-      const agent = { session,
-        inject(message) { call.injections.push(message.content.map(b => b.type === 'text' ? b.text : '').join('')) },
-        followup(message) {
-          running = true
-          session.append('turn/start', { turn: 1 })
-          session.append('user/message', message, { surfaceOp: 'append' })
-          call.input = message.content.map(b => b.type === 'text' ? b.text : '').join('')
-          onDispatch(call)
-        },
-        whenIdle() { return running ? idle.promise : Promise.resolve() },
-        cancel(cause) { call.finish({ kind: 'aborted', cause }) },
-      }
-      // Real public Agent scope: unscoped ToolRuntime.restrict is forbidden.
-      const scope = createScope(parentCtx, agent)
-      agent.ctx = scope.ctx
-      try {
-        const publication = await options.setup?.(scope.ctx, agent)
-        options.signal?.throwIfAborted(); publication?.commit()
-      } catch (error) { await scope.dispose(); throw error }
-      calls.push(call)
-      let disposed = false
-      return { agent, async dispose() {
-        if (disposed) return
-        agent.cancel({ kind: 'disposed' }); await agent.whenIdle(); await scope.dispose(); disposed = true
-      } }
+  return {
+    calls,
+    attach(ctx) {
+      parentCtx = ctx
     },
-  } }
+    registry: {
+      async create(options) {
+        options.signal?.throwIfAborted()
+        const id = SessionId(options.sessionId)
+        const session = Session.create(
+          id,
+          options.seed,
+          { version: SESSION_FORMAT_VERSION, id, createdAt: Date.now(), isSeeded: false, ...options.meta },
+          options.inheritedEventCount
+        )
+        let running = false
+        const idle = Promise.withResolvers()
+        const call = {
+          options,
+          session,
+          injections: [],
+          input: '',
+          finish(reason, output = '') {
+            if (!running) return
+            if (output)
+              session.append(
+                'assistant/message',
+                { turn: 1, step: 1, stream: [], message: createMessage({ role: 'assistant', content: [{ type: 'text', text: output }] }) },
+                { surfaceOp: 'append' }
+              )
+            session.append('turn/end', { turn: 1, reason })
+            running = false
+            idle.resolve()
+          }
+        }
+        const agent = {
+          session,
+          inject(message) {
+            call.injections.push(message.content.map(b => (b.type === 'text' ? b.text : '')).join(''))
+          },
+          followup(message) {
+            running = true
+            session.append('turn/start', { turn: 1 })
+            session.append('user/message', message, { surfaceOp: 'append' })
+            call.input = message.content.map(b => (b.type === 'text' ? b.text : '')).join('')
+            onDispatch(call)
+          },
+          whenIdle() {
+            return running ? idle.promise : Promise.resolve()
+          },
+          cancel(cause) {
+            call.finish({ kind: 'aborted', cause })
+          }
+        }
+        // Real public Agent scope: unscoped ToolRuntime.restrict is forbidden.
+        const scope = createScope(parentCtx, agent)
+        agent.ctx = scope.ctx
+        try {
+          const publication = await options.setup?.(scope.ctx, agent)
+          options.signal?.throwIfAborted()
+          publication?.commit()
+        } catch (error) {
+          await scope.dispose()
+          throw error
+        }
+        calls.push(call)
+        let disposed = false
+        return {
+          agent,
+          async dispose() {
+            if (disposed) return
+            agent.cancel({ kind: 'disposed' })
+            await agent.whenIdle()
+            await scope.dispose()
+            disposed = true
+          }
+        }
+      }
+    }
+  }
 }
 
 test('document CAS: concurrent layout writers have one winner and retain the complete winner', async t => {
   const h = await fixture(t)
   const loaded = await h.service.loadDefinition({ blueprintId: 'sample' })
   const edits = [100, 200].map(x => doc({ presentation: { nodes: { input: { x, y: 5 } } } }))
-  const results = await Promise.allSettled(edits.map(d => h.service.saveDefinition({ blueprintId: 'sample', definitionJson: JSON.stringify(d), expectedRevision: loaded.documentRevision })))
+  const results = await Promise.allSettled(
+    edits.map(d => h.service.saveDefinition({ blueprintId: 'sample', definitionJson: JSON.stringify(d), expectedRevision: loaded.documentRevision }))
+  )
   assert.equal(results.filter(r => r.status === 'fulfilled').length, 1)
   assert.equal(results.filter(r => r.status === 'rejected').length, 1)
   const winner = results.find(r => r.status === 'fulfilled').value
@@ -261,7 +350,10 @@ test('document failure: file-shaped root and unreadable document are not treated
   const h = await fixture(t)
   rmSync(join(h.rootDir, 'blueprint.json'))
   mkdirSync(join(h.rootDir, 'blueprint.json'))
-  await assert.rejects(h.service.saveDefinition({ blueprintId: 'sample', expectedRevision: null, definitionJson: JSON.stringify(doc()) }), safeError('blueprint/definition-write-failed', h.root))
+  await assert.rejects(
+    h.service.saveDefinition({ blueprintId: 'sample', expectedRevision: null, definitionJson: JSON.stringify(doc()) }),
+    safeError('blueprint/definition-write-failed', h.root)
+  )
   assert.equal(existsSync(join(h.rootDir, 'blueprint.json')), true)
   const fileRoot = join(h.root, 'file-not-directory')
   writeFileSync(fileRoot, 'UNCHANGED_FILE')
@@ -287,14 +379,15 @@ for (const kind of ['definition', 'lib-root', 'lib-file', 'declared-resource']) 
     else {
       mkdirSync(join(h.rootDir, 'lib'))
       symlinkSync(external, join(h.rootDir, 'lib', 'escape.txt'))
-      if (kind === 'declared-resource') writeFileSync(join(h.rootDir, 'blueprint.json'), JSON.stringify(doc({ resources: { prompt: { kind: 'prompt', path: 'lib/escape.txt' } } })))
+      if (kind === 'declared-resource')
+        writeFileSync(join(h.rootDir, 'blueprint.json'), JSON.stringify(doc({ resources: { prompt: { kind: 'prompt', path: 'lib/escape.txt' } } })))
     }
     const before = readFileSync(join(h.rootDir, 'blueprint.json'))
     for (const [method, args] of [
       ['loadDefinition', { blueprintId: 'sample' }],
       ['saveDefinition', { blueprintId: 'sample', expectedRevision: loaded.documentRevision, definitionJson: loaded.definitionJson }],
       ['startRun', { blueprintId: 'sample', expectedRevision: loaded.documentRevision, inputJson: '{}', requestId: kind }],
-      ['exportDefinition', { blueprintId: 'sample' }],
+      ['exportDefinition', { blueprintId: 'sample' }]
     ]) {
       await assert.rejects(h.service[method](args), error => {
         assert.ok(['blueprint/definition-invalid', 'blueprint/definition-write-failed'].includes(error.code))
@@ -330,9 +423,13 @@ test('public runtime requires host configuration instead of guessing a global di
   const h = await fixture(t)
   h.config.runtimeRoot = undefined
   const loaded = await h.service.loadDefinition({ blueprintId: 'sample' })
-  await assert.rejects(h.service.startRun({ blueprintId: 'sample', expectedRevision: loaded.documentRevision, inputJson: '{}', requestId: 'no-runtime' }), { code: 'blueprint/capability-unavailable' })
+  await assert.rejects(h.service.startRun({ blueprintId: 'sample', expectedRevision: loaded.documentRevision, inputJson: '{}', requestId: 'no-runtime' }), {
+    code: 'blueprint/capability-unavailable'
+  })
   for (const method of ['inspectRun', 'cancelRun', 'decide']) {
-    await assert.rejects(h.service[method](method === 'decide' ? { runId: 'unknown', decisionId: 'decision', action: 'approve' } : { runId: 'unknown' }), { code: 'blueprint/capability-unavailable' })
+    await assert.rejects(h.service[method](method === 'decide' ? { runId: 'unknown', decisionId: 'decision', action: 'approve' } : { runId: 'unknown' }), {
+      code: 'blueprint/capability-unavailable'
+    })
   }
   assert.equal(h.service.runtimes.size, 0)
   assert.equal(existsSync(h.runtimeRoot), false)
@@ -346,7 +443,10 @@ test('portable archive bytes: configured Skill closure roundtrips to empty confi
   writeFileSync(join(skill, 'SKILL.md'), 'SHARED_SKILL_A')
   writeFileSync(join(skill, 'helpers', 'tool.txt'), 'COMPLETE_CLOSURE')
   h.config.skillRoots = [{ rootId: 'user-skills', rootPath: shared }]
-  writeFileSync(join(h.rootDir, 'blueprint.json'), JSON.stringify(doc({ resources: { skill: { kind: 'skill', source: { kind: 'shared', rootId: 'user-skills', path: 'demo' } } } })))
+  writeFileSync(
+    join(h.rootDir, 'blueprint.json'),
+    JSON.stringify(doc({ resources: { skill: { kind: 'skill', source: { kind: 'shared', rootId: 'user-skills', path: 'demo' } } } }))
+  )
   const exported = await h.service.exportDefinition({ blueprintId: 'sample' })
   assert.equal(resultCodec('exportDefinition').safeParse(exported).success, true)
   assert.equal('archivePath' in exported, false)
@@ -381,17 +481,28 @@ test('import/export failure bytes are rejected with safe codes and no destinatio
   const h = await fixture(t)
   const exported = await h.service.exportDefinition({ blueprintId: 'sample' })
   const archive = Buffer.from(exported.archiveBase64, 'base64')
-  const badDigest = writeZip(readZip(archive).map(e => ({ name: e.name, data: e.name === 'blueprint.json' ? Buffer.from(JSON.stringify(doc({ name: 'EXTERNAL_SENTINEL_CANARY' }))) : e.data })))
+  const badDigest = writeZip(
+    readZip(archive).map(e => ({
+      name: e.name,
+      data: e.name === 'blueprint.json' ? Buffer.from(JSON.stringify(doc({ name: 'EXTERNAL_SENTINEL_CANARY' }))) : e.data
+    }))
+  )
   const target = join(h.root, 'absent-destination')
   h.config.blueprints = { sample: target, other: join(h.root, 'id-mismatch') }
   for (const archiveBase64 of ['!invalid-base64', 'YQ==', badDigest.toString('base64')]) {
     await assert.rejects(h.service.importDefinition({ blueprintId: 'sample', archiveBase64 }), safeError('blueprint/import-failed', h.root))
     assert.equal(existsSync(target), false)
   }
-  await assert.rejects(h.service.importDefinition({ blueprintId: 'other', archiveBase64: exported.archiveBase64 }), safeError('blueprint/import-failed', h.root))
+  await assert.rejects(
+    h.service.importDefinition({ blueprintId: 'other', archiveBase64: exported.archiveBase64 }),
+    safeError('blueprint/import-failed', h.root)
+  )
   assert.equal(existsSync(h.config.blueprints.other), false)
   h.config.blueprints = { sample: h.rootDir }
-  writeFileSync(join(h.rootDir, 'blueprint.json'), JSON.stringify(doc({ resources: { unavailable: { kind: 'skill', source: { kind: 'shared', rootId: 'missing-root', path: 'demo' } } } })))
+  writeFileSync(
+    join(h.rootDir, 'blueprint.json'),
+    JSON.stringify(doc({ resources: { unavailable: { kind: 'skill', source: { kind: 'shared', rootId: 'missing-root', path: 'demo' } } } }))
+  )
   await assert.rejects(h.service.exportDefinition({ blueprintId: 'sample' }), safeError('blueprint/export-failed', h.root))
 })
 
@@ -407,7 +518,10 @@ test('hostProbe logical configured Skill: real public Agent/session contract and
   writeFileSync(join(skill, 'SKILL.md'), 'SKILL_CONTENT')
   writeFileSync(join(skill, 'helpers', 'data.txt'), 'WHOLE_SKILL_TREE')
   h.config.skillRoots = [{ rootId: 'user-skills', rootPath: shared }]
-  writeFileSync(join(h.rootDir, 'blueprint.json'), JSON.stringify(doc({ resources: { probeSkill: { kind: 'skill', source: { kind: 'shared', rootId: 'user-skills', path: 'demo' } } } })))
+  writeFileSync(
+    join(h.rootDir, 'blueprint.json'),
+    JSON.stringify(doc({ resources: { probeSkill: { kind: 'skill', source: { kind: 'shared', rootId: 'user-skills', path: 'demo' } } } }))
+  )
   const evidence = await h.service.hostProbe({ blueprintId: 'sample', resourceId: 'probeSkill', input: 'ACTUAL_PROBE_INPUT' })
   assert.equal(resultCodec('hostProbe').safeParse(evidence).success, true)
   assert.deepEqual(evidence.outcome, { ok: true, kind: 'succeeded', detail: 'CONFIGURED_PROBE' })
@@ -433,15 +547,39 @@ test('configured roots: each new Attempt refreshes full Skill, package remains f
   writeFileSync(join(skill, 'SKILL.md'), 'SKILL_A')
   writeFileSync(join(skill, 'helpers', 'data.txt'), 'HELPER_A')
   h.config.skillRoots = [{ rootId: 'user-skills', rootPath: shared }]
-  const graph = { nodes: [
-    { id: 'first', kind: 'agentTask', agentRef: 'agent', skillRefs: ['skill'] },
-    { id: 'review', kind: 'humanDecision' },
-    { id: 'second', kind: 'agentTask', agentRef: 'agent', skillRefs: ['skill'] },
-    { id: 'unused', kind: 'output' },
-  ], edges: [{ kind: 'control', from: 'first', to: 'review' }, { kind: 'control', from: 'review@approve', to: 'second' }, { kind: 'control', from: 'review@reject', to: 'unused' }] }
-  writeFileSync(join(h.rootDir, 'blueprint.json'), JSON.stringify(doc({ resources: { agent: { kind: 'agent', path: 'lib/agent.md' }, skill: { kind: 'skill', source: { kind: 'shared', rootId: 'user-skills', path: 'demo' } } }, graph, presentation: { nodes: {} } })))
+  const graph = {
+    nodes: [
+      { id: 'first', kind: 'agentTask', agentRef: 'agent', skillRefs: ['skill'] },
+      { id: 'review', kind: 'humanDecision' },
+      { id: 'second', kind: 'agentTask', agentRef: 'agent', skillRefs: ['skill'] },
+      { id: 'unused', kind: 'output' }
+    ],
+    edges: [
+      { kind: 'control', from: 'first', to: 'review' },
+      { kind: 'control', from: 'review@approve', to: 'second' },
+      { kind: 'control', from: 'review@reject', to: 'unused' }
+    ]
+  }
+  writeFileSync(
+    join(h.rootDir, 'blueprint.json'),
+    JSON.stringify(
+      doc({
+        resources: {
+          agent: { kind: 'agent', path: 'lib/agent.md' },
+          skill: { kind: 'skill', source: { kind: 'shared', rootId: 'user-skills', path: 'demo' } }
+        },
+        graph,
+        presentation: { nodes: {} }
+      })
+    )
+  )
   const document = await h.service.loadDefinition({ blueprintId: 'sample' })
-  const admitted = await h.service.startRun({ blueprintId: 'sample', expectedRevision: document.documentRevision, inputJson: '"ACTUAL_INPUT"', requestId: 'skill-update' })
+  const admitted = await h.service.startRun({
+    blueprintId: 'sample',
+    expectedRevision: document.documentRevision,
+    inputJson: '"ACTUAL_INPUT"',
+    requestId: 'skill-update'
+  })
   await drain(h.service)
   assert.equal((await h.service.inspectRun({ runId: admitted.runId })).state, 'waiting_input')
   const handle = [...h.service.runtimes.values()][0]
@@ -449,7 +587,11 @@ test('configured roots: each new Attempt refreshes full Skill, package remains f
   const first = structuredClone(before.attempts.find(a => a.nodeId === 'first'))
   writeFileSync(join(skill, 'SKILL.md'), 'SKILL_B')
   writeFileSync(join(skill, 'helpers', 'data.txt'), 'HELPER_B')
-  assert.equal((await h.service.loadDefinition({ blueprintId: 'sample' })).semanticRevision, document.semanticRevision, 'shared Skill bytes do not version the document')
+  assert.equal(
+    (await h.service.loadDefinition({ blueprintId: 'sample' })).semanticRevision,
+    document.semanticRevision,
+    'shared Skill bytes do not version the document'
+  )
   writeFileSync(join(h.rootDir, 'lib', 'agent.md'), 'NEW_PACKAGE_B')
   assert.notEqual((await h.service.loadDefinition({ blueprintId: 'sample' })).semanticRevision, document.semanticRevision)
   await h.service.decide({ runId: admitted.runId, decisionId: 'approve-once', action: 'approve' })
@@ -457,10 +599,22 @@ test('configured roots: each new Attempt refreshes full Skill, package remains f
   const after = await handle.store.get(admitted.runId)
   assert.equal(after.state, 'succeeded')
   assert.equal(host.calls.length, 2)
-  assert.deepEqual(host.calls.map(c => c.packageText), ['FROZEN_AGENT_A', 'FROZEN_AGENT_A'])
-  assert.deepEqual(host.calls.map(c => c.skillFile), ['HELPER_A', 'HELPER_B'])
-  assert.deepEqual(host.calls.map(c => c.input), ['ACTUAL_INPUT', 'ACTUAL_INPUT'])
-  assert.deepEqual(after.attempts.find(a => a.nodeId === 'first'), first)
+  assert.deepEqual(
+    host.calls.map(c => c.packageText),
+    ['FROZEN_AGENT_A', 'FROZEN_AGENT_A']
+  )
+  assert.deepEqual(
+    host.calls.map(c => c.skillFile),
+    ['HELPER_A', 'HELPER_B']
+  )
+  assert.deepEqual(
+    host.calls.map(c => c.input),
+    ['ACTUAL_INPUT', 'ACTUAL_INPUT']
+  )
+  assert.deepEqual(
+    after.attempts.find(a => a.nodeId === 'first'),
+    first
+  )
   const second = after.attempts.find(a => a.nodeId === 'second')
   assert.notEqual(second.intent.resourceDigests.skill, first.intent.resourceDigests.skill)
   assert.equal(second.intent.resourceDigests.$package, first.intent.resourceDigests.$package)

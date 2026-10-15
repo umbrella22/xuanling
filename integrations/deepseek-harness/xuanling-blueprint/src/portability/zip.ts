@@ -46,7 +46,7 @@ export interface ZipEntryInput {
 
 /** Write a store-only zip with deterministic layout (sorted by name). */
 export function writeZip(entries: readonly ZipEntryInput[]): Buffer {
-  const sorted = [...entries].sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
+  const sorted = [...entries].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
   const locals: Buffer[] = []
   const centrals: Buffer[] = []
   let offset = 0
@@ -113,7 +113,7 @@ export interface ZipLimits {
 export const DEFAULT_ZIP_LIMITS: ZipLimits = {
   maxEntries: 5_000,
   maxTotalUncompressed: 256 * 1024 * 1024,
-  maxNameLength: 1_024,
+  maxNameLength: 1_024
 }
 
 export interface ZipEntry {
@@ -143,7 +143,10 @@ export function readZip(buf: Buffer, limits: ZipLimits = DEFAULT_ZIP_LIMITS): Zi
   let eocd = -1
   const scanStart = Math.max(0, buf.length - 22 - 0xffff)
   for (let i = buf.length - 22; i >= scanStart; i--) {
-    if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break }
+    if (buf.readUInt32LE(i) === 0x06054b50) {
+      eocd = i
+      break
+    }
   }
   if (eocd < 0) throw new ArchiveUnsafeError('end-of-central-directory not found')
   const entryCount = buf.readUInt16LE(eocd + 10)

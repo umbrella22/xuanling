@@ -14,18 +14,44 @@ import { projectRunSnapshot, focusAttemptsForSession } from './conversation/run-
 import { installConversationTools, liveCaller, assertRootCaller } from './conversation/host-tools.ts'
 import { captureNativeSourceParent, assertNativeSourceParent, type NativeSourceParent } from './conversation/native-session-lineage.ts'
 import {
-  inspectSessionCodec, frozenGraphCodec, frozenPresentationCodec, teamStageActionCodec,
-  type RunSource, type RunSnapshotView, type StartSessionRunArgs, type InspectSessionArgs, type InspectSessionValue,
-  type StartTeamStageArgs, type CancelTeamStageArgs, type AcceptTeamStageOutputArgs, type TeamStageActionView,
+  inspectSessionCodec,
+  frozenGraphCodec,
+  frozenPresentationCodec,
+  teamStageActionCodec,
+  type RunSource,
+  type RunSnapshotView,
+  type StartSessionRunArgs,
+  type InspectSessionArgs,
+  type InspectSessionValue,
+  type StartTeamStageArgs,
+  type CancelTeamStageArgs,
+  type AcceptTeamStageOutputArgs,
+  type TeamStageActionView
 } from './conversation/contracts.ts'
 export type {
-  RunSource, RunSnapshotView, StartSessionRunArgs, InspectSessionArgs, InspectSessionValue, FrozenGraphView,
-  FrozenPresentationView, RunAdmissionView, StartTeamStageArgs, CancelTeamStageArgs, AcceptTeamStageOutputArgs,
-  TeamStageActionView,
+  RunSource,
+  RunSnapshotView,
+  StartSessionRunArgs,
+  InspectSessionArgs,
+  InspectSessionValue,
+  FrozenGraphView,
+  FrozenPresentationView,
+  RunAdmissionView,
+  StartTeamStageArgs,
+  CancelTeamStageArgs,
+  AcceptTeamStageOutputArgs,
+  TeamStageActionView
 } from './conversation/contracts.ts'
 import { RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { AgentCompositionUnsupportedError, BlueprintAgentExecutor, captureAgentModelSelection, type AgentExecutionEvidence } from './host/agent-executor.ts'
-import { collectPreflight, resolveEffectiveToolNames, type ToolBindings, type PreflightRunArgs, type PreflightRunValue, type PreflightCheck } from './host/preflight.ts'
+import {
+  collectPreflight,
+  resolveEffectiveToolNames,
+  type ToolBindings,
+  type PreflightRunArgs,
+  type PreflightRunValue,
+  type PreflightCheck
+} from './host/preflight.ts'
 import type { AttemptDiagnostics } from './host/runtime-diagnostics.ts'
 import { listHostResources, hostResourceCatalogValue, type HostResourceCatalogValue } from './host/resource-catalog.ts'
 import { RuntimeSnapshots, createHostResourceProvider } from './resources/runtime-snapshots.ts'
@@ -33,7 +59,16 @@ import { TERMINAL_RUN_STATES, type RunRecord } from './persistence/records.ts'
 import { DecisionConflictError, RunNotFoundError, TeamOutputRejectedError, TeamStageConflictError, TeamTaskConflictError } from './persistence/run-store.ts'
 import { snapshotDirectory } from './resources/index.ts'
 import { resolveResource, type SkillRoot } from './resources/resolver.ts'
-import { DefinitionDocumentMissingError, DocumentRevisionConflictError, PackageBoundaryError, loadDefinitionPackage, readPackageFiles, saveDefinitionDocument, type DefinitionDocument, type DefinitionPackage } from './definition/persist.ts'
+import {
+  DefinitionDocumentMissingError,
+  DocumentRevisionConflictError,
+  PackageBoundaryError,
+  loadDefinitionPackage,
+  readPackageFiles,
+  saveDefinitionDocument,
+  type DefinitionDocument,
+  type DefinitionPackage
+} from './definition/persist.ts'
 import { TYPERT } from './typert.host.ts'
 import { admitResources } from './security/resource-admission.ts'
 import { readZip } from './portability/zip.ts'
@@ -64,7 +99,7 @@ export * from './teamstage/index.ts'
 
 /** Build metadata surfaced through `ping` for install diagnostics. */
 export const PLUGIN_NAME = '@xuanling-rs/xuanling-dsh-blueprint'
-export const PLUGIN_VERSION = '0.6.0'
+export const PLUGIN_VERSION = '0.6.1'
 
 export interface PingValue {
   status: 'ok'
@@ -82,7 +117,13 @@ export interface StartRunArgs {
   inputJson: string
   requestId: string
 }
-interface InternalStartRunArgs { definitionJson: string; inputJson: string; runtimeRoot?: string; rootDir?: string; requestId?: string }
+interface InternalStartRunArgs {
+  definitionJson: string
+  inputJson: string
+  runtimeRoot?: string
+  rootDir?: string
+  requestId?: string
+}
 export interface BlueprintConfig {
   blueprints?: Record<string, string>
   /** Host-managed definitions; defaults to runtimeRoot/definitions, or the profile data directory. */
@@ -93,10 +134,23 @@ export interface BlueprintConfig {
   /** Native subagent registry routes, separate from the LLM provider. */
   teamProviders?: TeamProviders
 }
-export interface DeleteDefinitionArgs { blueprintId: string; expectedRevision: string; requestId: string }
-export interface LoadDefinitionArgs { blueprintId: string }
-export interface CreateDefinitionArgs { requestId: string; definitionJson: string }
-export interface SaveDefinitionArgs { blueprintId: string; definitionJson: string; expectedRevision: string | null }
+export interface DeleteDefinitionArgs {
+  blueprintId: string
+  expectedRevision: string
+  requestId: string
+}
+export interface LoadDefinitionArgs {
+  blueprintId: string
+}
+export interface CreateDefinitionArgs {
+  requestId: string
+  definitionJson: string
+}
+export interface SaveDefinitionArgs {
+  blueprintId: string
+  definitionJson: string
+  expectedRevision: string | null
+}
 
 export interface InspectRunArgs {
   runId: string
@@ -126,7 +180,10 @@ export interface HostProbeArgs {
   resourceId: string
   input: string
 }
-interface InternalHostProbeArgs { skillDir: string; input: string }
+interface InternalHostProbeArgs {
+  skillDir: string
+  input: string
+}
 
 export interface McpProbeArgs {
   serverName: string
@@ -210,14 +267,19 @@ interface RuntimeHandle {
 function publicTeamTask(value: unknown, runId: string): { id: string; revision: number; status?: string } {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new TeamTaskConflictError(runId, 'native Team task response is not an object')
   const candidate = value as Record<string, unknown>
-  if (typeof candidate.id !== 'string' || candidate.id.length === 0
-    || typeof candidate.revision !== 'number' || !Number.isInteger(candidate.revision) || candidate.revision < 1) {
+  if (
+    typeof candidate.id !== 'string' ||
+    candidate.id.length === 0 ||
+    typeof candidate.revision !== 'number' ||
+    !Number.isInteger(candidate.revision) ||
+    candidate.revision < 1
+  ) {
     throw new TeamTaskConflictError(runId, 'native Team task response lacks a stable id/revision')
   }
   return {
     id: candidate.id,
     revision: candidate.revision,
-    ...(typeof candidate.status === 'string' && candidate.status.length > 0 ? { status: candidate.status } : {}),
+    ...(typeof candidate.status === 'string' && candidate.status.length > 0 ? { status: candidate.status } : {})
   }
 }
 
@@ -228,7 +290,7 @@ function publicTeamAction(record: RunRecord, task: unknown, replayed: boolean): 
     runId: record.runId,
     team: projection,
     ...(task === undefined ? {} : { task: publicTeamTask(task, record.runId) }),
-    replayed,
+    replayed
   })
 }
 
@@ -254,7 +316,10 @@ function teamStageRemoteError(error: unknown, method: string, sessionId: string)
   }
   if (code === 'TEAM_OUTPUT_REJECTED' || error instanceof TeamOutputRejectedError || code === 'TEAM_ACCEPTANCE_REJECTED') {
     const candidate = error as { runId?: string; issueCode?: string }
-    return new RemoteError('blueprint/team-output-rejected', 'Team output rejected', { runId: candidate.runId ?? 'unknown', issueCode: candidate.issueCode ?? 'output-rejected' })
+    return new RemoteError('blueprint/team-output-rejected', 'Team output rejected', {
+      runId: candidate.runId ?? 'unknown',
+      issueCode: candidate.issueCode ?? 'output-rejected'
+    })
   }
   if (code === 'TEAM_MEMBER_INVALID' || code === 'TEAM_CANCELLATION_FAILED') {
     const candidate = error as { runId?: string }
@@ -274,23 +339,39 @@ export class BlueprintService extends TypertRemoteService {
   private readonly documentTails = new Map<string, Promise<unknown>>()
   private readonly teamObservations = new TeamStageObservations()
 
-  constructor(ctx: Context, private readonly config: BlueprintConfig = {}) {
+  constructor(
+    ctx: Context,
+    private readonly config: BlueprintConfig = {}
+  ) {
     super(ctx, 'blueprint', { namespace: 'blueprint' })
-    installConversationTools(this.ctx, this, (args, source) => this.startConfiguredRun({ ...args, requestId: `blueprint-tool-${createHash('sha256').update(JSON.stringify([source.sessionId, source.callId])).digest('hex')}` }, source))
-    this.ctx.effect(() => async () => {
-      this.closing = true
-      await this.libraryTail
-      await Promise.allSettled(this.opening.values())
-      for (const handle of this.runtimes.values()) {
-        for (const controller of handle.controllers.values()) controller.abort()
-        await Promise.allSettled(handle.cancellationTails.values())
-        await Promise.allSettled(handle.jobs.values())
-        await handle.admissionTail
-        await handle.opened.close()
-        handle.lease.release()
-      }
-      this.runtimes.clear()
-    }, 'blueprint: close runtime stores')
+    installConversationTools(this.ctx, this, (args, source) =>
+      this.startConfiguredRun(
+        {
+          ...args,
+          requestId: `blueprint-tool-${createHash('sha256')
+            .update(JSON.stringify([source.sessionId, source.callId]))
+            .digest('hex')}`
+        },
+        source
+      )
+    )
+    this.ctx.effect(
+      () => async () => {
+        this.closing = true
+        await this.libraryTail
+        await Promise.allSettled(this.opening.values())
+        for (const handle of this.runtimes.values()) {
+          for (const controller of handle.controllers.values()) controller.abort()
+          await Promise.allSettled(handle.cancellationTails.values())
+          await Promise.allSettled(handle.jobs.values())
+          await handle.admissionTail
+          await handle.opened.close()
+          handle.lease.release()
+        }
+        this.runtimes.clear()
+      },
+      'blueprint: close runtime stores'
+    )
   }
 
   /** Decode+validate with the typed wire failure vocabulary (domain errors
@@ -303,7 +384,10 @@ export class BlueprintService extends TypertRemoteService {
     } catch (error) {
       if (error instanceof Error && 'code' in error && (error as { code: string }).code === 'DEFINITION_INVALID') {
         const issues = (error as { issues?: Array<{ code: string; pointer?: string }> }).issues ?? []
-        const summary = issues.slice(0, 3).map(i => i.code).join('; ')
+        const summary = issues
+          .slice(0, 3)
+          .map(i => i.code)
+          .join('; ')
         throw new RemoteError('blueprint/definition-invalid', `definition invalid: ${summary}`, { issues: summary })
       }
       throw error
@@ -322,7 +406,8 @@ export class BlueprintService extends TypertRemoteService {
       assertRootCaller(caller)
     } catch (error) {
       const code = (error as { code?: unknown })?.code
-      if (code === 'nested-run-unavailable') throw new RemoteError('blueprint/nested-run-unavailable', 'nested TeamStage mutation is unavailable', { sessionId })
+      if (code === 'nested-run-unavailable')
+        throw new RemoteError('blueprint/nested-run-unavailable', 'nested TeamStage mutation is unavailable', { sessionId })
       throw new RemoteError('blueprint/session-unavailable', 'TeamStage caller session is unavailable', { sessionId })
     }
     try {
@@ -335,8 +420,14 @@ export class BlueprintService extends TypertRemoteService {
   /** Execute one owned Team cancellation per Run. The in-memory tail closes
    * the same-process race; the durable stage/effect facts cover restart and
    * late native outcomes. */
-  private cancelTeamRun(handle: RuntimeHandle, run: RunRecord, lead?: LeadHandle,
-    memberNames?: readonly string[], reason?: string, settleParentRun = true): Promise<RunRecord> {
+  private cancelTeamRun(
+    handle: RuntimeHandle,
+    run: RunRecord,
+    lead?: LeadHandle,
+    memberNames?: readonly string[],
+    reason?: string,
+    settleParentRun = true
+  ): Promise<RunRecord> {
     const existing = handle.cancellationTails.get(run.runId)
     if (existing !== undefined) {
       if (!settleParentRun) return existing
@@ -355,22 +446,32 @@ export class BlueprintService extends TypertRemoteService {
     const task = this.performTeamCancellation(handle, run, lead, memberNames, reason, settleParentRun)
     handle.cancellationTails.set(run.runId, task)
     void task.then(
-      () => { if (handle.cancellationTails.get(run.runId) === task) handle.cancellationTails.delete(run.runId) },
-      () => { if (handle.cancellationTails.get(run.runId) === task) handle.cancellationTails.delete(run.runId) },
+      () => {
+        if (handle.cancellationTails.get(run.runId) === task) handle.cancellationTails.delete(run.runId)
+      },
+      () => {
+        if (handle.cancellationTails.get(run.runId) === task) handle.cancellationTails.delete(run.runId)
+      }
     )
     return task
   }
 
-  private async performTeamCancellation(handle: RuntimeHandle, run: RunRecord, suppliedLead?: LeadHandle,
-    memberNames?: readonly string[], reason?: string, settleParentRun = true): Promise<RunRecord> {
+  private async performTeamCancellation(
+    handle: RuntimeHandle,
+    run: RunRecord,
+    suppliedLead?: LeadHandle,
+    memberNames?: readonly string[],
+    reason?: string,
+    settleParentRun = true
+  ): Promise<RunRecord> {
     const current = await handle.store.get(run.runId)
     const stage = current.teamStage
     if (stage === undefined) return current
     if (['succeeded', 'failed', 'cancelled', 'timed_out', 'recovery_required'].includes(stage.state)) {
       if (!settleParentRun || current.state !== 'cancelling') return current
-      return await handle.store.settleTerminal(current.runId,
-        stage.state === 'recovery_required' ? 'recovery_required' : 'cancelled',
-        { reason: stage.state === 'recovery_required' ? 'team-effect-unknown' : 'teamstage-cancelled' })
+      return await handle.store.settleTerminal(current.runId, stage.state === 'recovery_required' ? 'recovery_required' : 'cancelled', {
+        reason: stage.state === 'recovery_required' ? 'team-effect-unknown' : 'teamstage-cancelled'
+      })
     }
 
     let lead = suppliedLead
@@ -384,9 +485,12 @@ export class BlueprintService extends TypertRemoteService {
       }
     } catch (error) {
       if (error instanceof DurabilityFailureError) throw error
-      await handle.store.updateTeamStage(current.runId, {
-        state: 'recovery_required', recovery: { code: 'teamstage-identity-unavailable' },
-      }).catch(() => {})
+      await handle.store
+        .updateTeamStage(current.runId, {
+          state: 'recovery_required',
+          recovery: { code: 'teamstage-identity-unavailable' }
+        })
+        .catch(() => {})
       if (!settleParentRun) return await handle.store.get(current.runId)
       return await handle.store.settleTerminal(current.runId, 'recovery_required', { reason: 'teamstage-identity-unavailable' })
     }
@@ -398,7 +502,7 @@ export class BlueprintService extends TypertRemoteService {
         lead,
         runId: current.runId,
         ...(memberNames === undefined ? {} : { ownedMemberNames: memberNames }),
-        ...(reason === undefined ? {} : { reason }),
+        ...(reason === undefined ? {} : { reason })
       })
       if (after.teamStage?.state === 'recovery_required') {
         if (!settleParentRun) return after
@@ -411,9 +515,12 @@ export class BlueprintService extends TypertRemoteService {
       return after
     } catch (error) {
       if (error instanceof DurabilityFailureError) throw error
-      await handle.store.updateTeamStage(current.runId, {
-        state: 'recovery_required', recovery: { code: 'teamstage-cancellation-failed' },
-      }).catch(() => {})
+      await handle.store
+        .updateTeamStage(current.runId, {
+          state: 'recovery_required',
+          recovery: { code: 'teamstage-cancellation-failed' }
+        })
+        .catch(() => {})
       if (!settleParentRun) return await handle.store.get(current.runId)
       return await handle.store.settleTerminal(current.runId, 'recovery_required', { reason: 'teamstage-cancellation-failed' })
     }
@@ -437,7 +544,9 @@ export class BlueprintService extends TypertRemoteService {
       const library = this.managedLibraryRoot()
       const root = library && libraryDocumentRoot(library, blueprintId)
       if (root && existsSync(join(root, 'blueprint.json'))) return root
-    } catch (error) { throw this.documentFailure(blueprintId, 'load', error) }
+    } catch (error) {
+      throw this.documentFailure(blueprintId, 'load', error)
+    }
     throw new RemoteError('blueprint/definition-not-found', 'definition not found', { blueprintId })
   }
 
@@ -451,19 +560,29 @@ export class BlueprintService extends TypertRemoteService {
   /** Serialize read/check/publish/admission by physical configured root, including aliases. */
   private async withDocument<T>(root: string, action: () => T | Promise<T>, mutation = false): Promise<T> {
     let key = resolve(root)
-    try { key = realpathSync(key) } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw new RemoteError('blueprint/durability-failed', 'document root unavailable', { operation: 'document-open' })
+    try {
+      key = realpathSync(key)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
+        throw new RemoteError('blueprint/durability-failed', 'document root unavailable', { operation: 'document-open' })
     }
-    const task = (this.documentTails.get(key) ?? Promise.resolve()).then(() => mutation ? this.withLibraryMutation(action) : action())
+    const task = (this.documentTails.get(key) ?? Promise.resolve()).then(() => (mutation ? this.withLibraryMutation(action) : action()))
     const observed = task.catch(() => {})
     this.documentTails.set(key, observed)
-    try { return await task } finally { if (this.documentTails.get(key) === observed) this.documentTails.delete(key) }
+    try {
+      return await task
+    } finally {
+      if (this.documentTails.get(key) === observed) this.documentTails.delete(key)
+    }
   }
 
   private readDeletion(blueprintId: string) {
     const library = this.managedLibraryRoot()
-    try { return library ? readLibraryDeletion(library, blueprintId) : undefined }
-    catch { throw new RemoteError('blueprint/library-state-invalid', 'library state unavailable', { operation: 'read' }) }
+    try {
+      return library ? readLibraryDeletion(library, blueprintId) : undefined
+    } catch {
+      throw new RemoteError('blueprint/library-state-invalid', 'library state unavailable', { operation: 'read' })
+    }
   }
   private assertDefinitionActive(blueprintId: string): void {
     if (this.readDeletion(blueprintId)) throw new RemoteError('blueprint/definition-deleted', 'definition deleted', { blueprintId })
@@ -475,29 +594,47 @@ export class BlueprintService extends TypertRemoteService {
       // They cannot delete until a durable library location is configured.
       if (!library) return await action()
       let lease: WriterLease
-      try { lease = acquireLibraryWriter(library) }
-      catch (error) {
+      try {
+        lease = acquireLibraryWriter(library)
+      } catch (error) {
         if (error instanceof LibraryStateError) throw new RemoteError('blueprint/library-state-invalid', 'library state unavailable', { operation: 'lock' })
         throw new RemoteError('blueprint/library-busy', 'library writer unavailable', { operation: 'lock' })
       }
-      try { return await action() } finally { lease.release() }
+      try {
+        return await action()
+      } finally {
+        lease.release()
+      }
     })
     this.libraryTail = task.catch(() => {})
     return task
   }
 
   private documentFailure(blueprintId: string, operation: string, error: unknown): RemoteError {
-    if (error instanceof DefinitionDocumentMissingError) return new RemoteError('blueprint/definition-not-found', 'configured definition not found', { blueprintId })
+    if (error instanceof DefinitionDocumentMissingError)
+      return new RemoteError('blueprint/definition-not-found', 'configured definition not found', { blueprintId })
     if (error instanceof DocumentRevisionConflictError) return this.revisionConflict(blueprintId, error.expected, error.actual)
-    if (error instanceof PackageBoundaryError || (error as { code?: string })?.code === 'DEFINITION_INVALID') return new RemoteError('blueprint/definition-invalid', 'configured definition rejected', { issues: error instanceof PackageBoundaryError ? 'package-boundary-rejected' : 'invalid-definition' })
-    return new RemoteError('blueprint/definition-write-failed', 'definition operation failed', { blueprintId, operation, reason: operation === 'load' ? 'package-read-failed' : 'package-write-failed' })
+    if (error instanceof PackageBoundaryError || (error as { code?: string })?.code === 'DEFINITION_INVALID')
+      return new RemoteError('blueprint/definition-invalid', 'configured definition rejected', {
+        issues: error instanceof PackageBoundaryError ? 'package-boundary-rejected' : 'invalid-definition'
+      })
+    return new RemoteError('blueprint/definition-write-failed', 'definition operation failed', {
+      blueprintId,
+      operation,
+      reason: operation === 'load' ? 'package-read-failed' : 'package-write-failed'
+    })
   }
 
   private loadConfiguredPackage(blueprintId: string, root: string): DefinitionPackage {
     this.assertDefinitionActive(blueprintId)
     let snapshot: DefinitionPackage
-    try { snapshot = loadDefinitionPackage(root) } catch (error) { throw this.documentFailure(blueprintId, 'load', error) }
-    if (snapshot.document.blueprintId !== blueprintId) throw new RemoteError('blueprint/definition-invalid', 'configured ID does not match definition', { issues: 'blueprint-id-mismatch' })
+    try {
+      snapshot = loadDefinitionPackage(root)
+    } catch (error) {
+      throw this.documentFailure(blueprintId, 'load', error)
+    }
+    if (snapshot.document.blueprintId !== blueprintId)
+      throw new RemoteError('blueprint/definition-invalid', 'configured ID does not match definition', { issues: 'blueprint-id-mismatch' })
     this.checkResources(this.decodeOrThrow(snapshot.document.definitionJson))
     return snapshot
   }
@@ -506,7 +643,8 @@ export class BlueprintService extends TypertRemoteService {
   }
 
   private checkResources(definition: ReturnType<typeof decodeDefinition>): void {
-    if (admitResources(definition.resources).length) throw new RemoteError('blueprint/definition-invalid', 'resource references rejected', { issues: 'resource-admission-rejected' })
+    if (admitResources(definition.resources).length)
+      throw new RemoteError('blueprint/definition-invalid', 'resource references rejected', { issues: 'resource-admission-rejected' })
   }
 
   private materializePackage(snapshot: DefinitionPackage, root: string): void {
@@ -514,7 +652,8 @@ export class BlueprintService extends TypertRemoteService {
     writeFileSync(join(root, 'blueprint.json'), snapshot.document.definitionJson, { mode: 0o600 })
     for (const [path, bytes] of snapshot.files) {
       const target = join(root, path)
-      mkdirSync(dirname(target), { recursive: true }); writeFileSync(target, bytes, { mode: 0o600 })
+      mkdirSync(dirname(target), { recursive: true })
+      writeFileSync(target, bytes, { mode: 0o600 })
     }
   }
 
@@ -525,33 +664,54 @@ export class BlueprintService extends TypertRemoteService {
   private configuredRuntimeRoot(): string {
     if (this.config.runtimeRoot) return resolve(this.config.runtimeRoot)
     if (this.ctx.baseUrl?.startsWith('file:')) return fileURLToPath(new URL('data/xuanling-blueprint/runtime/', this.ctx.baseUrl))
-    throw new RemoteError('blueprint/capability-unavailable', 'runtime location unavailable', { method: 'runtime', plugin: PLUGIN_NAME, version: PLUGIN_VERSION })
+    throw new RemoteError('blueprint/capability-unavailable', 'runtime location unavailable', {
+      method: 'runtime',
+      plugin: PLUGIN_NAME,
+      version: PLUGIN_VERSION
+    })
   }
 
   private async configuredRuntime(internalRoot?: string): Promise<RuntimeHandle> {
     const root = internalRoot ?? this.configuredRuntimeRoot()
-    try { return await this.runtimeFor(root) } catch (error) {
+    try {
+      return await this.runtimeFor(root)
+    } catch (error) {
       if (error instanceof RemoteError) throw error
       throw new RemoteError('blueprint/durability-failed', 'runtime unavailable', { operation: 'runtime-open' })
     }
   }
 
-  async listDefinitions(): Promise<{ definitions: Array<{ blueprintId: string; name: string; documentRevision: string | null; semanticRevision: string | null }> }> {
+  async listDefinitions(): Promise<{
+    definitions: Array<{ blueprintId: string; name: string; documentRevision: string | null; semanticRevision: string | null }>
+  }> {
     const definitions = []
     const library = this.managedLibraryRoot()
     let managed: string[] = []
-    try { if (library) managed = libraryIds(library).filter(id => existsSync(join(library, id, 'blueprint.json'))) }
-    catch { throw new RemoteError('blueprint/definition-write-failed', 'library read failed', { blueprintId: 'library', operation: 'list', reason: 'package-read-failed' }) }
+    try {
+      if (library) managed = libraryIds(library).filter(id => existsSync(join(library, id, 'blueprint.json')))
+    } catch {
+      throw new RemoteError('blueprint/definition-write-failed', 'library read failed', {
+        blueprintId: 'library',
+        operation: 'list',
+        reason: 'package-read-failed'
+      })
+    }
     for (const blueprintId of [...new Set([...Object.keys(this.config.blueprints ?? {}), ...managed])].sort()) {
       if (this.readDeletion(blueprintId)) continue
       const root = this.blueprintRoot(blueprintId)
       const item = await this.withDocument(root, () => {
         try {
           const document = this.loadConfigured(blueprintId, root)
-          return { blueprintId, name: this.decodeOrThrow(document.definitionJson).name, documentRevision: document.documentRevision, semanticRevision: document.semanticRevision }
+          return {
+            blueprintId,
+            name: this.decodeOrThrow(document.definitionJson).name,
+            documentRevision: document.documentRevision,
+            semanticRevision: document.semanticRevision
+          }
         } catch (error) {
           if (error instanceof RemoteError && error.code === 'blueprint/definition-deleted') return null
-          if (error instanceof RemoteError && error.code === 'blueprint/definition-not-found') return { blueprintId, name: blueprintId, documentRevision: null, semanticRevision: null }
+          if (error instanceof RemoteError && error.code === 'blueprint/definition-not-found')
+            return { blueprintId, name: blueprintId, documentRevision: null, semanticRevision: null }
           throw error
         }
       })
@@ -570,7 +730,12 @@ export class BlueprintService extends TypertRemoteService {
   async createDefinition(args: CreateDefinitionArgs): Promise<DefinitionDocument> {
     this.checkArgs('createDefinition', args)
     const library = this.managedLibraryRoot()
-    if (!library) throw new RemoteError('blueprint/capability-unavailable', 'library root unavailable', { method: 'createDefinition', plugin: PLUGIN_NAME, version: PLUGIN_VERSION })
+    if (!library)
+      throw new RemoteError('blueprint/capability-unavailable', 'library root unavailable', {
+        method: 'createDefinition',
+        plugin: PLUGIN_NAME,
+        version: PLUGIN_VERSION
+      })
     const id = createdBlueprintId(args.requestId)
     if (Object.hasOwn(this.config.blueprints ?? {}, id)) throw this.revisionConflict(id, null, null)
     const definition = this.decodeOrThrow(args.definitionJson)
@@ -578,20 +743,28 @@ export class BlueprintService extends TypertRemoteService {
     this.checkResources(definition)
     try {
       const root = libraryDocumentRoot(library, id)!
-      return await this.withDocument(root, () => {
-        // Recheck after waiting for other document operations.
-        libraryDocumentRoot(library, id)
-        try {
-          const stored = this.loadConfigured(id, root)
-          if (canonicalJson(this.decodeOrThrow(stored.definitionJson)) !== canonicalJson(definition)) throw this.revisionConflict(id, null, stored.documentRevision)
-          return stored
-        } catch (error) {
-          if (!(error instanceof RemoteError && error.code === 'blueprint/definition-not-found')) throw error
-        }
-        try { readPackageFiles(root, definition) }
-        catch { throw new RemoteError('blueprint/definition-invalid', 'new blueprint resources unavailable', { issues: 'resource-unavailable' }) }
-        return saveDefinitionDocument(root, definition, null)
-      }, true)
+      return await this.withDocument(
+        root,
+        () => {
+          // Recheck after waiting for other document operations.
+          libraryDocumentRoot(library, id)
+          try {
+            const stored = this.loadConfigured(id, root)
+            if (canonicalJson(this.decodeOrThrow(stored.definitionJson)) !== canonicalJson(definition))
+              throw this.revisionConflict(id, null, stored.documentRevision)
+            return stored
+          } catch (error) {
+            if (!(error instanceof RemoteError && error.code === 'blueprint/definition-not-found')) throw error
+          }
+          try {
+            readPackageFiles(root, definition)
+          } catch {
+            throw new RemoteError('blueprint/definition-invalid', 'new blueprint resources unavailable', { issues: 'resource-unavailable' })
+          }
+          return saveDefinitionDocument(root, definition, null)
+        },
+        true
+      )
     } catch (error) {
       if (error instanceof RemoteError) throw error
       throw this.documentFailure(id, 'create', error)
@@ -600,25 +773,44 @@ export class BlueprintService extends TypertRemoteService {
 
   async deleteDefinition(args: DeleteDefinitionArgs): Promise<{ blueprintId: string; deleted: true }> {
     this.checkArgs('deleteDefinition', args)
-    if (!this.managedLibraryRoot()) throw new RemoteError('blueprint/capability-unavailable', 'library unavailable', { method: 'deleteDefinition', plugin: PLUGIN_NAME, version: PLUGIN_VERSION })
+    if (!this.managedLibraryRoot())
+      throw new RemoteError('blueprint/capability-unavailable', 'library unavailable', {
+        method: 'deleteDefinition',
+        plugin: PLUGIN_NAME,
+        version: PLUGIN_VERSION
+      })
     const replay = () => {
       const deleted = this.readDeletion(args.blueprintId)
       if (!deleted) return undefined
-      if (deleted.requestId !== args.requestId || deleted.documentRevision !== args.expectedRevision) throw this.revisionConflict(args.blueprintId, args.expectedRevision, null)
+      if (deleted.requestId !== args.requestId || deleted.documentRevision !== args.expectedRevision)
+        throw this.revisionConflict(args.blueprintId, args.expectedRevision, null)
       return { blueprintId: args.blueprintId, deleted: true as const }
     }
     const prior = replay()
     if (prior) return prior
     const root = this.blueprintRoot(args.blueprintId)
-    return this.withDocument(root, () => {
-      const prior = replay()
-      if (prior) return prior
-      const document = this.loadConfigured(args.blueprintId, root)
-      if (document.documentRevision !== args.expectedRevision) throw this.revisionConflict(args.blueprintId, args.expectedRevision, document.documentRevision)
-      try { writeLibraryDeletion(this.managedLibraryRoot()!, { stateVersion: 1, blueprintId: args.blueprintId, documentRevision: args.expectedRevision, requestId: args.requestId, deletedAt: Date.now() }) }
-      catch (error) { throw this.documentFailure(args.blueprintId, 'delete', error) }
-      return { blueprintId: args.blueprintId, deleted: true as const }
-    }, true)
+    return this.withDocument(
+      root,
+      () => {
+        const prior = replay()
+        if (prior) return prior
+        const document = this.loadConfigured(args.blueprintId, root)
+        if (document.documentRevision !== args.expectedRevision) throw this.revisionConflict(args.blueprintId, args.expectedRevision, document.documentRevision)
+        try {
+          writeLibraryDeletion(this.managedLibraryRoot()!, {
+            stateVersion: 1,
+            blueprintId: args.blueprintId,
+            documentRevision: args.expectedRevision,
+            requestId: args.requestId,
+            deletedAt: Date.now()
+          })
+        } catch (error) {
+          throw this.documentFailure(args.blueprintId, 'delete', error)
+        }
+        return { blueprintId: args.blueprintId, deleted: true as const }
+      },
+      true
+    )
   }
 
   async listResources(): Promise<{ resources: HostResourceCatalogValue[] }> {
@@ -633,9 +825,17 @@ export class BlueprintService extends TypertRemoteService {
       return { ...document, definition, input: inputDescription(definition), resources: Object.keys(definition.resources), resourceCatalog }
     }
     let runtimeAvailable = true
-    try { this.configuredRuntimeRoot() } catch { runtimeAvailable = false }
-    return { ...authoringGuide(), runtimeAvailable, resourceCatalog,
-      toolBindings: Object.entries(this.config.toolBindings ?? {}).map(([bindingId, binding]) => ({ bindingId, tools: binding.tools })) }
+    try {
+      this.configuredRuntimeRoot()
+    } catch {
+      runtimeAvailable = false
+    }
+    return {
+      ...authoringGuide(),
+      runtimeAvailable,
+      resourceCatalog,
+      toolBindings: Object.entries(this.config.toolBindings ?? {}).map(([bindingId, binding]) => ({ bindingId, tools: binding.tools }))
+    }
   }
 
   async validateBlueprint(candidate: AuthoringCandidate) {
@@ -646,27 +846,44 @@ export class BlueprintService extends TypertRemoteService {
   async createBlueprint(candidate: AuthoringCandidate, requestId: string, source: RunSource, signal?: AbortSignal): Promise<DefinitionDocument> {
     signal?.throwIfAborted()
     const result = validateCandidate(candidate)
-    if (!result.ok) throw new RemoteError('blueprint/definition-invalid', 'candidate rejected; use blueprint_validate for issues', { issues: result.issues.map(issue => issue.code).join('; ') })
+    if (!result.ok)
+      throw new RemoteError('blueprint/definition-invalid', 'candidate rejected; use blueprint_validate for issues', {
+        issues: result.issues.map(issue => issue.code).join('; ')
+      })
     const library = this.managedLibraryRoot()
-    if (!library) throw new RemoteError('blueprint/capability-unavailable', 'library unavailable', { method: 'createBlueprint', plugin: PLUGIN_NAME, version: PLUGIN_VERSION })
+    if (!library)
+      throw new RemoteError('blueprint/capability-unavailable', 'library unavailable', {
+        method: 'createBlueprint',
+        plugin: PLUGIN_NAME,
+        version: PLUGIN_VERSION
+      })
     const id = createdBlueprintId(JSON.stringify([source.sessionId, requestId]))
     if (Object.hasOwn(this.config.blueprints ?? {}, id)) throw this.revisionConflict(id, null, null)
     const definition = { ...result.definition, id }
     const root = libraryDocumentRoot(library, id)!
-    return await this.withDocument(root, () => {
-      libraryDocumentRoot(library, id)
-      try {
-        const stored = this.loadConfiguredPackage(id, root)
-        const sameFiles = stored.files.size === candidate.files.length && candidate.files.every(file => stored.files.get(file.path)?.equals(Buffer.from(file.text)))
-        if (!sameFiles || canonicalJson(this.decodeOrThrow(stored.document.definitionJson)) !== canonicalJson(definition)) throw this.revisionConflict(id, null, stored.document.documentRevision)
-        return stored.document
-      } catch (error) {
-        if (!(error instanceof RemoteError && error.code === 'blueprint/definition-not-found')) throw error
-      }
-      signal?.throwIfAborted()
-      try { return publishPackage(root, definition, candidate.files) }
-      catch (error) { throw this.documentFailure(id, 'create', error) }
-    }, true)
+    return await this.withDocument(
+      root,
+      () => {
+        libraryDocumentRoot(library, id)
+        try {
+          const stored = this.loadConfiguredPackage(id, root)
+          const sameFiles =
+            stored.files.size === candidate.files.length && candidate.files.every(file => stored.files.get(file.path)?.equals(Buffer.from(file.text)))
+          if (!sameFiles || canonicalJson(this.decodeOrThrow(stored.document.definitionJson)) !== canonicalJson(definition))
+            throw this.revisionConflict(id, null, stored.document.documentRevision)
+          return stored.document
+        } catch (error) {
+          if (!(error instanceof RemoteError && error.code === 'blueprint/definition-not-found')) throw error
+        }
+        signal?.throwIfAborted()
+        try {
+          return publishPackage(root, definition, candidate.files)
+        } catch (error) {
+          throw this.documentFailure(id, 'create', error)
+        }
+      },
+      true
+    )
   }
 
   async saveDefinition(args: SaveDefinitionArgs): Promise<DefinitionDocument> {
@@ -674,13 +891,24 @@ export class BlueprintService extends TypertRemoteService {
     const root = this.blueprintRoot(args.blueprintId)
     const definition = this.decodeOrThrow(args.definitionJson)
     this.checkResources(definition)
-    if (definition.id !== args.blueprintId) throw new RemoteError('blueprint/definition-invalid', 'configured ID does not match definition', { issues: 'blueprint-id-mismatch' })
-    return await this.withDocument(root, () => {
-      try { this.loadConfigured(args.blueprintId, root) } catch (error) {
-        if (!(error instanceof RemoteError && error.code === 'blueprint/definition-not-found')) throw error
-      }
-      try { return saveDefinitionDocument(root, definition, args.expectedRevision) } catch (error) { throw this.documentFailure(args.blueprintId, 'save', error) }
-    }, true)
+    if (definition.id !== args.blueprintId)
+      throw new RemoteError('blueprint/definition-invalid', 'configured ID does not match definition', { issues: 'blueprint-id-mismatch' })
+    return await this.withDocument(
+      root,
+      () => {
+        try {
+          this.loadConfigured(args.blueprintId, root)
+        } catch (error) {
+          if (!(error instanceof RemoteError && error.code === 'blueprint/definition-not-found')) throw error
+        }
+        try {
+          return saveDefinitionDocument(root, definition, args.expectedRevision)
+        } catch (error) {
+          throw this.documentFailure(args.blueprintId, 'save', error)
+        }
+      },
+      true
+    )
   }
 
   private async runtimeFor(runtimeRoot: string): Promise<RuntimeHandle> {
@@ -693,7 +921,11 @@ export class BlueprintService extends TypertRemoteService {
     if (pending) return await pending
     const opening = this.openRuntime(root)
     this.opening.set(root, opening)
-    try { return await opening } finally { this.opening.delete(root) }
+    try {
+      return await opening
+    } finally {
+      this.opening.delete(root)
+    }
   }
 
   private async openRuntime(root: string): Promise<RuntimeHandle> {
@@ -703,9 +935,22 @@ export class BlueprintService extends TypertRemoteService {
     try {
       opened = await openBlueprintDomain({ backend: 'json', path: join(root, 'store') })
       const handle: RuntimeHandle = {
-        opened, store: new RunStore(opened.domain), lease, root,
-        snapshots: new RuntimeSnapshots(root, this.config.skillRoots === undefined ? undefined : () => this.config.skillRoots!, createHostResourceProvider(this.ctx)), admissionTail: Promise.resolve(), driverTail: Promise.resolve(),
-        jobs: new Map(), rerun: new Set(), controllers: new Map(), cancellationTails: new Map(), backgroundFailures: new Map(),
+        opened,
+        store: new RunStore(opened.domain),
+        lease,
+        root,
+        snapshots: new RuntimeSnapshots(
+          root,
+          this.config.skillRoots === undefined ? undefined : () => this.config.skillRoots!,
+          createHostResourceProvider(this.ctx)
+        ),
+        admissionTail: Promise.resolve(),
+        driverTail: Promise.resolve(),
+        jobs: new Map(),
+        rerun: new Set(),
+        controllers: new Map(),
+        cancellationTails: new Map(),
+        backgroundFailures: new Map()
       }
       await reconcileOnStart(handle.store)
       this.runtimes.set(root, handle)
@@ -723,20 +968,27 @@ export class BlueprintService extends TypertRemoteService {
 
   private scheduleRun(handle: RuntimeHandle, runId: string, sourceParent?: NativeSourceParent): void {
     if (this.closing) return
-    if (handle.jobs.has(runId)) { handle.rerun.add(runId); return }
-    const job = handle.driverTail.then(async () => {
-      const run = await handle.store.get(runId)
-      await this.driveRun(handle, runId, this.decodeOrThrow(run.definitionJson), sourceParent)
-    }).catch(async () => {
-      // Raw dependency errors (including causes/credentials) never become Run evidence.
-      const run = await handle.store.get(runId)
-      if (TERMINAL_RUN_STATES.includes(run.state) || run.state === 'recovery_required') return
-      const unknown = run.attempts.some(a => a.intent !== undefined && a.result === undefined && a.state !== 'waiting_input')
-      await handle.store.settleTerminal(runId, unknown ? 'recovery_required' : 'failed', { reason: 'driver-failed' })
-    })
+    if (handle.jobs.has(runId)) {
+      handle.rerun.add(runId)
+      return
+    }
+    const job = handle.driverTail
+      .then(async () => {
+        const run = await handle.store.get(runId)
+        await this.driveRun(handle, runId, this.decodeOrThrow(run.definitionJson), sourceParent)
+      })
+      .catch(async () => {
+        // Raw dependency errors (including causes/credentials) never become Run evidence.
+        const run = await handle.store.get(runId)
+        if (TERMINAL_RUN_STATES.includes(run.state) || run.state === 'recovery_required') return
+        const unknown = run.attempts.some(a => a.intent !== undefined && a.result === undefined && a.state !== 'waiting_input')
+        await handle.store.settleTerminal(runId, unknown ? 'recovery_required' : 'failed', { reason: 'driver-failed' })
+      })
     // Always consume rejection; if even the failure write fails, preserve a typed
     // unavailable read rather than reporting a silently hung running projection.
-    const observed = job.catch(() => { handle.backgroundFailures.set(runId, new Error('durable background settlement failed')) })
+    const observed = job.catch(() => {
+      handle.backgroundFailures.set(runId, new Error('durable background settlement failed'))
+    })
     handle.jobs.set(runId, observed)
     handle.driverTail = observed
     void observed.then(() => {
@@ -756,7 +1008,9 @@ export class BlueprintService extends TypertRemoteService {
    * Diagnostic only — business surfaces stay capability-unavailable until
    * their waves land.
    */
-  async hostProbe(args: HostProbeArgs | InternalHostProbeArgs): Promise<Pick<AgentExecutionEvidence, 'sessionId' | 'agentCreated' | 'scopedInjections' | 'inboxSplicedSeen' | 'outcome'>> {
+  async hostProbe(
+    args: HostProbeArgs | InternalHostProbeArgs
+  ): Promise<Pick<AgentExecutionEvidence, 'sessionId' | 'agentCreated' | 'scopedInjections' | 'inboxSplicedSeen' | 'outcome'>> {
     if ('blueprintId' in args) {
       this.checkArgs('hostProbe', args)
       const root = this.blueprintRoot(args.blueprintId)
@@ -764,8 +1018,15 @@ export class BlueprintService extends TypertRemoteService {
         const document = this.loadConfigured(args.blueprintId, root)
         const definition = this.decodeOrThrow(document.definitionJson)
         const ref = definition.resources[args.resourceId]
-        if (!ref || ref.kind !== 'skill') throw new RemoteError('blueprint/host-probe-invalid', 'configured Skill reference unavailable', { reason: 'skill-ref-unavailable' })
-        const resource = await resolveResource(args.resourceId, ref.source?.kind === 'shared' ? { kind: ref.kind, source: ref.source } : { kind: ref.kind, path: `${ref.path ?? (ref.source?.kind === 'package' ? ref.source.path : '')}/SKILL.md` }, { blueprintRoot: root, roots: this.config.skillRoots ?? [] })
+        if (!ref || ref.kind !== 'skill')
+          throw new RemoteError('blueprint/host-probe-invalid', 'configured Skill reference unavailable', { reason: 'skill-ref-unavailable' })
+        const resource = await resolveResource(
+          args.resourceId,
+          ref.source?.kind === 'shared'
+            ? { kind: ref.kind, source: ref.source }
+            : { kind: ref.kind, path: `${ref.path ?? (ref.source?.kind === 'package' ? ref.source.path : '')}/SKILL.md` },
+          { blueprintRoot: root, roots: this.config.skillRoots ?? [] }
+        )
         const skillDir = resource.kind === 'shared-skill' ? resource.skillDir : resource.kind === 'package-file' ? dirname(resource.absolutePath) : undefined
         if (!skillDir) throw new Error('Skill reference rejected')
         return await this.hostProbe({ skillDir, input: args.input })
@@ -802,17 +1063,26 @@ export class BlueprintService extends TypertRemoteService {
         agentMd: '',
         skills: [{ name: 'probe', content: skillMd.bytes.toString('utf8'), digest: snapshot.treeDigest }],
         input: args.input,
-        cwd,
+        cwd
       })
-      const probeEvidence = { sessionId: evidence.sessionId, agentCreated: evidence.agentCreated,
-        scopedInjections: evidence.scopedInjections, inboxSplicedSeen: evidence.inboxSplicedSeen, outcome: evidence.outcome }
+      const probeEvidence = {
+        sessionId: evidence.sessionId,
+        agentCreated: evidence.agentCreated,
+        scopedInjections: evidence.scopedInjections,
+        inboxSplicedSeen: evidence.inboxSplicedSeen,
+        outcome: evidence.outcome
+      }
       if (evidence.outcome.kind === 'recovery_required') {
         // Existing diagnostic codec has four values, unlike business Attempts.
         // Keep unknown explicitly failed; never remove an in-use working tree.
-        return { ...probeEvidence, outcome: { ok: false, kind: 'failed', detail: 'recovery_required: Agent effect/quiescence is unknown; diagnostic cwd retained' } }
+        return {
+          ...probeEvidence,
+          outcome: { ok: false, kind: 'failed', detail: 'recovery_required: Agent effect/quiescence is unknown; diagnostic cwd retained' }
+        }
       }
       rmSync(cwd, { recursive: true, force: true })
-      if (evidence.outcome.kind === 'cancelled') return { ...probeEvidence, outcome: { ok: false, kind: 'failed', detail: 'cancelled: Agent turn was aborted' } }
+      if (evidence.outcome.kind === 'cancelled')
+        return { ...probeEvidence, outcome: { ok: false, kind: 'failed', detail: 'cancelled: Agent turn was aborted' } }
       return probeEvidence
     } catch (error) {
       rmSync(cwd, { recursive: true, force: true })
@@ -829,7 +1099,10 @@ export class BlueprintService extends TypertRemoteService {
   async mcpProbe(args: McpProbeArgs): Promise<McpProbeEvidence> {
     this.checkArgs('mcpProbe', args)
     const ctxAny = this.ctx as unknown as { get?(service: string): unknown }
-    const tools = typeof ctxAny.get === 'function' ? ctxAny.get('tools') as { schemas?: () => Array<{ name: string }>; execute?: (exec: Record<string, unknown>) => Promise<unknown> } | undefined : undefined
+    const tools =
+      typeof ctxAny.get === 'function'
+        ? (ctxAny.get('tools') as { schemas?: () => Array<{ name: string }>; execute?: (exec: Record<string, unknown>) => Promise<unknown> } | undefined)
+        : undefined
     if (tools === undefined || typeof tools.execute !== 'function') {
       return { available: false, dispatched: false, isError: true, text: '', detail: 'host tools service unavailable' }
     }
@@ -840,13 +1113,13 @@ export class BlueprintService extends TypertRemoteService {
       return { available: false, dispatched: false, isError: true, text: '', detail: `MCP tool ${prefixed} is not registered in this profile` }
     }
     const controller = new AbortController()
-    const result = await tools.execute({
+    const result = (await tools.execute({
       callId: `bp-mcp-${Date.now().toString(36)}`,
       name: prefixed,
       arguments: args.args,
-      signal: controller.signal,
-    }) as { isError?: boolean; content?: Array<{ type?: string; text?: string }> } | undefined
-    const text = (result?.content ?? []).map(block => block.type === 'text' ? String(block.text ?? '') : '').join('\n')
+      signal: controller.signal
+    })) as { isError?: boolean; content?: Array<{ type?: string; text?: string }> } | undefined
+    const text = (result?.content ?? []).map(block => (block.type === 'text' ? String(block.text ?? '') : '')).join('\n')
     return { available: true, dispatched: true, isError: result?.isError === true, text }
   }
 
@@ -865,14 +1138,20 @@ export class BlueprintService extends TypertRemoteService {
     // Read existing machine bindings only. Preflight never opens a writable
     // runtime or creates a lease/store/Agent as a side effect.
     let runtimeRoot: string
-    try { runtimeRoot = this.configuredRuntimeRoot() } catch { return [] }
+    try {
+      runtimeRoot = this.configuredRuntimeRoot()
+    } catch {
+      return []
+    }
     const file = join(runtimeRoot, 'root-bindings.json')
     if (!existsSync(file)) return []
     try {
       const value = JSON.parse(readFileSync(file, 'utf8')) as { roots?: SkillRoot[] }
       if (!Array.isArray(value.roots) || value.roots.some(root => !root || typeof root.rootId !== 'string' || typeof root.rootPath !== 'string')) return []
       return value.roots
-    } catch { return [] }
+    } catch {
+      return []
+    }
   }
 
   async preflightRun(args: PreflightRunArgs): Promise<PreflightRunValue> {
@@ -880,18 +1159,25 @@ export class BlueprintService extends TypertRemoteService {
     const root = this.blueprintRoot(args.blueprintId)
     return await this.withDocument(root, async () => {
       const snapshot = this.loadConfiguredPackage(args.blueprintId, root)
-      if (snapshot.document.documentRevision !== args.expectedRevision) throw this.revisionConflict(args.blueprintId, args.expectedRevision, snapshot.document.documentRevision)
+      if (snapshot.document.documentRevision !== args.expectedRevision)
+        throw this.revisionConflict(args.blueprintId, args.expectedRevision, snapshot.document.documentRevision)
       const input = this.parseInput(args.inputJson)
       this.configuredRuntimeRoot()
-      return await collectPreflight(this.ctx, snapshot, this.decodeOrThrow(snapshot.document.definitionJson), { input,
-        ...(this.config.toolBindings === undefined ? {} : { toolBindings: this.config.toolBindings }), skillRoots: this.preflightSkillRoots(),
-        ...(this.config.teamProviders === undefined ? {} : { teamProviders: this.config.teamProviders }),
+      return await collectPreflight(this.ctx, snapshot, this.decodeOrThrow(snapshot.document.definitionJson), {
+        input,
+        ...(this.config.toolBindings === undefined ? {} : { toolBindings: this.config.toolBindings }),
+        skillRoots: this.preflightSkillRoots(),
+        ...(this.config.teamProviders === undefined ? {} : { teamProviders: this.config.teamProviders })
       })
     })
   }
 
   private parseInput(inputJson: string): unknown {
-    try { return JSON.parse(inputJson) } catch { throw new RemoteError('blueprint/definition-invalid', 'input must be JSON', { issues: 'invalid-input-json' }) }
+    try {
+      return JSON.parse(inputJson)
+    } catch {
+      throw new RemoteError('blueprint/definition-invalid', 'input must be JSON', { issues: 'invalid-input-json' })
+    }
   }
 
   // Admission commits promptly; graph execution is a separate supervised job.
@@ -904,9 +1190,16 @@ export class BlueprintService extends TypertRemoteService {
   async startSessionRun(args: StartSessionRunArgs) {
     this.checkArgs('startSessionRun', args)
     let caller
-    try { caller = liveCaller(this.ctx, args.sessionId); assertRootCaller(caller) } catch (error) {
+    try {
+      caller = liveCaller(this.ctx, args.sessionId)
+      assertRootCaller(caller)
+    } catch (error) {
       const nested = (error as { code?: string })?.code === 'nested-run-unavailable'
-      throw new RemoteError(nested ? 'blueprint/nested-run-unavailable' : 'blueprint/session-unavailable', nested ? 'nested-run-unavailable' : 'session-unavailable', { sessionId: args.sessionId })
+      throw new RemoteError(
+        nested ? 'blueprint/nested-run-unavailable' : 'blueprint/session-unavailable',
+        nested ? 'nested-run-unavailable' : 'session-unavailable',
+        { sessionId: args.sessionId }
+      )
     }
     return await this.startConfiguredRun(args, { sessionId: caller.session.id, kind: 'ui' })
   }
@@ -929,7 +1222,7 @@ export class BlueprintService extends TypertRemoteService {
         leadSessionId: args.sessionId,
         taskSpecificationFingerprint: frozen.taskSpecificationFingerprint,
         attemptId: frozen.attempt.attemptId,
-        requiredChecks: [...frozen.node.teamStage.requiredChecks],
+        requiredChecks: [...frozen.node.teamStage.requiredChecks]
       })
       const task = await createBoundTeamTask({
         store: handle.store,
@@ -938,9 +1231,9 @@ export class BlueprintService extends TypertRemoteService {
         lead,
         request: {
           subject: frozen.task.subject,
-          description: frozen.task.description,
+          description: frozen.task.description
         },
-        effectId: `team-task-create:${args.runId}:${args.stageId}`,
+        effectId: `team-task-create:${args.runId}:${args.stageId}`
       })
       const record = await handle.store.get(args.runId)
       return publicTeamAction(record, task, before.teamStage?.taskId !== undefined)
@@ -958,21 +1251,27 @@ export class BlueprintService extends TypertRemoteService {
       const before = await handle.store.tryGet(args.runId)
       if (before === undefined) throw new RunNotFoundError(args.runId)
       this.assertTeamStageLead(before, args.runId, args.sessionId, lead)
-      if (args.memberNames !== undefined && before.teamStage !== undefined
-        && !['succeeded', 'failed', 'cancelled', 'timed_out', 'recovery_required'].includes(before.teamStage.state)) {
+      if (
+        args.memberNames !== undefined &&
+        before.teamStage !== undefined &&
+        !['succeeded', 'failed', 'cancelled', 'timed_out', 'recovery_required'].includes(before.teamStage.state)
+      ) {
         // Validate consistency input before requestCancel writes the durable
         // cutoff. The canonical stage still derives the complete target set.
         validateOwnedTeamMemberNames(before.teamStage, args.memberNames)
       }
       const requested = await handle.store.requestTeamStageCancel(args.runId, args.reason)
-      const after = requested.teamStage === undefined
-        ? requested
-        : await this.cancelTeamRun(handle, requested, lead, args.memberNames, args.reason, false)
+      const after = requested.teamStage === undefined ? requested : await this.cancelTeamRun(handle, requested, lead, args.memberNames, args.reason, false)
       const stage = after.teamStage
       const deleted = stage?.effects?.find(effect => effect.kind === 'task-delete' && effect.state === 'succeeded')
-      const task = stage?.taskId === undefined || stage.taskRevision === undefined
-        ? undefined
-        : { id: stage.taskId, revision: deleted?.resultTaskRevision ?? stage.taskRevision, ...(deleted?.resultStatus === undefined ? {} : { status: deleted.resultStatus }) }
+      const task =
+        stage?.taskId === undefined || stage.taskRevision === undefined
+          ? undefined
+          : {
+              id: stage.taskId,
+              revision: deleted?.resultTaskRevision ?? stage.taskRevision,
+              ...(deleted?.resultStatus === undefined ? {} : { status: deleted.resultStatus })
+            }
       return publicTeamAction(after, task, ['cancelled', 'succeeded', 'failed', 'timed_out', 'recovery_required'].includes(before.teamStage?.state ?? ''))
     } catch (error) {
       throw teamStageRemoteError(error, 'cancelTeamStage', args.sessionId)
@@ -1001,11 +1300,12 @@ export class BlueprintService extends TypertRemoteService {
         digest: args.digest,
         evidenceDigest: args.evidenceDigest,
         checks: args.checks,
-        ...(args.issueCode === undefined ? {} : { issueCode: args.issueCode }),
+        ...(args.issueCode === undefined ? {} : { issueCode: args.issueCode })
       }
-      const task = args.code !== 'accepted' || stage.taskId === undefined || stage.taskRevision === undefined
-        ? undefined
-        : publicTeamTask(new TeamNativeAdapter(this.ctx).getTask(lead, stage.taskId), args.runId)
+      const task =
+        args.code !== 'accepted' || stage.taskId === undefined || stage.taskRevision === undefined
+          ? undefined
+          : publicTeamTask(new TeamNativeAdapter(this.ctx).getTask(lead, stage.taskId), args.runId)
       if (task !== undefined && stage.outputAcceptance === undefined) {
         await handle.store.observeTeamTaskRevision(args.runId, { taskId: task.id, taskRevision: task.revision }, stage.taskRevision!)
       }
@@ -1016,11 +1316,12 @@ export class BlueprintService extends TypertRemoteService {
         ...(task === undefined ? {} : { task, taskStatus: task.status }),
         artifact: { artifactId: args.artifactId, digest: args.digest },
         ...(args.requiredChecks === undefined ? {} : { requiredChecks: args.requiredChecks }),
-        ...(args.requiredMemberIds === undefined ? {} : { requiredMemberIds: args.requiredMemberIds }),
+        ...(args.requiredMemberIds === undefined ? {} : { requiredMemberIds: args.requiredMemberIds })
       })
-      const storedTask = after.teamStage?.taskId === undefined || after.teamStage.taskRevision === undefined
-        ? task
-        : task ?? { id: after.teamStage.taskId, revision: after.teamStage.taskRevision }
+      const storedTask =
+        after.teamStage?.taskId === undefined || after.teamStage.taskRevision === undefined
+          ? task
+          : (task ?? { id: after.teamStage.taskId, revision: after.teamStage.taskRevision })
       return publicTeamAction(after, storedTask, false)
     } catch (error) {
       throw teamStageRemoteError(error, 'acceptTeamStageOutput', args.sessionId)
@@ -1030,33 +1331,55 @@ export class BlueprintService extends TypertRemoteService {
   private async startConfiguredRun(args: StartRunArgs, source?: RunSource) {
     const sourceParent = source === undefined ? undefined : captureNativeSourceParent(this.ctx, source.sessionId)
     const root = this.blueprintRoot(args.blueprintId)
-    return await this.withDocument(root, async () => {
-      const snapshot = this.loadConfiguredPackage(args.blueprintId, root)
-      const { document } = snapshot
-      if (document.documentRevision !== args.expectedRevision) throw this.revisionConflict(args.blueprintId, args.expectedRevision, document.documentRevision)
-      this.parseInput(args.inputJson)
-      const runtimeRoot = this.configuredRuntimeRoot()
-      let staging: string | undefined
-      try {
-        return await this.admitRun({ definitionJson: document.definitionJson, inputJson: args.inputJson, runtimeRoot, requestId: args.requestId }, document.semanticRevision, async () => {
-          // Called under admissionTail, ONLY after a matching command replay
-          // has returned. A changed Host/shared Skill cannot reinterpret it.
-          const report = await collectPreflight(this.ctx, snapshot, this.decodeOrThrow(document.definitionJson), { input: this.parseInput(args.inputJson),
-            ...(this.config.toolBindings === undefined ? {} : { toolBindings: this.config.toolBindings }), skillRoots: this.preflightSkillRoots(),
-            ...(this.config.teamProviders === undefined ? {} : { teamProviders: this.config.teamProviders }),
-          })
-          if (!report.canStart) throw new RemoteError('blueprint/preflight-blocked', 'new Run blocked by preflight', { checks: report.checks })
-          try {
-            staging = mkdtempSync(join(tmpdir(), 'bp-admission-bytes-'))
-            this.materializePackage(snapshot, staging)
-            return staging
-          } catch (error) { throw this.documentFailure(args.blueprintId, 'admission-stage', error) }
-        }, { blueprintId: args.blueprintId, ...(source === undefined ? {} : { source }) }, sourceParent)
-      } finally { if (staging !== undefined) rmSync(staging, { recursive: true, force: true }) }
-    }, true)
+    return await this.withDocument(
+      root,
+      async () => {
+        const snapshot = this.loadConfiguredPackage(args.blueprintId, root)
+        const { document } = snapshot
+        if (document.documentRevision !== args.expectedRevision) throw this.revisionConflict(args.blueprintId, args.expectedRevision, document.documentRevision)
+        this.parseInput(args.inputJson)
+        const runtimeRoot = this.configuredRuntimeRoot()
+        let staging: string | undefined
+        try {
+          return await this.admitRun(
+            { definitionJson: document.definitionJson, inputJson: args.inputJson, runtimeRoot, requestId: args.requestId },
+            document.semanticRevision,
+            async () => {
+              // Called under admissionTail, ONLY after a matching command replay
+              // has returned. A changed Host/shared Skill cannot reinterpret it.
+              const report = await collectPreflight(this.ctx, snapshot, this.decodeOrThrow(document.definitionJson), {
+                input: this.parseInput(args.inputJson),
+                ...(this.config.toolBindings === undefined ? {} : { toolBindings: this.config.toolBindings }),
+                skillRoots: this.preflightSkillRoots(),
+                ...(this.config.teamProviders === undefined ? {} : { teamProviders: this.config.teamProviders })
+              })
+              if (!report.canStart) throw new RemoteError('blueprint/preflight-blocked', 'new Run blocked by preflight', { checks: report.checks })
+              try {
+                staging = mkdtempSync(join(tmpdir(), 'bp-admission-bytes-'))
+                this.materializePackage(snapshot, staging)
+                return staging
+              } catch (error) {
+                throw this.documentFailure(args.blueprintId, 'admission-stage', error)
+              }
+            },
+            { blueprintId: args.blueprintId, ...(source === undefined ? {} : { source }) },
+            sourceParent
+          )
+        } finally {
+          if (staging !== undefined) rmSync(staging, { recursive: true, force: true })
+        }
+      },
+      true
+    )
   }
 
-  private async admitRun(args: InternalStartRunArgs, savedSemanticRevision?: string, beforeNewAdmission?: () => Promise<string | undefined>, metadata: { blueprintId?: string; source?: RunSource } = {}, sourceParent?: NativeSourceParent): Promise<{ runId: string; semanticRevision: string; state: string; replayed: boolean }> {
+  private async admitRun(
+    args: InternalStartRunArgs,
+    savedSemanticRevision?: string,
+    beforeNewAdmission?: () => Promise<string | undefined>,
+    metadata: { blueprintId?: string; source?: RunSource } = {},
+    sourceParent?: NativeSourceParent
+  ): Promise<{ runId: string; semanticRevision: string; state: string; replayed: boolean }> {
     const definition = this.decodeOrThrow(args.definitionJson)
     this.parseInput(args.inputJson)
     // Team requires an existing source root; the source-less internal entry
@@ -1065,10 +1388,17 @@ export class BlueprintService extends TypertRemoteService {
       .filter(node => node.teamStage !== undefined && sourceParent === undefined)
       .map(node => ({ code: 'teamstage-executor-unavailable', status: 'block', nodeId: node.id }))
     if (checks.length) throw new RemoteError('blueprint/preflight-blocked', 'new Run blocked by preflight', { checks })
-    const semanticRevision = savedSemanticRevision ?? createHash('sha256').update(JSON.stringify(expectedSemantic(definition))).digest('hex')
+    const semanticRevision =
+      savedSemanticRevision ??
+      createHash('sha256')
+        .update(JSON.stringify(expectedSemantic(definition)))
+        .digest('hex')
     const handle = await this.configuredRuntime(args.runtimeRoot ?? join(tmpdir(), 'bp-runtime-default'))
     const requestId = args.requestId ?? randomUUID()
-    const sourceFingerprint = metadata.source === undefined ? '' : `\u0000${JSON.stringify([metadata.source.sessionId, metadata.source.kind, metadata.source.callId ?? null, metadata.source.turn ?? null])}`
+    const sourceFingerprint =
+      metadata.source === undefined
+        ? ''
+        : `\u0000${JSON.stringify([metadata.source.sessionId, metadata.source.kind, metadata.source.callId ?? null, metadata.source.turn ?? null])}`
     const payloadFingerprint = createHash('sha256').update(`${args.definitionJson}\u0000${args.inputJson}${sourceFingerprint}`).digest('hex')
     const request = { scope: 'run', requestId, payloadFingerprint }
     const admitted = handle.admissionTail.then(async () => {
@@ -1077,16 +1407,18 @@ export class BlueprintService extends TypertRemoteService {
       const rootDir = beforeNewAdmission ? await beforeNewAdmission() : args.rootDir
       if (sourceParent !== undefined && metadata.source !== undefined) assertNativeSourceParent(this.ctx, sourceParent, metadata.source.sessionId)
       for (const node of definition.graph.nodes.filter(node => node.teamStage !== undefined)) {
-        try { admitTeamDriver(this.ctx, node, sourceParent?.agent, this.config.teamProviders) }
-        catch (error) {
+        try {
+          admitTeamDriver(this.ctx, node, sourceParent?.agent, this.config.teamProviders)
+        } catch (error) {
           const code = error instanceof TeamDriverError ? error.issueCode : 'teamstage-executor-unavailable'
           throw new RemoteError('blueprint/preflight-blocked', 'new Run blocked by preflight', { checks: [{ code, status: 'block', nodeId: node.id }] })
         }
       }
       const created = await handle.store.createRun(request, semanticRevision, args.definitionJson, args.inputJson, metadata)
       if (!created.replayed) {
-        try { await handle.snapshots.freezePackage(created.runId, definition, rootDir) }
-        catch {
+        try {
+          await handle.snapshots.freezePackage(created.runId, definition, rootDir)
+        } catch {
           await handle.store.settleTerminal(created.runId, 'failed', { reason: 'resource-freeze-failed' })
           throw new RemoteError('blueprint/durability-failed', 'Run resources could not be frozen', { operation: 'freeze-package' })
         }
@@ -1096,20 +1428,27 @@ export class BlueprintService extends TypertRemoteService {
       return { runId: created.runId, semanticRevision: record.definitionRevision, state: record.state, replayed: created.replayed }
     })
     handle.admissionTail = admitted.catch(() => {})
-    try { return await admitted } catch (error) {
-      if (error instanceof DurabilityFailureError) throw new RemoteError('blueprint/durability-failed', 'admission write failed', { operation: error.operation })
+    try {
+      return await admitted
+    } catch (error) {
+      if (error instanceof DurabilityFailureError)
+        throw new RemoteError('blueprint/durability-failed', 'admission write failed', { operation: error.operation })
       throw error
     }
   }
 
-  private async driveRun(handle: RuntimeHandle, runId: string, definition: ReturnType<typeof decodeDefinition>, sourceParent?: NativeSourceParent): Promise<void> {
+  private async driveRun(
+    handle: RuntimeHandle,
+    runId: string,
+    definition: ReturnType<typeof decodeDefinition>,
+    sourceParent?: NativeSourceParent
+  ): Promise<void> {
     const graph = compileGraph(definition)
     while (true) {
       const record = await handle.store.get(runId)
       if (TERMINAL_RUN_STATES.includes(record.state) || ['waiting_input', 'recovery_required'].includes(record.state)) return
       if (record.state === 'cancelling') {
-        if (record.teamStage !== undefined
-          && !['succeeded', 'failed', 'cancelled', 'timed_out', 'recovery_required'].includes(record.teamStage.state)) {
+        if (record.teamStage !== undefined && !['succeeded', 'failed', 'cancelled', 'timed_out', 'recovery_required'].includes(record.teamStage.state)) {
           await this.cancelTeamRun(handle, record)
           return
         }
@@ -1124,7 +1463,9 @@ export class BlueprintService extends TypertRemoteService {
       }
       const failure = record.attempts.find(a => ['failed', 'timed_out', 'cancelled'].includes(a.state))
       if (failure) {
-        await handle.store.settleTerminal(runId, failure.state === 'timed_out' ? 'timed_out' : failure.state === 'cancelled' ? 'cancelled' : 'failed', { reason: 'attempt-settled-non-success' })
+        await handle.store.settleTerminal(runId, failure.state === 'timed_out' ? 'timed_out' : failure.state === 'cancelled' ? 'cancelled' : 'failed', {
+          reason: 'attempt-settled-non-success'
+        })
         return
       }
       const decisions: Record<string, string> = {}
@@ -1146,7 +1487,9 @@ export class BlueprintService extends TypertRemoteService {
       }
       if (!schedule.ready.length) {
         const complete = definition.graph.nodes.every(n => record.attempts.some(a => a.nodeId === n.id && ['succeeded', 'skipped'].includes(a.state)))
-        await handle.store.settleTerminal(runId, complete ? 'succeeded' : 'recovery_required', { reason: complete ? 'selected-paths-settled' : 'no-safe-progress' })
+        await handle.store.settleTerminal(runId, complete ? 'succeeded' : 'recovery_required', {
+          reason: complete ? 'selected-paths-settled' : 'no-safe-progress'
+        })
         return
       }
       const nodeId = schedule.ready[0]!
@@ -1155,7 +1498,7 @@ export class BlueprintService extends TypertRemoteService {
       handle.controllers.set(runId, controller)
       let intent: Awaited<ReturnType<RunStore['recordIntent']>> | undefined
       let diagnostics: Extract<AttemptDiagnostics, { status: 'available' }> | undefined
-      const settledDiagnostics = (code: string) => diagnostics === undefined ? {} : { diagnostics: { ...diagnostics, acceptance: { code } } }
+      const settledDiagnostics = (code: string) => (diagnostics === undefined ? {} : { diagnostics: { ...diagnostics, acceptance: { code } } })
       try {
         const initial: unknown = JSON.parse(record.inputRef)
         const bound: Record<string, unknown> = {}
@@ -1163,16 +1506,21 @@ export class BlueprintService extends TypertRemoteService {
         let bindingError: NodeValueError | undefined
         for (const dep of graph.dataDeps.get(nodeId) ?? []) {
           const parent = record.attempts.findLast(a => a.nodeId === dep.fromNode)
-          if (node.kind === 'join' && parent?.state === 'skipped') { omitted.add(dep.toPort); continue }
+          if (node.kind === 'join' && parent?.state === 'skipped') {
+            omitted.add(dep.toPort)
+            continue
+          }
           const outcome = parent?.result?.outcome as { outputs?: Record<string, unknown> } | undefined
-          if (parent?.state !== 'succeeded') { bindingError ??= new NodeValueError('binding-unavailable'); continue }
+          if (parent?.state !== 'succeeded') {
+            bindingError ??= new NodeValueError('binding-unavailable')
+            continue
+          }
           if (!outcome?.outputs || !Object.hasOwn(outcome.outputs, dep.fromPort)) {
             bindingError ??= new NodeValueError(node.kind === 'condition' ? 'condition-input-invalid' : 'binding-missing')
             continue
           }
           const value = outcome.outputs[dep.fromPort]
-          if (!matchesWireType(value, graph.nodeById.get(dep.fromNode)?.outputs?.[dep.fromPort])
-            || !matchesWireType(value, node.inputs?.[dep.toPort])) {
+          if (!matchesWireType(value, graph.nodeById.get(dep.fromNode)?.outputs?.[dep.fromPort]) || !matchesWireType(value, node.inputs?.[dep.toPort])) {
             bindingError ??= new NodeValueError(node.kind === 'condition' ? 'condition-input-invalid' : 'binding-invalid')
           }
           Object.defineProperty(bound, dep.toPort, { value, enumerable: true, writable: true, configurable: true })
@@ -1182,9 +1530,12 @@ export class BlueprintService extends TypertRemoteService {
         for (const port of Object.keys(bound)) omitted.delete(port)
         const input = (graph.dataDeps.get(nodeId)?.length ?? 0) > 0 ? bound : initial
         const inputJson = JSON.stringify(input)
-        const prepared = node.kind === 'agentTask' && bindingError === undefined
-          ? node.teamStage === undefined ? await handle.snapshots.prepare(runId, definition, node) : await handle.snapshots.prepareTeam(runId, definition, node)
-          : undefined
+        const prepared =
+          node.kind === 'agentTask' && bindingError === undefined
+            ? node.teamStage === undefined
+              ? await handle.snapshots.prepare(runId, definition, node)
+              : await handle.snapshots.prepareTeam(runId, definition, node)
+            : undefined
         if (this.closing || controller.signal.aborted) {
           const requested = await handle.store.requestCancel(runId)
           if (requested.teamStage !== undefined) await this.cancelTeamRun(handle, requested)
@@ -1193,32 +1544,49 @@ export class BlueprintService extends TypertRemoteService {
         const effectiveToolNames = prepared ? resolveEffectiveToolNames(this.ctx, definition, node, this.config.toolBindings) : []
         // Capture once before durable intent; the explicit property below tells
         // the executor not to read a later Host default, even when undefined.
-        const modelSelection = prepared && node.teamStage === undefined
-          ? node.modelSelection === undefined ? captureAgentModelSelection(this.ctx) : {
-            provider: node.modelSelection.provider, model: node.modelSelection.model,
-            ...(node.modelSelection.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(node.modelSelection.reasoningEffort) }),
-          }
-          : undefined
+        const modelSelection =
+          prepared && node.teamStage === undefined
+            ? node.modelSelection === undefined
+              ? captureAgentModelSelection(this.ctx)
+              : {
+                  provider: node.modelSelection.provider,
+                  model: node.modelSelection.model,
+                  ...(node.modelSelection.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(node.modelSelection.reasoningEffort) })
+                }
+            : undefined
         if (bindingError === undefined) {
           diagnostics = {
             status: 'available',
-            input: { type: input === null ? 'null' : Array.isArray(input) ? 'array' : typeof input as 'object' | 'string' | 'number' | 'boolean',
-              bytes: Buffer.byteLength(inputJson), sha256: createHash('sha256').update(inputJson).digest('hex') },
+            input: {
+              type: input === null ? 'null' : Array.isArray(input) ? 'array' : (typeof input as 'object' | 'string' | 'number' | 'boolean'),
+              bytes: Buffer.byteLength(inputJson),
+              sha256: createHash('sha256').update(inputJson).digest('hex')
+            },
             resourceDigests: prepared?.resourceDigests ?? {},
             ...(modelSelection === undefined ? {} : { modelSelection }),
-            tools: { effectiveNames: effectiveToolNames }, acceptance: { code: 'pending' },
+            tools: { effectiveNames: effectiveToolNames },
+            acceptance: { code: 'pending' }
           }
         }
         // A rejected incomplete binding has no dispatch input/model/tool facts
         // to invent. Still commit the Attempt before its typed rejection result.
         const executionSessionId = node.kind === 'agentTask' && node.teamStage === undefined ? `bp-${randomUUID()}` : undefined
-        intent = await handle.store.recordIntent(runId, { nodeId, kind: node.kind,
+        intent = await handle.store.recordIntent(runId, {
+          nodeId,
+          kind: node.kind,
           ...(executionSessionId === undefined ? {} : { sessionId: executionSessionId }),
-          resourceDigests: diagnostics?.resourceDigests ?? {}, diagnostics: diagnostics ?? { status: 'unavailable' } })
+          resourceDigests: diagnostics?.resourceDigests ?? {},
+          diagnostics: diagnostics ?? { status: 'unavailable' }
+        })
         // cancel may have committed while the intent or preparation was in progress.
         if ((await handle.store.get(runId)).state === 'cancelling') controller.abort()
         if (controller.signal.aborted) {
-          await handle.store.recordResult(runId, intent.attemptId, { ok: false, outcome: { kind: 'cancelled' }, evidence: 'cancel-before-dispatch', ...settledDiagnostics('cancelled') })
+          await handle.store.recordResult(runId, intent.attemptId, {
+            ok: false,
+            outcome: { kind: 'cancelled' },
+            evidence: 'cancel-before-dispatch',
+            ...settledDiagnostics('cancelled')
+          })
           continue
         }
         if (bindingError !== undefined) throw bindingError
@@ -1228,8 +1596,12 @@ export class BlueprintService extends TypertRemoteService {
           const predicate = (input as Record<string, unknown>)[config.inputPort] as boolean
           const branch = predicate ? config.trueBranch : config.falseBranch
           const outputs = structuralOutputs(node, input, omitted)
-          await handle.store.recordResult(runId, intent.attemptId, { ok: true,
-            outcome: { branch, outputs, value: predicate }, evidence: 'condition-boolean', ...settledDiagnostics('not-required') })
+          await handle.store.recordResult(runId, intent.attemptId, {
+            ok: true,
+            outcome: { branch, outputs, value: predicate },
+            evidence: 'condition-boolean',
+            ...settledDiagnostics('not-required')
+          })
           continue
         }
         if (node.kind === 'humanDecision') {
@@ -1239,13 +1611,23 @@ export class BlueprintService extends TypertRemoteService {
             draft.attempts.find(a => a.attemptId === intent!.attemptId)!.state = 'waiting_input'
           })
           if ((await handle.store.get(runId)).state === 'cancelling') {
-            await handle.store.recordResult(runId, intent.attemptId, { ok: false, outcome: { kind: 'cancelled' }, evidence: 'cancel-before-wait', ...settledDiagnostics('cancelled') })
+            await handle.store.recordResult(runId, intent.attemptId, {
+              ok: false,
+              outcome: { kind: 'cancelled' },
+              evidence: 'cancel-before-wait',
+              ...settledDiagnostics('cancelled')
+            })
           }
           return
         }
         if (node.kind === 'input' || node.kind === 'output' || (node.kind === 'join' && node.join !== 'any')) {
           const outputs = structuralOutputs(node, input, omitted)
-          await handle.store.recordResult(runId, intent.attemptId, { ok: true, outcome: { outputs, value: input }, evidence: 'structural-node', ...settledDiagnostics('not-required') })
+          await handle.store.recordResult(runId, intent.attemptId, {
+            ok: true,
+            outcome: { outputs, value: input },
+            evidence: 'structural-node',
+            ...settledDiagnostics('not-required')
+          })
           continue
         }
         if (prepared && diagnostics) {
@@ -1255,8 +1637,15 @@ export class BlueprintService extends TypertRemoteService {
             if (!parent) throw new TeamDriverError('teamstage-identity-unavailable')
             assertNativeSourceParent(this.ctx, parent, record.source!.sessionId)
             await new TeamStageDriver(this.ctx, handle.store, handle.root, this.config.teamProviders, this.teamObservations).execute({
-              record, node, attemptId: intent.attemptId, source: parent.agent, prepared: prepared as PreparedTeam,
-              effectiveToolNames, input, cwd, signal: controller.signal,
+              record,
+              node,
+              attemptId: intent.attemptId,
+              source: parent.agent,
+              prepared: prepared as PreparedTeam,
+              effectiveToolNames,
+              input,
+              cwd,
+              signal: controller.signal,
               mapOutputs: value => {
                 const outputs: Record<string, unknown> = {}
                 for (const [port, type] of Object.entries(node.outputs ?? {})) {
@@ -1266,16 +1655,32 @@ export class BlueprintService extends TypertRemoteService {
                   if (!matchesWireType(outputs[port], type)) throw new NodeValueError('output-invalid')
                 }
                 return outputs
-              },
+              }
             })
             continue
           }
           const registry = this.ctx.get('agents')
           if (!registry) throw new AgentCompositionUnsupportedError('missing registry')
           const executor = new BlueprintAgentExecutor(this.ctx, registry as never)
-          const evidence = await executor.execute({ runId, attemptId: intent.attemptId, nodeId, sessionId: executionSessionId!, agentMd: prepared.agentMd, ...(prepared.agentPreset === undefined ? {} : { agentPreset: prepared.agentPreset }), ...(prepared.agentComposition === undefined ? {} : { agentComposition: prepared.agentComposition }), ...(prepared.hostAgentComposition === undefined ? {} : { hostAgentComposition: prepared.hostAgentComposition }), skills: prepared.skills, input: typeof input === 'string' ? input : inputJson, cwd, signal: controller.signal,
-            ...(record.source === undefined ? {} : { source: record.source }), ...(sourceParent === undefined ? {} : { sourceParent }),
-            effectiveToolNames, modelSelection, ...(prepared.outputSchema === undefined ? {} : { outputSchema: prepared.outputSchema }) })
+          const evidence = await executor.execute({
+            runId,
+            attemptId: intent.attemptId,
+            nodeId,
+            sessionId: executionSessionId!,
+            agentMd: prepared.agentMd,
+            ...(prepared.agentPreset === undefined ? {} : { agentPreset: prepared.agentPreset }),
+            ...(prepared.agentComposition === undefined ? {} : { agentComposition: prepared.agentComposition }),
+            ...(prepared.hostAgentComposition === undefined ? {} : { hostAgentComposition: prepared.hostAgentComposition }),
+            skills: prepared.skills,
+            input: typeof input === 'string' ? input : inputJson,
+            cwd,
+            signal: controller.signal,
+            ...(record.source === undefined ? {} : { source: record.source }),
+            ...(sourceParent === undefined ? {} : { sourceParent }),
+            effectiveToolNames,
+            modelSelection,
+            ...(prepared.outputSchema === undefined ? {} : { outputSchema: prepared.outputSchema })
+          })
           if (evidence.outcome.kind === 'recovery_required') {
             await handle.store.settleTerminal(runId, 'recovery_required', { reason: 'agent-effect-unknown', sessionId: evidence.sessionId })
             return
@@ -1284,31 +1689,42 @@ export class BlueprintService extends TypertRemoteService {
           // never JSON guessed from assistant prose or a provider's detail text.
           let outcome = evidence.outcome
           let acceptance = evidence.acceptance ?? { code: 'not-required' }
-          if (prepared.outputSchema !== undefined && outcome.ok
-            && (acceptance.code !== 'accepted' || !Object.hasOwn(evidence, 'structuredOutput'))) {
+          if (prepared.outputSchema !== undefined && outcome.ok && (acceptance.code !== 'accepted' || !Object.hasOwn(evidence, 'structuredOutput'))) {
             const kind = acceptance.code === 'output-invalid' ? 'output-invalid' : 'structured-output-missing'
             outcome = { ok: false, kind, detail: kind }
             acceptance = { code: kind, ...(acceptance.issueCount === undefined ? {} : { issueCount: acceptance.issueCount }) }
           }
-          diagnostics = { ...diagnostics, acceptance,
-            tools: { effectiveNames: effectiveToolNames, denials: evidence.toolDenials ?? [] } }
+          diagnostics = { ...diagnostics, acceptance, tools: { effectiveNames: effectiveToolNames, denials: evidence.toolDenials ?? [] } }
           const outputs: Record<string, unknown> = {}
           if (outcome.ok) {
             for (const [port, type] of Object.entries(node.outputs ?? {})) {
               if (type === 'string') outputs[port] = prepared.outputSchema === undefined ? outcome.detail : JSON.stringify(evidence.structuredOutput)
               else if (type === 'json') {
                 if (prepared.outputSchema === undefined) {
-                  try { outputs[port] = JSON.parse(outcome.detail) } catch { throw new NodeValueError('output-invalid') }
+                  try {
+                    outputs[port] = JSON.parse(outcome.detail)
+                  } catch {
+                    throw new NodeValueError('output-invalid')
+                  }
                 } else outputs[port] = evidence.structuredOutput
               } else throw new NodeValueError('output-invalid')
               if (!matchesWireType(outputs[port], type)) throw new NodeValueError('output-invalid')
             }
           }
-          await handle.store.recordResult(runId, intent.attemptId, { ok: outcome.ok, outcome: { ...outcome, outputs },
-            evidence: outcome.ok ? 'agent-succeeded' : `agent-${outcome.kind}`, diagnostics })
+          await handle.store.recordResult(runId, intent.attemptId, {
+            ok: outcome.ok,
+            outcome: { ...outcome, outputs },
+            evidence: outcome.ok ? 'agent-succeeded' : `agent-${outcome.kind}`,
+            diagnostics
+          })
           continue
         }
-        await handle.store.recordResult(runId, intent.attemptId, { ok: false, outcome: { kind: 'unsupported-node' }, evidence: 'node-executor-unavailable', ...settledDiagnostics('node-executor-unavailable') })
+        await handle.store.recordResult(runId, intent.attemptId, {
+          ok: false,
+          outcome: { kind: 'unsupported-node' },
+          evidence: 'node-executor-unavailable',
+          ...settledDiagnostics('node-executor-unavailable')
+        })
       } catch (error) {
         const current = await handle.store.get(runId)
         if (TERMINAL_RUN_STATES.includes(current.state)) return
@@ -1323,23 +1739,41 @@ export class BlueprintService extends TypertRemoteService {
           }
           const verifiedRejection = error instanceof TeamArtifactError || error instanceof TeamAcceptanceRejectedError
           const issue = error instanceof TeamDriverError || verifiedRejection ? error.issueCode : 'teamstage-effect-unknown'
-          const known = ['teamstage-tool-not-permitted', 'teamstage-tool-rejected', 'teamstage-provider-failed',
-            'teamstage-output-invalid', 'teamstage-structured-output-missing', 'teamstage-task-not-completed'].includes(issue)
-          const unknown = (!known && !verifiedRejection) || current.teamStage?.effects?.some(effect => ['pending', 'recovery_required'].includes(effect.state))
-            || current.state === 'cancelling' || controller.signal.aborted
+          const known = [
+            'teamstage-tool-not-permitted',
+            'teamstage-tool-rejected',
+            'teamstage-provider-failed',
+            'teamstage-output-invalid',
+            'teamstage-structured-output-missing',
+            'teamstage-task-not-completed'
+          ].includes(issue)
+          const unknown =
+            (!known && !verifiedRejection) ||
+            current.teamStage?.effects?.some(effect => ['pending', 'recovery_required'].includes(effect.state)) ||
+            current.state === 'cancelling' ||
+            controller.signal.aborted
           if (current.teamStage !== undefined && current.teamStage.state !== 'recovery_required') {
-            await handle.store.updateTeamStage(runId, { state: unknown ? 'recovery_required' : 'failed',
-              ...(unknown ? { recovery: { code: issue } } : {}) })
+            await handle.store.updateTeamStage(runId, { state: unknown ? 'recovery_required' : 'failed', ...(unknown ? { recovery: { code: issue } } : {}) })
           }
-          if (unknown) { await handle.store.settleTerminal(runId, 'recovery_required', { reason: issue }); return }
+          if (unknown) {
+            await handle.store.settleTerminal(runId, 'recovery_required', { reason: issue })
+            return
+          }
           await handle.store.recordResult(runId, intent.attemptId, { ok: false, outcome: { kind: issue }, evidence: issue, ...settledDiagnostics(issue) })
           continue
         }
         const kind = error instanceof NodeValueError ? error.code : 'failed'
-        if (intent) await handle.store.recordResult(runId, intent.attemptId, { ok: false,
-          outcome: { kind, detail: error instanceof NodeValueError ? kind : 'node resources, binding or output rejected' },
-          evidence: 'node-failed', ...settledDiagnostics(kind) })
-        else { await handle.store.settleTerminal(runId, 'failed', { reason: 'prepare-failed' }); return }
+        if (intent)
+          await handle.store.recordResult(runId, intent.attemptId, {
+            ok: false,
+            outcome: { kind, detail: error instanceof NodeValueError ? kind : 'node resources, binding or output rejected' },
+            evidence: 'node-failed',
+            ...settledDiagnostics(kind)
+          })
+        else {
+          await handle.store.settleTerminal(runId, 'failed', { reason: 'prepare-failed' })
+          return
+        }
       } finally {
         if (handle.controllers.get(runId) === controller) handle.controllers.delete(runId)
       }
@@ -1350,7 +1784,8 @@ export class BlueprintService extends TypertRemoteService {
   async inspectRun(args: InspectRunArgs & { runtimeRoot?: string }): Promise<RunSnapshotView> {
     if (args.runtimeRoot === undefined) this.checkArgs('inspectRun', args)
     const handle = await this.configuredRuntime(args.runtimeRoot)
-    if (handle.backgroundFailures.has(args.runId)) throw new RemoteError('blueprint/durability-failed', 'background settlement unavailable', { operation: 'driver-settlement' })
+    if (handle.backgroundFailures.has(args.runId))
+      throw new RemoteError('blueprint/durability-failed', 'background settlement unavailable', { operation: 'driver-settlement' })
     const record = await handle.store.tryGet(args.runId)
     if (record === undefined) {
       throw new RemoteError('blueprint/run-not-found', `run ${args.runId} not found`, { runId: args.runId })
@@ -1364,24 +1799,47 @@ export class BlueprintService extends TypertRemoteService {
     const matches: RunRecord[] = []
     for (const id of await handle.store.listRunIds()) {
       const record = await handle.store.get(id)
-      if (record.source?.sessionId === args.sessionId || record.attempts.some(a => a.sessionId === args.sessionId)
-        || record.teamStage?.members.some(member => member.sessionId === args.sessionId)) matches.push(record)
+      if (
+        record.source?.sessionId === args.sessionId ||
+        record.attempts.some(a => a.sessionId === args.sessionId) ||
+        record.teamStage?.members.some(member => member.sessionId === args.sessionId)
+      )
+        matches.push(record)
     }
     matches.sort((a, b) => b.createdAt - a.createdAt || (a.runId < b.runId ? 1 : a.runId > b.runId ? -1 : 0))
     const selected = args.runId === undefined ? matches[0] : matches.find(run => run.runId === args.runId)
     if (args.runId !== undefined && selected === undefined) throw new RemoteError('blueprint/run-not-found', 'run-not-found', { runId: args.runId })
     if (!selected) return inspectSessionCodec().parse({ status: 'unbound', sessionId: args.sessionId })
-    if (handle.backgroundFailures.has(selected.runId)) throw new RemoteError('blueprint/durability-failed', 'background settlement unavailable', { operation: 'driver-settlement' })
+    if (handle.backgroundFailures.has(selected.runId))
+      throw new RemoteError('blueprint/durability-failed', 'background settlement unavailable', { operation: 'driver-settlement' })
     const definition = this.decodeOrThrow(selected.definitionJson)
-    const graph = frozenGraphCodec().parse({ nodes: definition.graph.nodes.map(node => ({ id: node.id, kind: node.kind,
-      ...(node.inputs === undefined ? {} : { inputs: node.inputs }), ...(node.outputs === undefined ? {} : { outputs: node.outputs }),
-      ...(node.branches === undefined ? {} : { branches: node.branches }) })), edges: definition.graph.edges })
-    return inspectSessionCodec().parse({ status: 'bound', sessionId: args.sessionId,
-      runs: matches.map(run => ({ runId: run.runId, ...(run.blueprintId === undefined ? {} : { blueprintId: run.blueprintId }),
-        state: run.state, createdAt: run.createdAt, definitionRevision: run.definitionRevision })),
-      selected: { run: projectRunSnapshot(selected, this.teamObservations.snapshot(selected)), ...(selected.source === undefined ? {} : { source: selected.source }), graph,
+    const graph = frozenGraphCodec().parse({
+      nodes: definition.graph.nodes.map(node => ({
+        id: node.id,
+        kind: node.kind,
+        ...(node.inputs === undefined ? {} : { inputs: node.inputs }),
+        ...(node.outputs === undefined ? {} : { outputs: node.outputs }),
+        ...(node.branches === undefined ? {} : { branches: node.branches })
+      })),
+      edges: definition.graph.edges
+    })
+    return inspectSessionCodec().parse({
+      status: 'bound',
+      sessionId: args.sessionId,
+      runs: matches.map(run => ({
+        runId: run.runId,
+        ...(run.blueprintId === undefined ? {} : { blueprintId: run.blueprintId }),
+        state: run.state,
+        createdAt: run.createdAt,
+        definitionRevision: run.definitionRevision
+      })),
+      selected: {
+        run: projectRunSnapshot(selected, this.teamObservations.snapshot(selected)),
+        ...(selected.source === undefined ? {} : { source: selected.source }),
+        graph,
         ...(definition.presentation === undefined ? {} : { presentation: frozenPresentationCodec().parse(definition.presentation) }),
-        focusAttemptIds: focusAttemptsForSession(selected, args.sessionId) },
+        focusAttemptIds: focusAttemptsForSession(selected, args.sessionId)
+      }
     })
   }
 
@@ -1395,9 +1853,7 @@ export class BlueprintService extends TypertRemoteService {
     }
     const afterRequest = await handle.store.requestCancel(args.runId)
     handle.controllers.get(args.runId)?.abort()
-    const after = afterRequest.teamStage === undefined
-      ? afterRequest
-      : await this.cancelTeamRun(handle, afterRequest)
+    const after = afterRequest.teamStage === undefined ? afterRequest : await this.cancelTeamRun(handle, afterRequest)
     if (after.teamStage === undefined && after.state === 'cancelling' && !handle.controllers.has(args.runId)) this.scheduleRun(handle, args.runId)
     return { runId: after.runId, state: after.state }
   }
@@ -1407,19 +1863,22 @@ export class BlueprintService extends TypertRemoteService {
     const handle = await this.configuredRuntime(args.runtimeRoot)
     const record = await handle.store.tryGet(args.runId)
     if (!record) throw new RemoteError('blueprint/run-not-found', 'Run not found', { runId: args.runId })
-    if (args.action !== 'approve' && args.action !== 'reject') throw new RemoteError('blueprint/decision-invalid', 'unsupported decision action', { detail: 'action-invalid' })
+    if (args.action !== 'approve' && args.action !== 'reject')
+      throw new RemoteError('blueprint/decision-invalid', 'unsupported decision action', { detail: 'action-invalid' })
     const definition = this.decodeOrThrow(record.definitionJson)
     const waiting = record.attempts.find(a => a.state === 'waiting_input')
     const node = definition.graph.nodes.find(n => n.id === waiting?.nodeId)
     const branches = definition.graph.edges.filter(e => e.kind === 'control' && e.from.startsWith(`${node?.id}@`)).map(e => e.from.split('@')[1]!)
     const branch = args.action === 'approve' && node?.branches?.length === 1 ? node.branches[0]! : args.action
-    if (waiting && branches.length && !branches.includes(branch)) throw new RemoteError('blueprint/decision-invalid', 'decision has no matching branch', { detail: 'branch-invalid' })
+    if (waiting && branches.length && !branches.includes(branch))
+      throw new RemoteError('blueprint/decision-invalid', 'decision has no matching branch', { detail: 'branch-invalid' })
     try {
       const decision = await handle.store.decide(args.runId, args.decisionId, args.action, branch)
       if (decision.applied && decision.record.state === 'running') this.scheduleRun(handle, args.runId)
       return { runId: args.runId, decisionId: args.decisionId, state: decision.record.state, applied: decision.applied }
     } catch (error) {
-      if (error instanceof DecisionConflictError) throw new RemoteError('blueprint/decision-invalid', 'decision conflicts with durable Attempt', { detail: 'decision-conflict' })
+      if (error instanceof DecisionConflictError)
+        throw new RemoteError('blueprint/decision-invalid', 'decision conflicts with durable Attempt', { detail: 'decision-conflict' })
       throw error
     }
   }
@@ -1433,8 +1892,12 @@ export class BlueprintService extends TypertRemoteService {
     return new RemoteError(method === 'export' ? 'blueprint/export-failed' : 'blueprint/import-failed', detail, { detail, code })
   }
 
-  async exportDefinition(args: ExportDefinitionArgs): Promise<{ blueprintId: string; closureDigest: string; files: number; archiveSha256: string; archiveBase64: string; requiredBindings: string[] }>
-  async exportDefinition(args: ExportDefinitionArgs & { rootDir: string; runtimeRoot?: string; outPath?: string }): ReturnType<BlueprintService['exportInternal']>
+  async exportDefinition(
+    args: ExportDefinitionArgs
+  ): Promise<{ blueprintId: string; closureDigest: string; files: number; archiveSha256: string; archiveBase64: string; requiredBindings: string[] }>
+  async exportDefinition(
+    args: ExportDefinitionArgs & { rootDir: string; runtimeRoot?: string; outPath?: string }
+  ): ReturnType<BlueprintService['exportInternal']>
   async exportDefinition(args: ExportDefinitionArgs & { rootDir?: string; runtimeRoot?: string; outPath?: string }) {
     if (args.rootDir !== undefined) return await this.exportInternal({ ...args, rootDir: args.rootDir })
     this.checkArgs('exportDefinition', args)
@@ -1465,21 +1928,36 @@ export class BlueprintService extends TypertRemoteService {
             if (ref.source?.kind !== 'shared') continue
             const resource = await resolveResource(id, { kind: ref.kind, source: ref.source }, { blueprintRoot: root, roots: this.config.skillRoots ?? [] })
             if (resource.kind !== 'shared-skill') throw new Error('Skill unavailable')
-            const snapshot = snapshotDirectory(resource.skillDir, { kind: 'shared-skill', rootId: resource.rootId, skillDir: resource.skillDir, skillName: resource.skillName })
+            const snapshot = snapshotDirectory(resource.skillDir, {
+              kind: 'shared-skill',
+              rootId: resource.rootId,
+              skillDir: resource.skillDir,
+              skillName: resource.skillName
+            })
             const rootPath = join(staging, 'roots', resource.rootId)
             roots.set(resource.rootId, { rootId: resource.rootId, rootPath })
             for (const file of snapshot.files) {
               const target = join(rootPath, resource.skillName, file.path)
-              mkdirSync(dirname(target), { recursive: true }); writeFileSync(target, file.bytes)
+              mkdirSync(dirname(target), { recursive: true })
+              writeFileSync(target, file.bytes)
             }
           }
         }
         const hostResources = await resolveHostExportResources(this.ctx, definitions, process.cwd())
         const result = exportBlueprint(packageRoot, { roots: [...roots.values()], hostResources })
-        return { blueprintId: args.blueprintId, closureDigest: result.manifest.closureDigest, files: Object.keys(result.manifest.files).length,
-          archiveSha256: createHash('sha256').update(result.archive).digest('hex'), archiveBase64: result.archive.toString('base64'), requiredBindings: result.manifest.requiredBindings }
-      } catch (error) { throw this.portabilityFailure('export', error) }
-      finally { if (staging !== undefined) rmSync(staging, { recursive: true, force: true }) }
+        return {
+          blueprintId: args.blueprintId,
+          closureDigest: result.manifest.closureDigest,
+          files: Object.keys(result.manifest.files).length,
+          archiveSha256: createHash('sha256').update(result.archive).digest('hex'),
+          archiveBase64: result.archive.toString('base64'),
+          requiredBindings: result.manifest.requiredBindings
+        }
+      } catch (error) {
+        throw this.portabilityFailure('export', error)
+      } finally {
+        if (staging !== undefined) rmSync(staging, { recursive: true, force: true })
+      }
     })
   }
 
@@ -1489,27 +1967,35 @@ export class BlueprintService extends TypertRemoteService {
     if ('archivePath' in args) return await this.importInternal(args)
     this.checkArgs('importDefinition', args)
     const root = this.blueprintRoot(args.blueprintId)
-    return await this.withDocument(root, () => {
-      this.assertDefinitionActive(args.blueprintId)
-      try {
-        const archive = Buffer.from(args.archiveBase64, 'base64')
-        if (archive.toString('base64') !== args.archiveBase64) throw new Error('invalid archive encoding')
-        const definitionEntry = readZip(archive).find(entry => entry.name === 'blueprint.json')
-        if (!definitionEntry) throw new Error('missing definition')
-        const definition = this.decodeOrThrow(definitionEntry.data.toString('utf8'))
-        this.checkResources(definition)
-        if (definition.id !== args.blueprintId) throw new Error('configured ID mismatch')
-        // Configured roots may be aliases. Publish to their physical target, not
-        // replace an operator's root symlink. Existing nonempty packages refuse.
-        const target = existsSync(root) ? realpathSync(root) : root
-        const result = importBlueprint(archive, target, { allowExisting: true })
-        return { blueprintId: args.blueprintId, filesWritten: result.filesWritten.length, closureDigest: result.manifest.closureDigest }
-      } catch (error) { throw this.portabilityFailure('import', error) }
-    }, true)
+    return await this.withDocument(
+      root,
+      () => {
+        this.assertDefinitionActive(args.blueprintId)
+        try {
+          const archive = Buffer.from(args.archiveBase64, 'base64')
+          if (archive.toString('base64') !== args.archiveBase64) throw new Error('invalid archive encoding')
+          const definitionEntry = readZip(archive).find(entry => entry.name === 'blueprint.json')
+          if (!definitionEntry) throw new Error('missing definition')
+          const definition = this.decodeOrThrow(definitionEntry.data.toString('utf8'))
+          this.checkResources(definition)
+          if (definition.id !== args.blueprintId) throw new Error('configured ID mismatch')
+          // Configured roots may be aliases. Publish to their physical target, not
+          // replace an operator's root symlink. Existing nonempty packages refuse.
+          const target = existsSync(root) ? realpathSync(root) : root
+          const result = importBlueprint(archive, target, { allowExisting: true })
+          return { blueprintId: args.blueprintId, filesWritten: result.filesWritten.length, closureDigest: result.manifest.closureDigest }
+        } catch (error) {
+          throw this.portabilityFailure('import', error)
+        }
+      },
+      true
+    )
   }
 
   // wire method (descriptor in ./typert.host.ts): exportDefinition
-  private async exportInternal(args: ExportDefinitionArgs & { rootDir: string; runtimeRoot?: string; outPath?: string }): Promise<{ blueprintId: string; closureDigest: string; files: number; archiveSha256: string; archivePath: string | null; requiredBindings: string[] }> {
+  private async exportInternal(
+    args: ExportDefinitionArgs & { rootDir: string; runtimeRoot?: string; outPath?: string }
+  ): Promise<{ blueprintId: string; closureDigest: string; files: number; archiveSha256: string; archivePath: string | null; requiredBindings: string[] }> {
     const runtimeRoot = args.runtimeRoot ?? join(tmpdir(), 'bp-runtime-default')
     // Machine binding lives OUTSIDE the portable package: rootId → local path.
     const bindingsFile = join(runtimeRoot, 'root-bindings.json')
@@ -1543,7 +2029,7 @@ export class BlueprintService extends TypertRemoteService {
         files: Object.keys(result.manifest.files).length,
         archiveSha256,
         archivePath,
-        requiredBindings: result.manifest.requiredBindings,
+        requiredBindings: result.manifest.requiredBindings
       }
     } catch (error) {
       throw this.portabilityFailure('export', error)
@@ -1551,7 +2037,10 @@ export class BlueprintService extends TypertRemoteService {
   }
 
   // wire method (descriptor in ./typert.host.ts): importDefinition
-  private async importInternal(args: { archivePath: string; targetDir?: string }): Promise<{ targetDir: string; blueprintId: string; filesWritten: number; closureDigest: string }> {
+  private async importInternal(args: {
+    archivePath: string
+    targetDir?: string
+  }): Promise<{ targetDir: string; blueprintId: string; filesWritten: number; closureDigest: string }> {
     try {
       if (!existsSync(args.archivePath)) {
         throw new RemoteError('blueprint/import-failed', `archive not found: ${args.archivePath}`, { detail: args.archivePath, code: 'ENOENT' })
@@ -1562,12 +2051,15 @@ export class BlueprintService extends TypertRemoteService {
         targetDir: result.targetDir,
         blueprintId: result.manifest.blueprintId,
         filesWritten: result.filesWritten.length,
-        closureDigest: result.manifest.closureDigest,
+        closureDigest: result.manifest.closureDigest
       }
     } catch (error) {
       if (error instanceof RemoteError) throw error
       const code = error instanceof Error && 'code' in error ? String((error as { code: string }).code) : 'UNKNOWN'
-      throw new RemoteError('blueprint/import-failed', String((error as Error).message).slice(0, 400), { detail: String((error as Error).message).slice(0, 400), code })
+      throw new RemoteError('blueprint/import-failed', String((error as Error).message).slice(0, 400), {
+        detail: String((error as Error).message).slice(0, 400),
+        code
+      })
     }
   }
 }

@@ -37,48 +37,88 @@ import { flowAriaLabels, runStateTitle } from '../../src/client/presentation.ts'
 const sha = value => createHash('sha256').update(value).digest('hex')
 const json = JSON.stringify
 const baseDefinition = (nodes, edges = [], resources = {}, id = 'flow-contracts') => ({
-  schemaVersion: 1, id, name: '用户标题 / flow contracts', resources, graph: { nodes, edges },
+  schemaVersion: 1,
+  id,
+  name: '用户标题 / flow contracts',
+  resources,
+  graph: { nodes, edges }
 })
 function oldReadable(value) {
   validateDefinition(decodeDefinition(json(value)))
   return value
 }
 const branchConfig = { inputPort: 'predicate', trueBranch: 'yes', falseBranch: 'no' }
-const legacyCondition = () => oldReadable(baseDefinition([
-  { id: 'choose', kind: 'condition', inputs: { predicate: 'boolean' }, branches: ['yes', 'no'] },
-  { id: 'yesPath', kind: 'output' }, { id: 'noPath', kind: 'output' },
-], [{ kind: 'control', from: 'choose@yes', to: 'yesPath' }, { kind: 'control', from: 'choose@no', to: 'noPath' }]))
+const legacyCondition = () =>
+  oldReadable(
+    baseDefinition(
+      [
+        { id: 'choose', kind: 'condition', inputs: { predicate: 'boolean' }, branches: ['yes', 'no'] },
+        { id: 'yesPath', kind: 'output' },
+        { id: 'noPath', kind: 'output' }
+      ],
+      [
+        { kind: 'control', from: 'choose@yes', to: 'yesPath' },
+        { kind: 'control', from: 'choose@no', to: 'noPath' }
+      ]
+    )
+  )
 function configuredCondition() {
   const value = legacyCondition()
   value.graph.nodes[0].condition = { ...branchConfig }
   return value
 }
-const joinGraph = (strategy = 'all', control = false) => oldReadable(baseDefinition([
-  { id: 'left', kind: 'input', outputs: { value: 'string' } },
-  { id: 'right', kind: 'input', outputs: { value: 'string' } },
-  { id: 'merge', kind: 'join', join: strategy, inputs: { left: 'string', right: 'string' }, outputs: { left: 'string', right: 'string' } },
-], [
-  { kind: 'data', from: 'left.value', to: 'merge.left' }, { kind: 'data', from: 'right.value', to: 'merge.right' },
-  ...(control ? [{ kind: 'control', from: 'left', to: 'merge' }, { kind: 'control', from: 'right', to: 'merge' }] : []),
-]))
+const joinGraph = (strategy = 'all', control = false) =>
+  oldReadable(
+    baseDefinition(
+      [
+        { id: 'left', kind: 'input', outputs: { value: 'string' } },
+        { id: 'right', kind: 'input', outputs: { value: 'string' } },
+        { id: 'merge', kind: 'join', join: strategy, inputs: { left: 'string', right: 'string' }, outputs: { left: 'string', right: 'string' } }
+      ],
+      [
+        { kind: 'data', from: 'left.value', to: 'merge.left' },
+        { kind: 'data', from: 'right.value', to: 'merge.right' },
+        ...(control
+          ? [
+              { kind: 'control', from: 'left', to: 'merge' },
+              { kind: 'control', from: 'right', to: 'merge' }
+            ]
+          : [])
+      ]
+    )
+  )
 const terminal = run => ['succeeded', 'failed', 'cancelled', 'timed_out', 'waiting_input', 'recovery_required'].includes(run.state)
 
 async function serviceFixture(t, definition = oldReadable(baseDefinition([{ id: 'source', kind: 'input', outputs: { value: 'string' } }]))) {
   const root = mkdtempSync(join(tmpdir(), 'bp-flow-contracts-'))
-  const packageRoot = join(root, 'package'), runtimeRoot = join(root, 'runtime')
+  const packageRoot = join(root, 'package'),
+    runtimeRoot = join(root, 'runtime')
   mkdirSync(join(packageRoot, 'lib'), { recursive: true })
   writeFileSync(join(packageRoot, 'blueprint.json'), json(definition))
   const ctx = new Context()
   // No Agent double is required: these graphs use structural nodes only. If a
   // production bug dispatches an Agent, the explicit no-business-call oracle fails.
   const agentCalls = []
-  ctx.provide('agents', { async create() { agentCalls.push('create'); throw new Error('fixture: unexpected Agent dispatch') } })
+  ctx.provide('agents', {
+    async create() {
+      agentCalls.push('create')
+      throw new Error('fixture: unexpected Agent dispatch')
+    }
+  })
   const fiber = await ctx.plugin(BlueprintService, { blueprints: { [definition.id]: packageRoot }, runtimeRoot })
   const service = ctx.blueprint
   const handle = await service.runtimeFor(runtimeRoot)
   let closed = false
-  async function close() { if (!closed) { closed = true; await fiber.dispose() } }
-  t.after(async () => { await close(); rmSync(root, { recursive: true, force: true }) })
+  async function close() {
+    if (!closed) {
+      closed = true
+      await fiber.dispose()
+    }
+  }
+  t.after(async () => {
+    await close()
+    rmSync(root, { recursive: true, force: true })
+  })
   return { root, packageRoot, runtimeRoot, ctx, service, handle, agentCalls, close }
 }
 async function serviceStart(h, input = { value: 'BOUND_VALUE' }, requestId = randomUUID()) {
@@ -92,16 +132,27 @@ async function serviceStart(h, input = { value: 'BOUND_VALUE' }, requestId = ran
   return { args, admission, record, doc }
 }
 async function seedRun(h, definition, input = {}) {
-  const created = await h.handle.store.createRun({ scope: 'run', requestId: randomUUID(), payloadFingerprint: sha(json(definition) + '\0' + json(input)) }, 'seed-semantic', json(definition), json(input))
+  const created = await h.handle.store.createRun(
+    { scope: 'run', requestId: randomUUID(), payloadFingerprint: sha(json(definition) + '\0' + json(input)) },
+    'seed-semantic',
+    json(definition),
+    json(input)
+  )
   return created.runId
 }
 async function seedParents(h, runId, states) {
   for (const [nodeId, state, outputs] of states) {
     if (state === 'skipped') {
-      await h.handle.store.transition(runId, draft => { draft.attempts.push({ attemptId: `skipped-${nodeId}`, nodeId, attempt: 1, state: 'skipped' }) })
+      await h.handle.store.transition(runId, draft => {
+        draft.attempts.push({ attemptId: `skipped-${nodeId}`, nodeId, attempt: 1, state: 'skipped' })
+      })
     } else {
       const intent = await h.handle.store.recordIntent(runId, { nodeId, kind: 'input' })
-      await h.handle.store.recordResult(runId, intent.attemptId, { ok: state === 'succeeded', outcome: state === 'succeeded' ? { outputs } : { kind: 'failed' }, evidence: 'fixture-parent-result' })
+      await h.handle.store.recordResult(runId, intent.attemptId, {
+        ok: state === 'succeeded',
+        outcome: state === 'succeeded' ? { outputs } : { kind: 'failed' },
+        evidence: 'fixture-parent-result'
+      })
     }
   }
 }
@@ -122,10 +173,17 @@ function assertBlocked(error, message) {
 test('C-05/C-08 strict codec: valid optional condition survives without changing schemaVersion', () => {
   const value = configuredCondition()
   let decoded, error
-  try { decoded = decodeDefinition(json(value)) } catch (caught) { error = caught }
+  try {
+    decoded = decodeDefinition(json(value))
+  } catch (caught) {
+    error = caught
+  }
   if (error) {
     assert.equal(error.code, 'DEFINITION_INVALID', 'FIXTURE: only the known missing additive field is a capability red')
-    assert.deepEqual(error.issues.map(i => [i.code, i.pointer]), [['unknown-field', '/graph/nodes/0/condition']])
+    assert.deepEqual(
+      error.issues.map(i => [i.code, i.pointer]),
+      [['unknown-field', '/graph/nodes/0/condition']]
+    )
   }
   assert.equal(error, undefined, 'C-05 CONDITION_CODEC_UNAVAILABLE: known optional condition is rejected as unknown-field')
   validateDefinition(decoded)
@@ -133,14 +191,42 @@ test('C-05/C-08 strict codec: valid optional condition survives without changing
   assert.equal(decoded.schemaVersion, 1)
   const extra = structuredClone(value)
   extra.graph.nodes[0].condition.expression = 'eval must never execute'
-  assert.throws(() => decodeDefinition(json(extra)), error => error.code === 'DEFINITION_INVALID' && error.issues.some(i => i.code === 'unknown-field' && i.pointer === '/graph/nodes/0/condition/expression'))
+  assert.throws(
+    () => decodeDefinition(json(extra)),
+    error => error.code === 'DEFINITION_INVALID' && error.issues.some(i => i.code === 'unknown-field' && i.pointer === '/graph/nodes/0/condition/expression')
+  )
 })
 for (const [label, change] of [
-  ['distinct branches', node => { node.condition.falseBranch = 'yes' }],
-  ['declared branches', node => { node.condition.trueBranch = 'undeclared' }],
-  ['declared boolean input', node => { node.inputs.predicate = 'string' }],
-  ['declared inputPort', node => { node.condition.inputPort = 'absent' }],
-  ['condition-only field', node => { node.kind = 'input' }],
+  [
+    'distinct branches',
+    node => {
+      node.condition.falseBranch = 'yes'
+    }
+  ],
+  [
+    'declared branches',
+    node => {
+      node.condition.trueBranch = 'undeclared'
+    }
+  ],
+  [
+    'declared boolean input',
+    node => {
+      node.inputs.predicate = 'string'
+    }
+  ],
+  [
+    'declared inputPort',
+    node => {
+      node.condition.inputPort = 'absent'
+    }
+  ],
+  [
+    'condition-only field',
+    node => {
+      node.kind = 'input'
+    }
+  ]
 ]) {
   test(`C-05 semantic validator: ${label}`, () => {
     const value = configuredCondition()
@@ -148,8 +234,11 @@ for (const [label, change] of [
     // Validator seam: the old reader's shape/refs are controlled separately;
     // these failures specifically prove missing new-field semantic checks.
     if (value.graph.nodes[0].kind !== 'condition') value.graph.edges = []
-    assert.throws(() => validateDefinition(value), error => error.code === 'DEFINITION_INVALID' && error.issues.some(i => /condition|inputs|branches/.test(i.pointer ?? '')),
-      `C-05 CONDITION_SEMANTIC_UNCHECKED: ${label} must fail with located typed issue`)
+    assert.throws(
+      () => validateDefinition(value),
+      error => error.code === 'DEFINITION_INVALID' && error.issues.some(i => /condition|inputs|branches/.test(i.pointer ?? '')),
+      `C-05 CONDITION_SEMANTIC_UNCHECKED: ${label} must fail with located typed issue`
+    )
   })
 }
 test('C-08 legacy condition remains readable; new configured service Run must block absent behavior', async t => {
@@ -158,7 +247,11 @@ test('C-08 legacy condition remains readable; new configured service Run must bl
   const doc = await h.service.loadDefinition({ blueprintId: definition.id })
   assert.deepEqual(decodeDefinition(doc.definitionJson), definition, 'CONTROL: legacy record reads; missing optional condition is not a codec error')
   let error
-  try { await serviceStart(h, { predicate: true }) } catch (caught) { error = caught }
+  try {
+    await serviceStart(h, { predicate: true })
+  } catch (caught) {
+    error = caught
+  }
   assertBlocked(error, 'C-08 LEGACY_CONDITION_ADMITTED: absent behavior must block a NEW Run, not wait for human input')
   assert.deepEqual(await h.handle.store.listRunIds(), [])
 })
@@ -214,8 +307,12 @@ test('C-06 default join=all is readable and executable, not a required legacy st
 })
 for (const control of [false, true]) {
   test(`C-06 real driver: selected-only binding ignores skipped missing output (${control ? 'control and data parents' : 'data parents'})`, async t => {
-    const value = joinGraph('all', control), h = await serviceFixture(t, value)
-    const record = await seededDriver(h, value, {}, [['left', 'succeeded', { value: 'SELECTED' }], ['right', 'skipped']])
+    const value = joinGraph('all', control),
+      h = await serviceFixture(t, value)
+    const record = await seededDriver(h, value, {}, [
+      ['left', 'succeeded', { value: 'SELECTED' }],
+      ['right', 'skipped']
+    ])
     const merge = record.attempts.find(a => a.nodeId === 'merge')
     assert.equal(merge?.state, 'succeeded', 'C-06 SELECTED_JOIN_FAILED: skipped parent must not suppress join or require its absent outputs')
     assert.deepEqual(merge.result.outcome.outputs, { left: 'SELECTED' })
@@ -227,8 +324,12 @@ for (const control of [false, true]) {
   })
 }
 test('C-06 preservation: no selected parents makes join skipped, not an empty successful dispatch', async t => {
-  const value = joinGraph(), h = await serviceFixture(t, value)
-  const record = await seededDriver(h, value, {}, [['left', 'skipped'], ['right', 'skipped']])
+  const value = joinGraph(),
+    h = await serviceFixture(t, value)
+  const record = await seededDriver(h, value, {}, [
+    ['left', 'skipped'],
+    ['right', 'skipped']
+  ])
   const merge = record.attempts.find(a => a.nodeId === 'merge')
   assert.equal(merge.state, 'skipped')
   assert.equal(merge.intent, undefined)
@@ -236,18 +337,32 @@ test('C-06 preservation: no selected parents makes join skipped, not an empty su
   assert.equal(record.state, 'succeeded')
 })
 test('C-06 preservation: selected failure never produces a successful join or partial_success', async t => {
-  const value = joinGraph(), h = await serviceFixture(t, value)
-  const record = await seededDriver(h, value, {}, [['left', 'failed'], ['right', 'skipped']])
+  const value = joinGraph(),
+    h = await serviceFixture(t, value)
+  const record = await seededDriver(h, value, {}, [
+    ['left', 'failed'],
+    ['right', 'skipped']
+  ])
   assert.equal(record.state, 'failed')
-  assert.equal(record.attempts.some(a => a.nodeId === 'merge' && a.state === 'succeeded'), false)
+  assert.equal(
+    record.attempts.some(a => a.nodeId === 'merge' && a.state === 'succeeded'),
+    false
+  )
 })
 test('C-06 real driver: missing selected output has typed failure, not generic failed', async t => {
-  const value = joinGraph(), h = await serviceFixture(t, value)
-  const record = await seededDriver(h, value, {}, [['left', 'succeeded', {}], ['right', 'skipped']])
+  const value = joinGraph(),
+    h = await serviceFixture(t, value)
+  const record = await seededDriver(h, value, {}, [
+    ['left', 'succeeded', {}],
+    ['right', 'skipped']
+  ])
   assert.equal(record.state, 'failed', 'CONTROL: missing selected input cannot succeed')
   const view = await h.service.inspectRun({ runId: record.runId })
-  assert.match(view.attempts.find(a => a.nodeId === 'merge').errorCode, /(?:input|binding|output)-(?:invalid|unavailable|missing)/,
-    'C-06 JOIN_FAILURE_UNTYPED: durable generic failed does not identify invalid selected input')
+  assert.match(
+    view.attempts.find(a => a.nodeId === 'merge').errorCode,
+    /(?:input|binding|output)-(?:invalid|unavailable|missing)/,
+    'C-06 JOIN_FAILURE_UNTYPED: durable generic failed does not identify invalid selected input'
+  )
 })
 
 // ---- C-10: readable vocabulary is NOT permission to start a new Run. ----
@@ -256,7 +371,7 @@ const deferredNodes = [
   ['scriptCall', { id: 'future', kind: 'scriptCall' }],
   ['iteration', { id: 'future', kind: 'iteration', budget: { maxIterations: 1, maxDurationMs: 1000 } }],
   ['join-any', { id: 'future', kind: 'join', join: 'any' }],
-  ['subflow', { id: 'future', kind: 'subflow', subflowRef: 'child' }],
+  ['subflow', { id: 'future', kind: 'subflow', subflowRef: 'child' }]
 ]
 for (const [label, node] of deferredNodes) {
   test(`C-08/C-10 ${label}: old vocabulary reads but configured service prevents a new Run`, async t => {
@@ -267,7 +382,11 @@ for (const [label, node] of deferredNodes) {
     const doc = await h.service.loadDefinition({ blueprintId: value.id })
     assert.equal(decodeDefinition(doc.definitionJson).graph.nodes[0].kind, node.kind)
     let error
-    try { await serviceStart(h) } catch (caught) { error = caught }
+    try {
+      await serviceStart(h)
+    } catch (caught) {
+      error = caught
+    }
     assertBlocked(error, `C-10 UNSUPPORTED_NODE_ADMITTED: ${label} must report node-executor-unavailable BEFORE Run creation`)
     assert.deepEqual(await h.handle.store.listRunIds(), [])
     assert.deepEqual(h.agentCalls, [])
@@ -275,9 +394,15 @@ for (const [label, node] of deferredNodes) {
 }
 test('C-10 preservation: TeamStage and future execution kinds are not palette/executable declarations', () => {
   for (const kind of ['TeamStage', 'teamStage', 'toolCall', 'scriptCall', 'subflow', 'iteration']) {
-    assert.equal(BUILTIN_NODE_CATALOG.some(item => item.kind === kind), false)
+    assert.equal(
+      BUILTIN_NODE_CATALOG.some(item => item.kind === kind),
+      false
+    )
   }
-  assert.throws(() => decodeDefinition(json(baseDefinition([{ id: 'team', kind: 'teamStage' }]))), error => error.code === 'DEFINITION_INVALID' && error.issues.some(i => i.pointer === '/graph/nodes/0/kind'))
+  assert.throws(
+    () => decodeDefinition(json(baseDefinition([{ id: 'team', kind: 'teamStage' }]))),
+    error => error.code === 'DEFINITION_INVALID' && error.issues.some(i => i.pointer === '/graph/nodes/0/kind')
+  )
 })
 test('C-08 preservation: configured service replay and reopen keep frozen definition and original Run ID', async t => {
   const h = await serviceFixture(t)
@@ -296,28 +421,63 @@ test('C-08 preservation: configured service replay and reopen keep frozen defini
     assert.equal(view.definitionRevision, record.definitionRevision)
     assert.equal(view.seq, record.seq)
     assert.equal(view.attempts.length, 1)
-  } finally { await fiber.dispose() }
+  } finally {
+    await fiber.dispose()
+  }
 })
 
 // ---- C-07: adapter and existing workspace Run operation. ----
 const workspaceDefinition = id => oldReadable(baseDefinition([{ id: 'source', kind: 'input', outputs: { '用户.port': 'string' } }], [], {}, id))
 function browserHost(options = {}) {
-  const calls = [], definitions = new Map(['flow-ui', 'other-ui'].map(id => [id, workspaceDefinition(id)]))
+  const calls = [],
+    definitions = new Map(['flow-ui', 'other-ui'].map(id => [id, workspaceDefinition(id)]))
   let revision = 1
-  const document = id => ({ blueprintId: id, definitionJson: json(definitions.get(id)), documentRevision: `doc-${revision}`, semanticRevision: `sem-${sha(json(definitions.get(id).graph))}`, layoutRevision: `layout-${revision}` })
+  const document = id => ({
+    blueprintId: id,
+    definitionJson: json(definitions.get(id)),
+    documentRevision: `doc-${revision}`,
+    semanticRevision: `sem-${sha(json(definitions.get(id).graph))}`,
+    layoutRevision: `layout-${revision}`
+  })
   const host = {
-    async listDefinitions() { return { definitions: [...definitions.keys()].map(id => ({ blueprintId: id, name: id, documentRevision: document(id).documentRevision, semanticRevision: document(id).semanticRevision })) } },
-    async loadDefinition(id) { return document(id) },
-    async saveDefinition(id, definitionJson, expectedRevision) {
-      calls.push(['save', { blueprintId: id, definitionJson, expectedRevision }])
-      definitions.set(id, JSON.parse(definitionJson)); revision++
+    async listDefinitions() {
+      return {
+        definitions: [...definitions.keys()].map(id => ({
+          blueprintId: id,
+          name: id,
+          documentRevision: document(id).documentRevision,
+          semanticRevision: document(id).semanticRevision
+        }))
+      }
+    },
+    async loadDefinition(id) {
       return document(id)
     },
-    async validate() { return { ok: true, semanticRevision: 'draft' } },
+    async saveDefinition(id, definitionJson, expectedRevision) {
+      calls.push(['save', { blueprintId: id, definitionJson, expectedRevision }])
+      definitions.set(id, JSON.parse(definitionJson))
+      revision++
+      return document(id)
+    },
+    async validate() {
+      return { ok: true, semanticRevision: 'draft' }
+    },
     async preflightRun(blueprintId, expectedRevision, inputJson) {
       calls.push(['preflight', { blueprintId, expectedRevision, inputJson }])
       const doc = document(blueprintId)
-      const report = { blueprintId, documentRevision: doc.documentRevision, semanticRevision: doc.semanticRevision, canStart: options.canStart ?? true, checks: [{ code: options.canStart === false ? 'node-executor-unavailable' : 'fixture-ready', status: options.canStart === false ? 'block' : 'pass', nodeId: 'source' }] }
+      const report = {
+        blueprintId,
+        documentRevision: doc.documentRevision,
+        semanticRevision: doc.semanticRevision,
+        canStart: options.canStart ?? true,
+        checks: [
+          {
+            code: options.canStart === false ? 'node-executor-unavailable' : 'fixture-ready',
+            status: options.canStart === false ? 'block' : 'pass',
+            nodeId: 'source'
+          }
+        ]
+      }
       options.onCheck?.()
       return options.checkPromise ? await options.checkPromise : report
     },
@@ -326,15 +486,26 @@ function browserHost(options = {}) {
       if (options.hostBlock) throw Object.assign(new Error('blueprint/preflight-blocked'), { code: 'blueprint/preflight-blocked' })
       return { runId: 'ui-run', semanticRevision: document(blueprintId).semanticRevision, state: 'queued', replayed: false }
     },
-    async inspectRun(runId) { calls.push(['inspect', { runId }]); return { runId, state: 'succeeded', definitionRevision: document('flow-ui').semanticRevision, seq: 2, attempts: [], logTail: [] } },
-    async cancelRun() { assert.fail('unexpected cancel') }, async decide() { assert.fail('unexpected decide') },
+    async inspectRun(runId) {
+      calls.push(['inspect', { runId }])
+      return { runId, state: 'succeeded', definitionRevision: document('flow-ui').semanticRevision, seq: 2, attempts: [], logTail: [] }
+    },
+    async cancelRun() {
+      assert.fail('unexpected cancel')
+    },
+    async decide() {
+      assert.fail('unexpected decide')
+    }
   }
-  const storageMap = new Map(), storage = { getItem: key => storageMap.get(key) ?? null, setItem: (key, value) => storageMap.set(key, value) }
+  const storageMap = new Map(),
+    storage = { getItem: key => storageMap.get(key) ?? null, setItem: (key, value) => storageMap.set(key, value) }
   return { host, calls, document, storage }
 }
 async function workspaceFixture(options = {}) {
-  const f = browserHost(options), workspace = new BlueprintWorkspace(f.host, f.storage)
-  await workspace.initialize(); await workspace.load('flow-ui')
+  const f = browserHost(options),
+    workspace = new BlueprintWorkspace(f.host, f.storage)
+  await workspace.initialize()
+  await workspace.load('flow-ui')
   return { ...f, workspace }
 }
 test('C-07 remote preflight capability: exact saved revision/input wire and strict report severity', async () => {
@@ -343,53 +514,102 @@ test('C-07 remote preflight capability: exact saved revision/input wire and stri
   const args = { blueprintId: 'flow-ui', expectedRevision: 'doc-7', inputJson: '{"用户.port":"原样"}' }
   assert.deepEqual(descriptor.parameters[0].codec.create().parse(args), args)
   let seen
-  const report = { blueprintId: 'flow-ui', documentRevision: 'doc-7', semanticRevision: 'sem-7', canStart: false, checks: [{ code: 'node-executor-unavailable', status: 'block', nodeId: 'future' }] }
-  const namespace = { async preflightRun(value) { assert.equal(this, namespace); seen = value; return { ok: true, value: descriptor.result.create().parse(report) } } }
-  const host = resolveBlueprintHost({ get: key => key === 'remote.blueprint' ? namespace : undefined })
+  const report = {
+    blueprintId: 'flow-ui',
+    documentRevision: 'doc-7',
+    semanticRevision: 'sem-7',
+    canStart: false,
+    checks: [{ code: 'node-executor-unavailable', status: 'block', nodeId: 'future' }]
+  }
+  const namespace = {
+    async preflightRun(value) {
+      assert.equal(this, namespace)
+      seen = value
+      return { ok: true, value: descriptor.result.create().parse(report) }
+    }
+  }
+  const host = resolveBlueprintHost({ get: key => (key === 'remote.blueprint' ? namespace : undefined) })
   assert.equal(typeof host.preflightRun, 'function', 'C-07 PREFLIGHT_ADAPTER_UNAVAILABLE: browser HostLink lacks check operation')
   assert.deepEqual(await host.preflightRun(args.blueprintId, args.expectedRevision, args.inputJson), report)
   assert.deepEqual(seen, args)
-  for (const status of ['block', 'warning', 'info', 'pass']) assert.equal(descriptor.result.create().safeParse({ ...report, checks: [{ code: 'static-code', status }] }).success, true)
+  for (const status of ['block', 'warning', 'info', 'pass'])
+    assert.equal(descriptor.result.create().safeParse({ ...report, checks: [{ code: 'static-code', status }] }).success, true)
   assert.equal(descriptor.result.create().safeParse({ ...report, raw: 'RAW_SECRET' }).success, false)
 })
 test('C-07 Run does not silently bypass preflight; check binds the saved revision and captured input', async () => {
   const { workspace, calls } = await workspaceFixture({ canStart: false })
   workspace.inputJson = '{"用户.port":"NOT_TRANSLATED"}'
   let error
-  try { await workspace.run() } catch (caught) { error = caught }
+  try {
+    await workspace.run()
+  } catch (caught) {
+    error = caught
+  }
   const check = calls.find(([method]) => method === 'preflight')
   assert.ok(check, 'C-07 UI_RUN_SKIPS_CHECK: existing workspace Run invokes startRun without preflight')
-  assert.deepEqual(check[1], { blueprintId: workspace.document.blueprintId, expectedRevision: workspace.document.documentRevision, inputJson: workspace.inputJson })
-  assert.equal(calls.some(([method]) => method === 'start'), false, 'C-07 block report cannot authorize startup')
+  assert.deepEqual(check[1], {
+    blueprintId: workspace.document.blueprintId,
+    expectedRevision: workspace.document.documentRevision,
+    inputJson: workspace.inputJson
+  })
+  assert.equal(
+    calls.some(([method]) => method === 'start'),
+    false,
+    'C-07 block report cannot authorize startup'
+  )
   assertBlocked(error, 'C-07 blocked report must remain a typed error')
 })
 test('C-07 accepted UI check is observation, never permission to bypass Host recheck', async () => {
   const { workspace, calls } = await workspaceFixture({ hostBlock: true })
   let error
-  try { await workspace.run() } catch (caught) { error = caught }
-  assert.ok(calls.some(([method]) => method === 'preflight'), 'C-07 UI_REPORT_MISSING: Run must obtain a report before Host admission')
+  try {
+    await workspace.run()
+  } catch (caught) {
+    error = caught
+  }
+  assert.ok(
+    calls.some(([method]) => method === 'preflight'),
+    'C-07 UI_REPORT_MISSING: Run must obtain a report before Host admission'
+  )
   assert.equal(calls.filter(([method]) => method === 'start').length, 1)
   assertBlocked(error, 'C-07 host refusal survives an earlier pass report')
   assert.equal(workspace.runId, null)
 })
 for (const change of ['semantic edit', 'input edit', 'document generation']) {
   test(`C-07 stale check cannot start Run after ${change}`, async () => {
-    const check = Promise.withResolvers(), seen = Promise.withResolvers()
+    const check = Promise.withResolvers(),
+      seen = Promise.withResolvers()
     const { workspace, calls, document } = await workspaceFixture({ checkPromise: check.promise, onCheck: () => seen.resolve() })
-    const before = document('flow-ui'), input = workspace.inputJson
-    const started = workspace.run().then(() => ({ ok: true }), error => ({ error }))
+    const before = document('flow-ui'),
+      input = workspace.inputJson
+    const started = workspace.run().then(
+      () => ({ ok: true }),
+      error => ({ error })
+    )
     // Race against the operation itself instead of a timer. Missing check is an
     // explicit capability assertion, not a hang/sleep/fixture timeout.
     const winner = await Promise.race([seen.promise.then(() => 'checked'), started.then(() => 'finished-without-check')])
     if (winner !== 'checked') {
-      check.resolve({ blueprintId: before.blueprintId, documentRevision: before.documentRevision, semanticRevision: before.semanticRevision, canStart: true, checks: [] })
+      check.resolve({
+        blueprintId: before.blueprintId,
+        documentRevision: before.documentRevision,
+        semanticRevision: before.semanticRevision,
+        canStart: true,
+        checks: []
+      })
       assert.equal(winner, 'checked', `C-07 PREFLIGHT_NOT_OBSERVED: cannot bind ${change} when Run never checks`)
     }
     if (change === 'semantic edit') workspace.editor.updateNode('source', { outputs: { '用户.port': 'number' } })
     if (change === 'input edit') workspace.inputJson = '{"changed":true}'
     if (change === 'document generation') await workspace.load('other-ui')
     const saved = calls.find(([method]) => method === 'preflight')[1]
-    check.resolve({ blueprintId: saved.blueprintId, documentRevision: saved.expectedRevision, semanticRevision: workspace.document?.semanticRevision ?? before.semanticRevision, canStart: true, checks: [] })
+    check.resolve({
+      blueprintId: saved.blueprintId,
+      documentRevision: saved.expectedRevision,
+      semanticRevision: workspace.document?.semanticRevision ?? before.semanticRevision,
+      canStart: true,
+      checks: []
+    })
     await started
     assert.equal(calls.filter(([method]) => method === 'start').length, 0, `C-07 STALE_REPORT_STARTS: ${change} must invalidate the captured report`)
     assert.equal(saved.inputJson, input)
@@ -402,25 +622,43 @@ test('C-07 old Host: check is explicitly capability-unavailable, never silently 
     listDefinitions: async () => ({ ok: true, value: await f.host.listDefinitions() }),
     loadDefinition: async args => ({ ok: true, value: await f.host.loadDefinition(args.blueprintId) }),
     saveDefinition: async args => ({ ok: true, value: await f.host.saveDefinition(args.blueprintId, args.definitionJson, args.expectedRevision) }),
-    startRun: async args => { starts++; return { ok: true, value: await f.host.startRun(args.blueprintId, args.expectedRevision, args.inputJson, args.requestId) } },
-    inspectRun: async args => ({ ok: true, value: await f.host.inspectRun(args.runId) }),
+    startRun: async args => {
+      starts++
+      return { ok: true, value: await f.host.startRun(args.blueprintId, args.expectedRevision, args.inputJson, args.requestId) }
+    },
+    inspectRun: async args => ({ ok: true, value: await f.host.inspectRun(args.runId) })
   }
-  const host = resolveBlueprintHost({ get: key => key === 'remote.blueprint' ? namespace : undefined })
+  const host = resolveBlueprintHost({ get: key => (key === 'remote.blueprint' ? namespace : undefined) })
   const workspace = new BlueprintWorkspace(host)
-  await workspace.initialize(); await workspace.load('flow-ui')
+  await workspace.initialize()
+  await workspace.load('flow-ui')
   let error
-  try { await workspace.run() } catch (caught) { error = caught }
+  try {
+    await workspace.run()
+  } catch (caught) {
+    error = caught
+  }
   assert.equal(error?.code, 'blueprint/capability-unavailable', 'C-07 OLD_HOST_CHECK_SILENT: old Host lacks preflight and Run must fail closed')
   assert.equal(starts, 0)
 })
 test('C-07 palette advertises condition and join-all, never deferred executors', () => {
-  assert.ok(BUILTIN_NODE_CATALOG.some(item => item.kind === 'condition'), 'C-07 CONDITION_PALETTE_MISSING')
-  assert.ok(BUILTIN_NODE_CATALOG.some(item => item.kind === 'join'), 'C-07 JOIN_ALL_PALETTE_MISSING')
+  assert.ok(
+    BUILTIN_NODE_CATALOG.some(item => item.kind === 'condition'),
+    'C-07 CONDITION_PALETTE_MISSING'
+  )
+  assert.ok(
+    BUILTIN_NODE_CATALOG.some(item => item.kind === 'join'),
+    'C-07 JOIN_ALL_PALETTE_MISSING'
+  )
   for (const term of ['condition', '条件', 'join', '汇合']) assert.ok(searchBuiltinNodes(term).length > 0)
-  assert.equal(BUILTIN_NODE_CATALOG.some(item => item.kind === 'join-any'), false)
+  assert.equal(
+    BUILTIN_NODE_CATALOG.some(item => item.kind === 'join-any'),
+    false
+  )
 })
 test('C-07 Inspector expresses optional condition while preserving user IDs/branches/ports', () => {
-  const definition = legacyCondition(), editor = GraphEditor.fromDefinition(definition)
+  const definition = legacyCondition(),
+    editor = GraphEditor.fromDefinition(definition)
   const node = editor.nodes.find(n => n.id === 'choose')
   const parsed = parseInspectorJson(node, 'options', json({ condition: branchConfig }))
   assert.equal(parsed.ok, true, 'C-07 CONDITION_INSPECTOR_REJECTS_FIELD: options cannot express boolean behavior')
@@ -433,7 +671,8 @@ test('C-07 Inspector expresses optional condition while preserving user IDs/bran
   assert.deepEqual(editor.exportDefinition().graph.nodes[0].condition, branchConfig)
 })
 test('C-07 preservation: Inspector can express join-all without advertising join-any execution', () => {
-  const editor = GraphEditor.fromDefinition(joinGraph()), node = editor.nodes.find(n => n.id === 'merge')
+  const editor = GraphEditor.fromDefinition(joinGraph()),
+    node = editor.nodes.find(n => n.id === 'merge')
   assert.deepEqual(parseInspectorJson(node, 'options', '{"join":"all"}'), { ok: true, patch: { join: 'all' } })
   // Historical join-any remains editable/readable, but its NEW service Run is
   // independently required to block above. This is not an execution assertion.
@@ -448,13 +687,23 @@ test('C-07 public DTO capability: optional diagnostics exists and rejects raw fi
   const field = attemptCodec.shape.diagnostics
   assert.equal(field.safeParse(undefined).success, true, 'C-08: old records need no invented diagnostics')
   assert.equal(field.parse(undefined), undefined, 'C-08: legacy absence must remain absent')
-  const legacy = { runId: 'legacy-run', state: 'recovery_required', seq: 3, definitionRevision: 'sem-old', attempts: [{ nodeId: 'old', attempt: 1, state: 'recovery_required' }], logTail: [] }
+  const legacy = {
+    runId: 'legacy-run',
+    state: 'recovery_required',
+    seq: 3,
+    definitionRevision: 'sem-old',
+    attempts: [{ nodeId: 'old', attempt: 1, state: 'recovery_required' }],
+    logTail: []
+  }
   assert.deepEqual(codec.parse(legacy), legacy, 'C-08: public DTO must not invent diagnostics')
   const envelope = diagnostics => ({ ...legacy, attempts: [{ ...legacy.attempts[0], diagnostics }] })
   const digest = '0'.repeat(64)
   const available = {
-    status: 'available', input: { type: 'object', bytes: 2, sha256: digest },
-    resourceDigests: {}, tools: { effectiveNames: [] }, acceptance: { code: 'not-required' },
+    status: 'available',
+    input: { type: 'object', bytes: 2, sha256: digest },
+    resourceDigests: {},
+    tools: { effectiveNames: [] },
+    acceptance: { code: 'not-required' }
   }
   const complete = {
     ...available,
@@ -462,7 +711,8 @@ test('C-07 public DTO capability: optional diagnostics exists and rejects raw fi
     resourceDigests: { '用户.resource/任意-id': digest, rawPrompt: digest },
     modelSelection: { provider: 'fixture-provider', model: 'fixture-model', reasoningEffort: 'adapter-owned-effort' },
     tools: { effectiveNames: ['fixture-tool'], denials: [{ toolName: 'fixture-tool', code: 'denied' }] },
-    acceptance: { code: 'passed', issueCount: 0 }, recovery: { code: 'recovery-required' },
+    acceptance: { code: 'passed', issueCount: 0 },
+    recovery: { code: 'recovery-required' }
   }
   const variants = [{ status: 'unavailable' }, available, complete]
   for (const value of variants) {
@@ -473,7 +723,11 @@ test('C-07 public DTO capability: optional diagnostics exists and rejects raw fi
     const parsed = field.safeParse(value)
     assert.equal(parsed.success, false, `C-07: ${label} must be rejected`)
     assert.equal(codec.safeParse(envelope(value)).success, false, `C-07: public DTO rejects ${label}`)
-    if (rawKey !== undefined) assert.ok(parsed.error.issues.some(issue => issue.code === 'unrecognized_keys' && issue.keys.includes(rawKey)), `C-07: ${label} fails for the unknown raw field`)
+    if (rawKey !== undefined)
+      assert.ok(
+        parsed.error.issues.some(issue => issue.code === 'unrecognized_keys' && issue.keys.includes(rawKey)),
+        `C-07: ${label} fails for the unknown raw field`
+      )
   }
   // The codec is a strict object union. Parsing proves both branch whitelists
   // reject raw fields rather than accepting or silently stripping them.
@@ -485,8 +739,14 @@ test('C-07 public DTO capability: optional diagnostics exists and rejects raw fi
     reject({ ...complete, tools: { ...complete.tools, denials: [{ ...complete.tools.denials[0], [key]: 'RAW_CANARY' }] } }, `nested denial.${key}`, key)
   }
   for (const [label, value] of [
-    ['null', null], ['array', []], ['string', 'unavailable'], ['number', 0], ['boolean', true],
-    ['missing status', {}], ['unknown status', { status: 'unknown' }], ['missing available fields', { status: 'available' }],
+    ['null', null],
+    ['array', []],
+    ['string', 'unavailable'],
+    ['number', 0],
+    ['boolean', true],
+    ['missing status', {}],
+    ['unknown status', { status: 'unknown' }],
+    ['missing available fields', { status: 'available' }],
     ['input type', { ...available, input: { ...available.input, type: 'unknown' } }],
     ['string byte count', { ...available, input: { ...available.input, bytes: '2' } }],
     ['negative byte count', { ...available, input: { ...available.input, bytes: -1 } }],
@@ -496,7 +756,7 @@ test('C-07 public DTO capability: optional diagnostics exists and rejects raw fi
     ['model provider type', { ...complete, modelSelection: { ...complete.modelSelection, provider: 12 } }],
     ['reasoning effort type', { ...complete, modelSelection: { ...complete.modelSelection, reasoningEffort: 12 } }],
     ['tool names type', { ...available, tools: { effectiveNames: 'fixture-tool' } }],
-    ['acceptance count', { ...available, acceptance: { code: 'passed', issueCount: -1 } }],
+    ['acceptance count', { ...available, acceptance: { code: 'passed', issueCount: -1 } }]
   ]) {
     reject(value, label)
   }
@@ -509,8 +769,16 @@ test('C-07 diagnostics presentation capability: existing panel must consume dura
 })
 test('C-08 preservation: public DTO/model read old records without diagnosing fictional success', () => {
   const codec = BLUEPRINT_INVOCATIONS.find(i => i.method === 'inspectRun').result.create()
-  const legacy = { runId: 'legacy-run', state: 'recovery_required', seq: 3, definitionRevision: 'sem-old', attempts: [{ nodeId: 'old', attempt: 1, state: 'recovery_required' }], logTail: [] }
-  const dto = codec.parse(legacy), model = new BlueprintClientModel()
+  const legacy = {
+    runId: 'legacy-run',
+    state: 'recovery_required',
+    seq: 3,
+    definitionRevision: 'sem-old',
+    attempts: [{ nodeId: 'old', attempt: 1, state: 'recovery_required' }],
+    logTail: []
+  }
+  const dto = codec.parse(legacy),
+    model = new BlueprintClientModel()
   model.applySnapshot(dto)
   assert.deepEqual(model.view, legacy)
   assert.equal(model.view.attempts[0].diagnostics, undefined)
@@ -526,8 +794,25 @@ test('C-07/C-08 preservation: zh/en presentation does not change payload, semant
   editor.setSelection(['source'])
   workspace.inputJson = '{"用户.port":"opaque 用户输入"}'
   workspace.runId = 'retained-run'
-  workspace.model.applySnapshot({ runId: 'retained-run', state: 'waiting_input', seq: 7, definitionRevision: workspace.document.semanticRevision, attempts: [{ nodeId: 'source', attempt: 1, state: 'waiting_input' }], logTail: [] })
-  const before = { payload: json(editor.exportDefinition()), input: workspace.inputJson, selected: [...editor.selection], layout: editor.exportLayout(), canUndo: editor.canUndo, canRedo: editor.canRedo, runId: workspace.runId, view: structuredClone(workspace.model.view), calls: calls.length }
+  workspace.model.applySnapshot({
+    runId: 'retained-run',
+    state: 'waiting_input',
+    seq: 7,
+    definitionRevision: workspace.document.semanticRevision,
+    attempts: [{ nodeId: 'source', attempt: 1, state: 'waiting_input' }],
+    logTail: []
+  })
+  const before = {
+    payload: json(editor.exportDefinition()),
+    input: workspace.inputJson,
+    selected: [...editor.selection],
+    layout: editor.exportLayout(),
+    canUndo: editor.canUndo,
+    canRedo: editor.canRedo,
+    runId: workspace.runId,
+    view: structuredClone(workspace.model.view),
+    calls: calls.length
+  }
   const revisionRoot = mkdtempSync(join(tmpdir(), 'bp-flow-revision-'))
   t.after(() => rmSync(revisionRoot, { recursive: true, force: true }))
   const semantic = computeRevision({ rootDir: revisionRoot, definition: editor.exportDefinition() }).semantic
@@ -547,8 +832,10 @@ test('C-07/C-08 preservation: zh/en presentation does not change payload, semant
     assert.deepEqual([...editor.selection], before.selected)
     assert.deepEqual(editor.exportLayout(), before.layout)
     assert.equal(workspace.inputJson, before.input)
-    assert.equal(editor.canUndo, before.canUndo); assert.equal(editor.canRedo, before.canRedo)
-    assert.equal(workspace.runId, before.runId); assert.deepEqual(workspace.model.view, before.view)
+    assert.equal(editor.canUndo, before.canUndo)
+    assert.equal(editor.canRedo, before.canRedo)
+    assert.equal(workspace.runId, before.runId)
+    assert.deepEqual(workspace.model.view, before.view)
     assert.equal(calls.length, before.calls, 'CONTROL: presentation cannot issue a Host command')
   }
   const layoutOnly = editor.exportDefinition()

@@ -11,16 +11,43 @@ import { focusAttemptsForSession } from '../../src/conversation/run-projection.t
 async function fixture(t, backend) {
   const root = await mkdtemp(join(tmpdir(), 'teamstage-member-reader-'))
   const opened = await openBlueprintDomain({ backend, path: backend === 'json' ? join(root, 'store') : join(root, 'runs.sqlite') })
-  t.after(async () => { await opened.close(); await rm(root, { recursive: true, force: true }) })
+  t.after(async () => {
+    await opened.close()
+    await rm(root, { recursive: true, force: true })
+  })
   const store = new RunStore(opened.domain)
-  const definition = { schemaVersion: 1, id: 'member-reader', name: 'Member reader', resources: {},
-    graph: { nodes: [{ id: 'work', kind: 'agentTask' }, { id: 'output', kind: 'output' }], edges: [] } }
-  const { runId } = await store.createRun({ scope: 'member-reader', requestId: 'run', payloadFingerprint: 'a'.repeat(64) }, 'revision', JSON.stringify(definition), '{}',
-    { source: { kind: 'ui', sessionId: 'lead-session' } })
+  const definition = {
+    schemaVersion: 1,
+    id: 'member-reader',
+    name: 'Member reader',
+    resources: {},
+    graph: {
+      nodes: [
+        { id: 'work', kind: 'agentTask' },
+        { id: 'output', kind: 'output' }
+      ],
+      edges: []
+    }
+  }
+  const { runId } = await store.createRun(
+    { scope: 'member-reader', requestId: 'run', payloadFingerprint: 'a'.repeat(64) },
+    'revision',
+    JSON.stringify(definition),
+    '{}',
+    { source: { kind: 'ui', sessionId: 'lead-session' } }
+  )
   const attempt = await store.recordIntent(runId, { nodeId: 'work', kind: 'agentTask' })
-  await store.bindTeamStage(runId, { stageId: 'work', teamId: 'lead-session', leadSessionId: 'lead-session', attemptId: attempt.attemptId, taskSpecificationFingerprint: 'b'.repeat(64) })
+  await store.bindTeamStage(runId, {
+    stageId: 'work',
+    teamId: 'lead-session',
+    leadSessionId: 'lead-session',
+    attemptId: attempt.attemptId,
+    taskSpecificationFingerprint: 'b'.repeat(64)
+  })
   await store.bindTeamTask(runId, { taskId: 'task', taskRevision: 1 })
-  await store.updateTeamStage(runId, { members: [{ memberId: 'primary', name: 'native-primary', sessionId: 'member-session', phase: 'active', status: 'running' }] })
+  await store.updateTeamStage(runId, {
+    members: [{ memberId: 'primary', name: 'native-primary', sessionId: 'member-session', phase: 'active', status: 'running' }]
+  })
   await store.recordIntent(runId, { nodeId: 'output', kind: 'output' })
   const service = Object.create(BlueprintService.prototype)
   service.checkArgs = () => {}
@@ -32,7 +59,8 @@ async function fixture(t, backend) {
 
 for (const backend of ['json', 'sqlite']) {
   test(`W3 C-07/C-09 ${backend}: native member reads its canonical Run and original stage Attempt without changing facts`, async t => {
-    const h = await fixture(t, backend), before = await h.store.get(h.runId)
+    const h = await fixture(t, backend),
+      before = await h.store.get(h.runId)
     const value = await h.service.inspectSession({ sessionId: 'member-session', runId: h.runId })
     assert.equal(value.status, 'bound')
     assert.equal(value.selected.run.runId, h.runId)

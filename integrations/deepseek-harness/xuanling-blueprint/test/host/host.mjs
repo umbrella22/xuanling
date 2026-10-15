@@ -14,7 +14,10 @@ export async function getCases(helpers) {
   const cases = []
 
   cases.push({
-    id: 'H1', title: 'T05/T14: real-profile mount probe passes end to end (install, boot, gateway, scoped agent)', contract: 'C-05', expect: 'pass',
+    id: 'H1',
+    title: 'T05/T14: real-profile mount probe passes end to end (install, boot, gateway, scoped agent)',
+    contract: 'C-05',
+    expect: 'pass',
     run: async () => {
       const probeDir = join(repoRoot, 'test', 'blueprint')
       const parentDir = helpers.reportDir ?? join(repoRoot, 'docs', 'validation', 'blueprint', 'current', 'takeover', 'w2', 'host')
@@ -25,12 +28,11 @@ export async function getCases(helpers) {
       if (!existsSync(join(packageRoot, 'lib', 'index.js'))) {
         throw new Error('lib missing — run `pnpm run build` first (build absence is a harness failure)')
       }
-      const res = spawnSync(process.execPath, [
-        join(probeDir, 'capabilities', 'probe.mjs'),
-        `--plugin-dir=${packageRoot}`,
-        '--expect=blueprint',
-        '--report-dir', reportDir, '--plan-id', planId,
-      ], { cwd: probeDir, encoding: 'utf8', timeout: 15 * 60_000 })
+      const res = spawnSync(
+        process.execPath,
+        [join(probeDir, 'capabilities', 'probe.mjs'), `--plugin-dir=${packageRoot}`, '--expect=blueprint', '--report-dir', reportDir, '--plan-id', planId],
+        { cwd: probeDir, encoding: 'utf8', timeout: 15 * 60_000 }
+      )
       if (res.status !== 0 || res.signal || res.error) {
         throw new Error(`probe process failed (exit ${res.status}, signal ${res.signal}): ${res.error?.message ?? String(res.stderr).slice(0, 300)}`)
       }
@@ -47,7 +49,7 @@ export async function getCases(helpers) {
       return ['P4h', 'P4i', 'P4f', 'P4j-raw', 'P4j', 'P4k', 'P4l', 'P4w'].every(id => assertions[id] === true)
         ? { ok: true, detail: `${report.assertions.length} probe assertions passed; isolated report: ${reportPath}` }
         : { ok: false, detail: 'probe passed but host-execution assertions are missing' }
-    },
+    }
   })
 
   return cases

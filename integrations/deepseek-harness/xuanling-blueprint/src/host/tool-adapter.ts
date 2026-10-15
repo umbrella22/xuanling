@@ -27,9 +27,21 @@ export interface ScriptRunResult {
  * cwd; otherwise the primitive owns and cleans a platform temp directory.
  * stdout is the JSON result channel; --args carries lossless JSON arguments.
  */
-export async function runScript(scriptBytes: Buffer, argsJson: unknown, options: { cwd?: string; timeoutMs?: number; signal?: AbortSignal } = {}): Promise<ScriptRunResult> {
+export async function runScript(
+  scriptBytes: Buffer,
+  argsJson: unknown,
+  options: { cwd?: string; timeoutMs?: number; signal?: AbortSignal } = {}
+): Promise<ScriptRunResult> {
   const started = Date.now()
-  const notStarted = (): ScriptRunResult => ({ ok: false, kind: 'cancelled', effect: 'not-started', exitCode: null, stdout: '', stderr: '', durationMs: Date.now() - started })
+  const notStarted = (): ScriptRunResult => ({
+    ok: false,
+    kind: 'cancelled',
+    effect: 'not-started',
+    exitCode: null,
+    stdout: '',
+    stderr: '',
+    durationMs: Date.now() - started
+  })
   if (options.signal?.aborted) return notStarted()
   const timeoutMs = options.timeoutMs
   if (timeoutMs !== undefined && (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > MAX_TIMER_DELAY_MS)) {
@@ -49,7 +61,9 @@ export async function runScript(scriptBytes: Buffer, argsJson: unknown, options:
       // A POSIX process group lets cancellation stop ordinary descendants too.
       // This is lifecycle containment, not a sandbox for adversarial scripts.
       const child = spawn(process.execPath, [scriptPath, '--args', args], {
-        cwd, stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32',
+        cwd,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: process.platform !== 'win32'
       })
       let stdout = ''
       let stderr = ''
@@ -69,8 +83,9 @@ export async function runScript(scriptBytes: Buffer, argsJson: unknown, options:
             })
           })
         } else {
-          try { process.kill(-child.pid, 'SIGKILL') }
-          catch (error) {
+          try {
+            process.kill(-child.pid, 'SIGKILL')
+          } catch (error) {
             if ((error as NodeJS.ErrnoException).code !== 'ESRCH') terminationError = error as Error
           }
         }
@@ -83,23 +98,35 @@ export async function runScript(scriptBytes: Buffer, argsJson: unknown, options:
       const timer = timeoutMs === undefined ? undefined : setTimeout(() => stop('timeout'), timeoutMs)
       options.signal?.addEventListener('abort', abort, { once: true })
       if (options.signal?.aborted) abort()
-      child.stdout.on('data', chunk => { stdout += String(chunk) })
-      child.stderr.on('data', chunk => { stderr += String(chunk) })
-      child.on('error', error => { spawnError = error })
+      child.stdout.on('data', chunk => {
+        stdout += String(chunk)
+      })
+      child.stderr.on('data', chunk => {
+        stderr += String(chunk)
+      })
+      child.on('error', error => {
+        spawnError = error
+      })
       // Natural parent exit must not leave its ordinary background children running.
-      child.on('exit', () => { if (process.platform !== 'win32') stopTree() })
+      child.on('exit', () => {
+        if (process.platform !== 'win32') stopTree()
+      })
       child.on('close', async code => {
         if (timer !== undefined) clearTimeout(timer)
         options.signal?.removeEventListener('abort', abort)
         await termination
-        if (terminationError !== undefined) { reject(terminationError); return }
+        if (terminationError !== undefined) {
+          reject(terminationError)
+          return
+        }
         resolve({
           ok: stopKind === undefined && spawnError === undefined && code === 0,
           kind: stopKind ?? (spawnError === undefined && code === 0 ? 'succeeded' : 'failed'),
           effect: child.pid === undefined ? 'not-started' : 'unknown',
-          exitCode: code, stdout,
+          exitCode: code,
+          stdout,
           stderr: `${stderr}${spawnError?.message ?? ''}`,
-          durationMs: Date.now() - started,
+          durationMs: Date.now() - started
         })
       })
     })
@@ -143,22 +170,26 @@ export function registerScriptTool(hostCtx: HostToolsContext, spec: { nodeId: st
   const disposer = tools.register({
     name,
     description: spec.description,
-    ...timeoutMs === undefined ? {} : { timeoutMs },
+    ...(timeoutMs === undefined ? {} : { timeoutMs }),
     parameters: { type: 'object', properties: {}, additionalProperties: true },
     output: {
       schema: {
-        type: 'object', additionalProperties: true,
+        type: 'object',
+        additionalProperties: true,
         properties: {
           ok: { type: 'boolean', description: 'Whether the script exited successfully within its budget.' },
-          kind: { type: 'string', description: 'Settlement kind: succeeded, failed, timeout, or cancelled.' },
-        },
+          kind: { type: 'string', description: 'Settlement kind: succeeded, failed, timeout, or cancelled.' }
+        }
       },
-      render: (_args: unknown, value: unknown) => [{
-        type: 'text', text: JSON.stringify(value)?.slice(0, 4000) ?? 'script produced no output',
-      }],
+      render: (_args: unknown, value: unknown) => [
+        {
+          type: 'text',
+          text: JSON.stringify(value)?.slice(0, 4000) ?? 'script produced no output'
+        }
+      ]
     },
     async execute(args: Record<string, unknown>, context: ToolRunContext) {
-      const result = await runScript(scriptBytes, args, { ...timeoutMs === undefined ? {} : { timeoutMs }, signal: context.signal })
+      const result = await runScript(scriptBytes, args, { ...(timeoutMs === undefined ? {} : { timeoutMs }), signal: context.signal })
       if (!result.ok) {
         const error = new Error(`SCRIPT_${result.kind.toUpperCase()}: script ${result.kind}; effect=${result.effect}`, { cause: result })
         error.name = 'ScriptExecutionError'
@@ -166,7 +197,7 @@ export function registerScriptTool(hostCtx: HostToolsContext, spec: { nodeId: st
         throw error
       }
       return result
-    },
+    }
   })
   return { name, disposer }
 }

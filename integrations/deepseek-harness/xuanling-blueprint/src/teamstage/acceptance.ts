@@ -12,7 +12,7 @@ import {
   teamOutputAcceptanceSchema,
   type TeamHostArtifactVerdict,
   type TeamMemberSnapshot,
-  type TeamOutputAcceptance,
+  type TeamOutputAcceptance
 } from '../persistence/records.ts'
 import { TeamOutputRejectedError, TerminalStateError } from '../persistence/run-store.ts'
 import type { RunStore } from '../persistence/run-store.ts'
@@ -22,7 +22,12 @@ import { TeamArtifactError, TeamOutputArtifacts } from './output-artifact.ts'
 export class TeamAcceptanceRejectedError extends Error {
   override readonly name = 'TeamAcceptanceRejectedError'
   readonly code = 'TEAM_ACCEPTANCE_REJECTED'
-  constructor(readonly issueCode: string, detail = issueCode) { super(detail) }
+  constructor(
+    readonly issueCode: string,
+    detail = issueCode
+  ) {
+    super(detail)
+  }
 }
 
 export interface TeamOutputArtifactRef {
@@ -52,10 +57,25 @@ export interface TeamAcceptanceInput {
   outputs?: Record<string, unknown>
 }
 
-const DTO_KEYS = new Set(['code', 'schemaVersion', 'runId', 'stageId', 'taskId', 'attemptId', 'sourceSessionId', 'artifactId', 'digest', 'evidenceDigest', 'checks', 'issueCode'])
+const DTO_KEYS = new Set([
+  'code',
+  'schemaVersion',
+  'runId',
+  'stageId',
+  'taskId',
+  'attemptId',
+  'sourceSessionId',
+  'artifactId',
+  'digest',
+  'evidenceDigest',
+  'checks',
+  'issueCode'
+])
 const BASE_CHECKS = [...TEAM_KNOWN_CHECKS]
 
-function reject(code: string, detail = code): never { throw new TeamAcceptanceRejectedError(code, detail) }
+function reject(code: string, detail = code): never {
+  throw new TeamAcceptanceRejectedError(code, detail)
+}
 
 function strictCandidate(value: unknown): TeamOutputAcceptance {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) reject('output-not-object')
@@ -92,20 +112,28 @@ function memberIsAuthorized(stageMembers: readonly TeamMemberSnapshot[], sourceS
 
 function currentMemberEvidence(member: TeamMemberSnapshot, stage: NonNullable<Awaited<ReturnType<RunStore['get']>>['teamStage']>, attemptId: string): boolean {
   const evidence = member.evidence
-  return member.sessionId !== undefined && evidence !== undefined
-    && evidence.runId === stage.runId
-    && evidence.stageId === stage.stageId
-    && evidence.taskId === stage.taskId
-    && evidence.attemptId === attemptId
-    && evidence.captureId.length > 0
-    && evidence.completedTurnId.length > 0
-    && evidence.flushedAt >= 0
-    && evidence.quiescentAt >= evidence.flushedAt
-    && member.phase === 'active'
-    && !['failed', 'provisioning', 'running'].includes(member.status)
+  return (
+    member.sessionId !== undefined &&
+    evidence !== undefined &&
+    evidence.runId === stage.runId &&
+    evidence.stageId === stage.stageId &&
+    evidence.taskId === stage.taskId &&
+    evidence.attemptId === attemptId &&
+    evidence.captureId.length > 0 &&
+    evidence.completedTurnId.length > 0 &&
+    evidence.flushedAt >= 0 &&
+    evidence.quiescentAt >= evidence.flushedAt &&
+    member.phase === 'active' &&
+    !['failed', 'provisioning', 'running'].includes(member.status)
+  )
 }
 
-function requiredMembersSatisfied(stageMembers: readonly TeamMemberSnapshot[], ids: readonly string[], stage: NonNullable<Awaited<ReturnType<RunStore['get']>>['teamStage']>, attemptId: string): boolean {
+function requiredMembersSatisfied(
+  stageMembers: readonly TeamMemberSnapshot[],
+  ids: readonly string[],
+  stage: NonNullable<Awaited<ReturnType<RunStore['get']>>['teamStage']>,
+  attemptId: string
+): boolean {
   return ids.every(id => {
     const member = memberFor(stageMembers, id)
     return member !== undefined && currentMemberEvidence(member, stage, attemptId)
@@ -114,14 +142,12 @@ function requiredMembersSatisfied(stageMembers: readonly TeamMemberSnapshot[], i
 
 function requiredChecks(stage: NonNullable<Awaited<ReturnType<RunStore['get']>>['teamStage']>): string[] {
   const configured = stage.requiredChecks ?? []
-  if (configured.some(check => !TEAM_KNOWN_CHECKS.includes(check as typeof TEAM_KNOWN_CHECKS[number]))) reject('unknown-required-check')
+  if (configured.some(check => !TEAM_KNOWN_CHECKS.includes(check as (typeof TEAM_KNOWN_CHECKS)[number]))) reject('unknown-required-check')
   return [...new Set([...BASE_CHECKS, ...configured])]
 }
 
 function requireUnreducedPolicy(args: TeamAcceptanceInput, memberIds: string[], checks: string[]): void {
-  const requestedMembers = args.requiredMemberIds
-    ?? args.requiredMemberPolicy?.requiredMemberIds
-    ?? args.requiredMemberPolicy?.memberIds
+  const requestedMembers = args.requiredMemberIds ?? args.requiredMemberPolicy?.requiredMemberIds ?? args.requiredMemberPolicy?.memberIds
   if (requestedMembers !== undefined && !sameSet([...requestedMembers], memberIds)) reject('required-member-policy-override')
   if (args.requiredChecks !== undefined && !sameSet([...args.requiredChecks], checks)) reject('required-check-policy-override')
 }
@@ -132,7 +158,8 @@ export async function acceptTeamOutput(args: TeamAcceptanceInput): Promise<Await
   // Detach the verification inputs before the first await. Store/context
   // objects are capabilities, not part of the immutable acceptance facts.
   args = {
-    store: args.store, runId: args.runId,
+    store: args.store,
+    runId: args.runId,
     ...(args.artifacts === undefined ? {} : { artifacts: args.artifacts }),
     ...structuredClone({
       ...(args.task === undefined ? {} : { task: args.task }),
@@ -144,8 +171,8 @@ export async function acceptTeamOutput(args: TeamAcceptanceInput): Promise<Await
       ...(args.artifact === undefined ? {} : { artifact: args.artifact }),
       ...(args.hostVerdict === undefined ? {} : { hostVerdict: args.hostVerdict }),
       ...(args.attemptId === undefined ? {} : { attemptId: args.attemptId }),
-      ...(args.outputs === undefined ? {} : { outputs: args.outputs }),
-    }),
+      ...(args.outputs === undefined ? {} : { outputs: args.outputs })
+    })
   }
   const current = await args.store.get(args.runId)
   let stage = structuredClone(current.teamStage)
@@ -154,8 +181,11 @@ export async function acceptTeamOutput(args: TeamAcceptanceInput): Promise<Await
     if (!(args.artifacts instanceof TeamOutputArtifacts)) reject('artifact-verifier-required')
     if (args.task?.id === undefined || args.task.revision === undefined || args.task.status === undefined) reject('task-binding-unverified')
     try {
-      const verified = await args.artifacts.verifyStage({ store: args.store, runId: args.runId,
-        task: { id: args.task.id, revision: args.task.revision, status: args.task.status } })
+      const verified = await args.artifacts.verifyStage({
+        store: args.store,
+        runId: args.runId,
+        task: { id: args.task.id, revision: args.task.revision, status: args.task.status }
+      })
       if (verified.definitionRevision !== current.definitionRevision) reject('artifact-binding-mismatch')
       if (args.outputs !== undefined && !isDeepStrictEqual(args.outputs, verified.outputs)) reject('artifact-output-value-mismatch')
       args.outputs = verified.outputs
@@ -183,22 +213,35 @@ export async function acceptTeamOutput(args: TeamAcceptanceInput): Promise<Await
     if (candidate.code === 'rejected') return current
   }
   const acceptedReplay = stage.outputAcceptance?.code === 'accepted'
-  if (['cancelling', 'cancelled', 'recovery_required', 'failed', 'timed_out'].includes(current.state)
-    || (current.state === 'succeeded' && !acceptedReplay)) reject('run-not-accepting')
-  if (['cancelling', 'cancelled', 'recovery_required', 'failed', 'timed_out'].includes(stage.state)
-    || (stage.state === 'succeeded' && !acceptedReplay)) reject('stage-not-accepting')
+  if (['cancelling', 'cancelled', 'recovery_required', 'failed', 'timed_out'].includes(current.state) || (current.state === 'succeeded' && !acceptedReplay))
+    reject('run-not-accepting')
+  if (['cancelling', 'cancelled', 'recovery_required', 'failed', 'timed_out'].includes(stage.state) || (stage.state === 'succeeded' && !acceptedReplay))
+    reject('stage-not-accepting')
   if (candidate.code === 'rejected') return await args.store.recordTeamOutputAcceptance(args.runId, candidate)
 
   const attemptId = args.attemptId ?? stage.attemptId
   if (attemptId === undefined || stage.attemptId !== attemptId) reject('attempt-settlement-required')
   const verdict = hostVerdict(args.hostVerdict)
-  if (verdict.runId !== stage.runId || verdict.stageId !== stage.stageId || verdict.taskId !== stage.taskId
-    || verdict.attemptId !== attemptId || verdict.producerSessionId !== candidate.sourceSessionId
-    || verdict.artifactId !== candidate.artifactId || verdict.digest !== candidate.digest
-    || verdict.evidenceDigest !== candidate.evidenceDigest || verdict.status !== 'verified') reject('host-verdict-binding-mismatch')
+  if (
+    verdict.runId !== stage.runId ||
+    verdict.stageId !== stage.stageId ||
+    verdict.taskId !== stage.taskId ||
+    verdict.attemptId !== attemptId ||
+    verdict.producerSessionId !== candidate.sourceSessionId ||
+    verdict.artifactId !== candidate.artifactId ||
+    verdict.digest !== candidate.digest ||
+    verdict.evidenceDigest !== candidate.evidenceDigest ||
+    verdict.status !== 'verified'
+  )
+    reject('host-verdict-binding-mismatch')
   if (verdict.byteLength <= 0) reject('artifact-empty')
-  if (args.artifact !== undefined && (args.artifact.artifactId !== verdict.artifactId || args.artifact.digest !== verdict.digest
-    || (args.artifact.byteLength !== undefined && args.artifact.byteLength !== verdict.byteLength))) reject('artifact-verdict-mismatch')
+  if (
+    args.artifact !== undefined &&
+    (args.artifact.artifactId !== verdict.artifactId ||
+      args.artifact.digest !== verdict.digest ||
+      (args.artifact.byteLength !== undefined && args.artifact.byteLength !== verdict.byteLength))
+  )
+    reject('artifact-verdict-mismatch')
 
   const requiredIds = stage.requiredMemberIds ?? stage.members.map(member => member.memberId)
   const checks = requiredChecks(stage)
@@ -221,7 +264,7 @@ export async function acceptTeamOutput(args: TeamAcceptanceInput): Promise<Await
       acceptance: candidate,
       outputs: args.outputs,
       evidence: 'host-artifact-verified',
-      verification: { definitionRevision: current.definitionRevision, stage, hostVerdict: verdict },
+      verification: { definitionRevision: current.definitionRevision, stage, hostVerdict: verdict }
     })
   } catch (error) {
     if (error instanceof TeamOutputRejectedError) throw new TeamAcceptanceRejectedError(error.issueCode)

@@ -75,7 +75,7 @@ export function admitResources(resources: Record<string, ResourceRef>): Admissio
         code: caseOnly ? 'case-conflict' : 'unicode-conflict',
         message: `paths of "${prior.refId}" and "${refId}" collide under ${caseOnly ? 'case' : 'Unicode'} folding: ${path}`,
         refId,
-        path,
+        path
       })
     } else {
       seen.set(key, { refId, path })

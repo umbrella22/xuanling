@@ -5,15 +5,29 @@ import test from 'node:test'
 import { setNativeTheme } from '../../../../../test/blueprint/capabilities/i18n-workspace-journey.mjs'
 
 const settingsSelector = '[data-shortcut-modal="settings"]'
-const themeOracle = "scheme => getComputedStyle(document.documentElement).colorScheme === scheme && document.body.hasAttribute('data-ds-dark-theme') === (scheme === 'dark')"
+const themeOracle =
+  "scheme => getComputedStyle(document.documentElement).colorScheme === scheme && document.body.hasAttribute('data-ds-dark-theme') === (scheme === 'dark')"
 const acceptedBody = scheme => ({ result: { ok: true, value: { ns: 'ui-theme', revision: 1, value: { preference: scheme, fontSize: 14 } } } })
 const mutationArgs = scheme => ({ ns: 'ui-theme', ops: [{ op: 'set', path: ['preference'], value: scheme }], expectedRevision: 0 })
-const changedSteps = ['settings.click', 'settings.visible', 'theme.aria-pressed', 'response.register', 'theme.click', 'response.json', 'scheme.wait', 'close.click', 'settings.hidden']
+const changedSteps = [
+  'settings.click',
+  'settings.visible',
+  'theme.aria-pressed',
+  'response.register',
+  'theme.click',
+  'response.json',
+  'scheme.wait',
+  'close.click',
+  'settings.hidden'
+]
 const noOpSteps = changedSteps.filter(step => !['response.register', 'response.json'].includes(step))
 
 function deferred() {
   let resolve, reject
-  const promise = new Promise((yes, no) => { resolve = yes; reject = no })
+  const promise = new Promise((yes, no) => {
+    resolve = yes
+    reject = no
+  })
   return { promise, resolve, reject }
 }
 
@@ -24,26 +38,43 @@ function publicOnly(object) {
       if (key === 'then') return undefined
       assert.ok(Object.hasOwn(target, key), `non-public adapter operation: ${String(key)}`)
       return target[key]
-    },
+    }
   })
 }
 
 function fixture({ scheme = 'dark', selected = false, autoReply = true, ignored = [], reply = {}, failAt, failure = new Error('native failure') } = {}) {
-  const events = [], matches = []
-  const registered = deferred(), clicked = deferred(), jsonRead = deferred(), responseWait = deferred()
-  let open = false, visible = false, predicate
+  const events = [],
+    matches = []
+  const registered = deferred(),
+    clicked = deferred(),
+    jsonRead = deferred(),
+    responseWait = deferred()
+  let open = false,
+    visible = false,
+    predicate
   const record = name => {
     events.push(name)
     if (name === failAt) throw failure
   }
-  function response({ path = '/api/settings/mutate', httpMethod = 'POST', rpc = 'settings/mutate', args = mutationArgs(scheme), envelope = { method: rpc, payload: { args } }, status = 200, body = acceptedBody(scheme), bodyWait, postDataError, jsonError } = {}) {
+  function response({
+    path = '/api/settings/mutate',
+    httpMethod = 'POST',
+    rpc = 'settings/mutate',
+    args = mutationArgs(scheme),
+    envelope = { method: rpc, payload: { args } },
+    status = 200,
+    body = acceptedBody(scheme),
+    bodyWait,
+    postDataError,
+    jsonError
+  } = {}) {
     const request = publicOnly({
       url: () => `http://127.0.0.1:3456${path}`,
       method: () => httpMethod,
       postDataJSON() {
         if (postDataError) throw postDataError
         return envelope
-      },
+      }
     })
     return publicOnly({
       request: () => request,
@@ -54,7 +85,7 @@ function fixture({ scheme = 'dark', selected = false, autoReply = true, ignored 
         jsonRead.resolve()
         if (jsonError) throw jsonError
         return bodyWait ? bodyWait.promise : body
-      },
+      }
     })
   }
   function offer(candidate) {
@@ -79,7 +110,7 @@ function fixture({ scheme = 'dark', selected = false, autoReply = true, ignored 
         for (const options of ignored) offer(response(options))
         offer(response(reply))
       }
-    },
+    }
   })
   const modal = publicOnly({
     async waitFor(options) {
@@ -92,25 +123,29 @@ function fixture({ scheme = 'dark', selected = false, autoReply = true, ignored 
       assert.ok(open && visible, 'open and observe native Settings before its controls')
       if (options.name.source === '^(关闭|Close)$') {
         assert.deepEqual(options, { name: /^(关闭|Close)$/ })
-        return publicOnly({ async click(options) {
-          assert.equal(options, undefined, 'ordinary native Close only')
-          record('close.click')
-          open = false
-        } })
+        return publicOnly({
+          async click(options) {
+            assert.equal(options, undefined, 'ordinary native Close only')
+            record('close.click')
+            open = false
+          }
+        })
       }
       assert.deepEqual(options, { name: scheme === 'dark' ? /^(深色|Dark)$/ : /^(浅色|Light)$/ })
       return themeButton
-    },
+    }
   })
   const page = publicOnly({
     getByRole(role, options) {
       assert.equal(role, 'button')
       assert.deepEqual(options, { name: /^(设置|Settings)$/ })
-      return publicOnly({ async click(options) {
-        assert.equal(options, undefined, 'ordinary native Settings only')
-        record('settings.click')
-        open = true
-      } })
+      return publicOnly({
+        async click(options) {
+          assert.equal(options, undefined, 'ordinary native Settings only')
+          record('settings.click')
+          open = true
+        }
+      })
     },
     locator(selector) {
       assert.equal(selector, settingsSelector, 'no plugin/storage/runtime fallback')
@@ -131,7 +166,7 @@ function fixture({ scheme = 'dark', selected = false, autoReply = true, ignored 
       assert.equal(options, undefined, 'no changed original wait timeout/budget')
       // Optimistic DOM already satisfies the oracle, even with Host unanswered.
       record('scheme.wait')
-    },
+    }
   })
   return { page, scheme, events, matches, registered, clicked, jsonRead, responseWait, response, offer }
 }
@@ -139,19 +174,13 @@ function fixture({ scheme = 'dark', selected = false, autoReply = true, ignored 
 test('changed native selection cannot resolve on optimistic DOM before deferred matching Host reply/body', async () => {
   const f = fixture({ autoReply: false })
   const run = setNativeTheme(f.page, f.scheme)
-  const beforeHost = await Promise.race([
-    run.then(() => 'helper resolved before Host reply'),
-    f.registered.promise.then(() => 'response wait registered'),
-  ])
+  const beforeHost = await Promise.race([run.then(() => 'helper resolved before Host reply'), f.registered.promise.then(() => 'response wait registered')])
   assert.equal(beforeHost, 'response wait registered', 'premature theme settlement: helper resolved on optimistic DOM before deferred matching Host reply')
   await f.clicked.promise
   assert.ok(!f.events.includes('scheme.wait'), 'do not observe optimistic DOM as accepted preference')
   const bodyWait = deferred()
   assert.equal(f.offer(f.response({ bodyWait })), true)
-  const beforeBody = await Promise.race([
-    run.then(() => 'helper resolved before Host body'),
-    f.jsonRead.promise.then(() => 'reading Host body'),
-  ])
+  const beforeBody = await Promise.race([run.then(() => 'helper resolved before Host body'), f.jsonRead.promise.then(() => 'reading Host body')])
   assert.equal(beforeBody, 'reading Host body', 'matching response headers alone are not acceptance')
   assert.ok(!f.events.includes('scheme.wait'), 'await the accepted JSON body before the original DOM wait')
   bodyWait.resolve(acceptedBody(f.scheme))
@@ -193,7 +222,7 @@ const unrelated = [
   ['non-array operations', { args: { ns: 'ui-theme', ops: {} } }],
   ['missing payload', { envelope: { method: 'settings/mutate' } }],
   ['wrong args nesting', { envelope: { method: 'settings/mutate', payload: { args: { args: mutationArgs('dark') } } } }],
-  ['non-JSON request', { postDataError: new SyntaxError('not JSON') }],
+  ['non-JSON request', { postDataError: new SyntaxError('not JSON') }]
 ]
 for (const [label, ignoredReply] of unrelated) {
   test(`response predicate ignores ${label} before matching the actual ui-theme/preference/dark write`, async () => {
@@ -222,7 +251,7 @@ const invalidReplies = [
   ['missing preference', { body: { result: { ok: true, value: { ns: 'ui-theme', value: {} } } } }],
   ['missing result', { body: {} }],
   ['null JSON', { body: null }],
-  ['non-object JSON', { body: 'not a result' }],
+  ['non-object JSON', { body: 'not a result' }]
 ]
 for (const [label, reply] of invalidReplies) {
   test(`${label} matching Host response rejects instead of optimistic success or retry`, async () => {
@@ -240,14 +269,23 @@ test('malformed JSON parsing failure is the original error, not an accepted/fall
   assert.deepEqual(f.events, changedSteps.slice(0, 6))
 })
 
-for (const stage of ['settings.click', 'settings.visible', 'theme.aria-pressed', 'response.register', 'response.wait', 'theme.click', 'response.json', 'scheme.wait', 'close.click', 'settings.hidden']) {
+for (const stage of [
+  'settings.click',
+  'settings.visible',
+  'theme.aria-pressed',
+  'response.register',
+  'response.wait',
+  'theme.click',
+  'response.json',
+  'scheme.wait',
+  'close.click',
+  'settings.hidden'
+]) {
   test(`${stage} error propagates unchanged with no bypass/retry`, async () => {
     const error = new Error(`public native failure: ${stage}`)
     const f = fixture({ failAt: stage, failure: error })
     await assert.rejects(setNativeTheme(f.page, f.scheme), received => received === error)
-    const expected = stage === 'response.wait'
-      ? changedSteps.slice(0, 5)
-      : changedSteps.slice(0, changedSteps.indexOf(stage) + 1)
+    const expected = stage === 'response.wait' ? changedSteps.slice(0, 5) : changedSteps.slice(0, changedSteps.indexOf(stage) + 1)
     assert.deepEqual(f.events, expected)
     // A click failure must not leave an unhandled later wait rejection.
     if (stage === 'theme.click') f.responseWait.reject(new Error('later response wait failure after click failure'))

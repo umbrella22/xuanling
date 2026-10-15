@@ -17,19 +17,21 @@ const hash = text => createHash('sha256').update(text).digest('hex')
 const input = JSON.stringify({ task: 'INPUT_RAW_SECRET_SENTINEL' })
 const digests = { worker: hash('AGENT_RAW_SECRET_SENTINEL'), schema: hash('FROZEN_SCHEMA_BYTES') }
 const pending = () => ({
-  status: 'available', input: { type: 'object', bytes: Buffer.byteLength(input), sha256: hash(input) },
+  status: 'available',
+  input: { type: 'object', bytes: Buffer.byteLength(input), sha256: hash(input) },
   resourceDigests: { ...digests },
   modelSelection: { provider: 'storage-provider', model: 'storage-model', reasoningEffort: 'adapter-owned-effort' },
-  tools: { effectiveNames: ['read_allowed'] }, acceptance: { code: 'pending' },
+  tools: { effectiveNames: ['read_allowed'] },
+  acceptance: { code: 'pending' }
 })
 const final = () => ({
   ...pending(),
   tools: { effectiveNames: ['read_allowed'], denials: [{ toolName: 'write_other', code: 'tool-not-permitted' }] },
-  acceptance: { code: 'output-invalid', issueCount: 2 }, recovery: { code: 'known-result' },
+  acceptance: { code: 'output-invalid', issueCount: 2 },
+  recovery: { code: 'known-result' }
 })
-const medium = (root, backend) => backend === 'json' ? join(root, 'store') : join(root, 'store', 'runs.db')
-const unknownField = error => error?.name === 'ZodError'
-  && error.issues.some(issue => issue.code === 'unrecognized_keys' && issue.keys.includes('rawBody'))
+const medium = (root, backend) => (backend === 'json' ? join(root, 'store') : join(root, 'store', 'runs.db'))
+const unknownField = error => error?.name === 'ZodError' && error.issues.some(issue => issue.code === 'unrecognized_keys' && issue.keys.includes('rawBody'))
 const attempt = record => record.attempts.find(item => item.nodeId === 'work')
 
 async function fixture(t, backend) {
@@ -44,14 +46,18 @@ async function fixture(t, backend) {
   }
   const close = async () => {
     if (!opened) return
-    const owned = opened; opened = undefined
+    const owned = opened
+    opened = undefined
     await owned.close()
   }
-  t.after(async () => { await close(); rmSync(root, { recursive: true, force: true }) })
+  t.after(async () => {
+    await close()
+    rmSync(root, { recursive: true, force: true })
+  })
   return { root, runtimeRoot, open, close, table: () => opened.domain.table('runs') }
 }
-const admit = (store, requestId) => store.createRun({ scope: 'run', requestId, payloadFingerprint: hash(requestId) },
-  'frozen-revision', '{"frozen":true}', '{}')
+const admit = (store, requestId) =>
+  store.createRun({ scope: 'run', requestId, payloadFingerprint: hash(requestId) }, 'frozen-revision', '{"frozen":true}', '{}')
 
 for (const backend of ['json', 'sqlite']) {
   test(`C-04/C-08 ${backend}: intent pending and final acceptance survive reopen and backup with exact fields; legacy remains readable`, async t => {
@@ -74,8 +80,12 @@ for (const backend of ['json', 'sqlite']) {
     assert.deepEqual(attempt(await store.get(runId)).diagnostics, pending(), 'C-04: reopen retains pending, not current Host facts')
 
     const expectedFinal = final()
-    const settled = await store.recordResult(runId, dispatch.attemptId, { ok: false,
-      outcome: { kind: 'output-invalid' }, evidence: 'schema-rejected', diagnostics: expectedFinal })
+    const settled = await store.recordResult(runId, dispatch.attemptId, {
+      ok: false,
+      outcome: { kind: 'output-invalid' },
+      evidence: 'schema-rejected',
+      diagnostics: expectedFinal
+    })
     assert.deepEqual(attempt(settled).diagnostics, expectedFinal)
     assert.equal(attempt(settled).result.seq, settled.seq)
     assert.equal(settled.log.at(-1).kind, 'result', 'C-04: result and final diagnostics commit in one transition')
@@ -96,7 +106,10 @@ for (const backend of ['json', 'sqlite']) {
     await h.close() // SQLite backup is taken only after quiescent close/checkpoint.
 
     const backup = createBackup(h.runtimeRoot)
-    assert.ok(Object.keys(backup.manifest.files).some(path => path.startsWith('store/')), 'fixture: backup contains the real medium')
+    assert.ok(
+      Object.keys(backup.manifest.files).some(path => path.startsWith('store/')),
+      'fixture: backup contains the real medium'
+    )
     const restoredRoot = join(h.root, 'restored')
     restoreBackup(backup.archive, restoredRoot)
     store = await h.open(restoredRoot)
@@ -114,40 +127,74 @@ for (const backend of ['json', 'sqlite']) {
     const { runId } = await admit(store, 'strict-diagnostics')
     const clean = await store.get(runId)
     const injectors = [
-      value => { value.rawBody = 'RAW_BODY_SECRET_SENTINEL' },
-      value => { value.input.rawBody = 'RAW_BODY_SECRET_SENTINEL' },
-      value => { value.modelSelection.rawBody = 'RAW_BODY_SECRET_SENTINEL' },
-      value => { value.tools.rawBody = 'RAW_BODY_SECRET_SENTINEL' },
-      value => { value.tools.denials = [{ toolName: 'other', code: 'tool-rejected', rawBody: 'RAW_BODY_SECRET_SENTINEL' }] },
-      value => { value.acceptance.rawBody = 'RAW_BODY_SECRET_SENTINEL' },
-      value => { value.recovery = { code: 'unknown', rawBody: 'RAW_BODY_SECRET_SENTINEL' } },
+      value => {
+        value.rawBody = 'RAW_BODY_SECRET_SENTINEL'
+      },
+      value => {
+        value.input.rawBody = 'RAW_BODY_SECRET_SENTINEL'
+      },
+      value => {
+        value.modelSelection.rawBody = 'RAW_BODY_SECRET_SENTINEL'
+      },
+      value => {
+        value.tools.rawBody = 'RAW_BODY_SECRET_SENTINEL'
+      },
+      value => {
+        value.tools.denials = [{ toolName: 'other', code: 'tool-rejected', rawBody: 'RAW_BODY_SECRET_SENTINEL' }]
+      },
+      value => {
+        value.acceptance.rawBody = 'RAW_BODY_SECRET_SENTINEL'
+      },
+      value => {
+        value.recovery = { code: 'unknown', rawBody: 'RAW_BODY_SECRET_SENTINEL' }
+      }
     ]
     for (const inject of injectors) {
-      const bad = pending(); inject(bad)
+      const bad = pending()
+      inject(bad)
       assert.throws(() => attemptDiagnosticsCodec().parse(bad), unknownField, 'C-04: strict codec must reject, not strip unknown raw fields')
       await assert.rejects(() => store.recordIntent(runId, { nodeId: 'work', kind: 'agent', resourceDigests: digests, diagnostics: bad }), unknownField)
       assert.deepEqual(await store.get(runId), clean, 'C-04: invalid intent must not append an Attempt or log')
     }
-    await assert.rejects(() => store.recordIntent(runId, { nodeId: 'work', kind: 'agent', resourceDigests: { worker: hash('different') }, diagnostics: pending() }),
-      error => error?.code === 'ATTEMPT_SETTLED_CONFLICT', 'C-04: diagnostics resource digests must equal the intent')
+    await assert.rejects(
+      () => store.recordIntent(runId, { nodeId: 'work', kind: 'agent', resourceDigests: { worker: hash('different') }, diagnostics: pending() }),
+      error => error?.code === 'ATTEMPT_SETTLED_CONFLICT',
+      'C-04: diagnostics resource digests must equal the intent'
+    )
     assert.deepEqual(await store.get(runId), clean)
     const dispatch = await store.recordIntent(runId, { nodeId: 'work', kind: 'agent', resourceDigests: digests, diagnostics: pending() })
     const beforeResult = await store.get(runId)
     for (const inject of injectors) {
-      const bad = final(); inject(bad)
-      await assert.rejects(() => store.recordResult(runId, dispatch.attemptId, { ok: false, outcome: { kind: 'output-invalid' }, evidence: 'invalid', diagnostics: bad }), unknownField)
+      const bad = final()
+      inject(bad)
+      await assert.rejects(
+        () => store.recordResult(runId, dispatch.attemptId, { ok: false, outcome: { kind: 'output-invalid' }, evidence: 'invalid', diagnostics: bad }),
+        unknownField
+      )
       assert.deepEqual(await store.get(runId), beforeResult, 'C-04: invalid result leaves pending facts and settlement untouched')
     }
     const changes = [
-      value => { value.resourceDigests.worker = hash('different') },
-      value => { value.input.sha256 = hash('different') },
-      value => { value.modelSelection.model = 'silent-model-switch' },
-      value => { value.tools.effectiveNames.push('write_other') },
+      value => {
+        value.resourceDigests.worker = hash('different')
+      },
+      value => {
+        value.input.sha256 = hash('different')
+      },
+      value => {
+        value.modelSelection.model = 'silent-model-switch'
+      },
+      value => {
+        value.tools.effectiveNames.push('write_other')
+      }
     ]
     for (const change of changes) {
-      const bad = final(); change(bad)
-      await assert.rejects(() => store.recordResult(runId, dispatch.attemptId, { ok: false, outcome: { kind: 'output-invalid' }, evidence: 'invalid', diagnostics: bad }),
-        error => error?.code === 'ATTEMPT_SETTLED_CONFLICT', 'C-04: final diagnostics cannot reinterpret captured dispatch facts')
+      const bad = final()
+      change(bad)
+      await assert.rejects(
+        () => store.recordResult(runId, dispatch.attemptId, { ok: false, outcome: { kind: 'output-invalid' }, evidence: 'invalid', diagnostics: bad }),
+        error => error?.code === 'ATTEMPT_SETTLED_CONFLICT',
+        'C-04: final diagnostics cannot reinterpret captured dispatch facts'
+      )
       assert.deepEqual(await store.get(runId), beforeResult)
     }
     await h.close()
@@ -174,10 +221,21 @@ for (const backend of ['json', 'sqlite']) {
       const adapter = backend === 'json' ? await import('@deepseek-ai/dsh-storage-json') : await import('@deepseek-ai/dsh-storage-sqlite')
       await ctx.plugin(adapter, backend === 'json' ? { root: medium(h.runtimeRoot, backend) } : { path: medium(h.runtimeRoot, backend) })
       await ctx.plugin(Domain, { backend })
-      await assert.rejects(() => ctx.storageDomain.open(Domain.defineDomain({ name: 'blueprint_runs', version: 1, layout: 'per-record',
-        tables: { runs: Domain.domainTable(recordsSchema.runs), commands: Domain.domainTable(recordsSchema.commands) } })),
-      error => error?.code === 'invalid-record' && error.detail?.table === 'runs' && error.detail?.key === runId && unknownField(error.cause),
-      'C-04: actual persisted unknown field must be rejected, not silently stripped or quarantined')
-    } finally { await ctx.fiber.dispose() }
+      await assert.rejects(
+        () =>
+          ctx.storageDomain.open(
+            Domain.defineDomain({
+              name: 'blueprint_runs',
+              version: 1,
+              layout: 'per-record',
+              tables: { runs: Domain.domainTable(recordsSchema.runs), commands: Domain.domainTable(recordsSchema.commands) }
+            })
+          ),
+        error => error?.code === 'invalid-record' && error.detail?.table === 'runs' && error.detail?.key === runId && unknownField(error.cause),
+        'C-04: actual persisted unknown field must be rejected, not silently stripped or quarantined'
+      )
+    } finally {
+      await ctx.fiber.dispose()
+    }
   })
 }

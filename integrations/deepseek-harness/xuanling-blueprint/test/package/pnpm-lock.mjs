@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-const quote = name => name.startsWith('@') ? `'${name}'` : name
+const quote = name => (name.startsWith('@') ? `'${name}'` : name)
 const escapeRegExp = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 export function readPnpmLock(packageRoot) {
@@ -15,12 +15,7 @@ export function readPnpmLock(packageRoot) {
  * pnpm's stable importer shape.
  */
 export function hasPnpmImporterDependency(lock, section, name, specifier) {
-  const pattern = new RegExp(
-    `^      ${escapeRegExp(quote(name))}:\\n`
-      + `        specifier: ${escapeRegExp(specifier)}\\n`
-      + `        version:`,
-    'm',
-  )
+  const pattern = new RegExp(`^      ${escapeRegExp(quote(name))}:\\n` + `        specifier: ${escapeRegExp(specifier)}\\n` + `        version:`, 'm')
   const sectionStart = lock.indexOf(`    ${section}:\n`)
   if (sectionStart < 0) return false
   // The importer dependency entries are six-space-indented; package and

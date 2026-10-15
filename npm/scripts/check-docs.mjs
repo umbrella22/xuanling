@@ -12,120 +12,172 @@
 // Exits nonzero on the first category with violations, printing one line per
 // finding.
 
-import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import path from "node:path";
-import process from "node:process";
+import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs'
+import path from 'node:path'
+import process from 'node:process'
 
-const repoRoot = path.resolve(import.meta.dirname, "..", "..");
-const docsDir = path.join(repoRoot, "docs");
+const repoRoot = path.resolve(import.meta.dirname, '..', '..')
+const docsDir = path.join(repoRoot, 'docs')
 
 function fail(message) {
-  console.error(`check-docs: ${message}`);
-  process.exitCode = 1;
+  console.error(`check-docs: ${message}`)
+  process.exitCode = 1
+}
+
+// Historical copies preserve their original bytes, including links that were
+// valid only at their original location. Only exact, digest-verified entries
+// are exempt from live Markdown checks; no directory or glob is exempt.
+function verifiedArchiveFiles() {
+  const manifestPath = path.join(docsDir, 'validation', 'archive-manifest.json')
+  const verified = new Set()
+  let manifest
+  try {
+    lstatSync(manifestPath)
+  } catch (error) {
+    if (error.code === 'ENOENT') return verified
+    fail('invalid archive manifest: unreadable')
+    return verified
+  }
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+    if (!manifest || manifest.schema_version !== 1 || !Array.isArray(manifest.entries) || Object.keys(manifest).sort().join(',') !== 'entries,schema_version')
+      throw new Error('expected schema_version 1 and entries array')
+    const seen = new Set()
+    for (const entry of manifest.entries) {
+      if (
+        !entry ||
+        Object.keys(entry).sort().join(',') !== 'path,reason,sha256' ||
+        typeof entry.path !== 'string' ||
+        !entry.path.startsWith('docs/validation/') ||
+        path.posix.normalize(entry.path) !== entry.path ||
+        !entry.path.endsWith('.md') ||
+        typeof entry.sha256 !== 'string' ||
+        !/^[a-f0-9]{64}$/.test(entry.sha256) ||
+        typeof entry.reason !== 'string' ||
+        entry.reason.trim().length === 0 ||
+        seen.has(entry.path)
+      )
+        throw new Error('invalid or duplicate entry')
+      seen.add(entry.path)
+    }
+  } catch (error) {
+    fail(`invalid archive manifest: ${error.message}`)
+    return verified
+  }
+  for (const entry of manifest.entries) {
+    const file = path.join(repoRoot, entry.path)
+    let bytes
+    try {
+      if (!lstatSync(file).isFile() || realpathSync(file) !== file) {
+        throw new Error('expected a regular file without symlink indirection')
+      }
+      bytes = readFileSync(file)
+    } catch {
+      fail(`${entry.path}: archive file unreadable or not a regular repository file`)
+      continue
+    }
+    if (createHash('sha256').update(bytes).digest('hex') !== entry.sha256) {
+      fail(`${entry.path}: archive digest mismatch`)
+      continue
+    }
+    verified.add(file)
+  }
+  return verified
 }
 
 function trackedMarkdownFiles() {
-  const output = execFileSync("git", ["ls-files", "*.md"], {
+  const output = execFileSync('git', ['ls-files', '-z', '*.md'], {
     cwd: repoRoot,
-    encoding: "utf8",
-  });
+    encoding: 'utf8'
+  })
   return output
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .map((line) => path.join(repoRoot, line))
-    .filter((file) => existsSync(file));
+    .split('\0')
+    .filter(line => line.length > 0)
+    .map(line => path.join(repoRoot, line))
+    .filter(file => existsSync(file))
 }
 
 function untrackedMarkdownFiles() {
-  const output = execFileSync(
-    "git",
-    ["ls-files", "--others", "--exclude-standard", ":(glob)**/*.md"],
-    {
-      cwd: repoRoot,
-      encoding: "utf8",
-    },
-  );
+  const output = execFileSync('git', ['ls-files', '-z', '--others', '--exclude-standard', ':(glob)**/*.md'], {
+    cwd: repoRoot,
+    encoding: 'utf8'
+  })
   return output
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .map((line) => path.join(repoRoot, line));
+    .split('\0')
+    .filter(line => line.length > 0)
+    .map(line => path.join(repoRoot, line))
 }
 
 function docsMarkdownFiles() {
   // docs/ may contain files that are not tracked yet (fresh rebuild), so walk it
   // directly instead of relying on git.
-  const found = [];
-  const walk = (dir) => {
-    for (const entry of execFileSync("ls", [dir], { encoding: "utf8" })
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)) {
-      const full = path.join(dir, entry);
-      if (/\.md$/.test(full)) {
-        found.push(full);
+  const found = []
+  const walk = dir => {
+    for (const entry of execFileSync('ls', [dir], { encoding: 'utf8' })
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0)) {
+      const full = path.join(dir, entry)
+      if (full.endsWith('.md')) {
+        found.push(full)
       }
     }
-  };
+  }
   if (existsSync(docsDir)) {
-    for (const entry of execFileSync("find", [docsDir, "-type", "d"], {
-      encoding: "utf8",
+    for (const entry of execFileSync('find', [docsDir, '-type', 'd'], {
+      encoding: 'utf8'
     })
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)) {
-      walk(entry);
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0)) {
+      walk(entry)
     }
   }
-  return found;
+  return found
 }
 
-const checkedFiles = [
-  ...new Set([
-    ...trackedMarkdownFiles(),
-    ...untrackedMarkdownFiles(),
-    ...docsMarkdownFiles(),
-  ]),
-];
+const checkedFiles = [...new Set([...trackedMarkdownFiles(), ...untrackedMarkdownFiles(), ...docsMarkdownFiles()])]
+const archiveFiles = verifiedArchiveFiles()
 
-const linkPattern = /\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
-const docPathPattern = /docs\/(?:[A-Za-z0-9._-]+\/)*[A-Za-z0-9._-]+\.md/g;
-const placeholderPattern = /\b(?:TODO|TBD|FIXME|XXX)\b/;
-const externalPrefix = /^(?:[a-z][a-z0-9+.-]*:|#)/i;
+const linkPattern = /\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g
+const docPathPattern = /docs\/(?:[A-Za-z0-9._-]+\/)*[A-Za-z0-9._-]+\.md/g
+const placeholderPattern = /\b(?:TODO|TBD|FIXME|XXX)\b/
+const externalPrefix = /^(?:[a-z][a-z0-9+.-]*:|#)/i
 
 for (const file of checkedFiles) {
-  const relative = path.relative(repoRoot, file);
-  const isFixtureInput = relative.split(path.sep).includes("fixtures");
-  let text;
+  if (archiveFiles.has(file)) continue
+  const relative = path.relative(repoRoot, file)
+  const isFixtureInput = relative.split(path.sep).includes('fixtures')
+  let text
   try {
-    text = readFileSync(file, "utf8");
+    text = readFileSync(file, 'utf8')
   } catch {
-    fail(`${relative}: unreadable`);
-    continue;
+    fail(`${relative}: unreadable`)
+    continue
   }
 
   // 1. Relative markdown links must resolve.
   for (const match of text.matchAll(linkPattern)) {
-    const target = match[1];
+    const target = match[1]
     if (externalPrefix.test(target)) {
-      continue;
+      continue
     }
-    const withoutAnchor = target.split("#")[0];
+    const withoutAnchor = target.split('#')[0]
     if (withoutAnchor.length === 0) {
-      continue;
+      continue
     }
-    const resolved = path.resolve(path.dirname(file), withoutAnchor);
+    const resolved = path.resolve(path.dirname(file), withoutAnchor)
     if (!existsSync(resolved)) {
-      fail(`${relative}: broken link -> ${target}`);
+      fail(`${relative}: broken link -> ${target}`)
     }
   }
 
   // 2. Balanced code fences.
-  const fenceCount = (text.match(/^```/gm) ?? []).length;
+  const fenceCount = (text.match(/^```/gm) ?? []).length
   if (fenceCount % 2 !== 0) {
-    fail(`${relative}: unbalanced code fences (${fenceCount})`);
+    fail(`${relative}: unbalanced code fences (${fenceCount})`)
   }
 
   // 5. Table structure (plan W7.5, C-12): outside code fences, every table
@@ -133,62 +185,56 @@ for (const file of checkedFiles) {
   // number of unescaped-pipe columns, and every body row in the block must
   // match too. An unescaped `|` inside a cell (e.g. a code span) inflates the
   // row's column count; a cell pipe must be escaped as `\|`.
-  const lines = text.split("\n");
-  let inFence = false;
-  const columnCount = (line) => {
-    const pipes = (line.match(/(?<!\\)\|/g) ?? []).length;
-    return pipes === 0 ? 0 : pipes + 1;
-  };
-  const isDelimiterRow = (line) => {
+  const lines = text.split('\n')
+  let inFence = false
+  const columnCount = line => {
+    const pipes = (line.match(/(?<!\\)\|/g) ?? []).length
+    return pipes === 0 ? 0 : pipes + 1
+  }
+  const isDelimiterRow = line => {
     // Only rows that contain a pipe can delimit a table here — a bare `---`
     // line is a setext underline or horizontal rule, not a table delimiter.
-    if (!line.includes("|") || !line.includes("-")) {
-      return false;
+    if (!line.includes('|') || !line.includes('-')) {
+      return false
     }
-    let cells = line.trim();
-    if (cells.startsWith("|")) cells = cells.slice(1);
-    if (cells.endsWith("|")) cells = cells.slice(0, -1);
+    let cells = line.trim()
+    if (cells.startsWith('|')) cells = cells.slice(1)
+    if (cells.endsWith('|')) cells = cells.slice(0, -1)
     return cells
-      .split("|")
-      .map((cell) => cell.trim())
-      .every((cell) => /^:?-{1,}:?$/.test(cell));
-  };
+      .split('|')
+      .map(cell => cell.trim())
+      .every(cell => /^:?-{1,}:?$/.test(cell))
+  }
   for (let index = 0; index < lines.length; index += 1) {
     if (/^\s*```/.test(lines[index])) {
-      inFence = !inFence;
-      continue;
+      inFence = !inFence
+      continue
     }
     if (inFence || columnCount(lines[index]) === 0) {
-      continue;
+      continue
     }
     if (index + 1 >= lines.length || !isDelimiterRow(lines[index + 1])) {
-      continue;
+      continue
     }
-    const headerColumns = columnCount(lines[index]);
-    const delimiterColumns = columnCount(lines[index + 1]);
+    const headerColumns = columnCount(lines[index])
+    const delimiterColumns = columnCount(lines[index + 1])
     if (delimiterColumns !== headerColumns) {
-      fail(
-        `${relative}:${index + 1}: table delimiter has ${delimiterColumns} columns, ` +
-          `header has ${headerColumns}`,
-      );
+      fail(`${relative}:${index + 1}: table delimiter has ${delimiterColumns} columns, ` + `header has ${headerColumns}`)
     }
-    let row = index + 2;
+    let row = index + 2
     while (row < lines.length && columnCount(lines[row]) > 0) {
-      const columns = columnCount(lines[row]);
+      const columns = columnCount(lines[row])
       if (columns !== headerColumns) {
-        fail(
-          `${relative}:${row + 1}: table row has ${columns} columns, ` +
-            `header has ${headerColumns}`,
-        );
+        fail(`${relative}:${row + 1}: table row has ${columns} columns, ` + `header has ${headerColumns}`)
       }
-      row += 1;
+      row += 1
     }
-    index = row - 1;
+    index = row - 1
   }
 
   // 3. No placeholders inside docs/.
   if (file.startsWith(docsDir) && placeholderPattern.test(text)) {
-    fail(`${relative}: contains a TODO/TBD/FIXME/XXX placeholder`);
+    fail(`${relative}: contains a TODO/TBD/FIXME/XXX placeholder`)
   }
 
   // 4. Any docs/<...>.md path referenced outside test fixtures must exist in
@@ -196,18 +242,18 @@ for (const file of checkedFiles) {
   // relative to the fixture root rather than this repository root.
   if (!isFixtureInput) {
     for (const match of text.matchAll(docPathPattern)) {
-      const referenced = path.join(repoRoot, match[0]);
+      const referenced = path.join(repoRoot, match[0])
       if (!existsSync(referenced)) {
-        fail(`${relative}: references missing doc path ${match[0]}`);
+        fail(`${relative}: references missing doc path ${match[0]}`)
       }
     }
   }
 }
 
 if (process.exitCode) {
-  console.error("check-docs: FAILED");
+  console.error('check-docs: FAILED')
 } else {
   console.log(
-    `check-docs: OK (${checkedFiles.length} markdown files checked)`,
-  );
+    `check-docs: OK (${checkedFiles.length - archiveFiles.size} live markdown files checked; ` + `${archiveFiles.size} immutable evidence files verified)`
+  )
 }

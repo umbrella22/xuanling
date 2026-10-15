@@ -61,7 +61,11 @@ export class ResourceAmbiguousError extends Error {
 /** Resolve one blueprint resource reference to its local source. Shared
  * skills match the ref's source.path (skill name) inside the mapped root;
  * same-name skills in other roots never influence the result. */
-export async function resolveResource(refId: string, ref: { kind: string; path?: string; source?: { kind: 'shared'; rootId: string; path: string }; bindingId?: string }, ctx: ResolveContext): Promise<ResourceResolution> {
+export async function resolveResource(
+  refId: string,
+  ref: { kind: string; path?: string; source?: { kind: 'shared'; rootId: string; path: string }; bindingId?: string },
+  ctx: ResolveContext
+): Promise<ResourceResolution> {
   if (ref.kind === 'mcp') {
     if (typeof ref.bindingId !== 'string' || ref.bindingId.length === 0) {
       throw new ResourceUnavailableError(refId, 'mcp resource has no bindingId')

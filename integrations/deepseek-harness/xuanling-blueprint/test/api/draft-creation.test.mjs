@@ -13,10 +13,18 @@ import { BLUEPRINT_INVOCATIONS } from '../../src/typert-descriptors.ts'
 async function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), 'bp-create-'))
   const fibers = []
-  t.after(async () => { for (const ctx of fibers) await ctx.fiber.dispose(); rmSync(root, { recursive: true, force: true }) })
+  t.after(async () => {
+    for (const ctx of fibers) await ctx.fiber.dispose()
+    rmSync(root, { recursive: true, force: true })
+  })
   async function open() {
-    const ctx = new Context(); ctx.baseUrl = pathToFileURL(`${root}/`).href
-    ctx.provide('systemPrompt', { tools() { return () => {} } })
+    const ctx = new Context()
+    ctx.baseUrl = pathToFileURL(`${root}/`).href
+    ctx.provide('systemPrompt', {
+      tools() {
+        return () => {}
+      }
+    })
     new ToolRuntime(ctx, { mode: 'native' })
     await ctx.plugin(BlueprintService, {})
     fibers.push(ctx)
@@ -32,7 +40,7 @@ async function fixture(t) {
     saveDefinition: (blueprintId, definitionJson, expectedRevision) => service.saveDefinition({ blueprintId, definitionJson, expectedRevision }),
     validate: definitionJson => service.validate({ definitionJson }),
     preflightRun: (blueprintId, expectedRevision, inputJson) => service.preflightRun({ blueprintId, expectedRevision, inputJson }),
-    exportDefinition: blueprintId => service.exportDefinition({ blueprintId }),
+    exportDefinition: blueprintId => service.exportDefinition({ blueprintId })
   })
   return { root, host, open, storage, link, workspace: new BlueprintWorkspace(link(host), storage) }
 }
@@ -42,7 +50,8 @@ function addGraph(workspace) {
 }
 
 test('empty library opens editable draft; first save and host restart preserve the new document without running', async t => {
-  const f = await fixture(t), w = f.workspace
+  const f = await fixture(t),
+    w = f.workspace
   await w.initialize()
   assert.ok(w.definition, 'empty library must open a draft')
   assert.equal(w.isNewDraft, true)
@@ -70,7 +79,9 @@ test('create retries are idempotent; conflicting content and browser locators ar
   assert.deepEqual(a, b)
   assert.deepEqual(await (await f.open()).createDefinition(args), a)
   assert.equal((await f.host.listDefinitions()).definitions.length, 1)
-  await assert.rejects(f.host.createDefinition({ ...args, definitionJson: JSON.stringify({ ...definition, name: 'conflict' }) }), { code: 'blueprint/revision-conflict' })
+  await assert.rejects(f.host.createDefinition({ ...args, definitionJson: JSON.stringify({ ...definition, name: 'conflict' }) }), {
+    code: 'blueprint/revision-conflict'
+  })
   const descriptor = BLUEPRINT_INVOCATIONS.find(item => item.method === 'createDefinition')
   assert.equal(descriptor.parameters[0].codec.create().safeParse({ ...args, rootDir: '/tmp/escape' }).success, false)
   await assert.rejects(f.host.createDefinition({ ...args, rootDir: '/tmp/escape' }), { code: 'gateway/bad-request' })
@@ -78,24 +89,48 @@ test('create retries are idempotent; conflicting content and browser locators ar
 })
 
 test('lost create response retries the same draft; later edits and navigation survive delayed replies', async t => {
-  const f = await fixture(t), w = f.workspace
-  await w.initialize(); assert.ok(w.definition, 'new draft exists'); addGraph(w)
+  const f = await fixture(t),
+    w = f.workspace
+  await w.initialize()
+  assert.ok(w.definition, 'new draft exists')
+  addGraph(w)
   const create = w.host.createDefinition
-  w.host.createDefinition = async (...args) => { await create(...args); throw new Error('lost response') }
+  w.host.createDefinition = async (...args) => {
+    await create(...args)
+    throw new Error('lost response')
+  }
   await assert.rejects(w.save(), /lost response/)
-  w.editor.addNode({ kind: 'condition', label: 'condition', x: 150, y: 100, inputs: { value: 'boolean' }, outputs: {}, definition: { id: 'condition', kind: 'condition', branches: ['yes', 'no'], condition: { inputPort: 'value', trueBranch: 'yes', falseBranch: 'no' } } })
+  w.editor.addNode({
+    kind: 'condition',
+    label: 'condition',
+    x: 150,
+    y: 100,
+    inputs: { value: 'boolean' },
+    outputs: {},
+    definition: { id: 'condition', kind: 'condition', branches: ['yes', 'no'], condition: { inputPort: 'value', trueBranch: 'yes', falseBranch: 'no' } }
+  })
   w.host.createDefinition = create
   await w.save()
   assert.equal(w.editor.nodes.length, 3, 'edits after uncertain creation are retained')
   assert.equal(w.dirty, true)
-  await w.save(); assert.equal(w.dirty, false)
-  w.newDraft(); addGraph(w)
+  await w.save()
+  assert.equal(w.dirty, false)
+  w.newDraft()
+  addGraph(w)
   let release
-  w.host.createDefinition = async (...args) => { const doc = await create(...args); await new Promise(resolve => { release = resolve }); return doc }
+  w.host.createDefinition = async (...args) => {
+    const doc = await create(...args)
+    await new Promise(resolve => {
+      release = resolve
+    })
+    return doc
+  }
   const pending = w.save()
   while (!release) await new Promise(resolve => setImmediate(resolve))
-  w.newDraft(); const next = w.blueprintId
-  release(); await assert.rejects(pending, /Document changed/)
+  w.newDraft()
+  const next = w.blueprintId
+  release()
+  await assert.rejects(pending, /Document changed/)
   assert.equal(w.blueprintId, next)
   assert.equal(w.editor.nodes.length, 0)
 })
@@ -103,16 +138,23 @@ test('lost create response retries the same draft; later edits and navigation su
 test('managed library never follows a blueprint directory symlink', async t => {
   const f = await fixture(t)
   assert.equal(typeof f.host.createDefinition, 'function')
-  const doc = await f.host.createDefinition({ requestId: 'symlink', definitionJson: JSON.stringify({ schemaVersion: 1, id: 'draft', name: 'Draft', resources: {}, graph: { nodes: [], edges: [] } }) })
+  const doc = await f.host.createDefinition({
+    requestId: 'symlink',
+    definitionJson: JSON.stringify({ schemaVersion: 1, id: 'draft', name: 'Draft', resources: {}, graph: { nodes: [], edges: [] } })
+  })
   const library = join(f.root, 'data/xuanling-blueprint/definitions')
-  const target = join(library, doc.blueprintId), outside = join(f.root, 'outside')
-  rmSync(target, { recursive: true }); mkdirSync(outside); symlinkSync(outside, target)
+  const target = join(library, doc.blueprintId),
+    outside = join(f.root, 'outside')
+  rmSync(target, { recursive: true })
+  mkdirSync(outside)
+  symlinkSync(outside, target)
   await assert.rejects(f.host.saveDefinition({ blueprintId: doc.blueprintId, definitionJson: doc.definitionJson, expectedRevision: null }))
   assert.equal(existsSync(join(outside, 'blueprint.json')), false)
 })
 
 test('rejected missing resources can be corrected and saved without duplicate creation', async t => {
-  const f = await fixture(t), w = f.workspace
+  const f = await fixture(t),
+    w = f.workspace
   await w.initialize()
   w.editor.updateResource('missing', { kind: 'agent', path: 'lib/agents/missing.md' })
   await assert.rejects(w.save(), { code: 'blueprint/definition-invalid' })
@@ -125,15 +167,18 @@ test('rejected missing resources can be corrected and saved without duplicate cr
 })
 
 test('first-save check and export bind the assigned identity and never dispatch a Run', async t => {
-  const f = await fixture(t), w = f.workspace
-  await w.initialize(); addGraph(w)
+  const f = await fixture(t),
+    w = f.workspace
+  await w.initialize()
+  addGraph(w)
   const draftId = w.blueprintId
   const report = await w.checkRun()
   assert.notEqual(report.blueprintId, draftId)
   assert.equal(report.blueprintId, w.blueprintId)
   assert.equal(w.preflight.status, 'current')
   assert.equal(f.host.runtimes.size, 0)
-  w.newDraft(); addGraph(w)
+  w.newDraft()
+  addGraph(w)
   const archive = await w.exportArchive()
   assert.equal(archive.blueprintId, w.blueprintId)
   assert.equal((await f.host.listDefinitions()).definitions.length, 2)

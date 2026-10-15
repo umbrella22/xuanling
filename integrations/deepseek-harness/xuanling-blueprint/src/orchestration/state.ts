@@ -24,7 +24,7 @@ const ALLOWED: Record<RunState, readonly RunState[]> = {
   succeeded: [],
   failed: [],
   cancelled: [],
-  timed_out: [],
+  timed_out: []
 }
 
 export function canTransitionRun(from: RunState, to: RunState): boolean {

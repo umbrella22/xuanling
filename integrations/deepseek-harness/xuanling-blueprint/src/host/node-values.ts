@@ -1,10 +1,19 @@
 import type { GraphNode } from '../definition/types.ts'
 
 /** Wire failures are producer-owned static codes, never a raw thrown message. */
-type NodeValueErrorCode = 'condition-input-invalid' | 'input-missing' | 'input-invalid'
-  | 'binding-missing' | 'binding-unavailable' | 'binding-invalid' | 'output-missing' | 'output-invalid'
+type NodeValueErrorCode =
+  | 'condition-input-invalid'
+  | 'input-missing'
+  | 'input-invalid'
+  | 'binding-missing'
+  | 'binding-unavailable'
+  | 'binding-invalid'
+  | 'output-missing'
+  | 'output-invalid'
 export class NodeValueError extends Error {
-  constructor(readonly code: NodeValueErrorCode) { super(code) }
+  constructor(readonly code: NodeValueErrorCode) {
+    super(code)
+  }
 }
 
 function isJsonValue(value: unknown): boolean {
@@ -28,10 +37,16 @@ function hasInputPort(input: unknown, port: string): input is Record<string, unk
 export function validateNodeInputs(node: GraphNode, input: unknown, omitted: Set<string>): void {
   if (node.kind === 'condition') {
     const config = node.condition
-    if (config === undefined || node.inputs?.[config.inputPort] !== 'boolean'
-      || config.trueBranch === config.falseBranch || !node.branches?.includes(config.trueBranch)
-      || !node.branches.includes(config.falseBranch) || !hasInputPort(input, config.inputPort)
-      || typeof input[config.inputPort] !== 'boolean') throw new NodeValueError('condition-input-invalid')
+    if (
+      config === undefined ||
+      node.inputs?.[config.inputPort] !== 'boolean' ||
+      config.trueBranch === config.falseBranch ||
+      !node.branches?.includes(config.trueBranch) ||
+      !node.branches.includes(config.falseBranch) ||
+      !hasInputPort(input, config.inputPort) ||
+      typeof input[config.inputPort] !== 'boolean'
+    )
+      throw new NodeValueError('condition-input-invalid')
   }
   for (const [port, type] of Object.entries(node.inputs ?? {})) {
     if (node.kind === 'join' && omitted.has(port)) continue

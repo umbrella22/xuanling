@@ -78,7 +78,7 @@ export function createBackup(runtimeRoot: string, options: { createdAt?: string 
   const files = new Map<string, Buffer>()
   collectTree(store, 'store/', files)
   const manifestFiles: Record<string, string> = {}
-  for (const [path, bytes] of [...files.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) {
+  for (const [path, bytes] of [...files.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
     manifestFiles[path] = sha256(bytes)
   }
   const manifest: BackupManifest = {
@@ -86,7 +86,7 @@ export function createBackup(runtimeRoot: string, options: { createdAt?: string 
     formatVersion: BACKUP_FORMAT_VERSION,
     createdAt: options.createdAt ?? new Date().toISOString(),
     sourceRoot: root,
-    files: manifestFiles,
+    files: manifestFiles
   }
   const entries = [...files.entries()].map(([name, data]) => ({ name, data }))
   entries.push({ name: 'backup.json', data: Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`) })

@@ -21,13 +21,13 @@ async function fixture(t, { members, taskRevision } = {}) {
     { scope: 'teamstage', requestId: `w2-7-3-${fixtureNumber++}`, payloadFingerprint: digest(root) },
     'revision-1',
     '{}',
-    '{}',
+    '{}'
   )
   await store.bindTeamStage(runId, {
     stageId: 'stage-owned',
     teamId: 'team-owned',
     leadSessionId: 'lead-session',
-    taskSpecificationFingerprint: digest('task-owned'),
+    taskSpecificationFingerprint: digest('task-owned')
   })
   await store.updateTeamStage(runId, { members })
   if (taskRevision !== undefined) await store.bindTeamTask(runId, { taskId: 'task-owned', taskRevision })
@@ -56,18 +56,32 @@ async function persistentFixture(t, backend) {
     await close()
     await open()
   }
-  t.after(async () => { await close(); await rm(root, { recursive: true, force: true }) })
+  t.after(async () => {
+    await close()
+    await rm(root, { recursive: true, force: true })
+  })
   await open()
   const { runId } = await store.createRun(
     { scope: 'teamstage', requestId: `w2-7-3-reopen-${backend}`, payloadFingerprint: digest(root) },
-    'revision-1', '{}', '{}',
+    'revision-1',
+    '{}',
+    '{}'
   )
   await store.bindTeamStage(runId, {
-    stageId: 'stage-owned', teamId: 'team-owned', leadSessionId: 'lead-session', taskSpecificationFingerprint: digest('task-owned'),
+    stageId: 'stage-owned',
+    teamId: 'team-owned',
+    leadSessionId: 'lead-session',
+    taskSpecificationFingerprint: digest('task-owned')
   })
   await store.updateTeamStage(runId, { members: [member('owned-a', 'child-a', 'inactive')] })
   await store.bindTeamTask(runId, { taskId: 'task-owned', taskRevision: 7 })
-  return { get store() { return store }, runId, reopen }
+  return {
+    get store() {
+      return store
+    },
+    runId,
+    reopen
+  }
 }
 
 const member = (name, sessionId, status = 'inactive') => ({
@@ -75,12 +89,12 @@ const member = (name, sessionId, status = 'inactive') => ({
   name,
   sessionId,
   phase: 'active',
-  status,
+  status
 })
 
 test('W2.7.3 empty memberNames derives the complete canonical owned set', async t => {
   const { store, runId } = await fixture(t, {
-    members: [member('owned-a', 'child-a'), member('owned-b', 'child-b')],
+    members: [member('owned-a', 'child-a'), member('owned-b', 'child-b')]
   })
   const interrupted = []
   const drained = []
@@ -89,11 +103,17 @@ test('W2.7.3 empty memberNames derives the complete canonical owned set', async 
     store,
     runId,
     adapter: {
-      interrupt: (_lead, name) => { interrupted.push(name); return { previousStatus: 'inactive' } },
-      drainChildren: (_lead, childIds) => { drained.push([...childIds]); return undefined },
+      interrupt: (_lead, name) => {
+        interrupted.push(name)
+        return { previousStatus: 'inactive' }
+      },
+      drainChildren: (_lead, childIds) => {
+        drained.push([...childIds])
+        return undefined
+      }
     },
     lead,
-    memberNames: [],
+    memberNames: []
   })
 
   assert.deepEqual(interrupted, ['owned-a', 'owned-b'], 'empty public target is only a consistency check')
@@ -104,7 +124,7 @@ test('W2.7.3 empty memberNames derives the complete canonical owned set', async 
 
 test('W2.7.3 a subset memberNames cannot shrink the canonical owned set', async t => {
   const { store, runId } = await fixture(t, {
-    members: [member('owned-a', 'child-a'), member('owned-b', 'child-b')],
+    members: [member('owned-a', 'child-a'), member('owned-b', 'child-b')]
   })
   const interrupted = []
   const drained = []
@@ -113,11 +133,17 @@ test('W2.7.3 a subset memberNames cannot shrink the canonical owned set', async 
     store,
     runId,
     adapter: {
-      interrupt: (_lead, name) => { interrupted.push(name); return { previousStatus: 'inactive' } },
-      drainChildren: (_lead, childIds) => { drained.push([...childIds]); return undefined },
+      interrupt: (_lead, name) => {
+        interrupted.push(name)
+        return { previousStatus: 'inactive' }
+      },
+      drainChildren: (_lead, childIds) => {
+        drained.push([...childIds])
+        return undefined
+      }
     },
     lead,
-    ownedMemberNames: ['owned-a'],
+    ownedMemberNames: ['owned-a']
   })
 
   assert.deepEqual(interrupted, ['owned-a', 'owned-b'], 'subset target is only a consistency check')
@@ -129,7 +155,7 @@ test('W2.7.3 a subset memberNames cannot shrink the canonical owned set', async 
 test('W2.7.3 running child uses targeted drain and does not drain foreign children', async t => {
   const { store, runId } = await fixture(t, {
     members: [member('owned-a', 'child-a', 'running')],
-    taskRevision: 7,
+    taskRevision: 7
   })
   const interrupted = []
   const drained = []
@@ -138,16 +164,19 @@ test('W2.7.3 running child uses targeted drain and does not drain foreign childr
     store,
     runId,
     adapter: {
-      interrupt: (_lead, name) => { interrupted.push(name); return { previousStatus: 'running' } },
+      interrupt: (_lead, name) => {
+        interrupted.push(name)
+        return { previousStatus: 'running' }
+      },
       drainChildren: (_lead, childIds) => {
         drained.push([...childIds])
         assert.deepEqual(childIds, ['child-a'])
         return undefined
       },
-      updateTask: (_lead, request) => ({ id: request.taskId, revision: request.expectedRevision + 1, status: 'deleted' }),
+      updateTask: (_lead, request) => ({ id: request.taskId, revision: request.expectedRevision + 1, status: 'deleted' })
     },
     lead,
-    memberNames: ['owned-a'],
+    memberNames: ['owned-a']
   })
 
   assert.deepEqual(interrupted, ['owned-a'])
@@ -159,7 +188,7 @@ test('W2.7.3 running child uses targeted drain and does not drain foreign childr
 test('W2.7.3 Lead deletes the canonical task by expected-revision CAS', async t => {
   const { store, runId } = await fixture(t, {
     members: [member('owned-a', 'child-a')],
-    taskRevision: 7,
+    taskRevision: 7
   })
   const taskUpdates = []
   const unrelatedTask = { id: 'task-unrelated', revision: 19, status: 'in_progress' }
@@ -172,10 +201,10 @@ test('W2.7.3 Lead deletes the canonical task by expected-revision CAS', async t 
       updateTask: (_lead, request) => {
         taskUpdates.push({ ...request })
         return { id: request.taskId, revision: request.expectedRevision + 1, status: 'deleted' }
-      },
+      }
     },
     lead,
-    memberNames: ['owned-a'],
+    memberNames: ['owned-a']
   })
 
   assert.deepEqual(taskUpdates, [{ taskId: 'task-owned', expectedRevision: 7, action: 'delete' }])
@@ -185,7 +214,7 @@ test('W2.7.3 Lead deletes the canonical task by expected-revision CAS', async t 
 
 test('W2.7.3 unknown targeted drain settles recovery and never replays', async t => {
   const { store, runId } = await fixture(t, {
-    members: [member('owned-a', 'child-a')],
+    members: [member('owned-a', 'child-a')]
   })
   let drainCalls = 0
   let interruptCalls = 0
@@ -193,14 +222,17 @@ test('W2.7.3 unknown targeted drain settles recovery and never replays', async t
     store,
     runId,
     adapter: {
-      interrupt: () => { interruptCalls++; return { previousStatus: 'inactive' } },
+      interrupt: () => {
+        interruptCalls++
+        return { previousStatus: 'inactive' }
+      },
       drainChildren: () => {
         drainCalls++
         throw new TeamEffectUnknownError()
-      },
+      }
     },
     lead,
-    memberNames: ['owned-a'],
+    memberNames: ['owned-a']
   })
 
   assert.equal(interruptCalls, 1)
@@ -216,19 +248,31 @@ for (const backend of ['json', 'sqlite']) {
     await h.store.requestCancel(h.runId)
 
     const drain = {
-      runId: h.runId, stageId: 'stage-owned', teamId: 'team-owned', effectId: 'cancel-drain:stage-owned',
-      kind: 'drain', actorSessionId: 'lead-session',
+      runId: h.runId,
+      stageId: 'stage-owned',
+      teamId: 'team-owned',
+      effectId: 'cancel-drain:stage-owned',
+      kind: 'drain',
+      actorSessionId: 'lead-session'
     }
     await recordTeamEffectIntent(h.store, drain)
     await recordTeamEffectResult(h.store, drain, { ok: true, status: 'drained' })
 
     const taskDelete = {
-      runId: h.runId, stageId: 'stage-owned', teamId: 'team-owned', effectId: 'cancel-task-delete:task-owned:7',
-      kind: 'task-delete', actorSessionId: 'lead-session', taskId: 'task-owned',
+      runId: h.runId,
+      stageId: 'stage-owned',
+      teamId: 'team-owned',
+      effectId: 'cancel-task-delete:task-owned:7',
+      kind: 'task-delete',
+      actorSessionId: 'lead-session',
+      taskId: 'task-owned'
     }
     await recordTeamEffectIntent(h.store, taskDelete)
     await recordTeamEffectResult(h.store, taskDelete, {
-      ok: true, taskId: 'task-owned', taskRevision: 8, status: 'deleted',
+      ok: true,
+      taskId: 'task-owned',
+      taskRevision: 8,
+      status: 'deleted'
     })
 
     await h.reopen()
@@ -239,12 +283,20 @@ for (const backend of ['json', 'sqlite']) {
       store: h.store,
       runId: h.runId,
       adapter: {
-        interrupt: () => { interrupts++; return { previousStatus: 'inactive' } },
-        drainChildren: () => { drains++; },
-        updateTask: () => { taskDeletes++; throw new Error('succeeded task-delete must not replay') },
+        interrupt: () => {
+          interrupts++
+          return { previousStatus: 'inactive' }
+        },
+        drainChildren: () => {
+          drains++
+        },
+        updateTask: () => {
+          taskDeletes++
+          throw new Error('succeeded task-delete must not replay')
+        }
       },
       lead,
-      memberNames: [],
+      memberNames: []
     })
 
     assert.equal(result.teamStage.state, 'cancelled')
@@ -260,7 +312,7 @@ for (const [label, response] of [
   ['wrong-id', request => ({ id: 'foreign-task', revision: request.expectedRevision + 1, status: 'deleted' })],
   ['wrong-revision', request => ({ id: request.taskId, revision: request.expectedRevision + 2, status: 'deleted' })],
   ['wrong-status', request => ({ id: request.taskId, revision: request.expectedRevision + 1, status: 'completed' })],
-  ['malformed', () => null],
+  ['malformed', () => null]
 ]) {
   test(`W2.7.3 task delete ${label} enters recovery without accepting a false tombstone`, async t => {
     const { store, runId } = await fixture(t, { members: [member('owned-a', 'child-a')], taskRevision: 7 })
@@ -270,10 +322,13 @@ for (const [label, response] of [
       runId,
       adapter: {
         interrupt: () => ({ previousStatus: 'inactive' }),
-        updateTask: (_lead, request) => { calls++; return response(request) },
+        updateTask: (_lead, request) => {
+          calls++
+          return response(request)
+        }
       },
       lead,
-      memberNames: ['owned-a'],
+      memberNames: ['owned-a']
     })
     assert.equal(calls, 1)
     assert.equal(result.teamStage.state, 'recovery_required')

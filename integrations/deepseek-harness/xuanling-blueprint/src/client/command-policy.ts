@@ -2,18 +2,67 @@ import { isEditingTarget } from './workspace.ts'
 
 /** Intent only: the panel owns dispatch, clipboard, history and Host admission. */
 export type CanvasCommand =
-  | 'copy' | 'cut' | 'paste' | 'paste-with-incoming' | 'select-all' | 'delete'
-  | 'undo' | 'redo' | 'group' | 'save' | 'open' | 'fit-view' | 'fit-selection'
-  | 'toggle-pin' | 'toggle-collapse' | 'move-left' | 'move-right' | 'move-up' | 'move-down'
-  | 'zoom-in' | 'zoom-out' | 'toggle-minimap' | 'search' | 'run' | 'cancel'
-  | 'pan-start' | 'clear-selection' | 'rename' | 'ungroup' | 'disconnect' | 'reroute'
-  | 'lock-canvas' | 'unlock-canvas' | 'refresh-definitions'
-  | 'align-left' | 'align-right' | 'align-top' | 'align-bottom' | 'align-center-x' | 'align-center-y'
-  | 'distribute-x' | 'distribute-y' | 'color-default' | 'color-blue' | 'color-green' | 'color-amber' | 'color-red' | 'color-purple'
+  | 'copy'
+  | 'cut'
+  | 'paste'
+  | 'paste-with-incoming'
+  | 'select-all'
+  | 'delete'
+  | 'undo'
+  | 'redo'
+  | 'group'
+  | 'save'
+  | 'open'
+  | 'fit-view'
+  | 'fit-selection'
+  | 'toggle-pin'
+  | 'toggle-collapse'
+  | 'move-left'
+  | 'move-right'
+  | 'move-up'
+  | 'move-down'
+  | 'zoom-in'
+  | 'zoom-out'
+  | 'toggle-minimap'
+  | 'search'
+  | 'run'
+  | 'cancel'
+  | 'pan-start'
+  | 'clear-selection'
+  | 'rename'
+  | 'ungroup'
+  | 'disconnect'
+  | 'reroute'
+  | 'lock-canvas'
+  | 'unlock-canvas'
+  | 'refresh-definitions'
+  | 'align-left'
+  | 'align-right'
+  | 'align-top'
+  | 'align-bottom'
+  | 'align-center-x'
+  | 'align-center-y'
+  | 'distribute-x'
+  | 'distribute-y'
+  | 'color-default'
+  | 'color-blue'
+  | 'color-green'
+  | 'color-amber'
+  | 'color-red'
+  | 'color-purple'
 export type CommandLabelKey = `command.${CanvasCommand}`
-export type CommandDisabledReason = 'busy' | 'no-definition' | 'canvas-locked' | 'no-selection'
-  | 'no-movable-selection' | 'clipboard-unavailable' | 'history-unavailable' | 'run-unavailable'
-  | 'cancel-unavailable' | 'open-unavailable' | 'refresh-unavailable'
+export type CommandDisabledReason =
+  | 'busy'
+  | 'no-definition'
+  | 'canvas-locked'
+  | 'no-selection'
+  | 'no-movable-selection'
+  | 'clipboard-unavailable'
+  | 'history-unavailable'
+  | 'run-unavailable'
+  | 'cancel-unavailable'
+  | 'open-unavailable'
+  | 'refresh-unavailable'
 
 /** Facts are supplied afresh by the caller; no DOM queries or editor writes. */
 export interface CommandFacts {
@@ -52,18 +101,63 @@ export type ShortcutResult =
   | { kind: 'ignored'; reason: 'repeat'; preventDefault: true }
 
 const graphWrites = new Set<CanvasCommand>([
-  'cut', 'paste', 'paste-with-incoming', 'delete', 'undo', 'redo', 'group', 'toggle-pin',
-  'toggle-collapse', 'move-left', 'move-right', 'move-up', 'move-down', 'rename', 'ungroup', 'disconnect', 'reroute', 'search',
-  'align-left', 'align-right', 'align-top', 'align-bottom', 'align-center-x', 'align-center-y', 'distribute-x', 'distribute-y',
-  'color-default', 'color-blue', 'color-green', 'color-amber', 'color-red', 'color-purple',
+  'cut',
+  'paste',
+  'paste-with-incoming',
+  'delete',
+  'undo',
+  'redo',
+  'group',
+  'toggle-pin',
+  'toggle-collapse',
+  'move-left',
+  'move-right',
+  'move-up',
+  'move-down',
+  'rename',
+  'ungroup',
+  'disconnect',
+  'reroute',
+  'search',
+  'align-left',
+  'align-right',
+  'align-top',
+  'align-bottom',
+  'align-center-x',
+  'align-center-y',
+  'distribute-x',
+  'distribute-y',
+  'color-default',
+  'color-blue',
+  'color-green',
+  'color-amber',
+  'color-red',
+  'color-purple'
 ])
 const noRepeat = new Set<CanvasCommand>([
-  ...[...graphWrites].filter(command => !command.startsWith('move-')), 'copy', 'save', 'open', 'run', 'cancel', 'toggle-minimap', 'pan-start',
-  'lock-canvas', 'unlock-canvas', 'refresh-definitions',
+  ...[...graphWrites].filter(command => !command.startsWith('move-')),
+  'copy',
+  'save',
+  'open',
+  'run',
+  'cancel',
+  'toggle-minimap',
+  'pan-start',
+  'lock-canvas',
+  'unlock-canvas',
+  'refresh-definitions'
 ])
 const viewCommands = new Set<CanvasCommand>([
-  'fit-view', 'fit-selection', 'zoom-in', 'zoom-out', 'toggle-minimap', 'pan-start',
-  'select-all', 'clear-selection', 'lock-canvas', 'unlock-canvas',
+  'fit-view',
+  'fit-selection',
+  'zoom-in',
+  'zoom-out',
+  'toggle-minimap',
+  'pan-start',
+  'select-all',
+  'clear-selection',
+  'lock-canvas',
+  'unlock-canvas'
 ])
 
 export function commandDisabledReason(command: CanvasCommand, facts: CommandFacts): CommandDisabledReason | null {
@@ -72,31 +166,62 @@ export function commandDisabledReason(command: CanvasCommand, facts: CommandFact
   if (facts.canvasLocked && (graphWrites.has(command) || command === 'open')) return 'canvas-locked'
   const selected = facts.selectedNodes + facts.selectedEdges + facts.selectedGroups > 0
   switch (command) {
-    case 'copy': case 'cut': case 'delete': case 'fit-selection':
+    case 'copy':
+    case 'cut':
+    case 'delete':
+    case 'fit-selection':
       return selected ? null : 'no-selection'
-    case 'group': case 'toggle-pin': case 'toggle-collapse':
+    case 'group':
+    case 'toggle-pin':
+    case 'toggle-collapse':
       return facts.selectedNodes > 0 ? null : 'no-selection'
     case 'rename':
       return facts.selectedNodes + facts.selectedGroups === 1 ? null : 'no-selection'
-    case 'ungroup': return facts.selectedGroups > 0 ? null : 'no-selection'
-    case 'disconnect': return facts.selectedEdges + facts.selectedNodes > 0 ? null : 'no-selection'
-    case 'reroute': return facts.selectedEdges > 0 ? null : 'no-selection'
-    case 'align-left': case 'align-right': case 'align-top': case 'align-bottom': case 'align-center-x': case 'align-center-y':
+    case 'ungroup':
+      return facts.selectedGroups > 0 ? null : 'no-selection'
+    case 'disconnect':
+      return facts.selectedEdges + facts.selectedNodes > 0 ? null : 'no-selection'
+    case 'reroute':
+      return facts.selectedEdges > 0 ? null : 'no-selection'
+    case 'align-left':
+    case 'align-right':
+    case 'align-top':
+    case 'align-bottom':
+    case 'align-center-x':
+    case 'align-center-y':
       return facts.selectedNodes < 2 ? 'no-selection' : facts.movableNodes === facts.selectedNodes ? null : 'no-movable-selection'
-    case 'distribute-x': case 'distribute-y':
+    case 'distribute-x':
+    case 'distribute-y':
       return facts.selectedNodes < 3 ? 'no-selection' : facts.movableNodes === facts.selectedNodes ? null : 'no-movable-selection'
-    case 'color-default': case 'color-blue': case 'color-green': case 'color-amber': case 'color-red': case 'color-purple':
+    case 'color-default':
+    case 'color-blue':
+    case 'color-green':
+    case 'color-amber':
+    case 'color-red':
+    case 'color-purple':
       return facts.selectedNodes > 0 ? null : 'no-selection'
-    case 'move-left': case 'move-right': case 'move-up': case 'move-down':
+    case 'move-left':
+    case 'move-right':
+    case 'move-up':
+    case 'move-down':
       return facts.movableNodes > 0 ? null : 'no-movable-selection'
-    case 'paste': case 'paste-with-incoming': return facts.canPaste ? null : 'clipboard-unavailable'
-    case 'undo': return facts.canUndo ? null : 'history-unavailable'
-    case 'redo': return facts.canRedo ? null : 'history-unavailable'
-    case 'run': return facts.canRun ? null : 'run-unavailable'
-    case 'cancel': return facts.canCancel ? null : 'cancel-unavailable'
-    case 'open': return facts.canOpen ? null : 'open-unavailable'
-    case 'refresh-definitions': return facts.canRefreshDefinitions ? null : 'refresh-unavailable'
-    default: return null
+    case 'paste':
+    case 'paste-with-incoming':
+      return facts.canPaste ? null : 'clipboard-unavailable'
+    case 'undo':
+      return facts.canUndo ? null : 'history-unavailable'
+    case 'redo':
+      return facts.canRedo ? null : 'history-unavailable'
+    case 'run':
+      return facts.canRun ? null : 'run-unavailable'
+    case 'cancel':
+      return facts.canCancel ? null : 'cancel-unavailable'
+    case 'open':
+      return facts.canOpen ? null : 'open-unavailable'
+    case 'refresh-definitions':
+      return facts.canRefreshDefinitions ? null : 'refresh-unavailable'
+    default:
+      return null
   }
 }
 
@@ -114,7 +239,15 @@ function shortcutCommand(event: ShortcutEvent): CanvasCommand | null {
       return null
     }
     const commands: Record<string, CanvasCommand> = {
-      c: 'copy', x: 'cut', v: 'paste', a: 'select-all', z: 'undo', y: 'redo', g: 'group', s: 'save', o: 'open',
+      c: 'copy',
+      x: 'cut',
+      v: 'paste',
+      a: 'select-all',
+      z: 'undo',
+      y: 'redo',
+      g: 'group',
+      s: 'save',
+      o: 'open'
     }
     return Object.hasOwn(commands, key) ? commands[key]! : null
   }
@@ -124,16 +257,36 @@ function shortcutCommand(event: ShortcutEvent): CanvasCommand | null {
   }
   if (event.shiftKey) return key === 'f' ? 'fit-selection' : key === '+' ? 'zoom-in' : null
   const commands: Record<string, CanvasCommand> = {
-    delete: 'delete', backspace: 'delete', escape: 'clear-selection', ' ': 'pan-start', tab: 'search',
-    f: 'fit-view', '.': 'fit-view', p: 'toggle-pin', c: 'toggle-collapse', m: 'toggle-minimap',
-    arrowleft: 'move-left', arrowright: 'move-right', arrowup: 'move-up', arrowdown: 'move-down',
-    '+': 'zoom-in', '=': 'zoom-in', '-': 'zoom-out', h: 'lock-canvas', v: 'unlock-canvas', r: 'refresh-definitions',
+    delete: 'delete',
+    backspace: 'delete',
+    escape: 'clear-selection',
+    ' ': 'pan-start',
+    tab: 'search',
+    f: 'fit-view',
+    '.': 'fit-view',
+    p: 'toggle-pin',
+    c: 'toggle-collapse',
+    m: 'toggle-minimap',
+    arrowleft: 'move-left',
+    arrowright: 'move-right',
+    arrowup: 'move-up',
+    arrowdown: 'move-down',
+    '+': 'zoom-in',
+    '=': 'zoom-in',
+    '-': 'zoom-out',
+    h: 'lock-canvas',
+    v: 'unlock-canvas',
+    r: 'refresh-definitions'
   }
   return Object.hasOwn(commands, key) ? commands[key]! : null
 }
 
 export function resolveCanvasShortcut(event: ShortcutEvent, facts: CommandFacts): ShortcutResult {
-  const ignored = (reason: 'editing-target' | 'composition' | 'outside-canvas' | 'handled' | 'unbound'): ShortcutResult => ({ kind: 'ignored', reason, preventDefault: false })
+  const ignored = (reason: 'editing-target' | 'composition' | 'outside-canvas' | 'handled' | 'unbound'): ShortcutResult => ({
+    kind: 'ignored',
+    reason,
+    preventDefault: false
+  })
   if (event.defaultPrevented) return ignored('handled')
   if (event.isComposing || event.keyCode === 229) return ignored('composition')
   if (isEditingTarget(event.target)) return ignored('editing-target')
@@ -154,12 +307,51 @@ export interface ContextCommand {
   disabledReason: CommandDisabledReason | null
 }
 const menuCommands: Record<ContextSurface, readonly CanvasCommand[]> = {
-  canvas: ['search', 'paste', 'paste-with-incoming', 'select-all', 'undo', 'redo', 'group', 'fit-view', 'toggle-minimap', 'lock-canvas', 'unlock-canvas', 'save', 'open', 'refresh-definitions', 'run', 'cancel'],
-  node: ['copy', 'cut', 'delete', 'rename', 'toggle-pin', 'toggle-collapse', 'group', 'fit-selection', 'disconnect',
-    'color-default', 'color-blue', 'color-green', 'color-amber', 'color-red', 'color-purple',
-    'align-left', 'align-right', 'align-top', 'align-bottom', 'align-center-x', 'align-center-y', 'distribute-x', 'distribute-y'],
+  canvas: [
+    'search',
+    'paste',
+    'paste-with-incoming',
+    'select-all',
+    'undo',
+    'redo',
+    'group',
+    'fit-view',
+    'toggle-minimap',
+    'lock-canvas',
+    'unlock-canvas',
+    'save',
+    'open',
+    'refresh-definitions',
+    'run',
+    'cancel'
+  ],
+  node: [
+    'copy',
+    'cut',
+    'delete',
+    'rename',
+    'toggle-pin',
+    'toggle-collapse',
+    'group',
+    'fit-selection',
+    'disconnect',
+    'color-default',
+    'color-blue',
+    'color-green',
+    'color-amber',
+    'color-red',
+    'color-purple',
+    'align-left',
+    'align-right',
+    'align-top',
+    'align-bottom',
+    'align-center-x',
+    'align-center-y',
+    'distribute-x',
+    'distribute-y'
+  ],
   edge: ['delete', 'disconnect', 'reroute'],
-  group: ['copy', 'cut', 'delete', 'rename', 'ungroup', 'fit-selection'],
+  group: ['copy', 'cut', 'delete', 'rename', 'ungroup', 'fit-selection']
 }
 /** Selection facts must describe the menu's target/selection, not a stale selection. */
 export function contextCommands(surface: ContextSurface, facts: CommandFacts): ContextCommand[] {

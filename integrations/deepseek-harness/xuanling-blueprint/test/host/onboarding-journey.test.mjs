@@ -6,12 +6,14 @@ import { dismissOnboardingDialogs } from '../../../../../test/blueprint/capabili
 
 const copy = {
   en: { preview: 'Preview Notice', next: 'Continue', keyless: 'Add an API key to get started', later: 'Configure later', save: 'Save and continue' },
-  zh: { preview: '预览版说明', next: '继续', keyless: '添加一个 API Key 开始使用', later: '稍后配置', save: '保存并继续' },
+  zh: { preview: '预览版说明', next: '继续', keyless: '添加一个 API Key 开始使用', later: '稍后配置', save: '保存并继续' }
 }
 
 function deferred() {
   let resolve
-  const promise = new Promise(r => { resolve = r })
+  const promise = new Promise(r => {
+    resolve = r
+  })
   return { promise, resolve }
 }
 
@@ -30,18 +32,24 @@ function fixture(locale = 'en', start = 'preview', options = {}) {
   const keyless = modal(text.keyless, [text.later, text.save])
   let dialogs = options.dialogs ?? (start === 'preview' ? [preview] : start === 'keyless' ? [keyless] : [])
   const bodyButtons = (options.bodyButtons ?? []).map(name => ({ role: 'button', name, visible: true }))
-  const clicks = [], waits = [], attemptedClicks = [], observers = []
-  const matches = (element, role, opts) => element.visible && element.role === role
-    && (opts.name === undefined || (opts.exact ? element.name === opts.name : element.name.includes(opts.name)))
+  const clicks = [],
+    waits = [],
+    attemptedClicks = [],
+    observers = []
+  const matches = (element, role, opts) =>
+    element.visible && element.role === role && (opts.name === undefined || (opts.exact ? element.name === opts.name : element.name.includes(opts.name)))
   const visible = elements => elements.filter(element => element.visible)
   const single = (elements, method) => {
     if (elements.length !== 1) throw new Error(`locator.${method}: expected one matching element, found ${elements.length}`)
     return elements[0]
   }
-  const satisfied = wait => wait.state === 'hidden' ? visible(wait.query()).length === 0 : visible(wait.query()).length > 0
+  const satisfied = wait => (wait.state === 'hidden' ? visible(wait.query()).length === 0 : visible(wait.query()).length > 0)
   const notify = () => {
     for (const wait of waits) {
-      if (!wait.settled && satisfied(wait)) { wait.settled = true; wait.resolve() }
+      if (!wait.settled && satisfied(wait)) {
+        wait.settled = true
+        wait.resolve()
+      }
     }
     for (const observer of observers) {
       const wait = waits.find(observer.predicate)
@@ -55,13 +63,21 @@ function fixture(locale = 'en', start = 'preview', options = {}) {
         return query().length
       },
       first: () => locator(() => query().slice(0, 1), description),
-      async isVisible() { return visible(query()).length > 0 },
+      async isVisible() {
+        return visible(query()).length > 0
+      },
       async getAttribute(name) {
         assert.equal(name, 'aria-label', 'fixture follows actual DSH Modal accessible title')
         return single(query(), 'getAttribute').name
       },
       getByRole(role, opts) {
-        return locator(() => query().flatMap(dialog => dialog.buttons ?? []).filter(element => matches(element, role, opts)), { role, ...opts, parent: description })
+        return locator(
+          () =>
+            query()
+              .flatMap(dialog => dialog.buttons ?? [])
+              .filter(element => matches(element, role, opts)),
+          { role, ...opts, parent: description }
+        )
       },
       async click(opts) {
         attemptedClicks.push(description)
@@ -84,7 +100,7 @@ function fixture(locale = 'en', start = 'preview', options = {}) {
         waits.push(wait)
         notify()
         return gate.promise
-      },
+      }
     }
   }
   const page = {
@@ -93,21 +109,37 @@ function fixture(locale = 'en', start = 'preview', options = {}) {
       return locator(() => visible(dialogs), { selector })
     },
     getByRole(role, opts) {
-      return locator(() => [...dialogs, ...dialogs.flatMap(dialog => dialog.buttons), ...bodyButtons].filter(element => matches(element, role, opts)), { role, ...opts })
+      return locator(() => [...dialogs, ...dialogs.flatMap(dialog => dialog.buttons), ...bodyButtons].filter(element => matches(element, role, opts)), {
+        role,
+        ...opts
+      })
     },
-    evaluate() { throw new Error('fixture: DOM evaluation is forbidden') },
-    waitForTimeout() { throw new Error('fixture: sleep is forbidden') },
+    evaluate() {
+      throw new Error('fixture: DOM evaluation is forbidden')
+    },
+    waitForTimeout() {
+      throw new Error('fixture: sleep is forbidden')
+    }
   }
   const api = {
-    page, text, preview, keyless, clicks, waits, attemptedClicks,
-    setDialogs(value) { dialogs = value; notify() },
+    page,
+    text,
+    preview,
+    keyless,
+    clicks,
+    waits,
+    attemptedClicks,
+    setDialogs(value) {
+      dialogs = value
+      notify()
+    },
     visibleTitles: () => visible(dialogs).map(dialog => dialog.name),
     whenWait(predicate) {
       const gate = deferred()
       observers.push({ predicate, ...gate })
       notify()
       return gate.promise
-    },
+    }
   }
   return api
 }
@@ -117,13 +149,22 @@ for (const locale of ['en', 'zh']) {
     const f = fixture(locale)
     await dismissOnboardingDialogs(f.page)
     assert.deepEqual(f.visibleTitles(), [], 'TARGET: keyless API onboarding must be dismissed, not left blocking pointer input')
-    assert.deepEqual(f.clicks.map(click => [click.dialog, click.name]), [[f.text.preview, f.text.next], [f.text.keyless, f.text.later]])
+    assert.deepEqual(
+      f.clicks.map(click => [click.dialog, click.name]),
+      [
+        [f.text.preview, f.text.next],
+        [f.text.keyless, f.text.later]
+      ]
+    )
   })
   test(`TARGET: ${locale} already-visible keyless API dialog uses Configure later`, async () => {
     const f = fixture(locale, 'keyless')
     await dismissOnboardingDialogs(f.page)
     assert.deepEqual(f.visibleTitles(), [], 'TARGET: Configure later / 稍后配置 must settle the already-visible keyless API dialog')
-    assert.deepEqual(f.clicks.map(click => [click.dialog, click.name]), [[f.text.keyless, f.text.later]])
+    assert.deepEqual(
+      f.clicks.map(click => [click.dialog, click.name]),
+      [[f.text.keyless, f.text.later]]
+    )
   })
 }
 
@@ -145,7 +186,13 @@ test('CONTROL: real pointer hit-testing error propagates without force or fallba
 test('CONTROL: only the recognized dialog action is clicked, never an unrelated body Continue', async () => {
   const f = fixture('en', 'preview', { bodyButtons: ['Continue', 'Configure later', 'Got it'] })
   await dismissOnboardingDialogs(f.page)
-  assert.deepEqual(f.clicks.map(click => [click.dialog, click.name]), [[f.text.preview, f.text.next], [f.text.keyless, f.text.later]])
+  assert.deepEqual(
+    f.clicks.map(click => [click.dialog, click.name]),
+    [
+      [f.text.preview, f.text.next],
+      [f.text.keyless, f.text.later]
+    ]
+  )
   assert.deepEqual(f.visibleTitles(), [])
 })
 
@@ -168,7 +215,10 @@ test('CONTROL: hidden onboarding is ignored while a visible API-key dialog is pr
   const shown = modal(copy.zh.keyless, [copy.zh.later, copy.zh.save])
   const f = fixture('zh', 'none', { dialogs: [hidden, shown] })
   await dismissOnboardingDialogs(f.page)
-  assert.deepEqual(f.clicks.map(click => [click.dialog, click.name]), [[copy.zh.keyless, copy.zh.later]])
+  assert.deepEqual(
+    f.clicks.map(click => [click.dialog, click.name]),
+    [[copy.zh.keyless, copy.zh.later]]
+  )
   assert.deepEqual(f.visibleTitles(), [])
 })
 
@@ -200,21 +250,30 @@ test('CONTROL: missing Configure later cannot fall back to Save and continue or 
 test('CONTROL: unknown next dialog after Preview remains a failure, not a Continue fallback', async () => {
   const f = fixture('en', 'preview', { onClick: (_button, api) => api.setDialogs([modal('Unexpected next step', ['Continue'])]) })
   await assert.rejects(dismissOnboardingDialogs(f.page), /unrecognized visible dialog/)
-  assert.deepEqual(f.clicks.map(click => click.name), [copy.en.next])
+  assert.deepEqual(
+    f.clicks.map(click => click.name),
+    [copy.en.next]
+  )
   assert.deepEqual(f.visibleTitles(), ['Unexpected next step'])
 })
 
 test('CONTROL: dialog remaining after Configure later is not silently accepted or clicked', async () => {
   const f = fixture('zh', 'keyless', { onClick: (_button, api) => api.setDialogs([modal('Another blocking dialog', ['Continue'])]) })
   await assert.rejects(dismissOnboardingDialogs(f.page), /visible dialog remains after keyless onboarding/)
-  assert.deepEqual(f.clicks.map(click => click.name), [copy.zh.later])
+  assert.deepEqual(
+    f.clicks.map(click => click.name),
+    [copy.zh.later]
+  )
   assert.deepEqual(f.visibleTitles(), ['Another blocking dialog'])
 })
 
 test('CONTROL: a repeated Preview step is rejected without a second acknowledgement', async () => {
   const f = fixture('en', 'preview', { onClick: (_button, api) => api.setDialogs([modal(copy.zh.preview, [copy.zh.next])]) })
   await assert.rejects(dismissOnboardingDialogs(f.page), /already-dismissed step/)
-  assert.deepEqual(f.clicks.map(click => click.name), [copy.en.next])
+  assert.deepEqual(
+    f.clicks.map(click => click.name),
+    [copy.en.next]
+  )
   assert.deepEqual(f.visibleTitles(), [copy.zh.preview])
 })
 
@@ -224,16 +283,16 @@ for (const locale of ['en', 'zh']) {
     // loading and keyless skip each remain separately controlled by the test.
     const f = fixture(locale, 'preview', { onClick: () => {} })
     const journey = dismissOnboardingDialogs(f.page)
-    const nextPendingWait = () => Promise.race([
-      journey.then(() => ({ finished: true })),
-      f.whenWait(wait => !wait.settled),
-    ])
+    const nextPendingWait = () => Promise.race([journey.then(() => ({ finished: true })), f.whenWait(wait => !wait.settled)])
     const previewWait = await nextPendingWait()
     assert.equal(previewWait.finished, undefined, 'TARGET: Continue click must not finish before acknowledgement hides the Preview')
     assert.equal(previewWait.role, 'dialog')
     assert.equal(previewWait.name, f.text.preview)
     assert.equal(previewWait.state, 'hidden')
-    assert.deepEqual(f.clicks.map(click => click.name), [f.text.next])
+    assert.deepEqual(
+      f.clicks.map(click => click.name),
+      [f.text.next]
+    )
     assert.deepEqual(f.visibleTitles(), [f.text.preview])
 
     f.setDialogs([])
@@ -242,7 +301,10 @@ for (const locale of ['en', 'zh']) {
     assert.equal(modelsWait.selector, '[role="dialog"]:visible')
     assert.equal(modelsWait.state, 'visible')
     assert.deepEqual(f.visibleTitles(), [])
-    assert.deepEqual(f.clicks.map(click => click.name), [f.text.next])
+    assert.deepEqual(
+      f.clicks.map(click => click.name),
+      [f.text.next]
+    )
 
     f.setDialogs([f.keyless])
     const keylessWait = await nextPendingWait()
@@ -250,12 +312,22 @@ for (const locale of ['en', 'zh']) {
     assert.equal(keylessWait.role, 'dialog')
     assert.equal(keylessWait.name, f.text.keyless)
     assert.equal(keylessWait.state, 'hidden')
-    assert.deepEqual(f.clicks.map(click => click.name), [f.text.next, f.text.later])
+    assert.deepEqual(
+      f.clicks.map(click => click.name),
+      [f.text.next, f.text.later]
+    )
     assert.deepEqual(f.visibleTitles(), [f.text.keyless])
 
     f.setDialogs([])
     await journey
     assert.deepEqual(f.visibleTitles(), [])
-    assert.deepEqual(f.waits.map(wait => [wait.state, wait.timeout]), [['hidden', 3000], ['visible', 3000], ['hidden', 3000]])
+    assert.deepEqual(
+      f.waits.map(wait => [wait.state, wait.timeout]),
+      [
+        ['hidden', 3000],
+        ['visible', 3000],
+        ['hidden', 3000]
+      ]
+    )
   })
 }

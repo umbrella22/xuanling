@@ -22,7 +22,9 @@ export interface PackagedPreset {
 }
 /** Host-private current composition. Unlike portable artifacts it retains
  * current Host configuration, and must never enter export or browser DTOs. */
-export interface HostAgentComposition { plugins: Array<Record<string, unknown>> }
+export interface HostAgentComposition {
+  plugins: Array<Record<string, unknown>>
+}
 export interface PackagedMcp {
   schemaVersion: 1
   format: 'mcp-definition'
@@ -30,7 +32,8 @@ export interface PackagedMcp {
   config: Record<string, unknown>
   requiredBindings: string[]
 }
-export type HostExportResource = { provenance: 'builtin' }
+export type HostExportResource =
+  | { provenance: 'builtin' }
   | { provenance: 'custom'; kind: 'skill'; files: SnapshotFile[] }
   | { provenance: 'custom'; kind: 'agent'; preset: PackagedPreset }
   | { provenance: 'custom'; kind: 'mcp'; definition: PackagedMcp }
@@ -38,19 +41,28 @@ export type HostExportResources = Map<string, HostExportResource>
 export const hostExportKey = (kind: string, id: string): string => `${kind}:${id}`
 
 const require = createRequire(import.meta.url)
+// `entryListSchema` belongs to cordis-plugin-include's js-yaml 4.x
+// dependency. Keep the schema and parser from the same package instance;
+// passing it to the workspace js-yaml 5.x parser throws on lookupSequenceTag.
+const includeRequire = createRequire(require.resolve('@deepseek-ai/cordis-plugin-include/package.json'))
 /** Reuse the Host's own include schema. Its !!js constructor retains an
  * expression object; parsing itself never evaluates an expression. */
 function parseComposition(content: string): unknown {
   try {
-    const yaml = require('js-yaml') as { load(text: string, options: { schema: unknown }): unknown }
+    const yaml = includeRequire('js-yaml') as { load(text: string, options: { schema: unknown }): unknown }
     return yaml.load(content, { schema: entryListSchema })
-  } catch { throw new PortabilityConflictError('Host preset composition parser unavailable or rejected') }
+  } catch {
+    throw new PortabilityConflictError('Host preset composition parser unavailable or rejected')
+  }
 }
 function validPluginRows(values: unknown): values is Array<Record<string, unknown>> {
-  return Array.isArray(values) && values.every(row => {
-    if (!row || typeof row !== 'object' || Array.isArray(row) || typeof row.name !== 'string' || !row.name) return false
-    return row.group !== true || validPluginRows(row.config)
-  })
+  return (
+    Array.isArray(values) &&
+    values.every(row => {
+      if (!row || typeof row !== 'object' || Array.isArray(row) || typeof row.name !== 'string' || !row.name) return false
+      return row.group !== true || validPluginRows(row.config)
+    })
+  )
 }
 export function parseHostAgentComposition(content: string): HostAgentComposition {
   const plugins = parseComposition(content)
@@ -58,13 +70,18 @@ export function parseHostAgentComposition(content: string): HostAgentComposition
   return { plugins }
 }
 
-const secretKeyPart = /(?:^|_)(?:api_?key|access_token|refresh_token|id_token|client_secret|token|password|passwd|secret|credential|credentials|authorization|headers)$/
+const secretKeyPart =
+  /(?:^|_)(?:api_?key|access_token|refresh_token|id_token|client_secret|token|password|passwd|secret|credential|credentials|authorization|headers)$/
 function isSensitiveKey(key: string): boolean {
   // Normalize camelCase and separators, then require a credential term at
   // the end of the key. This keeps ordinary options such as tokenLimit,
   // maxTokens and secretMode portable while still covering accessToken and
   // clientSecret conventions.
-  const normalized = key.replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2').replace(/([a-z0-9])([A-Z])/g, '$1_$2').replace(/[^A-Za-z0-9]+/g, '_').toLowerCase()
+  const normalized = key
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/[^A-Za-z0-9]+/g, '_')
+    .toLowerCase()
   return normalized === 'env' || secretKeyPart.test(normalized)
 }
 const credentialText = /(?:\bBearer\s+\S+|\bsk-[A-Za-z0-9_-]{12,}|\b(?:api[-_]?key|password|secret|token)\s*[=:]\s*[^\s]+)/i
@@ -83,9 +100,15 @@ function hasMachineBoundUrlParts(value: string): boolean {
  * Machine-bound values also require explicit binding on the destination. */
 function portableValue(value: unknown, path: string, required: string[]): unknown {
   if (Array.isArray(value)) {
-    if (value.some(item => typeof item === 'string' && /^--?(?:api[-_]?key|token|password|secret)(?:=|$)/i.test(item))) { required.push(path); return undefined }
+    if (value.some(item => typeof item === 'string' && /^--?(?:api[-_]?key|token|password|secret)(?:=|$)/i.test(item))) {
+      required.push(path)
+      return undefined
+    }
     const clean = value.map((item, index) => portableValue(item, `${path}/${index}`, required))
-    if (clean.some(item => item === undefined)) { required.push(path); return undefined }
+    if (clean.some(item => item === undefined)) {
+      required.push(path)
+      return undefined
+    }
     return clean
   }
   if (value !== null && typeof value === 'object') {
@@ -113,13 +136,20 @@ function portableValue(value: unknown, path: string, required: string[]): unknow
 export function validatePackagedPreset(value: unknown): PackagedPreset {
   if (!value || typeof value !== 'object') throw new PortabilityConflictError('packaged preset rejected')
   const candidate = value as Partial<PackagedPreset>
-  if (Object.keys(value).some(key => !['schemaVersion', 'format', 'originalId', 'plugins', 'requiredBindings'].includes(key))
-    || candidate.schemaVersion !== 1 || candidate.format !== 'agent-preset' || typeof candidate.originalId !== 'string'
-    || !validPluginRows(candidate.plugins) || !Array.isArray(candidate.requiredBindings) || candidate.requiredBindings.some(key => typeof key !== 'string')) {
+  if (
+    Object.keys(value).some(key => !['schemaVersion', 'format', 'originalId', 'plugins', 'requiredBindings'].includes(key)) ||
+    candidate.schemaVersion !== 1 ||
+    candidate.format !== 'agent-preset' ||
+    typeof candidate.originalId !== 'string' ||
+    !validPluginRows(candidate.plugins) ||
+    !Array.isArray(candidate.requiredBindings) ||
+    candidate.requiredBindings.some(key => typeof key !== 'string')
+  ) {
     throw new PortabilityConflictError('packaged preset rejected')
   }
   const bindings: string[] = []
-  if (!isDeepStrictEqual(portableValue(candidate.plugins, '/plugins', bindings), candidate.plugins)) throw new PortabilityConflictError('packaged preset contains machine or credential values')
+  if (!isDeepStrictEqual(portableValue(candidate.plugins, '/plugins', bindings), candidate.plugins))
+    throw new PortabilityConflictError('packaged preset contains machine or credential values')
   return candidate as PackagedPreset
 }
 
@@ -129,15 +159,25 @@ export function packagedPresetModulesAvailable(ownerCtx: { get(service: string):
   const loader = ownerCtx.get('loader') as { builtins?: Record<string, unknown>; entries?(): Iterable<{ options: { name: string } }> } | undefined
   const registered = new Set(typeof loader?.entries === 'function' ? [...loader.entries()].map(entry => entry.options.name) : [])
   let resolver = require
-  try { if (ownerCtx.baseUrl !== undefined) resolver = createRequire(ownerCtx.baseUrl) } catch { return false }
-  const visible = (rows: Array<Record<string, unknown>>): boolean => rows.every(row => {
-    if (row.disabled === true) return true
-    if (row.group === true) return visible(row.config as Array<Record<string, unknown>>)
-    const name = row.name as string
-    if (name.startsWith('cordis:')) return loader?.builtins?.[name.slice(7)] !== undefined
-    if (registered.has(name)) return true
-    try { resolver.resolve(name); return true } catch { return false }
-  })
+  try {
+    if (ownerCtx.baseUrl !== undefined) resolver = createRequire(ownerCtx.baseUrl)
+  } catch {
+    return false
+  }
+  const visible = (rows: Array<Record<string, unknown>>): boolean =>
+    rows.every(row => {
+      if (row.disabled === true) return true
+      if (row.group === true) return visible(row.config as Array<Record<string, unknown>>)
+      const name = row.name as string
+      if (name.startsWith('cordis:')) return loader?.builtins?.[name.slice(7)] !== undefined
+      if (registered.has(name)) return true
+      try {
+        resolver.resolve(name)
+        return true
+      } catch {
+        return false
+      }
+    })
   return visible(preset.plugins)
 }
 
@@ -166,14 +206,21 @@ export function packageMcp(id: string, raw: Record<string, unknown>): PackagedMc
   if (typeof config.url === 'string') {
     try {
       const url = new URL(config.url)
-      if (url.username || url.password || url.search || url.hash) { delete config.url; requiredBindings.push('/config/url') }
-    } catch { throw new PortabilityConflictError('MCP endpoint rejected') }
+      if (url.username || url.password || url.search || url.hash) {
+        delete config.url
+        requiredBindings.push('/config/url')
+      }
+    } catch {
+      throw new PortabilityConflictError('MCP endpoint rejected')
+    }
   }
   if (Array.isArray(config.args)) {
     for (let index = 0; index < config.args.length; index++) {
       const arg = config.args[index]
       if (typeof arg === 'string' && /(?:token|secret|password|api[-_]?key)/i.test(arg)) {
-        requiredBindings.push('/config/args'); delete config.args; break
+        requiredBindings.push('/config/args')
+        delete config.args
+        break
       }
     }
   }
@@ -185,14 +232,23 @@ export function packageMcp(id: string, raw: Record<string, unknown>): PackagedMc
 export function validatePackagedMcp(value: unknown): PackagedMcp {
   if (!value || typeof value !== 'object') throw new PortabilityConflictError('packaged MCP definition rejected')
   const candidate = value as Partial<PackagedMcp>
-  if (Object.keys(value).some(key => !['schemaVersion', 'format', 'originalId', 'config', 'requiredBindings'].includes(key))
-    || candidate.schemaVersion !== 1 || candidate.format !== 'mcp-definition' || typeof candidate.originalId !== 'string'
-    || !candidate.config || typeof candidate.config !== 'object' || Array.isArray(candidate.config)
-    || !Array.isArray(candidate.requiredBindings) || candidate.requiredBindings.some(key => typeof key !== 'string')) throw new PortabilityConflictError('packaged MCP definition rejected')
+  if (
+    Object.keys(value).some(key => !['schemaVersion', 'format', 'originalId', 'config', 'requiredBindings'].includes(key)) ||
+    candidate.schemaVersion !== 1 ||
+    candidate.format !== 'mcp-definition' ||
+    typeof candidate.originalId !== 'string' ||
+    !candidate.config ||
+    typeof candidate.config !== 'object' ||
+    Array.isArray(candidate.config) ||
+    !Array.isArray(candidate.requiredBindings) ||
+    candidate.requiredBindings.some(key => typeof key !== 'string')
+  )
+    throw new PortabilityConflictError('packaged MCP definition rejected')
   // This validation does not connect. It also rejects injected raw credentials
   // rather than silently rewriting an imported archive's integrity bytes.
   const sanitized = packageMcp(candidate.originalId, candidate.config)
-  if (!isDeepStrictEqual(sanitized.config, candidate.config)) throw new PortabilityConflictError('packaged MCP definition contains machine or credential values')
+  if (!isDeepStrictEqual(sanitized.config, candidate.config))
+    throw new PortabilityConflictError('packaged MCP definition contains machine or credential values')
   return candidate as PackagedMcp
 }
 
@@ -201,41 +257,52 @@ export function validatePackagedMcp(value: unknown): PackagedMcp {
 export async function resolveHostExportResources(ctx: Context, definitions: BlueprintDefinition[], cwd: string): Promise<HostExportResources> {
   const resolved: HostExportResources = new Map()
   const hostSkills = createHostResourceProvider(ctx)
-  for (const definition of definitions) for (const [refId, ref] of Object.entries(definition.resources)) {
-    if (ref.source?.kind !== 'host') continue
-    const id = ref.source.id
-    const key = hostExportKey(ref.kind, id)
-    if (resolved.has(key)) continue
-    if (ref.kind !== 'agent' && ref.kind !== 'skill' && ref.kind !== 'mcp') throw new ExportDependencyMissingError(refId, 'Host resource kind unsupported')
-    const provenance = await hostResourceProvenance(ctx, ref.kind, id, { cwd })
-    if (provenance === 'builtin') { resolved.set(key, { provenance: 'builtin' }); continue }
-    if (ref.kind === 'skill') {
-      const skill = await hostSkills.getSkill(id, { cwd })
-      if (skill === undefined || typeof skill.content !== 'string') throw new ExportDependencyMissingError(refId, 'Host Skill unavailable')
-      const files: SnapshotFile[] = []
-      if (Array.isArray(skill.files)) files.push(...skill.files.map(file => ({ ...file, digest: createHash('sha256').update(file.bytes).digest('hex') })))
-      else if (skill.files !== undefined) for (const [path, value] of Object.entries(skill.files)) {
-        const bytes = typeof value === 'string' ? Buffer.from(value) : value
-        files.push({ path, bytes, digest: createHash('sha256').update(bytes).digest('hex') })
+  for (const definition of definitions)
+    for (const [refId, ref] of Object.entries(definition.resources)) {
+      if (ref.source?.kind !== 'host') continue
+      const id = ref.source.id
+      const key = hostExportKey(ref.kind, id)
+      if (resolved.has(key)) continue
+      if (ref.kind !== 'agent' && ref.kind !== 'skill' && ref.kind !== 'mcp') throw new ExportDependencyMissingError(refId, 'Host resource kind unsupported')
+      const provenance = await hostResourceProvenance(ctx, ref.kind, id, { cwd })
+      if (provenance === 'builtin') {
+        resolved.set(key, { provenance: 'builtin' })
+        continue
       }
-      if (!files.some(file => file.path === 'SKILL.md')) files.push({ path: 'SKILL.md', bytes: Buffer.from(skill.content), digest: createHash('sha256').update(skill.content).digest('hex') })
-      resolved.set(key, { provenance: 'custom', kind: 'skill', files })
-    } else if (ref.kind === 'agent') {
-      const presets = ctx.get('agentPresets') as { readDocument?(id: string): Promise<{ content: string }> } | undefined
-      if (typeof presets?.readDocument !== 'function') throw new ExportDependencyMissingError(refId, 'Host preset document API unavailable')
-      const document = await presets.readDocument(id)
-      resolved.set(key, { provenance: 'custom', kind: 'agent', preset: packagePreset(id, document.content) })
-    } else {
-      const server = /^mcp__([A-Za-z0-9_-]{1,32})__/.exec(id)?.[1]
-      if (!server) throw new ExportDependencyMissingError(refId, 'Host MCP identity unavailable')
-      const editor = ctx.get('configEditor') as { entries?(): Iterable<{ options: { name: string; config?: Record<string, unknown> } }> } | undefined
-      const loader = typeof editor?.entries === 'function' ? editor : ctx.get('loader') as { entries?(): Iterable<{ options: { name: string; config?: Record<string, unknown> } }> } | undefined
-      if (typeof loader?.entries !== 'function') throw new ExportDependencyMissingError(refId, 'Host MCP configuration API unavailable')
-      const entries = [...loader.entries()].filter(entry => entry.options.name === '@deepseek-ai/dsh-mcp-client'
-        && entry.options.config?.serverName === server)
-      if (entries.length !== 1 || entries[0]?.options.config === undefined) throw new ExportDependencyMissingError(refId, 'Host MCP configuration unavailable or ambiguous')
-      resolved.set(key, { provenance: 'custom', kind: 'mcp', definition: packageMcp(id, entries[0].options.config) })
+      if (ref.kind === 'skill') {
+        const skill = await hostSkills.getSkill(id, { cwd })
+        if (skill === undefined || typeof skill.content !== 'string') throw new ExportDependencyMissingError(refId, 'Host Skill unavailable')
+        const files: SnapshotFile[] = []
+        if (Array.isArray(skill.files)) files.push(...skill.files.map(file => ({ ...file, digest: createHash('sha256').update(file.bytes).digest('hex') })))
+        else if (skill.files !== undefined)
+          for (const [path, value] of Object.entries(skill.files)) {
+            const bytes = typeof value === 'string' ? Buffer.from(value) : value
+            files.push({ path, bytes, digest: createHash('sha256').update(bytes).digest('hex') })
+          }
+        if (!files.some(file => file.path === 'SKILL.md'))
+          files.push({ path: 'SKILL.md', bytes: Buffer.from(skill.content), digest: createHash('sha256').update(skill.content).digest('hex') })
+        resolved.set(key, { provenance: 'custom', kind: 'skill', files })
+      } else if (ref.kind === 'agent') {
+        const presets = ctx.get('agentPresets') as { readDocument?(id: string): Promise<{ content: string }> } | undefined
+        if (typeof presets?.readDocument !== 'function') throw new ExportDependencyMissingError(refId, 'Host preset document API unavailable')
+        const document = await presets.readDocument(id)
+        resolved.set(key, { provenance: 'custom', kind: 'agent', preset: packagePreset(id, document.content) })
+      } else {
+        const server = /^mcp__([A-Za-z0-9_-]{1,32})__/.exec(id)?.[1]
+        if (!server) throw new ExportDependencyMissingError(refId, 'Host MCP identity unavailable')
+        const editor = ctx.get('configEditor') as { entries?(): Iterable<{ options: { name: string; config?: Record<string, unknown> } }> } | undefined
+        const loader =
+          typeof editor?.entries === 'function'
+            ? editor
+            : (ctx.get('loader') as { entries?(): Iterable<{ options: { name: string; config?: Record<string, unknown> } }> } | undefined)
+        if (typeof loader?.entries !== 'function') throw new ExportDependencyMissingError(refId, 'Host MCP configuration API unavailable')
+        const entries = [...loader.entries()].filter(
+          entry => entry.options.name === '@deepseek-ai/dsh-mcp-client' && entry.options.config?.serverName === server
+        )
+        if (entries.length !== 1 || entries[0]?.options.config === undefined)
+          throw new ExportDependencyMissingError(refId, 'Host MCP configuration unavailable or ambiguous')
+        resolved.set(key, { provenance: 'custom', kind: 'mcp', definition: packageMcp(id, entries[0].options.config) })
+      }
     }
-  }
   return resolved
 }

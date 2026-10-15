@@ -110,7 +110,15 @@ export interface XY {
 
 export type PresentationColor = 'default' | 'blue' | 'green' | 'amber' | 'red' | 'purple'
 
+/** Saved display preferences only; graph declarations and execution remain canonical. */
+export interface PresentationPorts {
+  control?: boolean
+  inputs?: boolean
+  outputs?: boolean
+}
+
 export interface PresentationNode extends XY {
+  ports?: PresentationPorts
   title?: string
   collapsed?: boolean
   pinned?: boolean
@@ -119,12 +127,20 @@ export interface PresentationNode extends XY {
   color?: PresentationColor
 }
 
+/** Public display metadata for a resource reference. This is presentation
+ * only: it never changes the executable ResourceRef or host-owned identity. */
+export interface PresentationResourceMetadata {
+  title?: string
+  description?: string
+}
+
 export interface PresentationEdge extends GraphEdge {
   points: XY[]
 }
 
 export interface Presentation {
   nodes: Record<string, PresentationNode>
+  resources?: Record<string, PresentationResourceMetadata>
   groups?: Array<{ id: string; label?: string; nodeIds: string[] }>
   edges?: PresentationEdge[]
 }

@@ -88,7 +88,7 @@ export function readyNodes(definition: BlueprintDefinition, snapshot: RunSnapsho
 
   const stateOf = (nodeId: string): AttemptState | undefined => latestState(byNode.get(nodeId))
   const mark = (nodeId: string, bucket: 'ready' | 'skipped' | 'blocked'): void => {
-    (bucket === 'ready' ? result.ready : bucket === 'skipped' ? result.skipped : result.blocked).push(nodeId)
+    ;(bucket === 'ready' ? result.ready : bucket === 'skipped' ? result.skipped : result.blocked).push(nodeId)
   }
 
   for (const node of definition.graph.nodes) {
@@ -108,7 +108,10 @@ export function readyNodes(definition: BlueprintDefinition, snapshot: RunSnapsho
     const controlStates: Array<AttemptState | undefined> = []
     for (const parent of controlParents.get(node.id) ?? []) {
       const parentState = stateOf(parent.fromNode)
-      if (parentState === 'skipped') { skippedByControl = true; continue }
+      if (parentState === 'skipped') {
+        skippedByControl = true
+        continue
+      }
       if (!isTerminal(parentState)) {
         blockedByControl = true
         controlStates.push(parentState)
@@ -122,7 +125,10 @@ export function readyNodes(definition: BlueprintDefinition, snapshot: RunSnapsho
           controlStates.push(undefined)
           continue
         }
-        if (selected !== parent.branch) { skippedByControl = true; continue }
+        if (selected !== parent.branch) {
+          skippedByControl = true
+          continue
+        }
       }
       controlStates.push(parentState)
       if (!isTerminalSuccess(parentState)) blockedByControl = true
@@ -138,20 +144,29 @@ export function readyNodes(definition: BlueprintDefinition, snapshot: RunSnapsho
       // admission/dispatch still refuse it. Only all/default-all executes.
       if (node.join === 'any') {
         if (succeededCount >= 1) mark(node.id, 'ready')
-        else if (anyPending) { mark(node.id, 'blocked'); result.joinsPending.push(node.id) }
-        else mark(node.id, 'skipped')
+        else if (anyPending) {
+          mark(node.id, 'blocked')
+          result.joinsPending.push(node.id)
+        } else mark(node.id, 'skipped')
       } else {
         if (selected.length > 0 && succeededCount === selected.length) mark(node.id, 'ready')
-        else if (anyPending) { mark(node.id, 'blocked'); result.joinsPending.push(node.id) }
-        else mark(node.id, 'skipped') // selected failures are settled by the driver
+        else if (anyPending) {
+          mark(node.id, 'blocked')
+          result.joinsPending.push(node.id)
+        } else mark(node.id, 'skipped') // selected failures are settled by the driver
       }
       continue
     }
-    if (skippedByControl || states.includes('skipped')) { mark(node.id, 'skipped'); continue }
-    if (blockedByControl) { mark(node.id, 'blocked'); continue }
+    if (skippedByControl || states.includes('skipped')) {
+      mark(node.id, 'skipped')
+      continue
+    }
+    if (blockedByControl) {
+      mark(node.id, 'blocked')
+      continue
+    }
     if (states.every(isTerminalSuccess)) mark(node.id, 'ready')
     else mark(node.id, 'blocked') // upstream failure is settled by the driver
-
   }
   return result
 }

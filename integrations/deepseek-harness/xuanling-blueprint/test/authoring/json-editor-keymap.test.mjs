@@ -7,7 +7,9 @@ import { jsonEditorKeymap, formatJson } from '../../src/client/json-editor.ts'
 
 function fixture(doc, selection = EditorSelection.cursor(0), readOnly = false) {
   const target = { state: EditorState.create({ doc, selection, extensions: [json(), history(), EditorState.readOnly.of(readOnly)] }), composing: false }
-  target.dispatch = transaction => { target.state = transaction.state ?? target.state.update(transaction).state }
+  target.dispatch = transaction => {
+    target.state = transaction.state ?? target.state.update(transaction).state
+  }
   return target
 }
 function key(target, name, shift = false) {
@@ -36,7 +38,10 @@ test('JSON ordinary Enter retains language indentation and format stays undoable
 })
 
 test('JSON Tab, Shift-Tab and bracket shortcuts keep selected-line indentation', () => {
-  for (const [more, less, shift] of [['Tab', 'Tab', true], ['Mod-]', 'Mod-[', false]]) {
+  for (const [more, less, shift] of [
+    ['Tab', 'Tab', true],
+    ['Mod-]', 'Mod-[', false]
+  ]) {
     const target = fixture('{\n"answer": 1\n}', EditorSelection.range(2, 13))
     assert.equal(key(target, more), true)
     assert.equal(target.state.doc.toString(), '{\n  "answer": 1\n}')

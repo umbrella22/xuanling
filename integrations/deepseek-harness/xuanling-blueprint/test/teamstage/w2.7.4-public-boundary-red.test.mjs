@@ -14,7 +14,7 @@ let fixtureNumber = 0
 const team = {
   task: { subject: 'Review frozen output', description: 'Review the frozen output and report the structured result.' },
   members: [{ name: 'worker-one', description: 'Review the output.', agentRef: 'worker', context: 'fresh' }],
-  requiredChecks: ['schema'],
+  requiredChecks: ['schema']
 }
 
 function definition(kind = 'agentTask') {
@@ -24,12 +24,21 @@ function definition(kind = 'agentTask') {
     name: 'Public Team boundary',
     resources: {
       worker: { kind: 'agent', path: 'lib/agents/worker.md' },
-      resultSchema: { kind: 'schema', path: 'lib/schemas/result.json' },
+      resultSchema: { kind: 'schema', path: 'lib/schemas/result.json' }
     },
     graph: {
-      nodes: [{ id: 'work', kind, agentRef: 'worker', outputSchemaRef: 'resultSchema', outputs: { result: 'json' }, ...(kind === 'agentTask' ? { teamStage: structuredClone(team) } : {}) }],
-      edges: [],
-    },
+      nodes: [
+        {
+          id: 'work',
+          kind,
+          agentRef: 'worker',
+          outputSchemaRef: 'resultSchema',
+          outputs: { result: 'json' },
+          ...(kind === 'agentTask' ? { teamStage: structuredClone(team) } : {})
+        }
+      ],
+      edges: []
+    }
   }
 }
 
@@ -39,27 +48,47 @@ function makeHarness() {
   let creates = 0
   const tasks = new Map()
   const service = {
-    membership(agent) { return { root: agent, id: 'team-1', role: 'lead', name: 'lead' } },
-    listMembers() { return [] },
-    spawnTeammate() { return Promise.resolve({}) },
-    sendMessage() { return Promise.resolve({}) },
+    membership(agent) {
+      return { root: agent, id: 'team-1', role: 'lead', name: 'lead' }
+    },
+    listMembers() {
+      return []
+    },
+    spawnTeammate() {
+      return Promise.resolve({})
+    },
+    sendMessage() {
+      return Promise.resolve({})
+    },
     createTask(_agent, request) {
       creates += 1
       const task = { id: `task-${creates}`, revision: 1, status: 'pending', subject: request.subject }
       tasks.set(task.id, task)
       return Promise.resolve(task)
     },
-    getTask(_agent, id) { return structuredClone(tasks.get(id)) },
-    listTasks() { return [...tasks.values()].map(task => structuredClone(task)) },
-    updateTask(_agent, request) { return Promise.resolve({ id: request.taskId, revision: request.expectedRevision + 1, status: 'deleted' }) },
-    waitForChange() { return Promise.resolve({ timedOut: true }) },
-    interrupt() { return { previousStatus: 'inactive' } },
+    getTask(_agent, id) {
+      return structuredClone(tasks.get(id))
+    },
+    listTasks() {
+      return [...tasks.values()].map(task => structuredClone(task))
+    },
+    updateTask(_agent, request) {
+      return Promise.resolve({ id: request.taskId, revision: request.expectedRevision + 1, status: 'deleted' })
+    },
+    waitForChange() {
+      return Promise.resolve({ timedOut: true })
+    },
+    interrupt() {
+      return { previousStatus: 'inactive' }
+    }
   }
   return {
     lead,
     service,
-    get creates() { return creates },
-    ctx: { get: key => key === 'agents' ? { get: id => agents.get(id) } : key === 'agentTeams' ? service : undefined },
+    get creates() {
+      return creates
+    },
+    ctx: { get: key => (key === 'agents' ? { get: id => agents.get(id) } : key === 'agentTeams' ? service : undefined) }
   }
 }
 
@@ -69,7 +98,13 @@ async function fixture(t, { kind = 'agentTask', sourceSessionId = 'lead-session'
   const opened = await openBlueprintDomain({ backend: 'json', path: join(root, 'store') })
   const store = new RunStore(opened.domain)
   const frozen = definition(kind)
-  const { runId } = await store.createRun({ scope: 'run', requestId: `run-${fixtureNumber}`, payloadFingerprint: digest(`run-${fixtureNumber}`) }, 'semantic-1', JSON.stringify(frozen), '{}', { source: { sessionId: sourceSessionId, kind: 'ui' } })
+  const { runId } = await store.createRun(
+    { scope: 'run', requestId: `run-${fixtureNumber}`, payloadFingerprint: digest(`run-${fixtureNumber}`) },
+    'semantic-1',
+    JSON.stringify(frozen),
+    '{}',
+    { source: { sessionId: sourceSessionId, kind: 'ui' } }
+  )
   const attempt = await store.recordIntent(runId, { nodeId: 'work', kind, resourceDigests: { worker: 'a'.repeat(64), resultSchema: 'b'.repeat(64) } })
   if (attemptState !== 'running') {
     await store.recordResult(runId, attempt.attemptId, { ok: attemptState === 'succeeded', outcome: { kind: attemptState }, evidence: 'fixture' })
@@ -83,7 +118,10 @@ async function fixture(t, { kind = 'agentTask', sourceSessionId = 'lead-session'
     return parsed
   }
   service.configuredRuntime = async () => ({ store, controllers: new Map(), cancellationTails: new Map() })
-  t.after(async () => { await opened.close(); await rm(root, { recursive: true, force: true }) })
+  t.after(async () => {
+    await opened.close()
+    await rm(root, { recursive: true, force: true })
+  })
   return { service, store, runId, attempt, harness, frozen }
 }
 
@@ -95,13 +133,16 @@ function request(runId, overrides = {}) {
     taskSpecificationFingerprint: digest(JSON.stringify({ config: team, resources: { worker: 'a'.repeat(64), resultSchema: 'b'.repeat(64) } })),
     subject: team.task.subject,
     description: team.task.description,
-    ...overrides,
+    ...overrides
   }
 }
 
 async function rejectedWithoutEffect(service, store, runId, args) {
   const before = await store.get(runId)
-  await assert.rejects(() => service.startTeamStage(args), error => error.code === 'blueprint/team-stage-conflict')
+  await assert.rejects(
+    () => service.startTeamStage(args),
+    error => error.code === 'blueprint/team-stage-conflict'
+  )
   assert.deepEqual(await store.get(runId), before, 'public verifier rejection must be durable/native side-effect free')
 }
 
@@ -131,11 +172,16 @@ test('W2.7.4 red: a settled or non-ready Attempt cannot open a public TeamStage 
 
 test('W2.7.4 red: matching-format but wrong task fingerprint/text cannot override frozen Team config', async t => {
   const h = await fixture(t)
-  await rejectedWithoutEffect(h.service, h.store, h.runId, request(h.runId, {
-    taskSpecificationFingerprint: digest('same-format-but-foreign'),
-    subject: 'Forged task',
-    description: 'Forged description',
-  }))
+  await rejectedWithoutEffect(
+    h.service,
+    h.store,
+    h.runId,
+    request(h.runId, {
+      taskSpecificationFingerprint: digest('same-format-but-foreign'),
+      subject: 'Forged task',
+      description: 'Forged description'
+    })
+  )
   assert.equal(h.harness.creates, 0)
 })
 
@@ -160,13 +206,13 @@ test('W2.7.4 red: settleTerminal cannot settle a Run with an active provisioning
     leadSessionId: 'lead-session',
     taskSpecificationFingerprint: request(h.runId).taskSpecificationFingerprint,
     attemptId: h.attempt.attemptId,
-    requiredChecks: [...team.requiredChecks],
+    requiredChecks: [...team.requiredChecks]
   })
   assert.equal(bound.teamStage.state, 'provisioning')
 
   await assert.rejects(
     () => h.store.settleTerminal(h.runId, 'succeeded'),
-    error => error.code === 'TEAM_STAGE_CONFLICT',
+    error => error.code === 'TEAM_STAGE_CONFLICT'
   )
 
   const after = await h.store.get(h.runId)
@@ -205,15 +251,12 @@ test('W2.7.4 red: recordResult cannot settle an Attempt after TeamStage provisio
   const settling = h.store.recordResult(h.runId, h.attempt.attemptId, {
     ok: true,
     outcome: { kind: 'succeeded' },
-    evidence: 'concurrent-settlement',
+    evidence: 'concurrent-settlement'
   })
   await enteredResult.promise
   releaseBind.resolve()
 
-  const [, conflict] = await Promise.all([
-    started,
-    assert.rejects(settling, error => error.code === 'TEAM_STAGE_CONFLICT'),
-  ])
+  const [, conflict] = await Promise.all([started, assert.rejects(settling, error => error.code === 'TEAM_STAGE_CONFLICT')])
   assert.equal(conflict, undefined)
 
   const action = await started
@@ -237,7 +280,7 @@ test('W2.7.4 red: a bound TeamStage cannot replay after its original Attempt lea
   const before = await h.store.get(h.runId)
   await assert.rejects(
     () => h.service.startTeamStage(request(h.runId)),
-    error => error.code === 'blueprint/team-stage-conflict',
+    error => error.code === 'blueprint/team-stage-conflict'
   )
   assert.deepEqual(await h.store.get(h.runId), before, 'bound replay rejection is side-effect free')
   assert.equal(h.harness.creates, 1)

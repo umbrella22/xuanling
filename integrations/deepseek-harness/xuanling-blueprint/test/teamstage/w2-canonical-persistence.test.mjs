@@ -11,25 +11,32 @@ import { recordTeamEffectIntent, recordTeamEffectRecovery, recordTeamEffectResul
 
 const digest = value => createHash('sha256').update(value).digest('hex')
 const definition = {
-  schemaVersion: 1, id: 'canonical-persistence', name: 'Canonical persistence',
+  schemaVersion: 1,
+  id: 'canonical-persistence',
+  name: 'Canonical persistence',
   resources: {
     worker: { kind: 'agent', path: 'lib/agents/worker.md' },
-    answer: { kind: 'schema', path: 'lib/schemas/answer.json' },
+    answer: { kind: 'schema', path: 'lib/schemas/answer.json' }
   },
   graph: {
-    nodes: [{
-      id: 'work', kind: 'agentTask', agentRef: 'worker', outputSchemaRef: 'answer',
-      teamStage: {
-        task: { subject: 'Produce answer', description: 'Produce and review the same structured answer.' },
-        members: [
-          { name: 'primary', description: 'Produce output', agentRef: 'worker', context: 'fresh' },
-          { name: 'reviewer', description: 'Review output', agentRef: 'worker', context: 'fork' },
-        ],
-        requiredChecks: ['schema', 'digest', 'artifact-digest', 'agreement'],
-      },
-    }],
-    edges: [],
-  },
+    nodes: [
+      {
+        id: 'work',
+        kind: 'agentTask',
+        agentRef: 'worker',
+        outputSchemaRef: 'answer',
+        teamStage: {
+          task: { subject: 'Produce answer', description: 'Produce and review the same structured answer.' },
+          members: [
+            { name: 'primary', description: 'Produce output', agentRef: 'worker', context: 'fresh' },
+            { name: 'reviewer', description: 'Review output', agentRef: 'worker', context: 'fork' }
+          ],
+          requiredChecks: ['schema', 'digest', 'artifact-digest', 'agreement']
+        }
+      }
+    ],
+    edges: []
+  }
 }
 
 /** Every reopen closes the actual backend and opens a fresh Cordis context.
@@ -50,10 +57,15 @@ async function persistence(t, backend) {
     await opened?.close()
     opened = undefined
   }
-  t.after(async () => { await close(); await rm(root, { recursive: true, force: true }) })
+  t.after(async () => {
+    await close()
+    await rm(root, { recursive: true, force: true })
+  })
   await open()
   return {
-    get store() { return store },
+    get store() {
+      return store
+    },
     async reopen() {
       const previous = opened
       const previousStore = store
@@ -79,7 +91,7 @@ async function persistence(t, backend) {
       await open()
       assert.notEqual(opened.ctx, previous.ctx)
       assert.notEqual(opened.domain, previous.domain)
-    },
+    }
   }
 }
 
@@ -87,19 +99,29 @@ async function teamFixture(p, { bound = true, requestId = 'team' } = {}) {
   const { store } = p
   const { runId } = await store.createRun(
     { scope: 'canonical-persistence', requestId, payloadFingerprint: digest(requestId) },
-    digest(JSON.stringify(definition)), JSON.stringify(definition), '{}',
+    digest(JSON.stringify(definition)),
+    JSON.stringify(definition),
+    '{}'
   )
   const attempt = bound ? await store.recordIntent(runId, { nodeId: 'work', kind: 'agentTask' }) : undefined
   await store.bindTeamStage(runId, {
-    stageId: 'work', teamId: 'lead', leadSessionId: 'lead', taskSpecificationFingerprint: digest('task'),
-    ...(attempt === undefined ? {} : {
-      attemptId: attempt.attemptId, requiredMemberIds: ['primary', 'reviewer'], primaryMemberId: 'primary',
-      requiredChecks: ['schema', 'digest', 'artifact-digest', 'agreement'],
-    }),
+    stageId: 'work',
+    teamId: 'lead',
+    leadSessionId: 'lead',
+    taskSpecificationFingerprint: digest('task'),
+    ...(attempt === undefined
+      ? {}
+      : {
+          attemptId: attempt.attemptId,
+          requiredMemberIds: ['primary', 'reviewer'],
+          primaryMemberId: 'primary',
+          requiredChecks: ['schema', 'digest', 'artifact-digest', 'agreement']
+        })
   })
   return {
-    runId, attemptId: attempt?.attemptId,
-    facts: { runId, stageId: 'work', teamId: 'lead', actorSessionId: 'lead', effectId: 'reserved-spawn', kind: 'spawn', memberName: 'bp-primary' },
+    runId,
+    attemptId: attempt?.attemptId,
+    facts: { runId, stageId: 'work', teamId: 'lead', actorSessionId: 'lead', effectId: 'reserved-spawn', kind: 'spawn', memberName: 'bp-primary' }
   }
 }
 
@@ -116,15 +138,26 @@ async function rotateAndWait(p, h) {
   })
   const before = await p.store.get(h.runId)
   assert.equal(before.log.length, 200)
-  assert.equal(before.log.some(event => event.detail.effectId === h.facts.effectId), false, 'no effect audit entry remains')
+  assert.equal(
+    before.log.some(event => event.detail.effectId === h.facts.effectId),
+    false,
+    'no effect audit entry remains'
+  )
   return before
 }
 
 async function assertNoRedispatch(p, h, snapshot, code) {
   let dispatches = 0
-  await assert.rejects(new TeamStageRunner(p.store).dispatch({
-    ...h.facts, effect: () => { dispatches++; return { memberId: 'must-not-exist' } },
-  }), error => error.code === code && (code !== 'TEAM_EFFECT_SETTLED' || error instanceof TeamEffectReplayError))
+  await assert.rejects(
+    new TeamStageRunner(p.store).dispatch({
+      ...h.facts,
+      effect: () => {
+        dispatches++
+        return { memberId: 'must-not-exist' }
+      }
+    }),
+    error => error.code === code && (code !== 'TEAM_EFFECT_SETTLED' || error instanceof TeamEffectReplayError)
+  )
   assert.equal(dispatches, 0, 'unknown external effect is never repeated')
   assert.deepEqual(await p.store.get(h.runId), snapshot, 'replay refusal must not append intent/result or change seq')
 }
@@ -151,25 +184,52 @@ async function acceptFixture(p) {
     await recordTeamEffectIntent(p.store, spawn)
     await recordTeamEffectResult(p.store, spawn, { ok: true, memberId, status: 'inactive' })
     members.push({
-      memberId, name, sessionId, phase: 'active', status: 'inactive',
+      memberId,
+      name,
+      sessionId,
+      phase: 'active',
+      status: 'inactive',
       evidence: {
-        runId: h.runId, stageId: 'work', taskId: task.id, attemptId: h.attemptId,
-        captureId: `capture-${memberId}`, schemaDigest, valueDigest: digest(bytes),
-        completedTurnId: `turn-${memberId}`, flushedAt: 2, quiescentAt: 3,
-      },
+        runId: h.runId,
+        stageId: 'work',
+        taskId: task.id,
+        attemptId: h.attemptId,
+        captureId: `capture-${memberId}`,
+        schemaDigest,
+        valueDigest: digest(bytes),
+        completedTurnId: `turn-${memberId}`,
+        flushedAt: 2,
+        quiescentAt: 3
+      }
     })
   }
   await p.store.updateTeamStage(h.runId, { members })
   const output = {
-    code: 'accepted', schemaVersion: 1, runId: h.runId, stageId: 'work', taskId: task.id, attemptId: h.attemptId,
-    sourceSessionId: 'session-primary', artifactId: 'host-artifact-primary', digest: digest(bytes),
+    code: 'accepted',
+    schemaVersion: 1,
+    runId: h.runId,
+    stageId: 'work',
+    taskId: task.id,
+    attemptId: h.attemptId,
+    sourceSessionId: 'session-primary',
+    artifactId: 'host-artifact-primary',
+    digest: digest(bytes),
     evidenceDigest: digest(JSON.stringify(members.map(member => member.evidence))),
-    checks: ['schema', 'digest', 'artifact-digest', 'agreement'],
+    checks: ['schema', 'digest', 'artifact-digest', 'agreement']
   }
   const hostVerdict = {
-    status: 'verified', artifactId: output.artifactId, digest: output.digest, byteLength: bytes.length,
-    schemaDigest, evidenceDigest: output.evidenceDigest, runId: h.runId, stageId: 'work', taskId: task.id,
-    attemptId: h.attemptId, producerSessionId: 'session-primary', producerMemberId: 'primary',
+    status: 'verified',
+    artifactId: output.artifactId,
+    digest: output.digest,
+    byteLength: bytes.length,
+    schemaDigest,
+    evidenceDigest: output.evidenceDigest,
+    runId: h.runId,
+    stageId: 'work',
+    taskId: task.id,
+    attemptId: h.attemptId,
+    producerSessionId: 'session-primary',
+    producerMemberId: 'primary'
   }
   const args = { runId: h.runId, attemptId: h.attemptId, output, task, hostVerdict, outputs: { answer: value.answer } }
   const accepted = await acceptTeamOutput({ store: p.store, ...args })
@@ -180,9 +240,15 @@ async function acceptFixture(p) {
   assert.equal(accepted.attempts[0].attemptId, h.attemptId)
   assert.equal(accepted.attempts[0].state, 'succeeded')
   assert.deepEqual(accepted.attempts[0].result.outcome.outputs, args.outputs)
-  assert.deepEqual(accepted.attempts[0].result.outcome.teamVerification, {
-    definitionRevision: digest(JSON.stringify(definition)), taskRevision: task.revision, hostVerdict,
-  }, 'the same durable Attempt retains verified artifact and provenance references')
+  assert.deepEqual(
+    accepted.attempts[0].result.outcome.teamVerification,
+    {
+      definitionRevision: digest(JSON.stringify(definition)),
+      taskRevision: task.revision,
+      hostVerdict
+    },
+    'the same durable Attempt retains verified artifact and provenance references'
+  )
   assert.equal(accepted.attempts[0].result.seq, accepted.seq, 'stage and graph Attempt settle in the same write')
   return { ...h, args, accepted }
 }
@@ -199,7 +265,11 @@ for (const backend of ['json', 'sqlite']) {
     const recovered = await p.store.get(h.runId)
     assert.equal(recovered.state, 'recovery_required')
     assert.equal(recovered.teamStage.state, 'recovery_required')
-    assert.equal(recovered.attempts.find(attempt => attempt.attemptId === h.attemptId).state, 'recovery_required', 'Team recovery must synchronize the original canonical Attempt')
+    assert.equal(
+      recovered.attempts.find(attempt => attempt.attemptId === h.attemptId).state,
+      'recovery_required',
+      'Team recovery must synchronize the original canonical Attempt'
+    )
     assert.equal(recovered.attempts[0].result, undefined, 'unknown outcome is not a settled Attempt result')
     assert.equal(recovered.attempts.length, before.attempts.length, 'recovery never manufactures another Attempt')
     assert.deepEqual(recovered.teamStage.effects, before.teamStage.effects, 'pending effect facts remain unknown')
@@ -304,7 +374,9 @@ for (const backend of ['json', 'sqlite']) {
     const get = p.store.get.bind(p.store)
     let reads = 0
     let release
-    const bothRead = new Promise(resolve => { release = resolve })
+    const bothRead = new Promise(resolve => {
+      release = resolve
+    })
     p.store.get = async runId => {
       const current = await get(runId)
       if (reads < 2) {
@@ -315,11 +387,17 @@ for (const backend of ['json', 'sqlite']) {
       return current
     }
     let reports
-    try { reports = await Promise.all([reconcileOnStart(p.store), reconcileOnStart(p.store)]) }
-    finally { p.store.get = get }
+    try {
+      reports = await Promise.all([reconcileOnStart(p.store), reconcileOnStart(p.store)])
+    } finally {
+      p.store.get = get
+    }
     assert.equal(reads, 2)
     assert.equal(reports.flatMap(report => report.recoveryRequired).length, 1)
-    assert.deepEqual(reports.flatMap(report => report.untouched), [h.runId])
+    assert.deepEqual(
+      reports.flatMap(report => report.untouched),
+      [h.runId]
+    )
     const recovered = await p.store.get(h.runId)
     assert.equal(recovered.seq, before.seq + 1)
     assert.equal(recovered.state, 'recovery_required')
@@ -359,7 +437,10 @@ for (const backend of ['json', 'sqlite']) {
       assert.equal(recovered.attempts[0].result, undefined)
       assert.deepEqual(recovered.teamStage.effects, before.teamStage.effects)
       assert.equal(recovered.seq, before.seq + 1)
-      assert.deepEqual(report.recoveryRequired.find(item => item.runId === h.runId), { runId: h.runId, attemptId: h.attemptId, nodeId: 'work', intentKind: h.facts.kind })
+      assert.deepEqual(
+        report.recoveryRequired.find(item => item.runId === h.runId),
+        { runId: h.runId, attemptId: h.attemptId, nodeId: 'work', intentKind: h.facts.kind }
+      )
       await assertNoRedispatch(p, h, recovered, h.facts.kind === 'message' ? 'TEAM_EFFECT_SETTLED' : 'TEAM_EFFECT_UNKNOWN')
     }
     const snapshots = await Promise.all(cases.map(({ h }) => p.store.get(h.runId)))
@@ -398,19 +479,29 @@ for (const backend of ['json', 'sqlite']) {
     const p = await persistence(t, backend)
     const legacyDefinition = structuredClone(definition)
     delete legacyDefinition.graph.nodes[0].teamStage
-    const makeRun = async requestId => await p.store.createRun(
-      { scope: 'ordinary', requestId, payloadFingerprint: digest(requestId) },
-      'legacy-revision', JSON.stringify(legacyDefinition), '{}',
-    )
+    const makeRun = async requestId =>
+      await p.store.createRun(
+        { scope: 'ordinary', requestId, payloadFingerprint: digest(requestId) },
+        'legacy-revision',
+        JSON.stringify(legacyDefinition),
+        '{}'
+      )
     const { runId: waitingId } = await makeRun('waiting')
     const waitingAttempt = await p.store.recordIntent(waitingId, { nodeId: 'work', kind: 'agentTask' })
-    await p.store.transition(waitingId, draft => { draft.state = 'waiting_input'; draft.attempts[0].state = 'waiting_input' })
+    await p.store.transition(waitingId, draft => {
+      draft.state = 'waiting_input'
+      draft.attempts[0].state = 'waiting_input'
+    })
     const waiting = await p.store.get(waitingId)
     const { runId: unknownId } = await makeRun('unknown')
     const unknownAttempt = await p.store.recordIntent(unknownId, { nodeId: 'work', kind: 'agentTask' })
     const { runId: terminalId } = await makeRun('terminal')
     const terminalAttempt = await p.store.recordIntent(terminalId, { nodeId: 'work', kind: 'agentTask' })
-    await p.store.recordResult(terminalId, terminalAttempt.attemptId, { ok: true, outcome: { kind: 'succeeded', outputs: { answer: 'legacy' } }, evidence: 'known-result' })
+    await p.store.recordResult(terminalId, terminalAttempt.attemptId, {
+      ok: true,
+      outcome: { kind: 'succeeded', outputs: { answer: 'legacy' } },
+      evidence: 'known-result'
+    })
     const terminal = await p.store.settleTerminal(terminalId, 'succeeded')
     await p.reopen()
     const report = await reconcileOnStart(p.store)

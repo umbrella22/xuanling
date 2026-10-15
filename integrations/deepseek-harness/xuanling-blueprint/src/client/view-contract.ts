@@ -41,12 +41,22 @@ export interface ViewMessageParams {
   'connection.undeclaredPort': undefined
   'connection.dataCycle': undefined
   'connection.duplicateEdge': undefined
+  'layout.apply': undefined
+  'layout.unresolved': undefined
+  'layout.locate': undefined
+  'layout.unpin': undefined
+  'port.visibilityHelp': undefined
+  'port.visibility': undefined
+  'port.visibility.control': undefined
+  'port.visibility.inputs': undefined
+  'port.visibility.outputs': undefined
+  'port.connectedVisible': undefined
+  'connection.portHidden': undefined
+  'connection.portVisibilityConnected': { edgeCount: number }
 }
 export type ViewMessageKey = keyof ViewMessageParams
 export type ViewMessage<K extends ViewMessageKey = ViewMessageKey> = {
-  [P in K]: ViewMessageParams[P] extends undefined
-    ? { readonly key: P }
-    : { readonly key: P; readonly params: Readonly<ViewMessageParams[P]> }
+  [P in K]: ViewMessageParams[P] extends undefined ? { readonly key: P } : { readonly key: P; readonly params: Readonly<ViewMessageParams[P]> }
 }[K]
 export type WorkspaceNotice = ViewMessage<Extract<ViewMessageKey, `status.${string}`>>
 /** A renderer adapter to the host translator, not a locale service or dictionary. */
@@ -54,20 +64,33 @@ export type ViewTranslator = (key: ViewMessageKey, params?: Readonly<Record<stri
 
 export type ConnectionVerdict =
   | { ok: true }
-  | { ok: false; reason: 'direction-mismatch' | 'self-loop' | 'edge-kind-mismatch' | 'unknown-node' | 'undeclared-port' | 'data-cycle' | 'duplicate-edge' }
+  | {
+      ok: false
+      reason: 'direction-mismatch' | 'self-loop' | 'edge-kind-mismatch' | 'unknown-node' | 'undeclared-port' | 'data-cycle' | 'duplicate-edge' | 'port-hidden'
+    }
   | { ok: false; reason: 'type-conflict'; params: { fromType: string; toType: string } }
 
 /** Preserve the reason code separately from its display parameters. */
 export function connectionNotice(verdict: ConnectionVerdict): ViewMessage | null {
   if (verdict.ok) return null
   switch (verdict.reason) {
-    case 'direction-mismatch': return { key: 'connection.directionMismatch' }
-    case 'self-loop': return { key: 'connection.selfLoop' }
-    case 'edge-kind-mismatch': return { key: 'connection.edgeKindMismatch' }
-    case 'type-conflict': return { key: 'connection.typeConflict', params: verdict.params }
-    case 'unknown-node': return { key: 'connection.unknownNode' }
-    case 'undeclared-port': return { key: 'connection.undeclaredPort' }
-    case 'data-cycle': return { key: 'connection.dataCycle' }
-    case 'duplicate-edge': return { key: 'connection.duplicateEdge' }
+    case 'direction-mismatch':
+      return { key: 'connection.directionMismatch' }
+    case 'self-loop':
+      return { key: 'connection.selfLoop' }
+    case 'edge-kind-mismatch':
+      return { key: 'connection.edgeKindMismatch' }
+    case 'type-conflict':
+      return { key: 'connection.typeConflict', params: verdict.params }
+    case 'unknown-node':
+      return { key: 'connection.unknownNode' }
+    case 'undeclared-port':
+      return { key: 'connection.undeclaredPort' }
+    case 'data-cycle':
+      return { key: 'connection.dataCycle' }
+    case 'port-hidden':
+      return { key: 'connection.portHidden' }
+    case 'duplicate-edge':
+      return { key: 'connection.duplicateEdge' }
   }
 }

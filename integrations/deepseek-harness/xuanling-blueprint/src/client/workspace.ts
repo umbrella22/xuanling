@@ -10,24 +10,33 @@ import type { PreflightRunValue } from './remote.ts'
 import type { CatalogValue, DefinitionDocument, HostLink, HostResourceCatalogEntry } from './remote.ts'
 import type { WorkspaceNotice } from './view-contract.ts'
 
-export interface DraftStorage { getItem(key: string): string | null; setItem(key: string, value: string): void }
+export interface DraftStorage {
+  getItem(key: string): string | null
+  setItem(key: string, value: string): void
+}
 export const draftKey = (blueprintId: string): string => `xuanling-blueprint:draft:${encodeURIComponent(blueprintId)}`
 export const newDraftKey = 'xuanling-blueprint:new-draft'
 export const runBindingKey = (blueprintId: string): string => `xuanling-blueprint:recent-run:${encodeURIComponent(blueprintId)}`
 export function isEditingTarget(target: unknown): boolean {
   const element = target as { tagName?: string; isContentEditable?: boolean; closest?: (selector: string) => unknown } | null
-  return !!element && (/^(INPUT|TEXTAREA|SELECT)$/i.test(element.tagName ?? '') || !!element.isContentEditable || !!element.closest?.('[contenteditable="true"]'))
+  return (
+    !!element && (/^(INPUT|TEXTAREA|SELECT)$/i.test(element.tagName ?? '') || !!element.isContentEditable || !!element.closest?.('[contenteditable="true"]'))
+  )
 }
 // Match the host's existing input failure vocabulary without exposing parser
 // diagnostics or the input body. This local preflight never crosses the wire.
 class InvalidRunInputError extends BlueprintRemoteError {
   readonly details = { issues: 'invalid-input-json' as const }
-  constructor() { super('blueprint/definition-invalid') }
+  constructor() {
+    super('blueprint/definition-invalid')
+  }
 }
-const errorCode = (error: unknown): string => typeof (error as { code?: unknown })?.code === 'string' ? (error as { code: string }).code : 'blueprint/transport-unavailable'
-const errorNotice = (error: unknown): WorkspaceNotice => error instanceof InvalidRunInputError
-  ? { key: 'status.invalidRunInput', params: { code: error.code, issue: error.details.issues } }
-  : { key: 'status.error', params: { code: errorCode(error) } }
+const errorCode = (error: unknown): string =>
+  typeof (error as { code?: unknown })?.code === 'string' ? (error as { code: string }).code : 'blueprint/transport-unavailable'
+const errorNotice = (error: unknown): WorkspaceNotice =>
+  error instanceof InvalidRunInputError
+    ? { key: 'status.invalidRunInput', params: { code: error.code, issue: error.details.issues } }
+    : { key: 'status.error', params: { code: errorCode(error) } }
 
 /** Browser-side equivalence to the saved definition, NOT a host revision hash.
  * Matches definition/revision.ts semanticProjection: exclude presentation only,
@@ -39,7 +48,11 @@ function definitionSemantics(definition: BlueprintDefinition): string {
   const ordered = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(ordered)
     if (value !== null && typeof value === 'object') {
-      return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, item]) => [key, ordered(item)]))
+      return Object.fromEntries(
+        Object.entries(value)
+          .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+          .map(([key, item]) => [key, ordered(item)])
+      )
     }
     return value
   }
@@ -56,7 +69,10 @@ export interface WorkspacePreflight {
   report?: PreflightRunValue
   code?: string
 }
-interface CheckBinding extends WorkspacePreflight { epoch: number; semantics: string }
+interface CheckBinding extends WorkspacePreflight {
+  epoch: number
+  semantics: string
+}
 
 export class BlueprintWorkspace {
   readonly model = new BlueprintClientModel()
@@ -67,7 +83,9 @@ export class BlueprintWorkspace {
   document: DefinitionDocument | null = null
   blueprintId: string | null = null
   private creation: { requestId: string; submittedJson?: string } | undefined
-  get isNewDraft(): boolean { return this.creation !== undefined }
+  get isNewDraft(): boolean {
+    return this.creation !== undefined
+  }
   private boundRunId: string | null = null
   notice: WorkspaceNotice = { key: 'status.loading' }
   busy = false
@@ -76,19 +94,28 @@ export class BlueprintWorkspace {
   private checkRead = 0
   private checkBinding: CheckBinding | undefined
   private observedSemantics = ''
-  get inputJson(): string { return this.input }
+  get inputJson(): string {
+    return this.input
+  }
   set inputJson(value: string) {
     if (this.input === value) return
-    this.input = value; this.invalidateCheck(); this.emit()
+    this.input = value
+    this.invalidateCheck()
+    this.emit()
   }
   private invalidateCheck(): void {
     this.checkEpoch++
     if (this.checkBinding) this.checkBinding.status = 'stale'
   }
   private checkCurrent(binding: CheckBinding): boolean {
-    return binding.epoch === this.checkEpoch && binding.generation === this.generation
-      && binding.blueprintId === this.blueprintId && binding.documentRevision === this.document?.documentRevision
-      && binding.inputJson === this.inputJson && binding.semantics === definitionSemantics(this.editor.exportDefinition())
+    return (
+      binding.epoch === this.checkEpoch &&
+      binding.generation === this.generation &&
+      binding.blueprintId === this.blueprintId &&
+      binding.documentRevision === this.document?.documentRevision &&
+      binding.inputJson === this.inputJson &&
+      binding.semantics === definitionSemantics(this.editor.exportDefinition())
+    )
   }
   get preflight(): WorkspacePreflight | undefined {
     if (!this.checkBinding) return undefined
@@ -98,24 +125,42 @@ export class BlueprintWorkspace {
   private baselineJson = ''
   private baselineSemantics = ''
   private generation = 0
+  private resourceReadGeneration = 0
   private restoring = false
   private unsubscribeEditor: (() => void) | undefined
   private readonly listeners = new Set<() => void>()
   private readonly decisions = new Map<string, string>()
   private deletion: { blueprintId: string; revision: string; requestId: string } | undefined
   private pendingStart: { signature: string; requestId: string } | undefined
-  constructor(readonly host: HostLink | undefined, readonly storage?: DraftStorage) { this.model.subscribe(() => this.emit()) }
-  subscribe(listener: () => void): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener) } }
-  private emit(): void { for (const listener of this.listeners) listener() }
-  get runId(): string | null { return this.boundRunId }
+  constructor(
+    readonly host: HostLink | undefined,
+    readonly storage?: DraftStorage
+  ) {
+    this.model.subscribe(() => this.emit())
+  }
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
+    }
+  }
+  private emit(): void {
+    for (const listener of this.listeners) listener()
+  }
+  get runId(): string | null {
+    return this.boundRunId
+  }
   set runId(value: string | null) {
     if (value === this.boundRunId) return
     this.boundRunId = value
     this.model.reset()
   }
   private persistRunBinding(blueprintId: string, runId: string): void {
-    try { this.storage?.setItem(runBindingKey(blueprintId), JSON.stringify({ blueprintId, runId })) }
-    catch { this.notice = { key: 'status.recentRunUnavailable' } }
+    try {
+      this.storage?.setItem(runBindingKey(blueprintId), JSON.stringify({ blueprintId, runId }))
+    } catch {
+      this.notice = { key: 'status.recentRunUnavailable' }
+    }
   }
   private readRunBinding(blueprintId: string): string | null {
     try {
@@ -123,7 +168,9 @@ export class BlueprintWorkspace {
       if (!stored) return null
       const binding = JSON.parse(stored) as { blueprintId?: unknown; runId?: unknown }
       return binding.blueprintId === blueprintId && typeof binding.runId === 'string' && binding.runId.length > 0 ? binding.runId : null
-    } catch { return null }
+    } catch {
+      return null
+    }
   }
   /** Transitional read-only renderer for existing panel/tests. Workspace state
    * stores only notice descriptors; the localized panel consumes notice directly.
@@ -131,69 +178,120 @@ export class BlueprintWorkspace {
   get status(): string {
     const notice = this.notice
     switch (notice.key) {
-      case 'status.loading': return 'Loading configured library…'
-      case 'status.hostUnavailable': return 'Host link unavailable in this context.'
-      case 'status.chooseBlueprint': return 'Choose a blueprint or create a new draft.'
-      case 'status.noDefinitions': return 'No configured blueprints. Ask the host operator to configure an ID.'
-      case 'status.loadingDocument': return 'Loading host document…'
-      case 'status.loaded': return 'Loaded host document.'
-      case 'status.newDocument': return 'New configured document; save before running.'
-      case 'status.newDraft': return 'New draft; first save creates a blueprint.'
-      case 'status.draftRestored': return 'Restored local document draft.'
-      case 'status.draftStale': return 'Host document changed; old layout draft was not applied.'
-      case 'status.draftInvalid': return 'Invalid local draft ignored; host document retained.'
-      case 'status.deleted': return 'Blueprint deleted; run history retained.'
-      case 'status.saved': return 'Saved host document.'
-      case 'status.runAdmitted': return `Run admitted: ${notice.params.state}.`
-      case 'status.recentRunUnavailable': return 'Recent run binding unavailable; the durable run remains on the host.'
-      case 'status.draftUnavailable': return 'Local draft unavailable; edits remain in memory.'
-      case 'status.error': return notice.params.code
-      case 'status.invalidRunInput': return `${notice.params.code} · ${notice.params.issue}`
+      case 'status.loading':
+        return 'Loading configured library…'
+      case 'status.hostUnavailable':
+        return 'Host link unavailable in this context.'
+      case 'status.chooseBlueprint':
+        return 'Choose a blueprint or create a new draft.'
+      case 'status.noDefinitions':
+        return 'No configured blueprints. Ask the host operator to configure an ID.'
+      case 'status.loadingDocument':
+        return 'Loading host document…'
+      case 'status.loaded':
+        return 'Loaded host document.'
+      case 'status.newDocument':
+        return 'New configured document; save before running.'
+      case 'status.newDraft':
+        return 'New draft; first save creates a blueprint.'
+      case 'status.draftRestored':
+        return 'Restored local document draft.'
+      case 'status.draftStale':
+        return 'Host document changed; old layout draft was not applied.'
+      case 'status.draftInvalid':
+        return 'Invalid local draft ignored; host document retained.'
+      case 'status.deleted':
+        return 'Blueprint deleted; run history retained.'
+      case 'status.saved':
+        return 'Saved host document.'
+      case 'status.runAdmitted':
+        return `Run admitted: ${notice.params.state}.`
+      case 'status.recentRunUnavailable':
+        return 'Recent run binding unavailable; the durable run remains on the host.'
+      case 'status.draftUnavailable':
+        return 'Local draft unavailable; edits remain in memory.'
+      case 'status.error':
+        return notice.params.code
+      case 'status.invalidRunInput':
+        return `${notice.params.code} · ${notice.params.issue}`
     }
   }
   /** Run details remain intact even when attempts cannot decorate the edit graph. */
   get runOverlayEligible(): boolean {
     const view = this.model.view
-    return this.blueprintId !== null && this.document !== null
-      && this.document.blueprintId === this.blueprintId
-      && this.runId !== null && view !== null && view.runId === this.runId
-      && view.definitionRevision === this.document.semanticRevision
-      && definitionSemantics(this.editor.exportDefinition()) === this.baselineSemantics
+    return (
+      this.blueprintId !== null &&
+      this.document !== null &&
+      this.document.blueprintId === this.blueprintId &&
+      this.runId !== null &&
+      view !== null &&
+      view.runId === this.runId &&
+      view.definitionRevision === this.document.semanticRevision &&
+      definitionSemantics(this.editor.exportDefinition()) === this.baselineSemantics
+    )
   }
-  get dirty(): boolean { return this.blueprintId !== null && JSON.stringify(this.editor.exportDefinition()) !== this.baselineJson }
-  get definition(): BlueprintDefinition | null { return this.blueprintId ? this.editor.exportDefinition() : null }
+  get dirty(): boolean {
+    return this.blueprintId !== null && JSON.stringify(this.editor.exportDefinition()) !== this.baselineJson
+  }
+  get definition(): BlueprintDefinition | null {
+    return this.blueprintId ? this.editor.exportDefinition() : null
+  }
   private install(definition: BlueprintDefinition): void {
     this.unsubscribeEditor?.()
     this.editor = GraphEditor.fromDefinition(definition)
     this.observedSemantics = definitionSemantics(definition)
     this.unsubscribeEditor = this.editor.subscribe(() => {
       const semantics = definitionSemantics(this.editor.exportDefinition())
-      if (semantics !== this.observedSemantics) { this.observedSemantics = semantics; this.invalidateCheck() }
-      this.persistDraft(); this.emit()
+      if (semantics !== this.observedSemantics) {
+        this.observedSemantics = semantics
+        this.invalidateCheck()
+      }
+      this.persistDraft()
+      this.emit()
     })
   }
   private persistDraft(): void {
     if (!this.blueprintId || !this.storage || this.restoring) return
     try {
       if (this.creation) this.storage.setItem(newDraftKey, JSON.stringify({ ...this.creation, definitionJson: JSON.stringify(this.editor.exportDefinition()) }))
-      else this.storage.setItem(draftKey(this.blueprintId), JSON.stringify({ documentRevision: this.document?.documentRevision ?? null, definitionJson: JSON.stringify(this.editor.exportDefinition()), layout: this.editor.exportLayout() }))
+      else
+        this.storage.setItem(
+          draftKey(this.blueprintId),
+          JSON.stringify({
+            documentRevision: this.document?.documentRevision ?? null,
+            definitionJson: JSON.stringify(this.editor.exportDefinition()),
+            layout: this.editor.exportLayout()
+          })
+        )
+    } catch {
+      this.notice = { key: 'status.draftUnavailable' }
     }
-    catch { this.notice = { key: 'status.draftUnavailable' } }
   }
   newDraft(name = 'Untitled blueprint'): void {
-    this.generation++; this.invalidateCheck()
+    this.generation++
+    this.invalidateCheck()
     this.creation = { requestId: crypto.randomUUID() }
     this.blueprintId = `draft-${this.creation.requestId}`
-    this.document = null; this.runId = null; this.model.reset()
-    this.pendingStart = undefined; this.decisions.clear(); this.checkBinding = undefined
+    this.document = null
+    this.runId = null
+    this.model.reset()
+    this.pendingStart = undefined
+    this.decisions.clear()
+    this.checkBinding = undefined
     this.input = '{}'
     this.install({ schemaVersion: 1, id: this.blueprintId, name, resources: {}, graph: { nodes: [], edges: [] } })
-    this.baselineJson = JSON.stringify(this.editor.exportDefinition()); this.baselineSemantics = ''
+    this.baselineJson = JSON.stringify(this.editor.exportDefinition())
+    this.baselineSemantics = ''
     this.notice = { key: 'status.newDraft' }
-    this.persistDraft(); this.emit()
+    this.persistDraft()
+    this.emit()
   }
   async initialize(draftName = 'Untitled blueprint'): Promise<void> {
-    if (!this.host) { this.notice = { key: 'status.hostUnavailable' }; this.emit(); return }
+    if (!this.host) {
+      this.notice = { key: 'status.hostUnavailable' }
+      this.emit()
+      return
+    }
     const generation = this.generation
     try {
       await this.refreshResources()
@@ -218,33 +316,48 @@ export class BlueprintWorkspace {
                 readHostDefinition(draft.submittedJson, id)
               }
               this.creation = { requestId: draft.requestId, ...(typeof draft.submittedJson === 'string' ? { submittedJson: draft.submittedJson } : {}) }
-              this.blueprintId = id; this.install(definition); this.baselineJson = ''; this.baselineSemantics = ''
-              this.notice = { key: 'status.draftRestored' }; restored = true
+              this.blueprintId = id
+              this.install(definition)
+              this.baselineJson = ''
+              this.baselineSemantics = ''
+              this.notice = { key: 'status.draftRestored' }
+              restored = true
             }
           }
         } catch {
           if (generation !== this.generation) return
           this.notice = { key: 'status.draftInvalid' }
-          this.emit(); return
+          this.emit()
+          return
         }
         if (!restored) {
           if (!catalog.length) this.newDraft(draftName)
           else this.notice = { key: 'status.chooseBlueprint' }
         }
       }
+    } catch (error) {
+      this.notice = errorNotice(error)
     }
-    catch (error) { this.notice = errorNotice(error) }
     this.emit()
   }
   /** Directory observations never alter the saved definition or resource grants. */
   async refreshResources(): Promise<void> {
-    if (!this.host?.listResources) { this.resourceCatalogState = 'unavailable'; this.emit(); return }
-    this.resourceCatalogState = 'loading'; this.emit()
+    const readGeneration = ++this.resourceReadGeneration
+    const navigationGeneration = this.generation
+    if (!this.host?.listResources) {
+      if (readGeneration === this.resourceReadGeneration) this.resourceCatalogState = 'unavailable'
+      this.emit()
+      return
+    }
+    this.resourceCatalogState = 'loading'
+    this.emit()
     try {
       const { resources } = await this.host.listResources()
+      if (readGeneration !== this.resourceReadGeneration || navigationGeneration !== this.generation) return
       this.resourceCatalog = resources
       this.resourceCatalogState = 'current'
     } catch {
+      if (readGeneration !== this.resourceReadGeneration || navigationGeneration !== this.generation) return
       this.resourceCatalog = []
       this.resourceCatalogState = 'unavailable'
     }
@@ -272,7 +385,9 @@ export class BlueprintWorkspace {
     this.emit()
     const document = catalog.documentRevision === null ? null : await this.host.loadDefinition(blueprintId)
     if (generation !== this.generation) return
-    const definition: BlueprintDefinition = document ? readHostDefinition(document.definitionJson, blueprintId) : { schemaVersion: 1, id: blueprintId, name: catalog.name, resources: {}, graph: { nodes: [], edges: [] } }
+    const definition: BlueprintDefinition = document
+      ? readHostDefinition(document.definitionJson, blueprintId)
+      : { schemaVersion: 1, id: blueprintId, name: catalog.name, resources: {}, graph: { nodes: [], edges: [] } }
     if (definition.id !== blueprintId || (document && document.blueprintId !== blueprintId)) throw new Error('Unrelated definition response')
     this.blueprintId = blueprintId
     this.document = document
@@ -296,19 +411,25 @@ export class BlueprintWorkspace {
           this.install(candidate.exportDefinition())
           this.restoring = false
           this.notice = { key: 'status.draftRestored' }
-        }
-        else this.notice = { key: 'status.draftStale' }
+        } else this.notice = { key: 'status.draftStale' }
       }
     } catch {
       if (generation !== this.generation) return
-      this.restoring = false; this.notice = { key: 'status.draftInvalid' }
+      this.restoring = false
+      this.notice = { key: 'status.draftInvalid' }
     }
     this.runId = this.readRunBinding(blueprintId)
     this.emit()
     if (this.runId) {
       // Refresh/reopen is strictly read-only. A stored binding is not a command.
-      try { await this.inspect() }
-      catch (error) { if (generation === this.generation) { this.notice = errorNotice(error); this.emit() } }
+      try {
+        await this.inspect()
+      } catch (error) {
+        if (generation === this.generation) {
+          this.notice = errorNotice(error)
+          this.emit()
+        }
+      }
     }
   }
   async save(): Promise<DefinitionDocument> {
@@ -322,11 +443,15 @@ export class BlueprintWorkspace {
       if (!this.host.createDefinition) throw new BlueprintRemoteError('blueprint/capability-unavailable')
       creation.submittedJson ??= submitted
       this.persistDraft()
-      try { doc = await this.host.createDefinition(creation.requestId, creation.submittedJson) }
-      catch (error) {
+      try {
+        doc = await this.host.createDefinition(creation.requestId, creation.submittedJson)
+      } catch (error) {
         // Rejected definitions have no durable creation; allow correction. An
         // uncertain transport/write outcome must keep the exact retry payload.
-        if (errorCode(error) === 'blueprint/definition-invalid') { delete creation.submittedJson; this.persistDraft() }
+        if (errorCode(error) === 'blueprint/definition-invalid') {
+          delete creation.submittedJson
+          this.persistDraft()
+        }
         throw error
       }
     } else doc = await this.host.saveDefinition(id, submitted, this.document?.documentRevision ?? null)
@@ -336,9 +461,14 @@ export class BlueprintWorkspace {
       readHostDefinition(doc.definitionJson, doc.blueprintId)
       id = doc.blueprintId
       submitted = JSON.stringify({ ...JSON.parse(creation.submittedJson!), id })
-      this.blueprintId = id; this.creation = undefined
+      this.blueprintId = id
+      this.creation = undefined
       this.install({ ...current, id })
-      try { this.storage?.setItem(newDraftKey, 'null') } catch { /* The saved host document remains authoritative. */ }
+      try {
+        this.storage?.setItem(newDraftKey, 'null')
+      } catch {
+        /* The saved host document remains authoritative. */
+      }
     } else if (doc.blueprintId !== id) throw new Error('Unrelated save response')
     const accepted = readHostDefinition(doc.definitionJson, id)
     if (this.document?.documentRevision !== doc.documentRevision) this.invalidateCheck()
@@ -361,7 +491,8 @@ export class BlueprintWorkspace {
     if (!this.creation) {
       if (!this.host?.deleteDefinition || !this.document) throw new BlueprintRemoteError('blueprint/capability-unavailable')
       const revision = this.document.documentRevision
-      if (this.deletion?.blueprintId !== id || this.deletion.revision !== revision) this.deletion = { blueprintId: id, revision, requestId: crypto.randomUUID() }
+      if (this.deletion?.blueprintId !== id || this.deletion.revision !== revision)
+        this.deletion = { blueprintId: id, revision, requestId: crypto.randomUUID() }
       const result = await this.host.deleteDefinition(id, revision, this.deletion.requestId)
       if (result.blueprintId !== id || result.deleted !== true) throw new BlueprintRemoteError('blueprint/dto-invalid')
       this.catalog = this.catalog.filter(entry => entry.blueprintId !== id)
@@ -370,7 +501,9 @@ export class BlueprintWorkspace {
     try {
       for (const key of [draftKey(id), viewportKey(id), runBindingKey(id)]) this.storage?.setItem(key, '')
       if (this.creation && generation === this.generation) this.storage?.setItem(newDraftKey, 'null')
-    } catch { /* Host deletion is durable even when local storage is unavailable. */ }
+    } catch {
+      /* Host deletion is durable even when local storage is unavailable. */
+    }
     if (generation === this.generation) {
       this.newDraft(draftName)
       this.notice = { key: 'status.deleted' }
@@ -386,7 +519,8 @@ export class BlueprintWorkspace {
     if (generation !== this.generation || this.dirty) throw new BlueprintRemoteError('blueprint/document-stale')
     const revision = this.document?.documentRevision
     const archive = await this.host.exportDefinition(id)
-    if (generation !== this.generation || id !== this.blueprintId || this.dirty || revision !== this.document?.documentRevision) throw new BlueprintRemoteError('blueprint/document-stale')
+    if (generation !== this.generation || id !== this.blueprintId || this.dirty || revision !== this.document?.documentRevision)
+      throw new BlueprintRemoteError('blueprint/document-stale')
     if (archive.blueprintId !== id) throw new BlueprintRemoteError('blueprint/dto-invalid')
     return archive
   }
@@ -400,7 +534,11 @@ export class BlueprintWorkspace {
     if (generation !== this.generation) throw new BlueprintRemoteError('blueprint/document-stale')
     const target = catalog.find(d => d.blueprintId === blueprintId)
     if (!target) throw new BlueprintRemoteError('blueprint/configured-id-required')
-    if (target.documentRevision !== null || (this.blueprintId === blueprintId && (this.editor.nodes.length || Object.keys(this.editor.exportDefinition().resources).length || this.dirty))) throw new BlueprintRemoteError('blueprint/import-target-nonempty')
+    if (
+      target.documentRevision !== null ||
+      (this.blueprintId === blueprintId && (this.editor.nodes.length || Object.keys(this.editor.exportDefinition().resources).length || this.dirty))
+    )
+      throw new BlueprintRemoteError('blueprint/import-target-nonempty')
     const result = await this.host.importDefinition(blueprintId, archiveBase64)
     if (result.blueprintId !== blueprintId) throw new BlueprintRemoteError('blueprint/dto-invalid')
     if (generation !== this.generation) return
@@ -411,11 +549,17 @@ export class BlueprintWorkspace {
   /** A report is a saved-input observation, not an admission/permission token. */
   async checkRun(): Promise<PreflightRunValue> {
     if (!this.host || typeof this.host.preflightRun !== 'function') {
-      if (this.blueprintId) this.checkBinding = {
-        status: 'unavailable', blueprintId: this.blueprintId, documentRevision: this.document?.documentRevision ?? '',
-        inputJson: this.inputJson, generation: this.generation, epoch: this.checkEpoch,
-        semantics: definitionSemantics(this.editor.exportDefinition()), code: 'blueprint/capability-unavailable',
-      }
+      if (this.blueprintId)
+        this.checkBinding = {
+          status: 'unavailable',
+          blueprintId: this.blueprintId,
+          documentRevision: this.document?.documentRevision ?? '',
+          inputJson: this.inputJson,
+          generation: this.generation,
+          epoch: this.checkEpoch,
+          semantics: definitionSemantics(this.editor.exportDefinition()),
+          code: 'blueprint/capability-unavailable'
+        }
       this.emit()
       throw new BlueprintRemoteError('blueprint/capability-unavailable')
     }
@@ -425,36 +569,64 @@ export class BlueprintWorkspace {
     const epoch = this.checkEpoch
     const revisionBeforeSave = this.document?.documentRevision
     const beforeSave = this.editor.exportDefinition()
-    try { JSON.parse(inputJson) } catch { throw new InvalidRunInputError() }
+    try {
+      JSON.parse(inputJson)
+    } catch {
+      throw new InvalidRunInputError()
+    }
     const document = await this.save()
     // save may change the revision (and invalidate older reports), but edits,
     // input changes or navigation while it was in flight must not be captured.
     const semantics = definitionSemantics({ ...beforeSave, id: document.blueprintId })
-    if (read !== this.checkRead || generation !== this.generation || this.dirty
-      || inputJson !== this.inputJson || semantics !== definitionSemantics(this.editor.exportDefinition())
-      || this.checkEpoch !== epoch + (revisionBeforeSave !== document.documentRevision ? 1 : 0)) {
+    if (
+      read !== this.checkRead ||
+      generation !== this.generation ||
+      this.dirty ||
+      inputJson !== this.inputJson ||
+      semantics !== definitionSemantics(this.editor.exportDefinition()) ||
+      this.checkEpoch !== epoch + (revisionBeforeSave !== document.documentRevision ? 1 : 0)
+    ) {
       throw new BlueprintRemoteError('blueprint/preflight-stale')
     }
     const binding: CheckBinding = {
-      status: 'checking', blueprintId: document.blueprintId, documentRevision: document.documentRevision,
-      inputJson, generation, epoch: this.checkEpoch, semantics,
+      status: 'checking',
+      blueprintId: document.blueprintId,
+      documentRevision: document.documentRevision,
+      inputJson,
+      generation,
+      epoch: this.checkEpoch,
+      semantics
     }
-    this.checkBinding = binding; this.emit()
+    this.checkBinding = binding
+    this.emit()
     try {
       const value = await this.host.preflightRun(document.blueprintId, document.documentRevision, inputJson)
       if (read !== this.checkRead || !this.checkCurrent(binding)) throw new BlueprintRemoteError('blueprint/preflight-stale')
-      const parsed = BLUEPRINT_INVOCATIONS.find(item => item.method === 'preflightRun')!.result.create().safeParse(value)
+      const parsed = BLUEPRINT_INVOCATIONS.find(item => item.method === 'preflightRun')!
+        .result.create()
+        .safeParse(value)
       if (!parsed.success) throw new BlueprintRemoteError('blueprint/dto-invalid')
       const report = parsed.data as PreflightRunValue
-      if (report.blueprintId !== document.blueprintId || report.documentRevision !== document.documentRevision
-        || report.semanticRevision !== document.semanticRevision) throw new BlueprintRemoteError('blueprint/preflight-stale')
-      binding.report = report; binding.status = 'current'; this.emit()
+      if (
+        report.blueprintId !== document.blueprintId ||
+        report.documentRevision !== document.documentRevision ||
+        report.semanticRevision !== document.semanticRevision
+      )
+        throw new BlueprintRemoteError('blueprint/preflight-stale')
+      binding.report = report
+      binding.status = 'current'
+      this.emit()
       return structuredClone(report)
     } catch (error) {
       if (this.checkBinding === binding && read === this.checkRead) {
-        binding.status = !this.checkCurrent(binding) || errorCode(error) === 'blueprint/preflight-stale' ? 'stale'
-          : errorCode(error) === 'blueprint/capability-unavailable' ? 'unavailable' : 'failed'
-        binding.code = errorCode(error); this.emit()
+        binding.status =
+          !this.checkCurrent(binding) || errorCode(error) === 'blueprint/preflight-stale'
+            ? 'stale'
+            : errorCode(error) === 'blueprint/capability-unavailable'
+              ? 'unavailable'
+              : 'failed'
+        binding.code = errorCode(error)
+        this.emit()
       }
       throw error
     }
@@ -463,7 +635,8 @@ export class BlueprintWorkspace {
     const read = this.checkRead + 1
     const report = await this.checkRun()
     const binding = this.checkBinding
-    if (read !== this.checkRead || !this.host || !binding || binding.status !== 'current' || !this.checkCurrent(binding)) throw new BlueprintRemoteError('blueprint/preflight-stale')
+    if (read !== this.checkRead || !this.host || !binding || binding.status !== 'current' || !this.checkCurrent(binding))
+      throw new BlueprintRemoteError('blueprint/preflight-stale')
     if (!report.canStart || report.checks.some(check => check.status === 'block')) throw new BlueprintRemoteError('blueprint/preflight-blocked')
     const { blueprintId, documentRevision, inputJson, generation } = binding
     const signature = JSON.stringify([blueprintId, documentRevision, inputJson])
@@ -490,14 +663,16 @@ export class BlueprintWorkspace {
   }
   async cancel(): Promise<void> {
     if (!this.host || !this.runId) return
-    const generation = this.generation; const runId = this.runId
+    const generation = this.generation
+    const runId = this.runId
     await this.host.cancelRun(runId)
     if (generation === this.generation && runId === this.runId) await this.inspect()
     // Terminal UI facts only come from inspect, not optimistic command state.
   }
   async decide(action: 'approve' | 'reject'): Promise<void> {
     if (!this.host || !this.runId) return
-    const generation = this.generation; const runId = this.runId
+    const generation = this.generation
+    const runId = this.runId
     const waiting = this.model.view?.attempts.find(a => a.state === 'waiting_input')
     if (!waiting) throw new Error('No durable waiting decision')
     const key = `${runId}\0${waiting.nodeId}\0${action}`
@@ -509,16 +684,20 @@ export class BlueprintWorkspace {
   async perform(action: () => Promise<unknown>): Promise<void> {
     if (this.busy) return
     const generation = this.generation
-    this.busy = true; this.emit()
-    try { await action() }
-    catch (error) {
+    this.busy = true
+    this.emit()
+    try {
+      await action()
+    } catch (error) {
       if (generation === this.generation) {
         this.notice = errorNotice(error)
         // A rejected input or CAS/domain command says nothing about the
         // connectivity of the previously inspected authoritative Run.
         if (this.runId && errorCode(error) === 'blueprint/transport-unavailable') this.model.markDisconnected()
       }
+    } finally {
+      this.busy = false
+      this.emit()
     }
-    finally { this.busy = false; this.emit() }
   }
 }

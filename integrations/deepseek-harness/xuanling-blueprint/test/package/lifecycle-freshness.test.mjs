@@ -15,9 +15,13 @@ const MODES = ['web', 'headless']
 const IDS = ['PL1', 'PL2', 'PL3', 'PL4', 'PL5', 'PL6', 'PL7']
 // Independent public-contract oracle; never derived from the implementation.
 const FLAGS = {
-  PL1: ['packed'], PL2: ['profileInitialized'], PL3: ['installed', 'reconciled'],
-  PL4: ['booted', 'blueprintPingSucceeded'], PL5: ['disabled', 'uninstalled'],
-  PL6: ['baselineBundlesPreserved'], PL7: ['sourceUntouched', 'runtimeDataUntouched'],
+  PL1: ['packed'],
+  PL2: ['profileInitialized'],
+  PL3: ['installed', 'reconciled'],
+  PL4: ['booted', 'blueprintPingSucceeded'],
+  PL5: ['disabled', 'uninstalled'],
+  PL6: ['baselineBundlesPreserved'],
+  PL7: ['sourceUntouched', 'runtimeDataUntouched']
 }
 // Canonical synthetic hashes, not claims about the actual checkout/artifacts.
 const FINGERPRINT = { revision: '1'.repeat(40), source_sha256: '2'.repeat(64), artifact_sha256: '3'.repeat(64) }
@@ -38,24 +42,38 @@ const childEnv = home => {
 function receipt(mode, artifact, repeat = 1) {
   const time = new Date().toISOString()
   return {
-    schema_version: 1, plan_id: PLAN_ID, suite: 'lifecycle', scope: mode, mode,
-    repeat, passed: true, clean_acceptance_count: repeat,
-    started_at: time, finished_at: time, duration_ms: 0,
+    schema_version: 1,
+    plan_id: PLAN_ID,
+    suite: 'lifecycle',
+    scope: mode,
+    mode,
+    repeat,
+    passed: true,
+    clean_acceptance_count: repeat,
+    started_at: time,
+    finished_at: time,
+    duration_ms: 0,
     environment: { platform: `${process.platform}/${process.arch}` },
     evidence_fingerprint: structuredClone(FINGERPRINT),
     evidence_fingerprint_after: structuredClone(FINGERPRINT),
     artifacts: { tarball: { path: `${mode}.tgz`, sha256: artifact.sha256 } },
     runs: Array.from({ length: repeat }, (_, index) => ({
-      index: index + 1, passed: true, clean_acceptance_count: index + 1,
-      started_at: time, finished_at: time, duration_ms: 0,
+      index: index + 1,
+      passed: true,
+      clean_acceptance_count: index + 1,
+      started_at: time,
+      finished_at: time,
+      duration_ms: 0,
       evidence_fingerprint: structuredClone(FINGERPRINT),
       evidence_fingerprint_after: structuredClone(FINGERPRINT),
       results: IDS.map(id => ({
-        id, title: `synthetic collector-only ${id}`, expect: 'pass', status: 'pass',
-        detail: { ok: true, mode, artifact_sha256: artifact.sha256,
-          behavior_assertions: Object.fromEntries(FLAGS[id].map(flag => [flag, true])) },
-      })),
-    })),
+        id,
+        title: `synthetic collector-only ${id}`,
+        expect: 'pass',
+        status: 'pass',
+        detail: { ok: true, mode, artifact_sha256: artifact.sha256, behavior_assertions: Object.fromEntries(FLAGS[id].map(flag => [flag, true])) }
+      }))
+    }))
   }
 }
 
@@ -64,8 +82,9 @@ function containsCanary(value, canary, seen = new Set()) {
   if (Buffer.isBuffer(value)) return value.toString('utf8').includes(canary)
   if (!value || typeof value !== 'object' || seen.has(value)) return false
   seen.add(value)
-  return Object.values(Object.getOwnPropertyDescriptors(value)).some(descriptor =>
-    Object.hasOwn(descriptor, 'value') && containsCanary(descriptor.value, canary, seen))
+  return Object.values(Object.getOwnPropertyDescriptors(value)).some(
+    descriptor => Object.hasOwn(descriptor, 'value') && containsCanary(descriptor.value, canary, seen)
+  )
 }
 
 function fixture(t, { mutate, targetMode = 'web', exitCode = 0, output = 'receipt', raw = false, exception = false, repeat = 1 } = {}) {
@@ -78,19 +97,24 @@ function fixture(t, { mutate, targetMode = 'web', exitCode = 0, output = 'receip
   const callsPath = join(root, 'collector-calls.json')
   const specPath = join(root, 'collector-fixture.json')
   const scriptPath = join(probeRoot, 'capabilities', 'lifecycle.mjs')
-  for (const path of [join(packageRoot, 'lib'), join(probeRoot, 'capabilities'), reportDir, legacyDir, join(root, 'synthetic artifacts')]) mkdirSync(path, { recursive: true })
+  for (const path of [join(packageRoot, 'lib'), join(probeRoot, 'capabilities'), reportDir, legacyDir, join(root, 'synthetic artifacts')])
+    mkdirSync(path, { recursive: true })
   writeFileSync(join(packageRoot, 'lib', 'index.js'), 'export default function SyntheticFixtureOnly() {}\n')
-  const artifacts = Object.fromEntries(MODES.map(mode => {
-    const path = join(root, 'synthetic artifacts', `${mode}.tgz`)
-    const bytes = Buffer.from(`SYNTHETIC COLLECTOR UNIT BYTES ONLY\n${mode}\n`)
-    writeFileSync(path, bytes)
-    writeFileSync(join(legacyDir, `${mode}.tgz`), bytes)
-    return [mode, { path, sha256: hash(bytes) }]
-  }))
+  const artifacts = Object.fromEntries(
+    MODES.map(mode => {
+      const path = join(root, 'synthetic artifacts', `${mode}.tgz`)
+      const bytes = Buffer.from(`SYNTHETIC COLLECTOR UNIT BYTES ONLY\n${mode}\n`)
+      writeFileSync(path, bytes)
+      writeFileSync(join(legacyDir, `${mode}.tgz`), bytes)
+      return [mode, { path, sha256: hash(bytes) }]
+    })
+  )
   const receipts = Object.fromEntries(MODES.map(mode => [mode, receipt(mode, artifacts[mode], repeat)]))
-  const legacy = { probe: 'synthetic historical green only',
+  const legacy = {
+    probe: 'synthetic historical green only',
     artifacts: { tarball: { sha256: 'a'.repeat(64) } },
-    assertions: IDS.map(id => ({ id, passed: true })) }
+    assertions: IDS.map(id => ({ id, passed: true }))
+  }
   const legacyPath = join(legacyDir, 'w8.lifecycle-report.json')
   writeFileSync(legacyPath, JSON.stringify(legacy))
   // Seed both complete v1 histories as well: neither is this invocation's receipt.
@@ -103,7 +127,9 @@ function fixture(t, { mutate, targetMode = 'web', exitCode = 0, output = 'receip
   writeFileSync(specPath, JSON.stringify({ outputs, artifacts, targetMode, exitCode, raw, exception }))
   // This subprocess only implements the documented CLI/report boundary. It
   // never imports the real capability or starts DSH, npm, a provider or a build.
-  writeFileSync(scriptPath, `
+  writeFileSync(
+    scriptPath,
+    `
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 const root = ${JSON.stringify(root)};
@@ -129,9 +155,19 @@ calls.push(call);
 writeFileSync(callsPath, JSON.stringify(calls));
 if (spec.exception && selected === spec.targetMode) throw new Error(${JSON.stringify(CANARY)});
 process.exit(selected === spec.targetMode ? spec.exitCode : 0);
-`)
-  return { root, reportDir, legacyDir, legacyPath, artifacts, receipts, callsPath, scriptPath,
-    helpers: { packageRoot, repoRoot: root, reportDir, planId: PLAN_ID, evidenceFingerprint: structuredClone(FINGERPRINT) } }
+`
+  )
+  return {
+    root,
+    reportDir,
+    legacyDir,
+    legacyPath,
+    artifacts,
+    receipts,
+    callsPath,
+    scriptPath,
+    helpers: { packageRoot, repoRoot: root, reportDir, planId: PLAN_ID, evidenceFingerprint: structuredClone(FINGERPRINT) }
+  }
 }
 
 async function invoke(f) {
@@ -139,7 +175,11 @@ async function invoke(f) {
   const cases = await getCases(f.helpers)
   const pk1 = cases.find(c => c.id === 'PK1')
   assert.equal(typeof pk1?.run, 'function', 'public package suite must expose PK1.run')
-  try { return { value: await pk1.run() } } catch (error) { return { error } }
+  try {
+    return { value: await pk1.run() }
+  } catch (error) {
+    return { error }
+  }
 }
 
 function assertInvocation(f, mode) {
@@ -169,9 +209,10 @@ async function expectFailure(f, { code = 'LIFECYCLE_RECEIPT_INVALID', mode = 'we
 
 function processPreflight(f, mode, expectedExit) {
   // A syntax/import/fixture failure is not the historical-green acceptance red.
-  const child = spawnSync(process.execPath, [f.scriptPath, '--mode', mode,
-    '--report-dir', join(f.root, 'preflight receipts'), '--plan-id', PLAN_ID],
-  { cwd: f.root, env: childEnv(f.root) })
+  const child = spawnSync(process.execPath, [f.scriptPath, '--mode', mode, '--report-dir', join(f.root, 'preflight receipts'), '--plan-id', PLAN_ID], {
+    cwd: f.root,
+    env: childEnv(f.root)
+  })
   assert.equal(child.error === undefined, true, 'synthetic collector must actually launch')
   assert.equal(child.signal, null, 'synthetic collector must exit normally')
   assert.equal(child.status, expectedExit, 'fixture preflight must reach its intended exit')
@@ -182,7 +223,9 @@ function processPreflight(f, mode, expectedExit) {
 // stderr, not just raw material attached to a returned Error/cause/stack.
 function outerInvoke(f) {
   const hostPath = join(f.root, 'public-pk1-host.mjs')
-  writeFileSync(hostPath, `
+  writeFileSync(
+    hostPath,
+    `
 import { getCases } from ${JSON.stringify(new URL('./package.mjs', import.meta.url).href)};
 const containsCanary = ${containsCanary.toString()};
 const helpers = ${JSON.stringify(f.helpers)};
@@ -197,7 +240,8 @@ try {
   result = { ok: false, code: allowedCodes.includes(error.code) ? error.code : 'UNEXPECTED_CODE', rawLeaked: containsCanary(error, canary) };
 }
 process.stdout.write(JSON.stringify(result));
-`)
+`
+  )
   const child = spawnSync(process.execPath, [hostPath], { cwd: f.root, env: childEnv(f.root), encoding: 'utf8' })
   assertNoRaw(child)
   assert.equal(child.error === undefined, true, 'outer public caller must launch')
@@ -229,34 +273,163 @@ for (const mode of MODES) {
   }
 
   const invalidEnvelopes = [
-    ['wrong schema', r => { r.schema_version = 2 }],
-    ['missing schema', r => { delete r.schema_version }],
-    ['wrong plan', r => { r.plan_id = 'different-plan' }],
-    ['missing plan', r => { delete r.plan_id }],
-    ['wrong suite', r => { r.suite = 'package' }],
-    ['wrong scope', r => { r.scope = mode === 'web' ? 'headless' : 'web' }],
-    ['wrong mode', r => { r.mode = mode === 'web' ? 'headless' : 'web' }],
-    ['missing mode', r => { delete r.mode }],
-    ['missing environment', r => { delete r.environment }],
-    ['wrong environment', r => { r.environment.platform = 'invented/arch' }],
-    ['missing original fingerprint', r => { delete r.evidence_fingerprint }],
-    ['missing after fingerprint', r => { delete r.evidence_fingerprint_after }],
-    ['wrong original fingerprint', r => { r.evidence_fingerprint.source_sha256 = '4'.repeat(64) }],
-    ['top-level fingerprint drift', r => { r.evidence_fingerprint_after.artifact_sha256 = '4'.repeat(64) }],
-    ['stable but stale fingerprints', r => {
-      for (const entry of [r, ...r.runs]) for (const key of ['evidence_fingerprint', 'evidence_fingerprint_after']) entry[key].source_sha256 = '4'.repeat(64)
-    }],
-    ['wrong run original fingerprint', r => { r.runs[0].evidence_fingerprint.revision = '4'.repeat(40) }],
-    ['run fingerprint drift', r => { r.runs[0].evidence_fingerprint_after.source_sha256 = '4'.repeat(64) }],
-    ['false top-level passed', r => { r.passed = false }],
-    ['truthy top-level passed', r => { r.passed = 'true' }],
-    ['empty runs with top-level passed', r => { r.runs = [] }],
-    ['empty results with top-level passed', r => { r.runs[0].results = [] }],
-    ['zero repeat', r => { r.repeat = 0 }],
-    ['repeat/run length mismatch', r => { r.repeat = 2; r.clean_acceptance_count = 2 }],
-    ['wrong report clean count', r => { r.clean_acceptance_count = 0 }],
-    ['wrong run clean count', r => { r.runs[0].clean_acceptance_count = 0 }],
-    ['non-contiguous run index', r => { r.runs[0].index = 2 }],
+    [
+      'wrong schema',
+      r => {
+        r.schema_version = 2
+      }
+    ],
+    [
+      'missing schema',
+      r => {
+        delete r.schema_version
+      }
+    ],
+    [
+      'wrong plan',
+      r => {
+        r.plan_id = 'different-plan'
+      }
+    ],
+    [
+      'missing plan',
+      r => {
+        delete r.plan_id
+      }
+    ],
+    [
+      'wrong suite',
+      r => {
+        r.suite = 'package'
+      }
+    ],
+    [
+      'wrong scope',
+      r => {
+        r.scope = mode === 'web' ? 'headless' : 'web'
+      }
+    ],
+    [
+      'wrong mode',
+      r => {
+        r.mode = mode === 'web' ? 'headless' : 'web'
+      }
+    ],
+    [
+      'missing mode',
+      r => {
+        delete r.mode
+      }
+    ],
+    [
+      'missing environment',
+      r => {
+        delete r.environment
+      }
+    ],
+    [
+      'wrong environment',
+      r => {
+        r.environment.platform = 'invented/arch'
+      }
+    ],
+    [
+      'missing original fingerprint',
+      r => {
+        delete r.evidence_fingerprint
+      }
+    ],
+    [
+      'missing after fingerprint',
+      r => {
+        delete r.evidence_fingerprint_after
+      }
+    ],
+    [
+      'wrong original fingerprint',
+      r => {
+        r.evidence_fingerprint.source_sha256 = '4'.repeat(64)
+      }
+    ],
+    [
+      'top-level fingerprint drift',
+      r => {
+        r.evidence_fingerprint_after.artifact_sha256 = '4'.repeat(64)
+      }
+    ],
+    [
+      'stable but stale fingerprints',
+      r => {
+        for (const entry of [r, ...r.runs]) for (const key of ['evidence_fingerprint', 'evidence_fingerprint_after']) entry[key].source_sha256 = '4'.repeat(64)
+      }
+    ],
+    [
+      'wrong run original fingerprint',
+      r => {
+        r.runs[0].evidence_fingerprint.revision = '4'.repeat(40)
+      }
+    ],
+    [
+      'run fingerprint drift',
+      r => {
+        r.runs[0].evidence_fingerprint_after.source_sha256 = '4'.repeat(64)
+      }
+    ],
+    [
+      'false top-level passed',
+      r => {
+        r.passed = false
+      }
+    ],
+    [
+      'truthy top-level passed',
+      r => {
+        r.passed = 'true'
+      }
+    ],
+    [
+      'empty runs with top-level passed',
+      r => {
+        r.runs = []
+      }
+    ],
+    [
+      'empty results with top-level passed',
+      r => {
+        r.runs[0].results = []
+      }
+    ],
+    [
+      'zero repeat',
+      r => {
+        r.repeat = 0
+      }
+    ],
+    [
+      'repeat/run length mismatch',
+      r => {
+        r.repeat = 2
+        r.clean_acceptance_count = 2
+      }
+    ],
+    [
+      'wrong report clean count',
+      r => {
+        r.clean_acceptance_count = 0
+      }
+    ],
+    [
+      'wrong run clean count',
+      r => {
+        r.runs[0].clean_acceptance_count = 0
+      }
+    ],
+    [
+      'non-contiguous run index',
+      r => {
+        r.runs[0].index = 2
+      }
+    ]
   ]
   for (const [label, mutate] of invalidEnvelopes) {
     test(`PK1 ${mode}: reject ${label}`, async t => {
@@ -266,43 +439,100 @@ for (const mode of MODES) {
 
   for (const id of IDS) {
     test(`PK1 ${mode}: missing required ${id} cannot be hidden by top-level passed`, async t => {
-      await expectFailure(fixture(t, { targetMode: mode, mutate: r => { r.runs[0].results = r.runs[0].results.filter(result => result.id !== id) } }), { mode })
+      await expectFailure(
+        fixture(t, {
+          targetMode: mode,
+          mutate: r => {
+            r.runs[0].results = r.runs[0].results.filter(result => result.id !== id)
+          }
+        }),
+        { mode }
+      )
     })
     for (const field of ['id', 'expect', 'status', 'detail']) {
       test(`PK1 ${mode}: ${id} missing ${field} is not a valid pass result`, async t => {
-        await expectFailure(fixture(t, { targetMode: mode, mutate: r => { delete r.runs[0].results.find(result => result.id === id)[field] } }),
-          { code: 'LIFECYCLE_BEHAVIOR_INVALID', mode })
+        await expectFailure(
+          fixture(t, {
+            targetMode: mode,
+            mutate: r => {
+              delete r.runs[0].results.find(result => result.id === id)[field]
+            }
+          }),
+          { code: 'LIFECYCLE_BEHAVIOR_INVALID', mode }
+        )
       })
     }
     for (const flag of FLAGS[id]) {
       for (const variant of ['missing', 'false', 'truthy']) {
         test(`PK1 ${mode}: ${id}.${flag} ${variant} is not behavior evidence`, async t => {
-          await expectFailure(fixture(t, { targetMode: mode, mutate: r => {
-            const facts = r.runs[0].results.find(result => result.id === id).detail.behavior_assertions
-            if (variant === 'missing') delete facts[flag]
-            else facts[flag] = variant === 'false' ? false : 'true'
-          } }), { code: 'LIFECYCLE_BEHAVIOR_INVALID', mode })
+          await expectFailure(
+            fixture(t, {
+              targetMode: mode,
+              mutate: r => {
+                const facts = r.runs[0].results.find(result => result.id === id).detail.behavior_assertions
+                if (variant === 'missing') delete facts[flag]
+                else facts[flag] = variant === 'false' ? false : 'true'
+              }
+            }),
+            { code: 'LIFECYCLE_BEHAVIOR_INVALID', mode }
+          )
         })
       }
     }
   }
 
   const invalidBehaviors = [
-    ['duplicate PL ID', r => { r.runs[0].results[6] = structuredClone(r.runs[0].results[0]) }],
-    ['unknown PL ID', r => { r.runs[0].results[6].id = 'PL8' }],
-    ['expected-red classification', r => { r.runs[0].results[0].expect = 'expected-red' }],
-    ['wrong detail mode', r => { r.runs[0].results[3].detail.mode = mode === 'web' ? 'headless' : 'web' }],
-    ['wrong detail artifact hash', r => { r.runs[0].results[3].detail.artifact_sha256 = '4'.repeat(64) }],
-    ['import-only detail', r => { r.runs[0].results[3].detail = 'ready/import-only' }],
-    ['forged case-level assertions', r => {
-      const result = r.runs[0].results[3]
-      result.behavior_assertions = result.detail.behavior_assertions
-      result.detail = { ok: true, mode, artifact_sha256: r.artifacts.tarball.sha256 }
-    }],
-    ['forged report-level assertions', r => {
-      r.behavior_assertions = { booted: true, blueprintPingSucceeded: true }
-      delete r.runs[0].results[3].detail.behavior_assertions
-    }],
+    [
+      'duplicate PL ID',
+      r => {
+        r.runs[0].results[6] = structuredClone(r.runs[0].results[0])
+      }
+    ],
+    [
+      'unknown PL ID',
+      r => {
+        r.runs[0].results[6].id = 'PL8'
+      }
+    ],
+    [
+      'expected-red classification',
+      r => {
+        r.runs[0].results[0].expect = 'expected-red'
+      }
+    ],
+    [
+      'wrong detail mode',
+      r => {
+        r.runs[0].results[3].detail.mode = mode === 'web' ? 'headless' : 'web'
+      }
+    ],
+    [
+      'wrong detail artifact hash',
+      r => {
+        r.runs[0].results[3].detail.artifact_sha256 = '4'.repeat(64)
+      }
+    ],
+    [
+      'import-only detail',
+      r => {
+        r.runs[0].results[3].detail = 'ready/import-only'
+      }
+    ],
+    [
+      'forged case-level assertions',
+      r => {
+        const result = r.runs[0].results[3]
+        result.behavior_assertions = result.detail.behavior_assertions
+        result.detail = { ok: true, mode, artifact_sha256: r.artifacts.tarball.sha256 }
+      }
+    ],
+    [
+      'forged report-level assertions',
+      r => {
+        r.behavior_assertions = { booted: true, blueprintPingSucceeded: true }
+        delete r.runs[0].results[3].detail.behavior_assertions
+      }
+    ]
   ]
   for (const [label, mutate] of invalidBehaviors) {
     test(`PK1 ${mode}: reject ${label}`, async t => {
@@ -311,11 +541,41 @@ for (const mode of MODES) {
   }
 
   for (const [label, mutate, code] of [
-    ['earlier failed run hidden by final green', r => { r.runs[0].passed = false }, 'LIFECYCLE_RECEIPT_INVALID'],
-    ['earlier failed result hidden by run/top-level green', r => { r.runs[0].results[3].status = 'fail' }, 'LIFECYCLE_BEHAVIOR_INVALID'],
-    ['earlier not-run result hidden by run/top-level green', r => { r.runs[0].results[3].status = 'not-run' }, 'LIFECYCLE_BEHAVIOR_INVALID'],
-    ['earlier clean-count reset hidden by final green', r => { r.runs[0].clean_acceptance_count = 0 }, 'LIFECYCLE_RECEIPT_INVALID'],
-    ['earlier fingerprint drift hidden by final green', r => { r.runs[0].evidence_fingerprint_after.source_sha256 = '4'.repeat(64) }, 'LIFECYCLE_RECEIPT_INVALID'],
+    [
+      'earlier failed run hidden by final green',
+      r => {
+        r.runs[0].passed = false
+      },
+      'LIFECYCLE_RECEIPT_INVALID'
+    ],
+    [
+      'earlier failed result hidden by run/top-level green',
+      r => {
+        r.runs[0].results[3].status = 'fail'
+      },
+      'LIFECYCLE_BEHAVIOR_INVALID'
+    ],
+    [
+      'earlier not-run result hidden by run/top-level green',
+      r => {
+        r.runs[0].results[3].status = 'not-run'
+      },
+      'LIFECYCLE_BEHAVIOR_INVALID'
+    ],
+    [
+      'earlier clean-count reset hidden by final green',
+      r => {
+        r.runs[0].clean_acceptance_count = 0
+      },
+      'LIFECYCLE_RECEIPT_INVALID'
+    ],
+    [
+      'earlier fingerprint drift hidden by final green',
+      r => {
+        r.runs[0].evidence_fingerprint_after.source_sha256 = '4'.repeat(64)
+      },
+      'LIFECYCLE_RECEIPT_INVALID'
+    ]
   ]) {
     test(`PK1 ${mode}: reject ${label}`, async t => {
       await expectFailure(fixture(t, { targetMode: mode, repeat: 2, mutate }), { code, mode })
@@ -323,20 +583,36 @@ for (const mode of MODES) {
   }
 
   test(`PK1 ${mode}: tarball byte tamper fails even when every declared hash agrees`, async t => {
-    const f = fixture(t, { targetMode: mode, mutate: (r, { artifacts }) => {
-      writeFileSync(artifacts[mode].path, 'SYNTHETIC TAMPERED BYTES; DECLARED HASH UNCHANGED\n')
-      assert.equal(r.runs.every(run => run.results.every(result => result.detail.artifact_sha256 === r.artifacts.tarball.sha256)), true)
-      assert.notEqual(hash(readFileSync(artifacts[mode].path)), r.artifacts.tarball.sha256)
-    } })
+    const f = fixture(t, {
+      targetMode: mode,
+      mutate: (r, { artifacts }) => {
+        writeFileSync(artifacts[mode].path, 'SYNTHETIC TAMPERED BYTES; DECLARED HASH UNCHANGED\n')
+        assert.equal(
+          r.runs.every(run => run.results.every(result => result.detail.artifact_sha256 === r.artifacts.tarball.sha256)),
+          true
+        )
+        assert.notEqual(hash(readFileSync(artifacts[mode].path)), r.artifacts.tarball.sha256)
+      }
+    })
     await expectFailure(f, { code: 'LIFECYCLE_ARTIFACT_INVALID', mode })
     const call = assertInvocation(f, mode)
-    assert.equal(hash(readFileSync(join(call.reportDir, `${mode}.tgz`))), hash(readFileSync(f.artifacts[mode].path)), 'child must actually write the tampered bytes')
+    assert.equal(
+      hash(readFileSync(join(call.reportDir, `${mode}.tgz`))),
+      hash(readFileSync(f.artifacts[mode].path)),
+      'child must actually write the tampered bytes'
+    )
   })
   test(`PK1 ${mode}: mutually consistent forged hashes cannot replace actual tarball bytes`, async t => {
-    await expectFailure(fixture(t, { targetMode: mode, mutate: r => {
-      r.artifacts.tarball.sha256 = '4'.repeat(64)
-      for (const run of r.runs) for (const result of run.results) result.detail.artifact_sha256 = r.artifacts.tarball.sha256
-    } }), { code: 'LIFECYCLE_ARTIFACT_INVALID', mode })
+    await expectFailure(
+      fixture(t, {
+        targetMode: mode,
+        mutate: r => {
+          r.artifacts.tarball.sha256 = '4'.repeat(64)
+          for (const run of r.runs) for (const result of run.results) result.detail.artifact_sha256 = r.artifacts.tarball.sha256
+        }
+      }),
+      { code: 'LIFECYCLE_ARTIFACT_INVALID', mode }
+    )
   })
 
   for (const exception of [false, true]) {
@@ -348,7 +624,14 @@ for (const mode of MODES) {
     })
   }
   test(`PK1 ${mode}: malformed receipt with raw fields is safely classified`, t => {
-    const f = fixture(t, { targetMode: mode, raw: true, mutate: r => { r.plan_id = CANARY; r.raw_error = CANARY } })
+    const f = fixture(t, {
+      targetMode: mode,
+      raw: true,
+      mutate: r => {
+        r.plan_id = CANARY
+        r.raw_error = CANARY
+      }
+    })
     assert.deepEqual(outerInvoke(f), { ok: false, code: 'LIFECYCLE_RECEIPT_INVALID', rawLeaked: false })
     assertInvocation(f, mode)
   })

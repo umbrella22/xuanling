@@ -16,7 +16,7 @@ import { ConversationBlueprintView } from './conversation-view.ts'
 import type { ConversationViewInjected } from './conversation-view.ts'
 
 interface SlotsRuntime {
-  inject(key: string, register: () => (() => void)): () => void
+  inject(key: string, register: () => () => void): () => void
   register<Props>(options: Record<string, unknown>, component: React.ComponentType<Props>): () => void
 }
 
@@ -27,12 +27,12 @@ export const inject = ['slots', 'remote', 'locale'] as const
 
 const panelPlugin = {
   inject: ['slots', 'remote.blueprint', 'locale'],
-  apply: applyPanel,
+  apply: applyPanel
 }
 
 const conversationPlugin = {
   inject: ['slots', 'remote.blueprint', 'uiSession', 'sessions', 'locale'],
-  apply: applyConversation,
+  apply: applyConversation
 }
 
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
@@ -69,17 +69,32 @@ function applyConversation(ctx: Context): void {
   // survives tab unmount, without retaining or creating a Host Session.
   const controllers = new WeakMap<SessionBinding, ConversationController>()
   const sessions = ctx.get('sessions') as unknown as ISessions
-  ctx.effect(() => slots.inject('conversation.view', () => slots.register({
-    name: 'conversation.view', id: PANEL_ID, order: 20, locale: BLUEPRINT_LOCALE,
-    label: () => t('conversation.label'),
-    inject: (sessionId: ConvViewProps['sessionId']): ConversationViewInjected => {
-      const binding = sessions.binding(sessionId)
-      if (!binding) throw new Error('xuanling-blueprint: session-unavailable')
-      let controller = controllers.get(binding)
-      if (!controller) { controller = new ConversationController(host, sessionId); controllers.set(binding, controller) }
-      return { controller }
-    },
-  }, ConversationBlueprintView)), 'xuanling-blueprint: conversation seat')
+  ctx.effect(
+    () =>
+      slots.inject('conversation.view', () =>
+        slots.register(
+          {
+            name: 'conversation.view',
+            id: PANEL_ID,
+            order: 20,
+            locale: BLUEPRINT_LOCALE,
+            label: () => t('conversation.label'),
+            inject: (sessionId: ConvViewProps['sessionId']): ConversationViewInjected => {
+              const binding = sessions.binding(sessionId)
+              if (!binding) throw new Error('xuanling-blueprint: session-unavailable')
+              let controller = controllers.get(binding)
+              if (!controller) {
+                controller = new ConversationController(host, sessionId)
+                controllers.set(binding, controller)
+              }
+              return { controller }
+            }
+          },
+          ConversationBlueprintView
+        )
+      ),
+    'xuanling-blueprint: conversation seat'
+  )
 }
 
 function applyPanel(ctx: Context): void {
@@ -90,36 +105,58 @@ function applyPanel(ctx: Context): void {
 
   const Panel = createBlueprintPanel({
     hostLink,
-    storage: typeof localStorage === 'undefined' ? undefined : localStorage,
+    storage: typeof localStorage === 'undefined' ? undefined : localStorage
   })
 
   // Sidebar entry: a compact icon button in the panellist (keyed by PANEL_ID).
-  const PanelIcon = (props: { size?: number; active?: boolean }) => React.createElement('svg', {
-    width: props.size ?? 18,
-    height: props.size ?? 18,
-    viewBox: '0 0 24 24',
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: 1.6,
-    'aria-hidden': true,
-  },
-  React.createElement('rect', { x: 3, y: 3, width: 7, height: 7, rx: 1.5 }),
-  React.createElement('rect', { x: 14, y: 3, width: 7, height: 7, rx: 1.5 }),
-  React.createElement('rect', { x: 3, y: 14, width: 7, height: 7, rx: 1.5 }),
-  React.createElement('rect', { x: 14, y: 14, width: 7, height: 7, rx: 1.5 }))
+  const PanelIcon = (props: { size?: number; active?: boolean }) =>
+    React.createElement(
+      'svg',
+      {
+        width: props.size ?? 18,
+        height: props.size ?? 18,
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        stroke: 'currentColor',
+        strokeWidth: 1.6,
+        'aria-hidden': true
+      },
+      React.createElement('rect', { x: 3, y: 3, width: 7, height: 7, rx: 1.5 }),
+      React.createElement('rect', { x: 14, y: 3, width: 7, height: 7, rx: 1.5 }),
+      React.createElement('rect', { x: 3, y: 14, width: 7, height: 7, rx: 1.5 }),
+      React.createElement('rect', { x: 14, y: 14, width: 7, height: 7, rx: 1.5 })
+    )
 
-  ctx.effect(() => slots.inject('sidebar.panellist', () => slots.register({
-    name: 'sidebar.panellist',
-    id: PANEL_ID,
-    order: 91,
-    label: () => t('panel.label'),
-  }, PanelIcon)), 'xuanling-blueprint: sidebar seat')
+  ctx.effect(
+    () =>
+      slots.inject('sidebar.panellist', () =>
+        slots.register(
+          {
+            name: 'sidebar.panellist',
+            id: PANEL_ID,
+            order: 91,
+            label: () => t('panel.label')
+          },
+          PanelIcon
+        )
+      ),
+    'xuanling-blueprint: sidebar seat'
+  )
 
   // Main content: the keyed page swapped in when the sidebar row activates
   // (AppFrame renders renderSlot('main', {}, { entryKey: activePanelId })).
-  ctx.effect(() => slots.inject('main', () => slots.register({
-    name: 'main',
-    key: PANEL_ID,
-    locale: BLUEPRINT_LOCALE,
-  }, Panel)), 'xuanling-blueprint: main seat')
+  ctx.effect(
+    () =>
+      slots.inject('main', () =>
+        slots.register(
+          {
+            name: 'main',
+            key: PANEL_ID,
+            locale: BLUEPRINT_LOCALE
+          },
+          Panel
+        )
+      ),
+    'xuanling-blueprint: main seat'
+  )
 }

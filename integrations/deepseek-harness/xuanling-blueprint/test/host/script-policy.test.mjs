@@ -11,10 +11,17 @@ for (const c of scriptPolicyCases(adapter)) {
 }
 
 test('C-07 internal primitive pre-abort never serializes arguments or spawns', async () => {
-  const controller = new AbortController(); controller.abort()
-  const result = await adapter.runScript(Buffer.from('throw new Error("must not spawn")'), {
-    get canary() { throw new Error('pre-abort must not serialize') },
-  }, { signal: controller.signal })
+  const controller = new AbortController()
+  controller.abort()
+  const result = await adapter.runScript(
+    Buffer.from('throw new Error("must not spawn")'),
+    {
+      get canary() {
+        throw new Error('pre-abort must not serialize')
+      }
+    },
+    { signal: controller.signal }
+  )
   assert.equal(result.kind, 'cancelled')
   assert.equal(result.effect, 'not-started')
   assert.equal(result.ok, false)

@@ -13,7 +13,7 @@ function validReceipt() {
     stageId: 'stage-teamstage-1',
     teamId: 'team-teamstage-1',
     taskId: 'task-teamstage-1',
-    sourceSessionId: 'session-source-1',
+    sourceSessionId: 'session-source-1'
   }
   return {
     schemaVersion: 1,
@@ -25,8 +25,9 @@ function validReceipt() {
     identity,
     team: { ...identity, memberNativeIds: ['native-member-1'] },
     task: { ...identity, nativeRevision: 1 },
-    members: [{ logicalId: 'member-1', nativeId: 'native-member-1', teamId: identity.teamId,
-      taskId: identity.taskId, stageId: identity.stageId, status: 'active' }],
+    members: [
+      { logicalId: 'member-1', nativeId: 'native-member-1', teamId: identity.teamId, taskId: identity.taskId, stageId: identity.stageId, status: 'active' }
+    ],
     source: { sessionId: identity.sourceSessionId, kind: 'tool', callId: 'tool-call-1', turn: 3 },
     provider: { live: true, name: 'DeepSeek', model: 'deepseek-flash', protocol: 'openai-responses' },
     stream: { requestIdentity: 'provider-request-1', requestCount: 1, requestIdentities: ['provider-request-1'], mutationDelta: 0 },
@@ -34,7 +35,10 @@ function validReceipt() {
     toolLineage: { name: 'blueprint_start', callId: 'tool-call-1', resultObserved: true },
     restart: { before: { ...identity, state: 'running' }, after: { ...identity, state: 'running' }, mutationDelta: 0 },
     artifact: { sha256: digest, provenance: { ...identity, memberNativeId: 'native-member-1' } },
-    requests: [{ method: 'blueprint/inspectSession', mutation: false }, { method: 'session/projections', mutation: false }],
+    requests: [
+      { method: 'blueprint/inspectSession', mutation: false },
+      { method: 'session/projections', mutation: false }
+    ]
   }
 }
 
@@ -136,15 +140,21 @@ test('complete automatic live TeamStage receipt is accepted by the strict valida
     stageId: 'stage-teamstage-1',
     teamId: 'team-teamstage-1',
     taskId: 'task-teamstage-1',
-    sourceSessionId: 'session-source-1',
+    sourceSessionId: 'session-source-1'
   })
 })
 
 test('artifact provenance may bind to any declared native member', () => {
   const receipt = validReceipt()
   receipt.team.memberNativeIds.push('native-member-2')
-  receipt.members.push({ logicalId: 'member-2', nativeId: 'native-member-2', teamId: receipt.identity.teamId,
-    taskId: receipt.identity.taskId, stageId: receipt.identity.stageId, status: 'completed' })
+  receipt.members.push({
+    logicalId: 'member-2',
+    nativeId: 'native-member-2',
+    teamId: receipt.identity.teamId,
+    taskId: receipt.identity.taskId,
+    stageId: receipt.identity.stageId,
+    status: 'completed'
+  })
   receipt.artifact.provenance.memberNativeId = 'native-member-2'
   assert.equal(validateTeamStageBrowserReceipt(receipt).status, 'passed')
 })

@@ -5,13 +5,7 @@
  * located by JSON Pointer. Only statically checkable rules live here;
  * per-node execution semantics belong to their implementation waves.
  */
-import {
-  DefinitionInvalidError,
-  type BlueprintDefinition,
-  type GraphEdge,
-  type GraphNode,
-  type ValidationIssue,
-} from './types.ts'
+import { DefinitionInvalidError, type BlueprintDefinition, type GraphEdge, type GraphNode, type ValidationIssue } from './types.ts'
 import { pathPattern, presentationSchema } from './codec.ts'
 
 interface PortEndpoint {
@@ -64,8 +58,7 @@ export function validateDefinition(definition: BlueprintDefinition): void {
   for (const [refId, ref] of Object.entries(definition.resources)) {
     const pointer = `/resources/${refId}`
     const host = ref.source?.kind === 'host'
-    if (ref.format !== undefined && (ref.format === 'agent-preset' && ref.kind !== 'agent'
-      || ref.format === 'mcp-definition' && ref.kind !== 'mcp')) {
+    if (ref.format !== undefined && ((ref.format === 'agent-preset' && ref.kind !== 'agent') || (ref.format === 'mcp-definition' && ref.kind !== 'mcp'))) {
       issues.push({ code: 'invalid-value', message: 'resource format does not match kind', pointer: `${pointer}/format` })
     }
     if (ref.source?.kind === 'host') {
@@ -167,9 +160,16 @@ export function validateDefinition(definition: BlueprintDefinition): void {
           issues.push({ code: 'dangling-ref', message: `toolsetRef "${toolsetRef}" is not an mcp resource`, pointer: `${pointer}/toolsetRefs/${i}` })
         }
       }
-      if (node.outputSchemaRef !== undefined && Object.hasOwn(definition.resources, node.outputSchemaRef)
-        && definition.resources[node.outputSchemaRef]?.kind !== 'schema') {
-        issues.push({ code: 'dangling-ref', message: `outputSchemaRef "${node.outputSchemaRef}" is not a schema resource`, pointer: `${pointer}/outputSchemaRef` })
+      if (
+        node.outputSchemaRef !== undefined &&
+        Object.hasOwn(definition.resources, node.outputSchemaRef) &&
+        definition.resources[node.outputSchemaRef]?.kind !== 'schema'
+      ) {
+        issues.push({
+          code: 'dangling-ref',
+          message: `outputSchemaRef "${node.outputSchemaRef}" is not a schema resource`,
+          pointer: `${pointer}/outputSchemaRef`
+        })
       }
     }
     if (node.teamStage !== undefined) {
@@ -207,10 +207,18 @@ export function validateDefinition(definition: BlueprintDefinition): void {
     }
     if (node.condition !== undefined) {
       const config = node.condition
-      if (node.kind !== 'condition' || node.inputs?.[config.inputPort] !== 'boolean'
-        || config.trueBranch === config.falseBranch
-        || !node.branches?.includes(config.trueBranch) || !node.branches.includes(config.falseBranch)) {
-        issues.push({ code: 'invalid-value', message: 'condition requires one boolean input and two distinct declared branches', pointer: `${pointer}/condition` })
+      if (
+        node.kind !== 'condition' ||
+        node.inputs?.[config.inputPort] !== 'boolean' ||
+        config.trueBranch === config.falseBranch ||
+        !node.branches?.includes(config.trueBranch) ||
+        !node.branches.includes(config.falseBranch)
+      ) {
+        issues.push({
+          code: 'invalid-value',
+          message: 'condition requires one boolean input and two distinct declared branches',
+          pointer: `${pointer}/condition`
+        })
       }
     }
     if (node.kind === 'condition' && (node.branches === undefined || node.branches.length === 0)) {
@@ -253,7 +261,11 @@ export function validateDefinition(definition: BlueprintDefinition): void {
           const outType = nodeById.get(from.nodeId)?.outputs?.[from.port]
           const inType = node.inputs[to.port]
           if (outType !== undefined && inType !== undefined && outType !== inType) {
-            issues.push({ code: 'port-mismatch', message: `type conflict: "${edge.from}" is ${outType} but "${edge.to}" expects ${inType}`, pointer: `${pointer}/to` })
+            issues.push({
+              code: 'port-mismatch',
+              message: `type conflict: "${edge.from}" is ${outType} but "${edge.to}" expects ${inType}`,
+              pointer: `${pointer}/to`
+            })
           }
         }
       }
@@ -291,8 +303,18 @@ export function validateDefinition(definition: BlueprintDefinition): void {
     }
   }
   const presentation = parsedPresentation?.success ? parsedPresentation.data : undefined
+  for (const resourceId of Object.keys(presentation?.resources ?? {})) {
+    if (!Object.hasOwn(definition.resources, resourceId)) {
+      issues.push({
+        code: 'dangling-ref',
+        message: `presentation references unknown resource "${resourceId}"`,
+        pointer: `/presentation/resources/${resourceId}`
+      })
+    }
+  }
   for (const nodeId of Object.keys(presentation?.nodes ?? {})) {
-    if (!nodeById.has(nodeId)) issues.push({ code: 'dangling-ref', message: `presentation references unknown node "${nodeId}"`, pointer: `/presentation/nodes/${nodeId}` })
+    if (!nodeById.has(nodeId))
+      issues.push({ code: 'dangling-ref', message: `presentation references unknown node "${nodeId}"`, pointer: `/presentation/nodes/${nodeId}` })
   }
   const groupIds = new Set<string>()
   for (const [index, group] of (presentation?.groups ?? []).entries()) {
@@ -300,7 +322,12 @@ export function validateDefinition(definition: BlueprintDefinition): void {
     groupIds.add(group.id)
     const members = new Set<string>()
     for (const [i, nodeId] of group.nodeIds.entries()) {
-      if (!nodeById.has(nodeId)) issues.push({ code: 'dangling-ref', message: `group "${group.id}" references unknown node "${nodeId}"`, pointer: `/presentation/groups/${index}/nodeIds/${i}` })
+      if (!nodeById.has(nodeId))
+        issues.push({
+          code: 'dangling-ref',
+          message: `group "${group.id}" references unknown node "${nodeId}"`,
+          pointer: `/presentation/groups/${index}/nodeIds/${i}`
+        })
       if (members.has(nodeId)) issues.push({ code: 'duplicate-id', message: 'duplicate group member', pointer: `/presentation/groups/${index}/nodeIds/${i}` })
       members.add(nodeId)
     }

@@ -1,17 +1,16 @@
 import assert from 'node:assert/strict'
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { setTimeout as pause } from 'node:timers/promises'
-import yaml from 'js-yaml'
+import * as yaml from 'js-yaml'
 import { fileURLToPath } from 'node:url'
-import { ROOT, ensure, sha256 } from './conversation-evidence.mjs'
+import { ROOT, sha256 } from './conversation-evidence.mjs'
 import { prepareProfile, bootHost, stopHost } from './conversation-runtime.mjs'
 import { captureEvidenceFingerprint } from '../../../integrations/deepseek-harness/xuanling-blueprint/scripts/verify.mjs'
 import { parseTeamStageCollectorConfiguration } from './teamstage-live.mjs'
 
-const HERE = fileURLToPath(new URL('.', import.meta.url))
 const PACKAGE = '@xuanling-rs/xuanling-dsh-blueprint'
 const TEAM_PROFILE = '@deepseek-ai/dsh-experimental-agent-team-profile'
 const REPORT_ENV = 'BP_LIVE_TEAM_REPORT_DIR'
@@ -26,7 +25,9 @@ function fail(code) {
 function safeCode(error) {
   return typeof error?.code === 'string' && /^[A-Z][A-Z0-9_]{1,79}$/.test(error.code)
     ? error.code
-    : error?.name === 'AssertionError' ? 'ASSERTION_FAILED' : 'LIVE_TEAMSTAGE_FAILED'
+    : error?.name === 'AssertionError'
+      ? 'ASSERTION_FAILED'
+      : 'LIVE_TEAMSTAGE_FAILED'
 }
 
 function safeReadJson(path) {
@@ -41,7 +42,10 @@ function safeReadJson(path) {
 function canonical(value) {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
   if (value !== null && typeof value === 'object') {
-    return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`
+    return `{${Object.keys(value)
+      .sort()
+      .map(key => `${JSON.stringify(key)}:${canonical(value[key])}`)
+      .join(',')}}`
   }
   return JSON.stringify(value)
 }
@@ -57,24 +61,52 @@ function extractProviderKey(path, provider) {
   }
   const entry = Object.entries(document ?? {}).find(([name]) => name.toLowerCase() === provider.toLowerCase())?.[1]
   const key = entry && typeof entry === 'object' && !Array.isArray(entry) ? entry.key : undefined
-  if (typeof key !== 'string' || key.trim() !== key || key.length === 0 || /[\u0000\r\n]/.test(key)) {
+  if (typeof key !== 'string' || key.trim() !== key || key.length === 0 || key.includes('\u0000') || key.includes('\r') || key.includes('\n')) {
     fail('LIVE_TEAM_KEY_FILE_INVALID')
   }
   return key
 }
 
 function safeRun(run) {
-  const enumeration = (value, values) => values.includes(value) ? value : 'unknown'
-  const timestamp = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null
-  const projectCode = value => enumeration(value, ['accepted', 'rejected', 'not-required', 'teamstage-provider-failed',
-    'team-effect-unknown', 'effect-unknown', 'member-binding-unknown', 'task-replay-unknown', 'task-binding-unknown', 'task-revision-unknown',
-    'recovery-required', 'cancelled', 'reviewed-succeeded', 'reviewed-failed', 'reviewed-cancelled', 'reviewed-timed-out',
-    'teamstage-identity-unavailable', 'teamstage-cancellation-failed', 'teamstage-deadline-exceeded', 'teamstage-cancelled',
-    'teamstage-team-effect-unknown', 'teamstage-not-dispatching', 'teamstage-aborted'])
-  const diagnostics = value => value?.status === 'available' ? { status: 'available',
-    acceptance: { code: projectCode(value.acceptance?.code), ...(Number.isInteger(value.acceptance?.issueCount) ? { issueCount: value.acceptance.issueCount } : {}) },
-    ...(value.recovery === undefined ? {} : { recovery: { code: projectCode(value.recovery.code) } }),
-  } : { status: value?.status === 'unavailable' ? 'unavailable' : 'unknown' }
+  const enumeration = (value, values) => (values.includes(value) ? value : 'unknown')
+  const timestamp = value => (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null)
+  const projectCode = value =>
+    enumeration(value, [
+      'accepted',
+      'rejected',
+      'not-required',
+      'teamstage-provider-failed',
+      'team-effect-unknown',
+      'effect-unknown',
+      'member-binding-unknown',
+      'task-replay-unknown',
+      'task-binding-unknown',
+      'task-revision-unknown',
+      'recovery-required',
+      'cancelled',
+      'reviewed-succeeded',
+      'reviewed-failed',
+      'reviewed-cancelled',
+      'reviewed-timed-out',
+      'teamstage-identity-unavailable',
+      'teamstage-cancellation-failed',
+      'teamstage-deadline-exceeded',
+      'teamstage-cancelled',
+      'teamstage-team-effect-unknown',
+      'teamstage-not-dispatching',
+      'teamstage-aborted'
+    ])
+  const diagnostics = value =>
+    value?.status === 'available'
+      ? {
+          status: 'available',
+          acceptance: {
+            code: projectCode(value.acceptance?.code),
+            ...(Number.isInteger(value.acceptance?.issueCount) ? { issueCount: value.acceptance.issueCount } : {})
+          },
+          ...(value.recovery === undefined ? {} : { recovery: { code: projectCode(value.recovery.code) } })
+        }
+      : { status: value?.status === 'unavailable' ? 'unavailable' : 'unknown' }
   const attempts = (run?.attempts ?? []).map(attempt => ({
     attemptId: attempt.attemptId ?? null,
     nodeId: attempt.nodeId ?? null,
@@ -82,7 +114,7 @@ function safeRun(run) {
     resultKind: attempt.resultKind ?? null,
     sessionId: attempt.sessionId ?? null,
     acceptance: attempt.diagnostics?.acceptance?.code === undefined ? null : projectCode(attempt.diagnostics.acceptance.code),
-    ...(attempt.diagnostics === undefined ? {} : { diagnostics: diagnostics(attempt.diagnostics) }),
+    ...(attempt.diagnostics === undefined ? {} : { diagnostics: diagnostics(attempt.diagnostics) })
   }))
   const team = run?.team
   return {
@@ -91,93 +123,164 @@ function safeRun(run) {
     seq: Number.isInteger(run?.seq) ? run.seq : null,
     definitionRevision: run?.definitionRevision ?? null,
     attempts,
-    team: team === undefined ? null : {
-      state: team.state ?? 'unknown',
-      stageId: team.stageId ?? null,
-      attemptId: team.attemptId ?? null,
-      teamId: team.teamId ?? null,
-      taskId: team.taskId ?? null,
-      taskRevision: team.taskRevision ?? null,
-      ...(team.recovery === undefined ? {} : { recovery: { code: projectCode(team.recovery.code) } }),
-      ...(team.execution === undefined ? {} : { execution: {
-        startedAt: timestamp(team.execution.startedAt),
-        ...(team.execution.deadlineAt === undefined ? {} : { deadlineAt: timestamp(team.execution.deadlineAt) }),
-        ...(team.execution.timeoutMs === undefined ? {} : { timeoutMs: timestamp(team.execution.timeoutMs) }),
-        ...(team.execution.abort === undefined ? {} : { abort: {
-          source: enumeration(team.execution.abort.source, ['deadline', 'caller', 'stage_control']),
-          code: projectCode(team.execution.abort.code), occurredAt: timestamp(team.execution.abort.occurredAt),
-        } }),
-      } }),
-      ...(team.effects === undefined ? {} : { effects: Array.isArray(team.effects) ? team.effects.map(effect => ({
-        effectId: typeof effect.effectId === 'string' ? effect.effectId : null,
-        kind: enumeration(effect.kind, ['create', 'spawn', 'task-update', 'message', 'update', 'drain', 'task-delete']),
-        ...(['create', 'spawn', 'task-update', 'message', 'update', 'drain', 'task-delete'].includes(effect.kind) ? {} : { kindKnown: false }),
-        state: enumeration(effect.state, ['pending', 'succeeded', 'failed', 'recovery_required']),
-      })) : 'unknown' }),
-      ...(team.runtime === undefined ? {} : { runtime: {
-        attemptId: typeof team.runtime.attemptId === 'string' ? team.runtime.attemptId : null,
-        observedAt: timestamp(team.runtime.observedAt),
-        members: Array.isArray(team.runtime.members) ? team.runtime.members.map(member => ({
-          memberId: typeof member.memberId === 'string' ? member.memberId : null, sessionId: typeof member.sessionId === 'string' ? member.sessionId : null,
-          activity: enumeration(member.activity, ['waiting_model', 'thinking', 'responding', 'tool_call', 'executing_tool', 'idle']),
-          updatedAt: timestamp(member.updatedAt), requestOrdinal: timestamp(member.requestOrdinal),
-          textDeltas: timestamp(member.textDeltas), reasoningDeltas: timestamp(member.reasoningDeltas), toolCallDeltas: timestamp(member.toolCallDeltas),
-          ...(member.requestStartedAt === undefined ? {} : { requestStartedAt: timestamp(member.requestStartedAt) }),
-          ...(member.lastProgressAt === undefined ? {} : { lastProgressAt: timestamp(member.lastProgressAt) }),
-        })) : 'unknown',
-      } }),
-      members: (team.members ?? []).map(member => ({
-        memberId: member.memberId ?? null,
-        name: member.name ?? null,
-        logicalName: member.logicalName ?? null,
-        sessionId: member.sessionId ?? null,
-        phase: member.phase ?? null,
-        status: member.status ?? null,
-      })),
-      outputAcceptance: team.outputAcceptance === undefined ? null : {
-        code: enumeration(team.outputAcceptance.code, ['accepted', 'rejected']),
-        artifactId: team.outputAcceptance.artifactId ?? null,
-        sourceSessionId: team.outputAcceptance.sourceSessionId ?? null,
-        digest: team.outputAcceptance.digest ?? null,
-        evidenceDigest: team.outputAcceptance.evidenceDigest ?? null,
-        checks: Array.isArray(team.outputAcceptance.checks) ? team.outputAcceptance.checks.map(check => enumeration(check, ['schema', 'digest', 'artifact-digest', 'agreement'])) : [],
-      },
-    },
+    team:
+      team === undefined
+        ? null
+        : {
+            state: team.state ?? 'unknown',
+            stageId: team.stageId ?? null,
+            attemptId: team.attemptId ?? null,
+            teamId: team.teamId ?? null,
+            taskId: team.taskId ?? null,
+            taskRevision: team.taskRevision ?? null,
+            ...(team.recovery === undefined ? {} : { recovery: { code: projectCode(team.recovery.code) } }),
+            ...(team.execution === undefined
+              ? {}
+              : {
+                  execution: {
+                    startedAt: timestamp(team.execution.startedAt),
+                    ...(team.execution.deadlineAt === undefined ? {} : { deadlineAt: timestamp(team.execution.deadlineAt) }),
+                    ...(team.execution.timeoutMs === undefined ? {} : { timeoutMs: timestamp(team.execution.timeoutMs) }),
+                    ...(team.execution.abort === undefined
+                      ? {}
+                      : {
+                          abort: {
+                            source: enumeration(team.execution.abort.source, ['deadline', 'caller', 'stage_control']),
+                            code: projectCode(team.execution.abort.code),
+                            occurredAt: timestamp(team.execution.abort.occurredAt)
+                          }
+                        })
+                  }
+                }),
+            ...(team.effects === undefined
+              ? {}
+              : {
+                  effects: Array.isArray(team.effects)
+                    ? team.effects.map(effect => ({
+                        effectId: typeof effect.effectId === 'string' ? effect.effectId : null,
+                        kind: enumeration(effect.kind, ['create', 'spawn', 'task-update', 'message', 'update', 'drain', 'task-delete']),
+                        ...(['create', 'spawn', 'task-update', 'message', 'update', 'drain', 'task-delete'].includes(effect.kind) ? {} : { kindKnown: false }),
+                        state: enumeration(effect.state, ['pending', 'succeeded', 'failed', 'recovery_required'])
+                      }))
+                    : 'unknown'
+                }),
+            ...(team.runtime === undefined
+              ? {}
+              : {
+                  runtime: {
+                    attemptId: typeof team.runtime.attemptId === 'string' ? team.runtime.attemptId : null,
+                    observedAt: timestamp(team.runtime.observedAt),
+                    members: Array.isArray(team.runtime.members)
+                      ? team.runtime.members.map(member => ({
+                          memberId: typeof member.memberId === 'string' ? member.memberId : null,
+                          sessionId: typeof member.sessionId === 'string' ? member.sessionId : null,
+                          activity: enumeration(member.activity, ['waiting_model', 'thinking', 'responding', 'tool_call', 'executing_tool', 'idle']),
+                          updatedAt: timestamp(member.updatedAt),
+                          requestOrdinal: timestamp(member.requestOrdinal),
+                          textDeltas: timestamp(member.textDeltas),
+                          reasoningDeltas: timestamp(member.reasoningDeltas),
+                          toolCallDeltas: timestamp(member.toolCallDeltas),
+                          ...(member.requestStartedAt === undefined ? {} : { requestStartedAt: timestamp(member.requestStartedAt) }),
+                          ...(member.lastProgressAt === undefined ? {} : { lastProgressAt: timestamp(member.lastProgressAt) })
+                        }))
+                      : 'unknown'
+                  }
+                }),
+            members: (team.members ?? []).map(member => ({
+              memberId: member.memberId ?? null,
+              name: member.name ?? null,
+              logicalName: member.logicalName ?? null,
+              sessionId: member.sessionId ?? null,
+              phase: member.phase ?? null,
+              status: member.status ?? null
+            })),
+            outputAcceptance:
+              team.outputAcceptance === undefined
+                ? null
+                : {
+                    code: enumeration(team.outputAcceptance.code, ['accepted', 'rejected']),
+                    artifactId: team.outputAcceptance.artifactId ?? null,
+                    sourceSessionId: team.outputAcceptance.sourceSessionId ?? null,
+                    digest: team.outputAcceptance.digest ?? null,
+                    evidenceDigest: team.outputAcceptance.evidenceDigest ?? null,
+                    checks: Array.isArray(team.outputAcceptance.checks)
+                      ? team.outputAcceptance.checks.map(check => enumeration(check, ['schema', 'digest', 'artifact-digest', 'agreement']))
+                      : []
+                  }
+          }
   }
 }
 
 function safeOperatorFacts(value) {
-  if (!value || typeof value !== 'object') return { available: false, sessions: [], events: [], provider_calls: 0, failed_provider_calls: 0, tool_names: [], approval_events: 0 }
-  const sessions = Array.isArray(value.sessions) ? value.sessions.map(session => ({
-    sessionId: typeof session.sessionId === 'string' ? session.sessionId : null,
-    status: typeof session.status === 'string' ? session.status : null,
-    ...(Object.hasOwn(session, 'start_source') ? { start_source: ['startup', 'resume', 'clear', 'compact'].includes(session.start_source) ? session.start_source : 'unknown' } : {}),
-    requests: Array.isArray(session.requests) ? session.requests.map(request => ({
-      ordinal: request.ordinal ?? null,
-      provider: request.provider ?? null,
-      model: request.model ?? null,
-      ...(Array.isArray(request.tool_names) ? { tool_names: request.tool_names.filter(name => typeof name === 'string') } : {}),
-      failed: request.failed === true,
-      finished: request.finished === true,
-      textDeltas: request.textDeltas ?? 0,
-      error_code: safeRecordedErrorCode(request.error_code),
-      finish_kind: ['stop', 'tool-calls', 'max-tokens', 'error', 'aborted', 'unknown'].includes(request.finish_kind) ? request.finish_kind : null,
-      ...Object.fromEntries(['startedAt', 'finishedAt', 'durationMs', 'firstProgressAt', 'lastProgressAt', 'reasoningDeltas', 'toolCallDeltas']
-        .filter(key => typeof request[key] === 'number' && Number.isFinite(request[key]) && request[key] >= 0).map(key => [key, request[key]])),
-      ...(Object.hasOwn(request, 'iterator_finalized') ? { iterator_finalized: request.iterator_finalized === true } : {}),
-      ...(Object.hasOwn(request, 'providerOutcome') ? { providerOutcome: ['succeeded', 'failed', 'aborted'].includes(request.providerOutcome) ? request.providerOutcome : 'unknown' } : {}),
-      ...(request.abort_source === undefined ? {} : { abort_source: ['user', 'parent', 'hook', 'disposed', 'legacy'].includes(request.abort_source) ? request.abort_source : 'unknown' }),
-      ...(request.error_source === undefined ? {} : { error_source: ['provider_finish', 'iterator_throw', 'caller_signal'].includes(request.error_source) ? request.error_source : 'unknown' }),
-    })) : [],
-    tools: Array.isArray(session.tools) ? session.tools : [],
-    terminals: Array.isArray(session.terminals) ? session.terminals.map(terminal => ({
-      turn: terminal.turn ?? null,
-      kind: typeof terminal.kind === 'string' ? terminal.kind : null,
-      error_code: safeRecordedErrorCode(terminal.error_code),
-      ...(terminal.abort_source === undefined ? {} : { abort_source: ['user', 'parent', 'hook', 'disposed', 'legacy'].includes(terminal.abort_source) ? terminal.abort_source : 'unknown' }),
-      seq: terminal.seq ?? null,
-    })) : [],
-  })) : []
+  if (!value || typeof value !== 'object')
+    return {
+      available: false,
+      sessions: [],
+      events: [],
+      provider_calls: 0,
+      failed_provider_calls: 0,
+      tool_names: [],
+      approval_events: 0
+    }
+  const sessions = Array.isArray(value.sessions)
+    ? value.sessions.map(session => ({
+        sessionId: typeof session.sessionId === 'string' ? session.sessionId : null,
+        status: typeof session.status === 'string' ? session.status : null,
+        ...(Object.hasOwn(session, 'start_source')
+          ? {
+              start_source: ['startup', 'resume', 'clear', 'compact'].includes(session.start_source) ? session.start_source : 'unknown'
+            }
+          : {}),
+        requests: Array.isArray(session.requests)
+          ? session.requests.map(request => ({
+              ordinal: request.ordinal ?? null,
+              provider: request.provider ?? null,
+              model: request.model ?? null,
+              ...(Array.isArray(request.tool_names) ? { tool_names: request.tool_names.filter(name => typeof name === 'string') } : {}),
+              failed: request.failed === true,
+              finished: request.finished === true,
+              textDeltas: request.textDeltas ?? 0,
+              error_code: safeRecordedErrorCode(request.error_code),
+              finish_kind: ['stop', 'tool-calls', 'max-tokens', 'error', 'aborted', 'unknown'].includes(request.finish_kind) ? request.finish_kind : null,
+              ...Object.fromEntries(
+                ['startedAt', 'finishedAt', 'durationMs', 'firstProgressAt', 'lastProgressAt', 'reasoningDeltas', 'toolCallDeltas']
+                  .filter(key => typeof request[key] === 'number' && Number.isFinite(request[key]) && request[key] >= 0)
+                  .map(key => [key, request[key]])
+              ),
+              ...(Object.hasOwn(request, 'iterator_finalized') ? { iterator_finalized: request.iterator_finalized === true } : {}),
+              ...(Object.hasOwn(request, 'providerOutcome')
+                ? {
+                    providerOutcome: ['succeeded', 'failed', 'aborted'].includes(request.providerOutcome) ? request.providerOutcome : 'unknown'
+                  }
+                : {}),
+              ...(request.abort_source === undefined
+                ? {}
+                : {
+                    abort_source: ['user', 'parent', 'hook', 'disposed', 'legacy'].includes(request.abort_source) ? request.abort_source : 'unknown'
+                  }),
+              ...(request.error_source === undefined
+                ? {}
+                : {
+                    error_source: ['provider_finish', 'iterator_throw', 'caller_signal'].includes(request.error_source) ? request.error_source : 'unknown'
+                  })
+            }))
+          : [],
+        tools: Array.isArray(session.tools) ? session.tools : [],
+        terminals: Array.isArray(session.terminals)
+          ? session.terminals.map(terminal => ({
+              turn: terminal.turn ?? null,
+              kind: typeof terminal.kind === 'string' ? terminal.kind : null,
+              error_code: safeRecordedErrorCode(terminal.error_code),
+              ...(terminal.abort_source === undefined
+                ? {}
+                : {
+                    abort_source: ['user', 'parent', 'hook', 'disposed', 'legacy'].includes(terminal.abort_source) ? terminal.abort_source : 'unknown'
+                  }),
+              seq: terminal.seq ?? null
+            }))
+          : []
+      }))
+    : []
   const events = Array.isArray(value.events) ? value.events : []
   return {
     available: true,
@@ -190,78 +293,159 @@ function safeOperatorFacts(value) {
     provider_calls: sessions.reduce((sum, session) => sum + session.requests.length, 0),
     failed_provider_calls: sessions.reduce((sum, session) => sum + session.requests.filter(request => request.failed).length, 0),
     tool_names: [...new Set(sessions.flatMap(session => session.tools.map(tool => tool.name)).filter(Boolean))].sort(),
-    approval_events: events.filter(event => String(event.type).startsWith('approval/')).length,
+    approval_events: events.filter(event => String(event.type).startsWith('approval/')).length
   }
 }
 
 function safeProviderErrorCode(value) {
   // Public DSH LlmFailure codes used by installed adapters/runtime. An unknown
   // extension remains explicit; arbitrary code/name/message bytes are unsafe.
-  return ['AUTH', 'RATE_LIMIT', 'INVALID_REQUEST', 'SERVER', 'TIMEOUT', 'TRANSPORT', 'PI_AI_ERROR', 'STREAM_CLOSED',
-    'ABORTED', 'UNKNOWN', 'EMPTY_RESPONSE', 'CONTEXT_WINDOW_EXCEEDED', 'QUOTA', 'ACCOUNT_QUOTA', 'QUOTA_EXCEEDED', 'ACCOUNT_QUOTA_EXCEEDED',
-    'INVALID_CREDENTIAL', 'LLM_STREAM_IDLE_TIMEOUT'].includes(value?.code) ? value.code : 'UNKNOWN'
+  return [
+    'AUTH',
+    'RATE_LIMIT',
+    'INVALID_REQUEST',
+    'SERVER',
+    'TIMEOUT',
+    'TRANSPORT',
+    'PI_AI_ERROR',
+    'STREAM_CLOSED',
+    'ABORTED',
+    'UNKNOWN',
+    'EMPTY_RESPONSE',
+    'CONTEXT_WINDOW_EXCEEDED',
+    'QUOTA',
+    'ACCOUNT_QUOTA',
+    'QUOTA_EXCEEDED',
+    'ACCOUNT_QUOTA_EXCEEDED',
+    'INVALID_CREDENTIAL',
+    'LLM_STREAM_IDLE_TIMEOUT'
+  ].includes(value?.code)
+    ? value.code
+    : 'UNKNOWN'
 }
 
 function safeRecordedErrorCode(value) {
-  return value === null || value === undefined ? null
-    : safeProviderErrorCode(typeof value === 'string' ? { code: value } : value)
+  return value === null || value === undefined ? null : safeProviderErrorCode(typeof value === 'string' ? { code: value } : value)
 }
 
 function validateMemberLineage(run, operator, config, artifactAudit) {
   const member = run.team?.members?.[0]
   const session = operator.sessions.find(item => item.sessionId === member?.sessionId)
-  if (!session || !session.requests.length || session.requests.some(request => request.failed || !request.finished
-    || (request.providerOutcome !== undefined && request.providerOutcome !== 'succeeded')
-    || request.provider !== 'blueprint-live' || request.model !== config.model)
-    || session.terminals.some(terminal => ['error', 'aborted'].includes(terminal.kind))) fail('LIVE_TEAM_MEMBER_PROVIDER_EVIDENCE_INVALID')
+  if (
+    !session ||
+    !session.requests.length ||
+    session.requests.some(
+      request =>
+        request.failed ||
+        !request.finished ||
+        (request.providerOutcome !== undefined && request.providerOutcome !== 'succeeded') ||
+        request.provider !== 'blueprint-live' ||
+        request.model !== config.model
+    ) ||
+    session.terminals.some(terminal => ['error', 'aborted'].includes(terminal.kind))
+  )
+    fail('LIVE_TEAM_MEMBER_PROVIDER_EVIDENCE_INVALID')
   if (member.status !== 'inactive' || !['idle', 'disposed'].includes(session.status)) fail('LIVE_TEAM_MEMBER_NOT_QUIESCENT')
   const artifact = artifactAudit?.items?.find(item => item.producerMemberId === member.memberId && item.producerSessionId === member.sessionId)
-  const completedTurn = session.terminals.find(terminal => terminal.kind === 'completed' && `${session.sessionId}:${terminal.turn}` === artifact?.turnId
-    && terminal.seq === artifact?.endLogSeq)
-  if (!artifact || artifact.turnId !== artifact.completedTurnId || !completedTurn
-    || !(artifact.startLogSeq < artifact.captureLogSeq && artifact.captureLogSeq < artifact.endLogSeq)) fail('LIVE_TEAM_COMPLETED_CAPTURE_MISSING')
-  const completed = operator.events.findLast(event => event.type === 'team/task' && event.sessionId === LEAD_SESSION
-    && event.teamId === run.team.teamId && event.taskId === run.team.taskId && event.status === 'completed'
-    && event.ownerId === member.sessionId && Number.isInteger(event.revision))
+  const completedTurn = session.terminals.find(
+    terminal => terminal.kind === 'completed' && `${session.sessionId}:${terminal.turn}` === artifact?.turnId && terminal.seq === artifact?.endLogSeq
+  )
+  if (
+    !artifact ||
+    artifact.turnId !== artifact.completedTurnId ||
+    !completedTurn ||
+    !(artifact.startLogSeq < artifact.captureLogSeq && artifact.captureLogSeq < artifact.endLogSeq)
+  )
+    fail('LIVE_TEAM_COMPLETED_CAPTURE_MISSING')
+  const completed = operator.events.findLast(
+    event =>
+      event.type === 'team/task' &&
+      event.sessionId === LEAD_SESSION &&
+      event.teamId === run.team.teamId &&
+      event.taskId === run.team.taskId &&
+      event.status === 'completed' &&
+      event.ownerId === member.sessionId &&
+      Number.isInteger(event.revision)
+  )
   if (!completed) fail('LIVE_TEAM_NATIVE_TASK_NOT_COMPLETED')
-  const successfulCall = tool => session.tools.some(result => result.direction === 'result'
-    && result.callId === tool.callId && result.name === tool.name && result.isError === false && result.seq > tool.seq)
-  const calls = session.tools.filter(tool => tool.direction === 'call' && successfulCall(tool)
-    && (tool.surface !== 'ptc' || session.tools.some(root => root.direction === 'call' && root.name === 'run_code'
-      && root.callId === tool.rootCallId && root.turn === tool.turn && successfulCall(root))))
+  const successfulCall = tool =>
+    session.tools.some(
+      result => result.direction === 'result' && result.callId === tool.callId && result.name === tool.name && result.isError === false && result.seq > tool.seq
+    )
+  const calls = session.tools.filter(
+    tool =>
+      tool.direction === 'call' &&
+      successfulCall(tool) &&
+      (tool.surface !== 'ptc' ||
+        session.tools.some(
+          root => root.direction === 'call' && root.name === 'run_code' && root.callId === tool.rootCallId && root.turn === tool.turn && successfulCall(root)
+        ))
+  )
   const list = calls.find(call => call.name === 'team_task_list')
   const claim = calls.find(call => call.name === 'team_task_update' && call.action === 'claim' && call.taskId === run.team.taskId)
   const complete = calls.find(call => call.name === 'team_task_update' && call.action === 'complete' && call.taskId === run.team.taskId)
   const structured = calls.find(call => call.name === 'structured_output' && call.callId === artifact.callId)
   const captureRoot = calls.find(call => call.callId === artifact.rootCallId && (call.name === 'structured_output' || call.name === 'run_code'))
-  const captureResult = session.tools.find(result => result.direction === 'result' && result.callId === artifact.rootCallId
-    && result.seq === artifact.captureLogSeq && result.isError === false)
-  if (!list || !claim || !complete || !structured || !(list.seq < claim.seq && claim.seq < complete.seq && complete.seq < structured.seq)
-    || !Number.isInteger(claim.expectedRevision) || !Number.isInteger(complete.expectedRevision)
-    || complete.expectedRevision <= claim.expectedRevision || completed.revision !== complete.expectedRevision + 1
-    || !captureRoot || !captureResult || structured.turn !== completedTurn.turn || captureRoot.turn !== completedTurn.turn
-    || (structured.rootCallId ?? structured.callId) !== artifact.rootCallId) fail('LIVE_TEAM_MEMBER_TOOL_LINEAGE_INVALID')
-  return { status: 'passed', source_session_id: member.sessionId, task_id: completed.taskId, task_revision: completed.revision,
-    task_owner_id: completed.ownerId, ordered_successful_calls: [list, claim, complete, structured].map(call => ({ name: call.name, call_id: call.callId, seq: call.seq })) }
+  const captureResult = session.tools.find(
+    result => result.direction === 'result' && result.callId === artifact.rootCallId && result.seq === artifact.captureLogSeq && result.isError === false
+  )
+  if (
+    !list ||
+    !claim ||
+    !complete ||
+    !structured ||
+    !(list.seq < claim.seq && claim.seq < complete.seq && complete.seq < structured.seq) ||
+    !Number.isInteger(claim.expectedRevision) ||
+    !Number.isInteger(complete.expectedRevision) ||
+    complete.expectedRevision <= claim.expectedRevision ||
+    completed.revision !== complete.expectedRevision + 1 ||
+    !captureRoot ||
+    !captureResult ||
+    structured.turn !== completedTurn.turn ||
+    captureRoot.turn !== completedTurn.turn ||
+    (structured.rootCallId ?? structured.callId) !== artifact.rootCallId
+  )
+    fail('LIVE_TEAM_MEMBER_TOOL_LINEAGE_INVALID')
+  return {
+    status: 'passed',
+    source_session_id: member.sessionId,
+    task_id: completed.taskId,
+    task_revision: completed.revision,
+    task_owner_id: completed.ownerId,
+    ordered_successful_calls: [list, claim, complete, structured].map(call => ({
+      name: call.name,
+      call_id: call.callId,
+      seq: call.seq
+    }))
+  }
 }
 
 function artifactAudit(root, run) {
   const artifactRoot = join(root, 'runtime/store/team-output-artifacts')
   if (!existsSync(artifactRoot)) fail('LIVE_TEAM_ARTIFACT_ROOT_MISSING')
   if (lstatSync(artifactRoot).isSymbolicLink()) fail('LIVE_TEAM_ARTIFACT_ROOT_SYMLINK')
-  const directories = readdirSync(artifactRoot).filter(name => !name.startsWith('.tmp-')).sort()
+  const directories = readdirSync(artifactRoot)
+    .filter(name => !name.startsWith('.tmp-'))
+    .sort()
   assert.equal(directories.length, 1)
   const items = directories.map(directory => {
     const path = join(artifactRoot, directory)
     if (!lstatSync(path).isDirectory() || lstatSync(path).isSymbolicLink()) fail('LIVE_TEAM_ARTIFACT_DIRECTORY_INVALID')
-    const valuePath = join(path, 'value.json'), provenancePath = join(path, 'provenance.json')
+    const valuePath = join(path, 'value.json'),
+      provenancePath = join(path, 'provenance.json')
     for (const file of [valuePath, provenancePath]) {
       const stat = lstatSync(file)
       if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1) fail('LIVE_TEAM_ARTIFACT_FILE_INVALID')
     }
-    const valueBytes = readFileSync(valuePath), provenanceBytes = readFileSync(provenancePath)
+    const valueBytes = readFileSync(valuePath),
+      provenanceBytes = readFileSync(provenancePath)
     let value, provenance
-    try { value = JSON.parse(valueBytes); provenance = JSON.parse(provenanceBytes) } catch { fail('LIVE_TEAM_ARTIFACT_JSON_INVALID') }
+    try {
+      value = JSON.parse(valueBytes)
+      provenance = JSON.parse(provenanceBytes)
+    } catch {
+      fail('LIVE_TEAM_ARTIFACT_JSON_INVALID')
+    }
     assert.equal(valueBytes.toString(), canonical(value))
     assert.equal(provenanceBytes.toString(), canonical(provenance))
     assert.deepEqual(value, VALUE)
@@ -306,7 +490,7 @@ function artifactAudit(root, run) {
       completedTurnId: provenance.evidence.completedTurnId,
       startLogSeq: provenance.evidence.startLogSeq,
       captureLogSeq: provenance.evidence.captureLogSeq,
-      endLogSeq: provenance.evidence.endLogSeq,
+      endLogSeq: provenance.evidence.endLogSeq
     }
   })
   assert.equal(run.team.outputAcceptance.artifactId, items[0].artifactId)
@@ -329,19 +513,31 @@ async function observeTerminalRun(read, facts, onSnapshot) {
   // Native provider/tool policies settle execution. Live observation has no
   // independent total deadline that could dispose a healthy slow member.
   const budget = null
-  const summary = status => ({ status, budget_ms: budget, last_run_state: facts.run?.state ?? 'unknown', last_run_seq: facts.run?.seq ?? null })
+  const summary = status => ({
+    status,
+    budget_ms: budget,
+    last_run_state: facts.run?.state ?? 'unknown',
+    last_run_seq: facts.run?.seq ?? null
+  })
   facts.observation = summary('observing')
   try {
-    const run = await until(async () => {
-      const snapshot = await read()
-      facts.run = safeRun(snapshot)
-      onSnapshot?.(facts.run)
-      return snapshot
-    }, value => ['succeeded', 'failed', 'cancelled', 'timed_out', 'recovery_required'].includes(value?.state), budget)
+    const run = await until(
+      async () => {
+        const snapshot = await read()
+        facts.run = safeRun(snapshot)
+        onSnapshot?.(facts.run)
+        return snapshot
+      },
+      value => ['succeeded', 'failed', 'cancelled', 'timed_out', 'recovery_required'].includes(value?.state),
+      budget
+    )
     facts.observation = summary('terminal_observed')
     return run
   } catch (error) {
-    facts.observation = { ...summary(error?.code === 'LIVE_TEAM_OBSERVATION_TIMEOUT' ? 'timed_out' : 'failed'), code: safeCode(error) }
+    facts.observation = {
+      ...summary(error?.code === 'LIVE_TEAM_OBSERVATION_TIMEOUT' ? 'timed_out' : 'failed'),
+      code: safeCode(error)
+    }
     throw error
   }
 }
@@ -351,26 +547,39 @@ function safeGateway(authUrl, rpc, instance) {
   let cookie = ''
   return {
     async authenticate() {
-      const response = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(15_000) })
+      const response = await fetch(url, {
+        redirect: 'manual',
+        signal: AbortSignal.timeout(15_000)
+      })
       cookie = (response.headers.getSetCookie?.() ?? []).map(value => value.split(';')[0]).join('; ')
       if (!cookie || ![302, 303].includes(response.status)) fail('HOST_AUTH_FAILED')
     },
     async call(method, args) {
       const rpcId = randomUUID()
       const response = await fetch(new URL(`/api/${method}`, url.origin), {
-        method: 'POST', redirect: 'error', signal: AbortSignal.timeout(15_000),
+        method: 'POST',
+        redirect: 'error',
+        signal: AbortSignal.timeout(15_000),
         headers: { cookie, 'content-type': 'application/json' },
-        body: JSON.stringify({ type: 'client-request', rpcId, method, payload: { args } }),
+        body: JSON.stringify({ type: 'client-request', rpcId, method, payload: { args } })
       })
       const body = await response.json()
       const result = body?.result
       const errorCode = typeof result?.error?.code === 'string' && /^[a-z0-9/_-]+$/.test(result.error.code) ? result.error.code : null
-      rpc.push({ method, rpcId, at: new Date().toISOString(), status: response.status,
-        ok: result?.ok === true, hostInstance: instance, provenance: 'real public DSH gateway',
-        responseRpcId: body?.rpcId === rpcId ? rpcId : null, error_code: errorCode })
+      rpc.push({
+        method,
+        rpcId,
+        at: new Date().toISOString(),
+        status: response.status,
+        ok: result?.ok === true,
+        hostInstance: instance,
+        provenance: 'real public DSH gateway',
+        responseRpcId: body?.rpcId === rpcId ? rpcId : null,
+        error_code: errorCode
+      })
       if (response.status !== 200 || body?.type !== 'server-response' || body.rpcId !== rpcId || result?.ok !== true) fail('HOST_GATEWAY_RPC_FAILED')
       return result.value
-    },
+    }
   }
 }
 
@@ -525,36 +734,70 @@ function fixture(root, paths, config) {
     resources: {
       stage: { kind: 'agent', path: 'lib/stage.md' },
       primary: { kind: 'agent', path: 'lib/primary.md' },
-      schema: { kind: 'schema', path: 'lib/output.schema.json' },
+      schema: { kind: 'schema', path: 'lib/output.schema.json' }
     },
     graph: {
       nodes: [
         { id: 'input', kind: 'input', outputs: { request: 'string' } },
-        { id: 'work', kind: 'agentTask', inputs: { request: 'string' }, outputs: { result: 'json' }, agentRef: 'stage', outputSchemaRef: 'schema', teamStage: {
-          task: { subject: 'Live TeamStage acceptance task', description: 'Claim and complete this exact frozen task, then publish the agreed structured value.' },
-          members: [{ name: 'primary', description: 'Live primary TeamStage producer', agentRef: 'primary', context: 'fresh' }],
-          requiredChecks: ['schema', 'digest', 'artifact-digest', 'agreement'],
-        } },
-        { id: 'output', kind: 'output', inputs: { result: 'json' }, outputs: { result: 'json' } },
+        {
+          id: 'work',
+          kind: 'agentTask',
+          inputs: { request: 'string' },
+          outputs: { result: 'json' },
+          agentRef: 'stage',
+          outputSchemaRef: 'schema',
+          teamStage: {
+            task: {
+              subject: 'Live TeamStage acceptance task',
+              description: 'Claim and complete this exact frozen task, then publish the agreed structured value.'
+            },
+            members: [
+              {
+                name: 'primary',
+                description: 'Live primary TeamStage producer',
+                agentRef: 'primary',
+                context: 'fresh'
+              }
+            ],
+            requiredChecks: ['schema', 'digest', 'artifact-digest', 'agreement']
+          }
+        },
+        { id: 'output', kind: 'output', inputs: { result: 'json' }, outputs: { result: 'json' } }
       ],
       edges: [
         { kind: 'data', from: 'input.request', to: 'work.request' },
-        { kind: 'data', from: 'work.result', to: 'output.result' },
-      ],
-    },
+        { kind: 'data', from: 'work.result', to: 'output.result' }
+      ]
+    }
   }
-  writeFileSync(join(definitionRoot, 'blueprint.json'), JSON.stringify(definition), { mode: 0o600 })
-  writeFileSync(join(definitionRoot, 'lib/stage.md'), 'Drive the native TeamStage task to a durable, schema-valid result. The member must use native Team tools and structured_output.\n', { mode: 0o600 })
-  writeFileSync(join(definitionRoot, 'lib/primary.md'), [
-    'You are the only primary member in a live TeamStage acceptance run.',
-    'Use the native Team tools in this exact order: team_task_list, team_task_update action claim, team_task_update action complete, then structured_output.',
-    'Use the exact task id and current revision returned by the previous tool. Do not answer with prose and do not put JSON in ordinary text.',
-    'The final structured_output value must be exactly {"result":"live-teamstage","verified":true}.',
-  ].join('\n') + '\n', { mode: 0o600 })
-  writeFileSync(join(definitionRoot, 'lib/output.schema.json'), JSON.stringify({
-    type: 'object', properties: { result: { type: 'string' }, verified: { type: 'boolean' } },
-    required: ['result', 'verified'], additionalProperties: false,
-  }), { mode: 0o600 })
+  writeFileSync(join(definitionRoot, 'blueprint.json'), JSON.stringify(definition), {
+    mode: 0o600
+  })
+  writeFileSync(
+    join(definitionRoot, 'lib/stage.md'),
+    'Drive the native TeamStage task to a durable, schema-valid result. The member must use native Team tools and structured_output.\n',
+    { mode: 0o600 }
+  )
+  writeFileSync(
+    join(definitionRoot, 'lib/primary.md'),
+    [
+      'You are the only primary member in a live TeamStage acceptance run.',
+      'Use the native Team tools in this exact order: team_task_list, team_task_update action claim, team_task_update action complete, then structured_output.',
+      'Use the exact task id and current revision returned by the previous tool. Do not answer with prose and do not put JSON in ordinary text.',
+      'The final structured_output value must be exactly {"result":"live-teamstage","verified":true}.'
+    ].join('\n') + '\n',
+    { mode: 0o600 }
+  )
+  writeFileSync(
+    join(definitionRoot, 'lib/output.schema.json'),
+    JSON.stringify({
+      type: 'object',
+      properties: { result: { type: 'string' }, verified: { type: 'boolean' } },
+      required: ['result', 'verified'],
+      additionalProperties: false
+    }),
+    { mode: 0o600 }
+  )
   const operatorPath = join(root, 'live-teamstage-operator.mjs')
   writeFileSync(operatorPath, operatorSource(paths, config), { mode: 0o600 })
   return { blueprints: { [BLUEPRINT_ID]: definitionRoot }, operatorModules: [operatorPath] }
@@ -571,16 +814,36 @@ function validateReportDir(path) {
 // Importing the public observer/fixture helpers performs no credential read,
 // model dispatch, host boot or CLI configuration parsing.
 const main = process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-const config = main ? (() => {
-  try { return parseTeamStageCollectorConfiguration(process.argv.slice(2), process.env) } catch (error) {
-    console.log(JSON.stringify({ status: 'not_run', failure: safeCode(error), key_read: false, provider_calls: 0 }))
-    process.exitCode = 1
-    return undefined
-  }
-})() : undefined
+const config = main
+  ? (() => {
+      try {
+        return parseTeamStageCollectorConfiguration(process.argv.slice(2), process.env)
+      } catch (error) {
+        console.log(
+          JSON.stringify({
+            status: 'not_run',
+            failure: safeCode(error),
+            key_read: false,
+            provider_calls: 0
+          })
+        )
+        process.exitCode = 1
+        return undefined
+      }
+    })()
+  : undefined
 
-export { fixture as prepareLiveTeamFixture, safeGateway, safeOperatorFacts, safeReadJson,
-  extractProviderKey, artifactAudit, validateMemberLineage, safeCode, safeRun }
+export {
+  fixture as prepareLiveTeamFixture,
+  safeGateway,
+  safeOperatorFacts,
+  safeReadJson,
+  extractProviderKey,
+  artifactAudit,
+  validateMemberLineage,
+  safeCode,
+  safeRun
+}
 
 if (config?.mode === 'live') {
   const report = validateReportDir(process.env[REPORT_ENV])
@@ -588,7 +851,7 @@ if (config?.mode === 'live') {
   const root = mkdtempSync(join(realpathSync(tmpdir()), 'blueprint-live-teamstage-'))
   const paths = {
     ready: join(root, 'lead-ready.json'),
-    operatorFacts: join(root, 'operator-facts.json'),
+    operatorFacts: join(root, 'operator-facts.json')
   }
   const facts = {
     schema_version: 1,
@@ -597,13 +860,23 @@ if (config?.mode === 'live') {
     mode: 'live-provider-teamstage',
     status: 'failed',
     started_at: startedAt,
-    provider: { name: config.provider, model: config.model, protocol: config.protocol, base_url: config.baseUrl },
-    profile: { isolated: true, install_mode: 'linked', dsh_version: '0.2.1-alpha.2', team_profile: TEAM_PROFILE },
+    provider: {
+      name: config.provider,
+      model: config.model,
+      protocol: config.protocol,
+      base_url: config.baseUrl
+    },
+    profile: {
+      isolated: true,
+      install_mode: 'linked',
+      dsh_version: '0.2.1-alpha.2',
+      team_profile: TEAM_PROFILE
+    },
     key_read: false,
     provider_calls: 0,
     steps: [],
     rpc: [],
-    fingerprint_before: captureEvidenceFingerprint(),
+    fingerprint_before: captureEvidenceFingerprint()
   }
   let child
   let exitCode = 1
@@ -612,9 +885,19 @@ if (config?.mode === 'live') {
     const isolatedKey = join(root, 'provider-key.txt')
     writeFileSync(isolatedKey, key, { mode: 0o600, flag: 'wx' })
     facts.key_read = true
-    const profile = await prepareProfile({ mode: 'live', installMode: 'linked', keyFile: isolatedKey,
-      providerBaseUrl: config.baseUrl, providerModel: config.model, providerProtocol: config.protocol },
-    { prepare: async ({ root: fixtureRoot }) => fixture(fixtureRoot, paths, config) }, root, facts.steps)
+    const profile = await prepareProfile(
+      {
+        mode: 'live',
+        installMode: 'linked',
+        keyFile: isolatedKey,
+        providerBaseUrl: config.baseUrl,
+        providerModel: config.model,
+        providerProtocol: config.protocol
+      },
+      { prepare: async ({ root: fixtureRoot }) => fixture(fixtureRoot, paths, config) },
+      root,
+      facts.steps
+    )
     const manifestPath = join(profile.profileDir, 'package.json')
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
     manifest.dsh.profile.bundles.push(TEAM_PROFILE)
@@ -627,23 +910,42 @@ if (config?.mode === 'live') {
     const ping = await gateway.call('blueprint/ping', {})
     assert.equal(ping?.status, 'ok')
     assert.equal(ping.service, PACKAGE)
-    const lead = await until(() => safeReadJson(paths.ready), value => value?.sessionId === LEAD_SESSION
-      && value.instance_pid === child.pid && value.operator_ready === true && value.observation_only === false)
-    const document = await gateway.call('blueprint/loadDefinition', { args: { blueprintId: BLUEPRINT_ID } })
-    const startArgs = { blueprintId: BLUEPRINT_ID, expectedRevision: document.documentRevision,
+    const lead = await until(
+      () => safeReadJson(paths.ready),
+      value => value?.sessionId === LEAD_SESSION && value.instance_pid === child.pid && value.operator_ready === true && value.observation_only === false
+    )
+    const document = await gateway.call('blueprint/loadDefinition', {
+      args: { blueprintId: BLUEPRINT_ID }
+    })
+    const startArgs = {
+      blueprintId: BLUEPRINT_ID,
+      expectedRevision: document.documentRevision,
       inputJson: JSON.stringify({ request: 'Perform the live TeamStage acceptance task.' }),
-      requestId: 'live-teamstage-acceptance-once', sessionId: lead.sessionId }
+      requestId: 'live-teamstage-acceptance-once',
+      sessionId: lead.sessionId
+    }
     const admitted = await gateway.call('blueprint/startSessionRun', { args: startArgs })
     const replay = await gateway.call('blueprint/startSessionRun', { args: startArgs })
     assert.equal(replay.runId, admitted.runId)
     assert.equal(replay.replayed, true)
     let lastProgressWrite = 0
-    const run = await observeTerminalRun(() => gateway.call('blueprint/inspectRun', { args: { runId: admitted.runId } }), facts, snapshot => {
-      if (Date.now() - lastProgressWrite < 1000 && !['succeeded', 'failed', 'cancelled', 'timed_out', 'recovery_required'].includes(snapshot.state)) return
-      lastProgressWrite = Date.now()
-      writeFileSync(join(report, 'progress.json'), JSON.stringify({ observed_at: new Date().toISOString(),
-        run: snapshot, operator: safeOperatorFacts(safeReadJson(paths.operatorFacts)) }) + '\n', { mode: 0o600 })
-    })
+    const run = await observeTerminalRun(
+      () => gateway.call('blueprint/inspectRun', { args: { runId: admitted.runId } }),
+      facts,
+      snapshot => {
+        if (Date.now() - lastProgressWrite < 1000 && !['succeeded', 'failed', 'cancelled', 'timed_out', 'recovery_required'].includes(snapshot.state)) return
+        lastProgressWrite = Date.now()
+        writeFileSync(
+          join(report, 'progress.json'),
+          JSON.stringify({
+            observed_at: new Date().toISOString(),
+            run: snapshot,
+            operator: safeOperatorFacts(safeReadJson(paths.operatorFacts))
+          }) + '\n',
+          { mode: 0o600 }
+        )
+      }
+    )
     facts.run = safeRun(run)
     const operatorBefore = safeOperatorFacts(safeReadJson(paths.operatorFacts))
     assert.equal(operatorBefore.instance_pid, child.pid)
@@ -675,15 +977,29 @@ if (config?.mode === 'live') {
     child = restarted.child
     const gatewayAfterRestart = safeGateway(await restarted.ready, facts.rpc, 2)
     await gatewayAfterRestart.authenticate()
-    await until(() => safeReadJson(paths.ready), value => value?.sessionId === LEAD_SESSION
-      && value.instance_pid === child.pid && value.operator_ready === true && value.observation_only === true)
-    const restored = await gatewayAfterRestart.call('blueprint/inspectRun', { args: { runId: run.runId } })
+    await until(
+      () => safeReadJson(paths.ready),
+      value => value?.sessionId === LEAD_SESSION && value.instance_pid === child.pid && value.operator_ready === true && value.observation_only === true
+    )
+    const restored = await gatewayAfterRestart.call('blueprint/inspectRun', {
+      args: { runId: run.runId }
+    })
     assert.deepEqual(restored, run)
-    const operatorAfter = safeOperatorFacts(await until(() => safeReadJson(paths.operatorFacts), value => value?.instance_pid === child.pid
-      && value.operator_ready === true && value.observation_only === true))
-    facts.restart = { same_profile: true, record_unchanged: true, instance_pid: operatorAfter.instance_pid,
-      operator_ready: operatorAfter.operator_ready, observation_only: operatorAfter.observation_only, provider_calls_after_restart: operatorAfter.provider_calls,
-      member_sessions_created_after_restart: operatorAfter.sessions.filter(session => session.sessionId !== LEAD_SESSION).length }
+    const operatorAfter = safeOperatorFacts(
+      await until(
+        () => safeReadJson(paths.operatorFacts),
+        value => value?.instance_pid === child.pid && value.operator_ready === true && value.observation_only === true
+      )
+    )
+    facts.restart = {
+      same_profile: true,
+      record_unchanged: true,
+      instance_pid: operatorAfter.instance_pid,
+      operator_ready: operatorAfter.operator_ready,
+      observation_only: operatorAfter.observation_only,
+      provider_calls_after_restart: operatorAfter.provider_calls,
+      member_sessions_created_after_restart: operatorAfter.sessions.filter(session => session.sessionId !== LEAD_SESSION).length
+    }
     assert.equal(operatorAfter.provider_calls, 0)
     assert.equal(facts.restart.member_sessions_created_after_restart, 0)
     facts.status = 'passed'
@@ -702,17 +1018,52 @@ if (config?.mode === 'live') {
     facts.fingerprint_after = captureEvidenceFingerprint()
     rmSync(root, { recursive: true, force: true })
     facts.cleanup_removed = !existsSync(root)
-    writeFileSync(join(report, 'receipt.json'), JSON.stringify(facts, null, 2) + '\n', { mode: 0o600 })
-    writeFileSync(join(report, 'fingerprint.json'), JSON.stringify({ schema_version: 1, plan_id: facts.plan_id,
-      work_package: facts.work_package, status: facts.status, fingerprint: facts.fingerprint_after,
-      provider: facts.provider, key_read: facts.key_read, provider_calls: facts.provider_calls }, null, 2) + '\n', { mode: 0o600 })
-    writeFileSync(join(report, 'targeted.log'), JSON.stringify({ status: facts.status, failure: facts.failure ?? null,
-      provider: facts.provider, key_read: facts.key_read, provider_calls: facts.provider_calls,
-      team_state: facts.run?.team?.state ?? null, cleanup_removed: facts.cleanup_removed }) + '\n', { mode: 0o600 })
+    writeFileSync(join(report, 'receipt.json'), JSON.stringify(facts, null, 2) + '\n', {
+      mode: 0o600
+    })
+    writeFileSync(
+      join(report, 'fingerprint.json'),
+      JSON.stringify(
+        {
+          schema_version: 1,
+          plan_id: facts.plan_id,
+          work_package: facts.work_package,
+          status: facts.status,
+          fingerprint: facts.fingerprint_after,
+          provider: facts.provider,
+          key_read: facts.key_read,
+          provider_calls: facts.provider_calls
+        },
+        null,
+        2
+      ) + '\n',
+      { mode: 0o600 }
+    )
+    writeFileSync(
+      join(report, 'targeted.log'),
+      JSON.stringify({
+        status: facts.status,
+        failure: facts.failure ?? null,
+        provider: facts.provider,
+        key_read: facts.key_read,
+        provider_calls: facts.provider_calls,
+        team_state: facts.run?.team?.state ?? null,
+        cleanup_removed: facts.cleanup_removed
+      }) + '\n',
+      { mode: 0o600 }
+    )
     writeFileSync(join(report, 'targeted.exit'), `${exitCode}\n`, { mode: 0o600 })
   }
-  console.log(JSON.stringify({ status: facts.status, failure: facts.failure ?? null, provider: facts.provider,
-    key_read: facts.key_read, provider_calls: facts.provider_calls, team_state: facts.run?.team?.state ?? null,
-    cleanup_removed: facts.cleanup_removed }))
+  console.log(
+    JSON.stringify({
+      status: facts.status,
+      failure: facts.failure ?? null,
+      provider: facts.provider,
+      key_read: facts.key_read,
+      provider_calls: facts.provider_calls,
+      team_state: facts.run?.team?.state ?? null,
+      cleanup_removed: facts.cleanup_removed
+    })
+  )
   process.exitCode = exitCode
 }

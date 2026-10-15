@@ -27,7 +27,8 @@ function assertNoNodeGlobals(context, sandbox) {
 test('C-08 only the browser client pack folds third-party NODE_ENV while retaining DSH singleton externals', () => {
   const host = config.pack.find(pack => pack.platform === 'node')
   const client = config.pack.find(pack => pack.platform === 'browser')
-  assert.ok(host); assert.ok(client)
+  assert.ok(host)
+  assert.ok(client)
   assert.equal(client.define?.['process.env.NODE_ENV'], '"production"', 'CLIENT_PACK_MUST_FOLD_THIRD_PARTY_NODE_ENV')
   assert.equal(host.define?.['process.env.NODE_ENV'], undefined, 'HOST_PACK_ENVIRONMENT_MUST_REMAIN_UNCHANGED')
   assert.deepEqual(client.external, sharedIds, 'REACT_SINGLETON_EXTERNALS_MUST_NOT_BE_REPLACED_OR_POLYFILLED')
@@ -43,8 +44,14 @@ test('C-08 actual packaged factory imports with real shared React seeds and no p
 
   const artifact = resolve(packageRoot, 'lib/client.js')
   const closure = readFileSync(artifact, 'utf8')
-  t.diagnostic(JSON.stringify({ artifact, artifactSha256: createHash('sha256').update(closure).digest('hex'),
-    realReactVersion: shared.get('react').version, seedIds: sharedIds }))
+  t.diagnostic(
+    JSON.stringify({
+      artifact,
+      artifactSha256: createHash('sha256').update(closure).digest('hex'),
+      realReactVersion: shared.get('react').version,
+      seedIds: sharedIds
+    })
+  )
   const registrations = []
   const sandbox = { console, __ModuleLoader__: { load: descriptor => registrations.push(descriptor) } }
   sandbox.window = sandbox
@@ -66,10 +73,14 @@ test('C-08 actual packaged factory imports with real shared React seeds and no p
     return shared.get(id)
   }
   let exports
-  assert.doesNotThrow(() => { exports = descriptor.factory(seedRequire) }, 'CLIENT_FACTORY_BROWSER_IMPORT_MUST_NOT_REQUIRE_NODE_GLOBALS')
+  assert.doesNotThrow(() => {
+    exports = descriptor.factory(seedRequire)
+  }, 'CLIENT_FACTORY_BROWSER_IMPORT_MUST_NOT_REQUIRE_NODE_GLOBALS')
   assert.equal(typeof exports.apply, 'function', 'official plugin export, not a mocked closure')
   assert.ok(Array.isArray(exports.inject))
-  assert.ok(requested.includes('react')); assert.ok(requested.includes('react/jsx-runtime')); assert.ok(requested.includes('react-dom'))
+  assert.ok(requested.includes('react'))
+  assert.ok(requested.includes('react/jsx-runtime'))
+  assert.ok(requested.includes('react-dom'))
   assertNoNodeGlobals(context, sandbox)
   t.diagnostic(JSON.stringify({ requestedSharedModules: requested, nodeGlobalsAbsentAfterFactory: true }))
 })

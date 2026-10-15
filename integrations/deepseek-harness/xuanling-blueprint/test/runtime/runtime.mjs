@@ -39,7 +39,10 @@ export async function getCases(helpers) {
   const cases = []
 
   cases.push({
-    id: 'RT1', title: 'T08/T10: duplicate start command replays the original run (idempotent admission)', contract: 'C-08', expect: 'pass',
+    id: 'RT1',
+    title: 'T08/T10: duplicate start command replays the original run (idempotent admission)',
+    contract: 'C-08',
+    expect: 'pass',
     run: async () => {
       const root = runtimeRoot()
       try {
@@ -52,11 +55,14 @@ export async function getCases(helpers) {
       } finally {
         cleanup(root)
       }
-    },
+    }
   })
 
   cases.push({
-    id: 'RT2', title: 'T10: same requestId with a different payload is a typed COMMAND_CONFLICT', contract: 'C-10', expect: 'pass',
+    id: 'RT2',
+    title: 'T10: same requestId with a different payload is a typed COMMAND_CONFLICT',
+    contract: 'C-10',
+    expect: 'pass',
     run: async () => {
       const root = runtimeRoot()
       try {
@@ -73,11 +79,14 @@ export async function getCases(helpers) {
       } finally {
         cleanup(root)
       }
-    },
+    }
   })
 
   cases.push({
-    id: 'RT3', title: 'T08: intent-before-effect — the dispatch intent is durable in a FRESH domain reader before any effect', contract: 'C-08', expect: 'pass',
+    id: 'RT3',
+    title: 'T08: intent-before-effect — the dispatch intent is durable in a FRESH domain reader before any effect',
+    contract: 'C-08',
+    expect: 'pass',
     run: async () => {
       const root = runtimeRoot()
       try {
@@ -88,20 +97,25 @@ export async function getCases(helpers) {
         const second = await open(root)
         const reread = await second.store.get(created.runId)
         const attempt = reread.attempts.find(a => a.nodeId === 'review')
-        const durable = attempt?.intent?.kind === 'agentTask' && attempt.intent.resourceDigests.skill === 'abc'
-          && reread.state === 'running'
-          && reread.log.some(e => e.kind === 'intent')
+        const durable =
+          attempt?.intent?.kind === 'agentTask' &&
+          attempt.intent.resourceDigests.skill === 'abc' &&
+          reread.state === 'running' &&
+          reread.log.some(e => e.kind === 'intent')
         await second.opened.close()
         await first.opened.close()
         return durable
       } finally {
         cleanup(root)
       }
-    },
+    }
   })
 
   cases.push({
-    id: 'RT4', title: 'T08/T09: crash window — intent without result reopens as recovery_required; reconcile applies reviewed evidence once', contract: 'C-09', expect: 'pass',
+    id: 'RT4',
+    title: 'T08/T09: crash window — intent without result reopens as recovery_required; reconcile applies reviewed evidence once',
+    contract: 'C-09',
+    expect: 'pass',
     run: async () => {
       const root = runtimeRoot()
       try {
@@ -114,45 +128,45 @@ export async function getCases(helpers) {
         const second = await open(root)
         const report = await orchestration.reconcileOnStart(second.store)
         const reread = await second.store.get(created.runId)
-        const inRecovery = reread.state === 'recovery_required'
-          && report.recoveryRequired.some(r => r.runId === created.runId && r.attemptId === intent.attemptId)
+        const inRecovery =
+          reread.state === 'recovery_required' && report.recoveryRequired.some(r => r.runId === created.runId && r.attemptId === intent.attemptId)
         const reviewed = await orchestration.reconcile(second.store, reread, 'failed', 'operator confirmed no external effect')
-        const settled = reviewed.state === 'failed'
-          && reviewed.attempts.find(a => a.attemptId === intent.attemptId).result?.evidence.includes('operator confirmed')
+        const settled =
+          reviewed.state === 'failed' && reviewed.attempts.find(a => a.attemptId === intent.attemptId).result?.evidence.includes('operator confirmed')
         // Terminal cancellation is an idempotent read, not a new transition.
         // Compare the complete aggregate, including seq/log and reviewed evidence.
         const terminal = structuredClone(reviewed)
         for (let repeat = 0; repeat < 2; repeat++) {
-          assert.deepEqual(await second.store.requestCancel(created.runId), terminal,
-            'repeated terminal cancel must return the unchanged aggregate')
-          assert.deepEqual(await second.store.get(created.runId), terminal,
-            'repeated terminal cancel must not persist any aggregate change')
+          assert.deepEqual(await second.store.requestCancel(created.runId), terminal, 'repeated terminal cancel must return the unchanged aggregate')
+          assert.deepEqual(await second.store.get(created.runId), terminal, 'repeated terminal cancel must not persist any aggregate change')
         }
         // Even a stale recovery snapshot cannot reconcile the terminal again.
-        await assert.rejects(
-          orchestration.reconcile(second.store, reread, 'succeeded', 'replacement review must not apply'),
-          { code: 'TERMINAL_STATE_IMMUTABLE' },
-        )
-        assert.deepEqual(await second.store.get(created.runId), terminal,
-          'second reconciliation must preserve the original terminal and evidence')
+        await assert.rejects(orchestration.reconcile(second.store, reread, 'succeeded', 'replacement review must not apply'), {
+          code: 'TERMINAL_STATE_IMMUTABLE'
+        })
+        assert.deepEqual(await second.store.get(created.runId), terminal, 'second reconciliation must preserve the original terminal and evidence')
         await assert.rejects(
           second.store.recordResult(created.runId, intent.attemptId, {
-            ok: true, outcome: { kind: 'succeeded' }, evidence: 'late result must not replace reviewed evidence',
+            ok: true,
+            outcome: { kind: 'succeeded' },
+            evidence: 'late result must not replace reviewed evidence'
           }),
-          { code: 'TERMINAL_STATE_IMMUTABLE' },
+          { code: 'TERMINAL_STATE_IMMUTABLE' }
         )
-        assert.deepEqual(await second.store.get(created.runId), terminal,
-          'late result must preserve the original terminal Attempt result and aggregate')
+        assert.deepEqual(await second.store.get(created.runId), terminal, 'late result must preserve the original terminal Attempt result and aggregate')
         await second.opened.close()
         return inRecovery && settled
       } finally {
         cleanup(root)
       }
-    },
+    }
   })
 
   cases.push({
-    id: 'RT5', title: 'T08: durability failure after store close is typed DURABILITY_FAILED (no silent continue)', contract: 'C-08', expect: 'pass',
+    id: 'RT5',
+    title: 'T08: durability failure after store close is typed DURABILITY_FAILED (no silent continue)',
+    contract: 'C-08',
+    expect: 'pass',
     run: async () => {
       const root = runtimeRoot()
       try {
@@ -169,11 +183,14 @@ export async function getCases(helpers) {
       } finally {
         cleanup(root)
       }
-    },
+    }
   })
 
   cases.push({
-    id: 'RT6', title: 'T08: single-writer lease — second writer rejected, release/reacquire works, stale dead-PID takeover requires proof', contract: 'C-08', expect: 'pass',
+    id: 'RT6',
+    title: 'T08: single-writer lease — second writer rejected, release/reacquire works, stale dead-PID takeover requires proof',
+    contract: 'C-08',
+    expect: 'pass',
     run: async () => {
       const root = runtimeRoot()
       try {
@@ -209,11 +226,14 @@ export async function getCases(helpers) {
       } finally {
         cleanup(root)
       }
-    },
+    }
   })
 
   cases.push({
-    id: 'RT7', title: 'T08: projection rebuild from canonical records (deleting the view loses nothing)', contract: 'C-08', expect: 'pass',
+    id: 'RT7',
+    title: 'T08: projection rebuild from canonical records (deleting the view loses nothing)',
+    contract: 'C-08',
+    expect: 'pass',
     run: async () => {
       const root = runtimeRoot()
       try {
@@ -226,22 +246,31 @@ export async function getCases(helpers) {
         const { opened: reopened, store: store2 } = await open(root)
         const rebuilt = await store2.rebuildProjection()
         await reopened.close()
-        return view.total === 2 && rebuilt.total === 2
-          && view.byState.succeeded === 1 && rebuilt.byState.succeeded === 1
-          && JSON.stringify(view) === JSON.stringify(rebuilt)
-          && a.runId !== b.runId
+        return (
+          view.total === 2 &&
+          rebuilt.total === 2 &&
+          view.byState.succeeded === 1 &&
+          rebuilt.byState.succeeded === 1 &&
+          JSON.stringify(view) === JSON.stringify(rebuilt) &&
+          a.runId !== b.runId
+        )
       } finally {
         cleanup(root)
       }
-    },
+    }
   })
 
   cases.push({
-    id: 'RT8', title: 'T07: scheduler — parallel branches go ready independently; join-all waits for selected paths; unselected branches skip', contract: 'C-07', expect: 'pass',
+    id: 'RT8',
+    title: 'T07: scheduler — parallel branches go ready independently; join-all waits for selected paths; unselected branches skip',
+    contract: 'C-07',
+    expect: 'pass',
     run: async () => {
       const orchestration = await import(join(helpers_packageRoot(), 'lib', 'orchestration.js'))
       const definition = {
-        schemaVersion: 1, id: 'branchy', name: 'branchy',
+        schemaVersion: 1,
+        id: 'branchy',
+        name: 'branchy',
         resources: {},
         graph: {
           nodes: [
@@ -249,62 +278,81 @@ export async function getCases(helpers) {
             { id: 'branchA', kind: 'toolCall', inputs: { x: 'string' }, outputs: { y: 'string' } },
             { id: 'branchB', kind: 'toolCall', inputs: { x: 'string' }, outputs: { y: 'string' } },
             { id: 'merge', kind: 'join', join: 'all', inputs: { a: 'string', b: 'string' }, outputs: { out: 'string' } },
-            { id: 'final', kind: 'output', inputs: { value: 'string' } },
+            { id: 'final', kind: 'output', inputs: { value: 'string' } }
           ],
           edges: [
             { kind: 'data', from: 'input.request', to: 'branchA.x' },
             { kind: 'data', from: 'input.request', to: 'branchB.x' },
             { kind: 'data', from: 'branchA.y', to: 'merge.a' },
             { kind: 'data', from: 'branchB.y', to: 'merge.b' },
-            { kind: 'data', from: 'merge.out', to: 'final.value' },
-          ],
-        },
+            { kind: 'data', from: 'merge.out', to: 'final.value' }
+          ]
+        }
       }
-      const view = (states) => ({ attempts: Object.entries(states).map(([nodeId, state]) => ({ nodeId, states: [state] })), decisions: {} })
+      const view = states => ({ attempts: Object.entries(states).map(([nodeId, state]) => ({ nodeId, states: [state] })), decisions: {} })
       const initial = orchestration.readyNodes(definition, view({}))
       const afterA = orchestration.readyNodes(definition, view({ input: 'succeeded' }))
       const bothDone = orchestration.readyNodes(definition, view({ input: 'succeeded', branchA: 'succeeded', branchB: 'succeeded' }))
       const mergeDone = orchestration.readyNodes(definition, view({ input: 'succeeded', branchA: 'succeeded', branchB: 'succeeded', merge: 'succeeded' }))
-      return initial.ready.includes('input') && initial.ready.length === 1
-        && afterA.ready.includes('branchA') && afterA.ready.includes('branchB')
-        && bothDone.ready.includes('merge') && bothDone.blocked.includes('final')
-        && mergeDone.ready.includes('final')
-    },
+      return (
+        initial.ready.includes('input') &&
+        initial.ready.length === 1 &&
+        afterA.ready.includes('branchA') &&
+        afterA.ready.includes('branchB') &&
+        bothDone.ready.includes('merge') &&
+        bothDone.blocked.includes('final') &&
+        mergeDone.ready.includes('final')
+      )
+    }
   })
 
   cases.push({
-    id: 'RT9', title: 'T07: condition selects one path (other skipped); join-all over a failed selected path never fakes success', contract: 'C-07', expect: 'pass',
+    id: 'RT9',
+    title: 'T07: condition selects one path (other skipped); join-all over a failed selected path never fakes success',
+    contract: 'C-07',
+    expect: 'pass',
     run: async () => {
       const orchestration = await import(join(helpers_packageRoot(), 'lib', 'orchestration.js'))
       const definition = {
-        schemaVersion: 1, id: 'cond', name: 'cond',
+        schemaVersion: 1,
+        id: 'cond',
+        name: 'cond',
         resources: {},
         graph: {
           nodes: [
             { id: 'gate', kind: 'condition', branches: ['yes', 'no'] },
             { id: 'yes-path', kind: 'toolCall', outputs: { y: 'string' } },
             { id: 'no-path', kind: 'toolCall' },
-            { id: 'merge', kind: 'join', join: 'all', inputs: { a: 'string' } },
+            { id: 'merge', kind: 'join', join: 'all', inputs: { a: 'string' } }
           ],
           edges: [
             { kind: 'control', from: 'gate@yes', to: 'yes-path' },
             { kind: 'control', from: 'gate@no', to: 'no-path' },
-            { kind: 'data', from: 'yes-path.y', to: 'merge.a' },
-          ],
-        },
+            { kind: 'data', from: 'yes-path.y', to: 'merge.a' }
+          ]
+        }
       }
-      const view = (states, decisions) => ({ attempts: Object.entries(states).map(([nodeId, state]) => ({ nodeId, states: [state] })), decisions: decisions ?? {} })
+      const view = (states, decisions) => ({
+        attempts: Object.entries(states).map(([nodeId, state]) => ({ nodeId, states: [state] })),
+        decisions: decisions ?? {}
+      })
       const withDecision = orchestration.readyNodes(definition, view({ gate: 'succeeded' }, { gate: 'yes' }))
       const noDecision = orchestration.readyNodes(definition, view({ gate: 'succeeded' }))
       const failedSelected = orchestration.readyNodes(definition, view({ gate: 'succeeded', 'yes-path': 'failed' }, { gate: 'yes' }))
-      return withDecision.ready.includes('yes-path') && withDecision.skipped.includes('no-path')
-        && noDecision.blocked.includes('yes-path')
-        && failedSelected.skipped.includes('merge')
-    },
+      return (
+        withDecision.ready.includes('yes-path') &&
+        withDecision.skipped.includes('no-path') &&
+        noDecision.blocked.includes('yes-path') &&
+        failedSelected.skipped.includes('merge')
+      )
+    }
   })
 
   cases.push({
-    id: 'RT10', title: 'T07: iteration budget exceeded fails typed BUDGET_EXCEEDED', contract: 'C-07', expect: 'pass',
+    id: 'RT10',
+    title: 'T07: iteration budget exceeded fails typed BUDGET_EXCEEDED',
+    contract: 'C-07',
+    expect: 'pass',
     run: async () => {
       const orchestration = await import(join(helpers_packageRoot(), 'lib', 'orchestration.js'))
       let threw = null
@@ -314,11 +362,14 @@ export async function getCases(helpers) {
         threw = error
       }
       return threw?.code === 'BUDGET_EXCEEDED'
-    },
+    }
   })
 
   cases.push({
-    id: 'RT11', title: 'T08/T10: terminal race — exactly one settlement wins; later transitions are typed-immutable', contract: 'C-10', expect: 'pass',
+    id: 'RT11',
+    title: 'T08/T10: terminal race — exactly one settlement wins; later transitions are typed-immutable',
+    contract: 'C-10',
+    expect: 'pass',
     run: async () => {
       const root = runtimeRoot()
       try {
@@ -329,21 +380,26 @@ export async function getCases(helpers) {
         // them — exactly one wins the terminal, the loser is typed-rejected.
         const results = await Promise.allSettled([
           store.settleTerminal(created.runId, 'cancelled', { winner: 'cancel' }),
-          store.recordResult(created.runId, (await store.get(created.runId)).attempts[0].attemptId, { ok: true, outcome: 'late', evidence: 'late-result' }),
+          store.recordResult(created.runId, (await store.get(created.runId)).attempts[0].attemptId, { ok: true, outcome: 'late', evidence: 'late-result' })
         ])
         const settled = await store.get(created.runId)
         const winners = results.filter(r => r.status === 'fulfilled').length
-        const lateImmutable = results.filter(r => r.status === 'rejected' && (r.reason?.code === 'TERMINAL_STATE_IMMUTABLE' || r.reason?.code === 'DURABILITY_FAILED')).length
+        const lateImmutable = results.filter(
+          r => r.status === 'rejected' && (r.reason?.code === 'TERMINAL_STATE_IMMUTABLE' || r.reason?.code === 'DURABILITY_FAILED')
+        ).length
         await opened.close()
         return winners === 1 && lateImmutable === 1 && ['cancelled', 'succeeded'].includes(settled.state)
       } finally {
         cleanup(root)
       }
-    },
+    }
   })
 
   cases.push({
-    id: 'RT12', title: 'T09: cancel during running enters cancelling; queued cancel short-circuits to cancelled', contract: 'C-09', expect: 'pass',
+    id: 'RT12',
+    title: 'T09: cancel during running enters cancelling; queued cancel short-circuits to cancelled',
+    contract: 'C-09',
+    expect: 'pass',
     run: async () => {
       const root = runtimeRoot()
       try {
@@ -358,7 +414,7 @@ export async function getCases(helpers) {
       } finally {
         cleanup(root)
       }
-    },
+    }
   })
 
   return cases

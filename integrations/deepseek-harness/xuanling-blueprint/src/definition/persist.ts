@@ -4,15 +4,24 @@
  * never leaves a partial blueprint.json: the staged copy is removed and the
  * previous file (if any) stays untouched.
  */
-import { closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import {
+  closeSync,
+  existsSync,
+  fsyncSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from 'node:fs'
 import { createHash } from 'node:crypto'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
-import {
-  DefinitionInvalidError,
-  IoWriteFailedError,
-  RevisionConflictError,
-  type BlueprintDefinition,
-} from './types.ts'
+import { DefinitionInvalidError, IoWriteFailedError, RevisionConflictError, type BlueprintDefinition } from './types.ts'
 import { decodeDefinition } from './codec.ts'
 import { validateDefinition } from './validator.ts'
 import { canonicalJson, documentRevisions } from './document.ts'
@@ -97,18 +106,26 @@ export function loadDefinition(rootDir: string): { definition: BlueprintDefiniti
   return { definition, revision: computeRevision({ rootDir, definition }) }
 }
 
-
 export class DefinitionDocumentMissingError extends Error {
   readonly code = 'DEFINITION_NOT_FOUND'
-  constructor() { super('definition document is absent') }
+  constructor() {
+    super('definition document is absent')
+  }
 }
 export class DocumentRevisionConflictError extends Error {
   readonly code = 'DOCUMENT_REVISION_CONFLICT'
-  constructor(readonly expected: string | null, readonly actual: string | null) { super('document revision conflict') }
+  constructor(
+    readonly expected: string | null,
+    readonly actual: string | null
+  ) {
+    super('document revision conflict')
+  }
 }
 export class PackageBoundaryError extends Error {
   readonly code = 'PACKAGE_BOUNDARY_REJECTED'
-  constructor() { super('package boundary rejected') }
+  constructor() {
+    super('package boundary rejected')
+  }
 }
 export interface DefinitionDocument {
   blueprintId: string
@@ -124,7 +141,10 @@ function containedPath(root: string, path: string): void {
   if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) throw new PackageBoundaryError()
 }
 function isAbsent(path: string): boolean {
-  try { lstatSync(path); return false } catch (error) {
+  try {
+    lstatSync(path)
+    return false
+  } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return true
     throw error
   }
@@ -157,7 +177,10 @@ function documentValue(definition: BlueprintDefinition, bytes: Map<string, Buffe
   return { blueprintId: definition.id, definitionJson: canonicalJson(definition), ...documentRevisions(definition, files) }
 }
 /** One checked read set owns both its revisions and immutable admission/export bytes. */
-export interface DefinitionPackage { document: DefinitionDocument; files: Map<string, Buffer> }
+export interface DefinitionPackage {
+  document: DefinitionDocument
+  files: Map<string, Buffer>
+}
 function snapshotDigest(bytes: Buffer): string {
   // snapshotFile's digest semantics are sha256(bytes); keep the pure helper's input explicit.
   return createHash('sha256').update(bytes).digest('hex')
@@ -180,7 +203,9 @@ export function loadDefinitionDocument(rootDir: string): DefinitionDocument {
 export function saveDefinitionDocument(rootDir: string, definition: BlueprintDefinition, expectedRevision: string | null): DefinitionDocument {
   const root = resolve(rootDir)
   let stored: DefinitionDocument | undefined
-  try { stored = loadDefinitionDocument(root) } catch (error) {
+  try {
+    stored = loadDefinitionDocument(root)
+  } catch (error) {
     if (!(error instanceof DefinitionDocumentMissingError)) throw error
   }
   if ((stored?.documentRevision ?? null) !== expectedRevision) throw new DocumentRevisionConflictError(expectedRevision, stored?.documentRevision ?? null)
@@ -196,7 +221,8 @@ export function saveDefinitionDocument(rootDir: string, definition: BlueprintDef
     fd = openSync(stagedFile, 'wx', 0o600)
     writeFileSync(fd, payload)
     fsyncSync(fd)
-    closeSync(fd); fd = undefined
+    closeSync(fd)
+    fd = undefined
     renameSync(stagedFile, join(root, 'blueprint.json'))
   } catch (cause) {
     throw new IoWriteFailedError('definition-document', cause)

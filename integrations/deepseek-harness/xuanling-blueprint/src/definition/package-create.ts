@@ -14,11 +14,18 @@ export function publishPackage(root: string, definition: BlueprintDefinition, fi
       const target = join(stage, file.path)
       mkdirSync(dirname(target), { recursive: true, mode: 0o700 })
       const fd = openSync(target, 'wx', 0o600)
-      try { writeFileSync(fd, file.text); fsyncSync(fd) } finally { closeSync(fd) }
+      try {
+        writeFileSync(fd, file.text)
+        fsyncSync(fd)
+      } finally {
+        closeSync(fd)
+      }
     }
     const snapshot = loadDefinitionPackage(stage)
     if (existsSync(root)) throw new Error('package-target-exists')
     renameSync(stage, root)
     return snapshot.document
-  } finally { rmSync(stage, { recursive: true, force: true }) }
+  } finally {
+    rmSync(stage, { recursive: true, force: true })
+  }
 }

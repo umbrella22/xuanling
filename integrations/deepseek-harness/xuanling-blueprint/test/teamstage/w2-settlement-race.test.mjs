@@ -14,40 +14,99 @@ const digest = value => createHash('sha256').update(value).digest('hex')
 async function fixture(t, backend) {
   const root = await mkdtemp(join(tmpdir(), 'blueprint-settlement-race-'))
   const opened = await openBlueprintDomain({ backend, path: join(root, backend === 'json' ? 'store' : 'store.sqlite') })
-  t.after(async () => { await opened.close(); await rm(root, { recursive: true, force: true }) })
+  t.after(async () => {
+    await opened.close()
+    await rm(root, { recursive: true, force: true })
+  })
   let updates = 0
   const domain = {
     table(name) {
       const table = opened.domain.table(name)
       if (name !== 'runs') return table
       return {
-        get: key => table.get(key), put: (key, value) => table.put(key, value), delete: key => table.delete(key),
+        get: key => table.get(key),
+        put: (key, value) => table.put(key, value),
+        delete: key => table.delete(key),
         entries: () => table.entries(),
-        update: (key, reducer) => { updates += 1; return table.update(key, reducer) },
+        update: (key, reducer) => {
+          updates += 1
+          return table.update(key, reducer)
+        }
       }
-    },
+    }
   }
   const store = new RunStore(domain)
   const { runId } = await store.createRun({ scope: 'run', requestId: 'settlement', payloadFingerprint: digest('request') }, 'revision-1', '{}', '{}')
   const { attemptId } = await store.recordIntent(runId, { nodeId: 'work', kind: 'agentTask' })
-  await store.bindTeamStage(runId, { stageId: 'work', teamId: 'lead', leadSessionId: 'lead', taskSpecificationFingerprint: digest('task'), attemptId,
-    primaryMemberId: 'primary', requiredMemberIds: ['primary', 'collaborator'], requiredChecks: ['agreement'] })
+  await store.bindTeamStage(runId, {
+    stageId: 'work',
+    teamId: 'lead',
+    leadSessionId: 'lead',
+    taskSpecificationFingerprint: digest('task'),
+    attemptId,
+    primaryMemberId: 'primary',
+    requiredMemberIds: ['primary', 'collaborator'],
+    requiredChecks: ['agreement']
+  })
   await store.bindTeamTask(runId, { taskId: 'task-1', taskRevision: 1 })
   const outputs = { answer: { text: 'verified', nested: [1, 2] } }
   const bytes = JSON.stringify(outputs.answer)
-  await store.updateTeamStage(runId, { members: ['primary', 'collaborator'].map(memberId => ({
-    memberId, name: memberId, sessionId: `${memberId}-session`, phase: 'active', status: 'inactive',
-    evidence: { runId, stageId: 'work', taskId: 'task-1', attemptId, captureId: `capture-${memberId}`, schemaDigest: digest('schema'),
-      valueDigest: digest(bytes), completedTurnId: `turn-${memberId}`, flushedAt: 1, quiescentAt: 2 },
-  })) })
-  const output = { code: 'accepted', schemaVersion: 1, runId, stageId: 'work', taskId: 'task-1', attemptId,
-    sourceSessionId: 'primary-session', artifactId: 'host-artifact', digest: digest(bytes), evidenceDigest: digest('evidence'),
-    checks: ['schema', 'digest', 'artifact-digest', 'agreement'] }
-  const hostVerdict = { status: 'verified', artifactId: output.artifactId, digest: output.digest, byteLength: Buffer.byteLength(bytes),
-    schemaDigest: digest('schema'), evidenceDigest: output.evidenceDigest, runId, stageId: 'work', taskId: 'task-1', attemptId,
-    producerSessionId: 'primary-session', producerMemberId: 'primary' }
-  return { store, domain, runId, attemptId, updates: () => updates,
-    input: { store, runId, attemptId, output, hostVerdict, outputs, task: { id: 'task-1', revision: 1, status: 'completed' } } }
+  await store.updateTeamStage(runId, {
+    members: ['primary', 'collaborator'].map(memberId => ({
+      memberId,
+      name: memberId,
+      sessionId: `${memberId}-session`,
+      phase: 'active',
+      status: 'inactive',
+      evidence: {
+        runId,
+        stageId: 'work',
+        taskId: 'task-1',
+        attemptId,
+        captureId: `capture-${memberId}`,
+        schemaDigest: digest('schema'),
+        valueDigest: digest(bytes),
+        completedTurnId: `turn-${memberId}`,
+        flushedAt: 1,
+        quiescentAt: 2
+      }
+    }))
+  })
+  const output = {
+    code: 'accepted',
+    schemaVersion: 1,
+    runId,
+    stageId: 'work',
+    taskId: 'task-1',
+    attemptId,
+    sourceSessionId: 'primary-session',
+    artifactId: 'host-artifact',
+    digest: digest(bytes),
+    evidenceDigest: digest('evidence'),
+    checks: ['schema', 'digest', 'artifact-digest', 'agreement']
+  }
+  const hostVerdict = {
+    status: 'verified',
+    artifactId: output.artifactId,
+    digest: output.digest,
+    byteLength: Buffer.byteLength(bytes),
+    schemaDigest: digest('schema'),
+    evidenceDigest: output.evidenceDigest,
+    runId,
+    stageId: 'work',
+    taskId: 'task-1',
+    attemptId,
+    producerSessionId: 'primary-session',
+    producerMemberId: 'primary'
+  }
+  return {
+    store,
+    domain,
+    runId,
+    attemptId,
+    updates: () => updates,
+    input: { store, runId, attemptId, output, hostVerdict, outputs, task: { id: 'task-1', revision: 1, status: 'completed' } }
+  }
 }
 
 function holdSettlement(t, store, count = 1) {
@@ -61,7 +120,10 @@ function holdSettlement(t, store, count = 1) {
     await release.promise
     return await original(...args)
   }
-  t.after(() => { release.resolve(); store.settleTeamStageAttempt = original })
+  t.after(() => {
+    release.resolve()
+    store.settleTeamStageAttempt = original
+  })
   return { ready: ready.promise, release: () => release.resolve() }
 }
 
@@ -72,21 +134,49 @@ async function enteredSettlement(gate, result) {
 for (const backend of ['json', 'sqlite']) {
   const prefix = `W2.7.1 ${backend} settlement`
   const drifts = [
-    ['task revision', 'task-binding-unverified', async h => { await h.store.updateTeamTaskRevision(h.runId, 1, 2) }],
-    ['member capture', 'required-member-policy-unsatisfied', async h => {
-      const members = (await h.store.get(h.runId)).teamStage.members
-      members[1].evidence.captureId = 'replacement-capture'
-      await h.store.updateTeamStage(h.runId, { members })
-    }],
-    ['required members', 'required-member-policy-override', async h => {
-      await h.store.transition(h.runId, draft => { draft.teamStage.requiredMemberIds = ['primary'] })
-    }],
-    ['required checks', 'required-check-policy-override', async h => {
-      await h.store.transition(h.runId, draft => { draft.teamStage.requiredChecks = ['schema'] })
-    }],
-    ['primary producer', 'producer-policy-mismatch', async h => {
-      await h.store.transition(h.runId, draft => { draft.teamStage.primaryMemberId = 'collaborator' })
-    }],
+    [
+      'task revision',
+      'task-binding-unverified',
+      async h => {
+        await h.store.updateTeamTaskRevision(h.runId, 1, 2)
+      }
+    ],
+    [
+      'member capture',
+      'required-member-policy-unsatisfied',
+      async h => {
+        const members = (await h.store.get(h.runId)).teamStage.members
+        members[1].evidence.captureId = 'replacement-capture'
+        await h.store.updateTeamStage(h.runId, { members })
+      }
+    ],
+    [
+      'required members',
+      'required-member-policy-override',
+      async h => {
+        await h.store.transition(h.runId, draft => {
+          draft.teamStage.requiredMemberIds = ['primary']
+        })
+      }
+    ],
+    [
+      'required checks',
+      'required-check-policy-override',
+      async h => {
+        await h.store.transition(h.runId, draft => {
+          draft.teamStage.requiredChecks = ['schema']
+        })
+      }
+    ],
+    [
+      'primary producer',
+      'producer-policy-mismatch',
+      async h => {
+        await h.store.transition(h.runId, draft => {
+          draft.teamStage.primaryMemberId = 'collaborator'
+        })
+      }
+    ]
   ]
   for (const [name, issueCode, mutate] of drifts) {
     test(`${prefix} rejects ${name} drift after host precheck`, async t => {
@@ -111,8 +201,7 @@ for (const backend of ['json', 'sqlite']) {
       delete members[0].sessionId
       await h.store.updateTeamStage(h.runId, { members })
       const before = await h.store.get(h.runId)
-      const input = { ...h.input, output: { ...h.input.output, sourceSessionId: source },
-        hostVerdict: { ...h.input.hostVerdict, producerSessionId: source } }
+      const input = { ...h.input, output: { ...h.input.output, sourceSessionId: source }, hostVerdict: { ...h.input.hostVerdict, producerSessionId: source } }
       await assert.rejects(acceptTeamOutput(input), error => error.issueCode === 'required-member-policy-unsatisfied')
       assert.deepEqual(await h.store.get(h.runId), before)
     })
@@ -135,8 +224,11 @@ for (const backend of ['json', 'sqlite']) {
     delete members[1].evidence
     await h.store.updateTeamStage(h.runId, { members })
     const before = await h.store.get(h.runId)
-    const input = { ...h.input, output: { ...h.input.output, sourceSessionId: 'collaborator' },
-      hostVerdict: { ...h.input.hostVerdict, producerSessionId: 'collaborator' } }
+    const input = {
+      ...h.input,
+      output: { ...h.input.output, sourceSessionId: 'collaborator' },
+      hostVerdict: { ...h.input.hostVerdict, producerSessionId: 'collaborator' }
+    }
     await assert.rejects(acceptTeamOutput(input), error => error.issueCode === 'required-member-policy-unsatisfied')
     assert.deepEqual(await h.store.get(h.runId), before)
   })
@@ -168,8 +260,10 @@ for (const backend of ['json', 'sqlite']) {
       const other = new RunStore(h.domain)
       const before = await h.store.get(h.runId)
       const settlement = {
-        attemptId: h.attemptId, acceptance: h.input.output, outputs: h.input.outputs,
-        verification: { definitionRevision: before.definitionRevision, stage: before.teamStage, hostVerdict: h.input.hostVerdict },
+        attemptId: h.attemptId,
+        acceptance: h.input.output,
+        outputs: h.input.outputs,
+        verification: { definitionRevision: before.definitionRevision, stage: before.teamStage, hostVerdict: h.input.hostVerdict }
       }
       const stale = structuredClone(settlement)
       if (conflict === 'outputs') stale.outputs.answer.text = 'conflicting-output'
@@ -184,18 +278,31 @@ for (const backend of ['json', 'sqlite']) {
         await release.promise
         return snapshot
       }
-      t.after(() => { release.resolve(); other.get = get })
+      t.after(() => {
+        release.resolve()
+        other.get = get
+      })
       const result = other.settleTeamStageAttempt(h.runId, stale)
-      const checked = conflict === 'none' ? result : assert.rejects(result, error => conflict === 'cancelled'
-        ? error.code === 'TERMINAL_STATE_IMMUTABLE'
-        : error.issueCode === (conflict === 'outputs' ? 'acceptance-conflict' : 'host-verdict-binding-mismatch'))
+      const checked =
+        conflict === 'none'
+          ? result
+          : assert.rejects(result, error =>
+              conflict === 'cancelled'
+                ? error.code === 'TERMINAL_STATE_IMMUTABLE'
+                : error.issueCode === (conflict === 'outputs' ? 'acceptance-conflict' : 'host-verdict-binding-mismatch')
+            )
       await Promise.race([ready.promise, checked.then(() => assert.fail('second store skipped the stale-read barrier'))])
       if (conflict !== 'cancelled') {
         await h.store.settleTeamStageAttempt(h.runId, settlement)
-        await h.store.transition(h.runId, draft => { draft.state = 'succeeded' })
+        await h.store.transition(h.runId, draft => {
+          draft.state = 'succeeded'
+        })
       } else {
         await h.store.requestCancel(h.runId)
-        await h.store.transition(h.runId, draft => { draft.state = 'cancelled'; draft.teamStage.state = 'cancelled' })
+        await h.store.transition(h.runId, draft => {
+          draft.state = 'cancelled'
+          draft.teamStage.state = 'cancelled'
+        })
       }
       const terminal = await h.store.get(h.runId)
       release.resolve()
@@ -209,9 +316,10 @@ for (const backend of ['json', 'sqlite']) {
   }
 
   for (const conflict of ['outputs', 'provenance']) {
-    const change = input => conflict === 'outputs'
-      ? { ...input, outputs: { answer: { text: 'different', nested: [1, 2] } } }
-      : { ...input, hostVerdict: { ...input.hostVerdict, schemaDigest: digest('other-schema') } }
+    const change = input =>
+      conflict === 'outputs'
+        ? { ...input, outputs: { answer: { text: 'different', nested: [1, 2] } } }
+        : { ...input, hostVerdict: { ...input.hostVerdict, schemaDigest: digest('other-schema') } }
     const issueCode = conflict === 'outputs' ? 'acceptance-conflict' : 'host-verdict-binding-mismatch'
     test(`${prefix} rejects concurrent identical DTO with conflicting ${conflict}`, async t => {
       const h = await fixture(t, backend)
@@ -266,7 +374,9 @@ for (const backend of ['json', 'sqlite']) {
 
   test(`${prefix} stage-success update cannot complete a legacy partial accepted graph snapshot`, async t => {
     const h = await fixture(t, backend)
-    await h.store.transition(h.runId, draft => { draft.teamStage.outputAcceptance = structuredClone(h.input.output) })
+    await h.store.transition(h.runId, draft => {
+      draft.teamStage.outputAcceptance = structuredClone(h.input.output)
+    })
     const before = await h.store.get(h.runId)
     await assert.rejects(h.store.updateTeamStage(h.runId, { state: 'succeeded' }), error => error.code === 'TEAM_STAGE_CONFLICT')
     assert.deepEqual(await h.store.get(h.runId), before)
@@ -284,10 +394,16 @@ for (const backend of ['json', 'sqlite']) {
       let reads = 0
       h.store.get = async (...args) => {
         const record = await get(...args)
-        if (++reads === 1) { ready.resolve(); await release.promise }
+        if (++reads === 1) {
+          ready.resolve()
+          await release.promise
+        }
         return record
       }
-      t.after(() => { release.resolve(); h.store.get = get })
+      t.after(() => {
+        release.resolve()
+        h.store.get = get
+      })
       const accepted = acceptTeamOutput(h.input)
       await Promise.race([ready.promise, accepted.then(() => assert.fail('acceptance skipped the read barrier'))])
       if (field === 'outputs') h.input.outputs.answer.text = 'changed-across-await'

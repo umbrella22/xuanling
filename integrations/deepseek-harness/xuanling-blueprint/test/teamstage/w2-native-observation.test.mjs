@@ -13,12 +13,19 @@ async function fixture(t, backend = 'json') {
   const { runId } = await store.createRun({ scope: 'observation', requestId: 'run', payloadFingerprint: 'a'.repeat(64) }, 'revision', '{}', '{}')
   await store.bindTeamStage(runId, { stageId: 'stage', teamId: 'team', leadSessionId: 'lead', taskSpecificationFingerprint: 'b'.repeat(64) })
   await store.bindTeamTask(runId, { taskId: 'task', taskRevision: 1 })
-  t.after(async () => { await opened.close(); await rm(root, { recursive: true, force: true }) })
-  return { store, runId, async reopen() {
+  t.after(async () => {
     await opened.close()
-    opened = await openBlueprintDomain({ backend, path })
-    return new RunStore(opened.domain)
-  } }
+    await rm(root, { recursive: true, force: true })
+  })
+  return {
+    store,
+    runId,
+    async reopen() {
+      await opened.close()
+      opened = await openBlueprintDomain({ backend, path })
+      return new RunStore(opened.domain)
+    }
+  }
 }
 
 test('W2.6 C-02 native observations may skip revisions while Blueprint mutations retain strict one-step CAS', async t => {
@@ -35,7 +42,11 @@ test('W2.6 C-02 native observations may skip revisions while Blueprint mutations
 test('W2.6 C-02/C-05 native observations reject foreign, stale, backwards and terminal updates without changing durable facts', async t => {
   const { store, runId } = await fixture(t)
   const current = await store.observeTeamTaskRevision(runId, { taskId: 'task', taskRevision: 3 }, 1)
-  for (const [task, expected] of [[{ taskId: 'foreign', taskRevision: 4 }, 3], [{ taskId: 'task', taskRevision: 4 }, 1], [{ taskId: 'task', taskRevision: 2 }, 3]]) {
+  for (const [task, expected] of [
+    [{ taskId: 'foreign', taskRevision: 4 }, 3],
+    [{ taskId: 'task', taskRevision: 4 }, 1],
+    [{ taskId: 'task', taskRevision: 2 }, 3]
+  ]) {
     await assert.rejects(store.observeTeamTaskRevision(runId, task, expected), error => error.code === 'TEAM_TASK_CONFLICT')
     assert.deepEqual(await store.get(runId), current)
   }
@@ -51,7 +62,7 @@ for (const backend of ['json', 'sqlite']) {
     const { store, runId, reopen } = await fixture(t, backend)
     const writers = await Promise.allSettled([
       store.observeTeamTaskRevision(runId, { taskId: 'task', taskRevision: 3 }, 1),
-      store.observeTeamTaskRevision(runId, { taskId: 'task', taskRevision: 4 }, 1),
+      store.observeTeamTaskRevision(runId, { taskId: 'task', taskRevision: 4 }, 1)
     ])
     assert.equal(writers.filter(result => result.status === 'fulfilled').length, 1)
     assert.equal(writers.filter(result => result.status === 'rejected' && result.reason.code === 'TEAM_TASK_CONFLICT').length, 1)
@@ -59,7 +70,11 @@ for (const backend of ['json', 'sqlite']) {
     assert.equal(observed.log.filter(entry => entry.detail?.teamStage === 'task-observed').length, 1)
     const restored = await reopen()
     assert.deepEqual(await restored.get(runId), observed)
-    const replay = await restored.observeTeamTaskRevision(runId, { taskId: 'task', taskRevision: observed.teamStage.taskRevision }, observed.teamStage.taskRevision)
+    const replay = await restored.observeTeamTaskRevision(
+      runId,
+      { taskId: 'task', taskRevision: observed.teamStage.taskRevision },
+      observed.teamStage.taskRevision
+    )
     assert.deepEqual(replay, observed, 'replaying an observation after restart adds no fact or mutation')
   })
 
@@ -67,7 +82,7 @@ for (const backend of ['json', 'sqlite']) {
     const { store, runId } = await fixture(t, backend)
     const outcomes = await Promise.allSettled([
       store.updateTeamStage(runId, { state: 'cancelling' }),
-      store.observeTeamTaskRevision(runId, { taskId: 'task', taskRevision: 3 }, 1),
+      store.observeTeamTaskRevision(runId, { taskId: 'task', taskRevision: 3 }, 1)
     ])
     assert.equal(outcomes[0].status, 'fulfilled')
     assert.equal(outcomes[1].status, 'rejected')

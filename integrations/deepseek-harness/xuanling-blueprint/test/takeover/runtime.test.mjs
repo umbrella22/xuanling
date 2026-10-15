@@ -37,7 +37,11 @@ import { reconcileOnStart } from '../../src/orchestration/recovery.ts'
 
 const sha256 = value => createHash('sha256').update(value).digest('hex')
 const deferred = () => Promise.withResolvers()
-const textOf = message => message.content.filter(block => block.type === 'text').map(block => block.text).join('\n')
+const textOf = message =>
+  message.content
+    .filter(block => block.type === 'text')
+    .map(block => block.text)
+    .join('\n')
 const COMPLETED = { kind: 'completed' }
 const PROVIDER_ERROR = { kind: 'error', error: { code: 'UNKNOWN', message: 'controlled provider failure (no external request)' } }
 
@@ -50,31 +54,55 @@ function registryDouble(onTurn = turn => turn.finish(COMPLETED, 'HOST_OUTPUT_SEN
       options.signal?.throwIfAborted()
       let agentCtx
       const id = SessionId(options.sessionId)
-      const session = Session.create(id, options.seed, {
-        version: SESSION_FORMAT_VERSION, id, createdAt: Date.now(), isSeeded: false, ...options.meta,
-      }, options.inheritedEventCount)
+      const session = Session.create(
+        id,
+        options.seed,
+        {
+          version: SESSION_FORMAT_VERSION,
+          id,
+          createdAt: Date.now(),
+          isSeeded: false,
+          ...options.meta
+        },
+        options.inheritedEventCount
+      )
       const idle = deferred()
       const controller = new AbortController()
       const call = {
-        options, session, controller, injections: [], followups: [], cancelCalls: [], disposed: false,
+        options,
+        session,
+        controller,
+        injections: [],
+        followups: [],
+        cancelCalls: [],
+        disposed: false,
         finish(reason, output = '') {
           if (agent.status === 'idle') return
           if (output) {
-            session.append('assistant/message', {
-              turn: 1, step: 1, stream: [],
-              message: createMessage({ role: 'assistant', content: [{ type: 'text', text: output }] }),
-              ...(reason.kind === 'aborted' ? { interrupted: true } : {}),
-            }, { surfaceOp: 'append' })
+            session.append(
+              'assistant/message',
+              {
+                turn: 1,
+                step: 1,
+                stream: [],
+                message: createMessage({ role: 'assistant', content: [{ type: 'text', text: output }] }),
+                ...(reason.kind === 'aborted' ? { interrupted: true } : {})
+              },
+              { surfaceOp: 'append' }
+            )
           }
           session.append('turn/end', { turn: 1, reason })
           if (reason.kind === 'error') agentCtx.emit('agent/error', { agent, turn: 1, step: 1, error: reason.error })
           agent.status = 'idle'
           agentCtx.emit('agent/status', { agent, status: 'idle' })
           idle.resolve()
-        },
+        }
       }
       const agent = {
-        id: session.id, session, ctx: agentCtx, status: 'idle',
+        id: session.id,
+        session,
+        ctx: agentCtx,
+        status: 'idle',
         inject(message) {
           call.injections.push(textOf(message))
           session.append('agent/inbox/spliced', { target: 'next-step', start: call.injections.length - 1, inserted: [message] })
@@ -90,14 +118,16 @@ function registryDouble(onTurn = turn => turn.finish(COMPLETED, 'HOST_OUTPUT_SEN
           started.resolve(call)
           onTurn(call)
         },
-        whenIdle() { return agent.status === 'idle' ? Promise.resolve() : idle.promise },
+        whenIdle() {
+          return agent.status === 'idle' ? Promise.resolve() : idle.promise
+        },
         cancel(cause, options = {}) {
           call.cancelCalls.push({ cause, options })
           if (agent.status !== 'idle') {
             controller.abort(cause)
             call.finish({ kind: 'aborted', reason: cause })
           }
-        },
+        }
       }
       const scope = createScope(ownerCtx, agent)
       agentCtx = scope.ctx
@@ -108,7 +138,10 @@ function registryDouble(onTurn = turn => turn.finish(COMPLETED, 'HOST_OUTPUT_SEN
         const commit = await options.setup?.(agentCtx, agent)
         options.signal?.throwIfAborted()
         commit?.commit()
-      } catch (error) { await scope.dispose(); throw error }
+      } catch (error) {
+        await scope.dispose()
+        throw error
+      }
       calls.push(call) // publish only after setup and its commit
       agentCtx.emit('agent/created', { agent, source: 'startup', ...(options.signal ? { signal: options.signal } : {}) })
       return {
@@ -119,11 +152,18 @@ function registryDouble(onTurn = turn => turn.finish(COMPLETED, 'HOST_OUTPUT_SEN
           await agent.whenIdle()
           call.disposed = true
           await scope.dispose()
-        },
+        }
       }
-    },
+    }
   }
-  return { registry, calls, started: started.promise, bindOwner(ctx) { ownerCtx = ctx } }
+  return {
+    registry,
+    calls,
+    started: started.promise,
+    bindOwner(ctx) {
+      ownerCtx = ctx
+    }
+  }
 }
 
 async function harness(t, host = registryDouble()) {
@@ -134,7 +174,17 @@ async function harness(t, host = registryDouble()) {
   mkdirSync(runtimeRoot)
   writeFileSync(join(rootDir, 'lib', 'agents', 'worker.md'), 'PACKAGE_AGENT_ORIGINAL')
   const ctx = new Context()
-  ctx.provide('systemPrompt', { tools() { return () => {} }, section() { return () => {} }, getSectionOrder() { return 100 } })
+  ctx.provide('systemPrompt', {
+    tools() {
+      return () => {}
+    },
+    section() {
+      return () => {}
+    },
+    getSectionOrder() {
+      return 100
+    }
+  })
   new ToolRuntime(ctx, { mode: 'native' })
   host.bindOwner(ctx)
   ctx.provide('agents', host.registry)
@@ -146,10 +196,13 @@ async function harness(t, host = registryDouble()) {
   t.mock.method(service, 'driveRun', function (...args) {
     const running = originalDrive.apply(this, args)
     drivers.add(running)
-    running.then(() => drivers.delete(running), error => {
-      drivers.delete(running)
-      driverErrors.push(error)
-    })
+    running.then(
+      () => drivers.delete(running),
+      error => {
+        drivers.delete(running)
+        driverErrors.push(error)
+      }
+    )
     return running
   })
   let closed = false
@@ -158,14 +211,20 @@ async function harness(t, host = registryDouble()) {
     closed = true
     await fiber.dispose()
   }
-  t.after(async () => { await close(); rmSync(root, { recursive: true, force: true }) })
+  t.after(async () => {
+    await close()
+    rmSync(root, { recursive: true, force: true })
+  })
   return { root, rootDir, runtimeRoot, ctx, service, host, close, t, drivers, driverErrors, clockTickMs: 0 }
 }
 
 function definition(nodes, edges = [], resources = {}) {
   const value = {
-    schemaVersion: 1, id: 'takeover-runtime', name: 'Takeover source regression',
-    resources, graph: { nodes, edges },
+    schemaVersion: 1,
+    id: 'takeover-runtime',
+    name: 'Takeover source regression',
+    resources,
+    graph: { nodes, edges }
   }
   // Schema/import/fixture failures occur BEFORE any target assertion and are
   // categorically not W1 red evidence.
@@ -176,8 +235,11 @@ const agentResource = { worker: { kind: 'agent', path: 'lib/agents/worker.md' } 
 const agentNode = (id = 'work', extra = {}) => ({ id, kind: 'agentTask', agentRef: 'worker', ...extra })
 const oneAgent = () => definition([agentNode()], [], agentResource)
 const argsFor = (h, value, input = { task: 'REAL_INPUT_SENTINEL' }) => ({
-  definitionJson: JSON.stringify(value), inputJson: JSON.stringify(input),
-  rootDir: h.rootDir, runtimeRoot: h.runtimeRoot, requestId: randomUUID(),
+  definitionJson: JSON.stringify(value),
+  inputJson: JSON.stringify(input),
+  rootDir: h.rootDir,
+  runtimeRoot: h.runtimeRoot,
+  requestId: randomUUID()
 })
 
 async function readRuns(runtimeRoot) {
@@ -185,7 +247,9 @@ async function readRuns(runtimeRoot) {
   try {
     const store = new RunStore(opened.domain)
     return await Promise.all((await store.listRunIds()).map(id => store.get(id)))
-  } finally { await opened.close() }
+  } finally {
+    await opened.close()
+  }
 }
 async function readRun(h, runId) {
   const runs = await readRuns(h.runtimeRoot)
@@ -196,16 +260,18 @@ async function readRun(h, runId) {
 
 function completedEvidence(spec, detail = 'HOST_OUTPUT_SENTINEL') {
   return {
-    sessionId: `controlled-${spec.attemptId}`, agentCreated: true,
-    scopedInjections: [], inboxSplicedSeen: true,
-    outcome: { ok: true, kind: 'succeeded', detail },
+    sessionId: `controlled-${spec.attemptId}`,
+    agentCreated: true,
+    scopedInjections: [],
+    inboxSplicedSeen: true,
+    outcome: { ok: true, kind: 'succeeded', detail }
   }
 }
 function executionBoundary(t, effect = () => {}) {
   const specs = []
   t.mock.method(BlueprintAgentExecutor.prototype, 'execute', async spec => {
     specs.push(structuredClone(spec))
-    return await effect(spec, specs.length) ?? completedEvidence(spec)
+    return (await effect(spec, specs.length)) ?? completedEvidence(spec)
   })
   return specs
 }
@@ -217,7 +283,16 @@ async function finishWithClock(t, promise, tickMs = 100, snapshot) {
   let done = false
   let value
   let error
-  promise.then(result => { value = result; done = true }, reason => { error = reason; done = true })
+  promise.then(
+    result => {
+      value = result
+      done = true
+    },
+    reason => {
+      error = reason
+      done = true
+    }
+  )
   for (let turns = 0; !done && turns < 20_000; turns++) {
     await nextEventLoopTurn()
     if (snapshot) await snapshot()
@@ -257,9 +332,14 @@ async function admitAndDrain(h, args) {
 }
 
 const directSpec = h => ({
-  runId: 'executor-source', attemptId: 'attempt-source', nodeId: 'work',
-  agentMd: 'FROZEN_AGENT', skills: [], input: 'REAL_EXECUTOR_INPUT',
-  cwd: h.rootDir, timeoutMs: 1_000,
+  runId: 'executor-source',
+  attemptId: 'attempt-source',
+  nodeId: 'work',
+  agentMd: 'FROZEN_AGENT',
+  skills: [],
+  input: 'REAL_EXECUTOR_INPUT',
+  cwd: h.rootDir,
+  timeoutMs: 1_000
 })
 
 test('C-03 executor: durable completed turn is succeeded, not timeout', async t => {
@@ -277,7 +357,10 @@ test('C-03 executor: durable completed turn is succeeded, not timeout', async t 
 })
 
 test('C-03 executor: idle max-tokens is partial/failure, never succeeded or timeout', async t => {
-  const h = await harness(t, registryDouble(turn => turn.finish({ kind: 'max-tokens' }, 'PARTIAL_OUTPUT_SENTINEL')))
+  const h = await harness(
+    t,
+    registryDouble(turn => turn.finish({ kind: 'max-tokens' }, 'PARTIAL_OUTPUT_SENTINEL'))
+  )
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() })
   const evidence = await finishWithClock(t, new BlueprintAgentExecutor(h.ctx, h.host.registry).execute(directSpec(h)))
   const reason = h.host.calls[0].session.snapshotEvents().findLast(event => event.type === 'turn/end').data.reason
@@ -336,7 +419,10 @@ test('C-03 non-blocking admission: startRun returns durable runId while the publ
 })
 
 test('C-03 executor: durable aborted turn is not success or an unobserved timeout', async t => {
-  const h = await harness(t, registryDouble(turn => turn.finish({ kind: 'aborted', reason: { kind: 'user' } }, 'PARTIAL_ABORTED_OUTPUT')))
+  const h = await harness(
+    t,
+    registryDouble(turn => turn.finish({ kind: 'aborted', reason: { kind: 'user' } }, 'PARTIAL_ABORTED_OUTPUT'))
+  )
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() })
   const evidence = await finishWithClock(t, new BlueprintAgentExecutor(h.ctx, h.host.registry).execute(directSpec(h)))
   assert.equal(h.host.calls[0].session.snapshotEvents().findLast(event => event.type === 'turn/end').data.reason.kind, 'aborted')
@@ -345,7 +431,10 @@ test('C-03 executor: durable aborted turn is not success or an unobserved timeou
 })
 
 test('C-03 executor control: durable provider error remains typed failure', async t => {
-  const h = await harness(t, registryDouble(turn => turn.finish(PROVIDER_ERROR)))
+  const h = await harness(
+    t,
+    registryDouble(turn => turn.finish(PROVIDER_ERROR))
+  )
   const evidence = await new BlueprintAgentExecutor(h.ctx, h.host.registry).execute(directSpec(h))
   assert.equal(evidence.outcome.ok, false)
   assert.equal(evidence.outcome.kind, 'provider-failed')
@@ -353,7 +442,10 @@ test('C-03 executor control: durable provider error remains typed failure', asyn
 })
 
 test('C-03 driver-input: startRun passes the real input through the real executor to Agent.followup', async t => {
-  const h = await harness(t, registryDouble(turn => turn.finish(PROVIDER_ERROR)))
+  const h = await harness(
+    t,
+    registryDouble(turn => turn.finish(PROVIDER_ERROR))
+  )
   await admitAndDrain(h, argsFor(h, oneAgent()))
   assert.ok(h.host.calls.length > 0, 'control: production agentTask reached the public registry')
   assert.match(h.host.calls[0].followups[0], /REAL_INPUT_SENTINEL/, 'TARGET: actual startRun input must reach public Agent.followup')
@@ -361,12 +453,19 @@ test('C-03 driver-input: startRun passes the real input through the real executo
 })
 
 test('C-03 driver-data: upstream input port data reaches the consuming public Agent', async t => {
-  const h = await harness(t, registryDouble(turn => turn.finish(PROVIDER_ERROR)))
-  const value = definition([
-    { id: 'source', kind: 'input', outputs: { payload: 'json' } },
-    agentNode('consume', { inputs: { request: 'json' } }),
-    { id: 'sink', kind: 'output', inputs: { result: 'json' } },
-  ], [{ kind: 'data', from: 'source.payload', to: 'consume.request' }], agentResource)
+  const h = await harness(
+    t,
+    registryDouble(turn => turn.finish(PROVIDER_ERROR))
+  )
+  const value = definition(
+    [
+      { id: 'source', kind: 'input', outputs: { payload: 'json' } },
+      agentNode('consume', { inputs: { request: 'json' } }),
+      { id: 'sink', kind: 'output', inputs: { result: 'json' } }
+    ],
+    [{ kind: 'data', from: 'source.payload', to: 'consume.request' }],
+    agentResource
+  )
   const result = await admitAndDrain(h, argsFor(h, value, { payload: { task: 'UPSTREAM_DATA_SENTINEL', amount: 7 } }))
   const record = await readRun(h, result.runId)
   assert.equal(record.attempts.find(attempt => attempt.nodeId === 'source').state, 'succeeded')
@@ -378,10 +477,11 @@ test('C-03 driver-data: upstream input port data reaches the consuming public Ag
 test('C-03 driver-data: settled upstream agent output binds to the next agent input', async t => {
   const h = await harness(t)
   const specs = executionBoundary(t, spec => completedEvidence(spec, 'UPSTREAM_AGENT_OUTPUT_SENTINEL'))
-  const value = definition([
-    agentNode('produce', { outputs: { answer: 'string' } }),
-    agentNode('consume', { inputs: { question: 'string' } }),
-  ], [{ kind: 'data', from: 'produce.answer', to: 'consume.question' }], agentResource)
+  const value = definition(
+    [agentNode('produce', { outputs: { answer: 'string' } }), agentNode('consume', { inputs: { question: 'string' } })],
+    [{ kind: 'data', from: 'produce.answer', to: 'consume.question' }],
+    agentResource
+  )
   const result = await admitAndDrain(h, argsFor(h, value))
   const record = await readRun(h, result.runId)
   assert.equal(record.attempts[0].result.outcome.detail, 'UPSTREAM_AGENT_OUTPUT_SENTINEL')
@@ -403,17 +503,17 @@ function resourceFixture(h) {
     writeFileSync(join(skillDir, 'assets', 'sample.bin'), Buffer.from([0, 1, version === 'FIRST' ? 2 : 3, 255]))
   }
   writeSkill('FIRST')
-  const value = definition([
-    agentNode('first', { skillRefs: ['review'] }),
-    agentNode('second', { skillRefs: ['review'] }),
-    { id: 'done', kind: 'output' },
-  ], [
-    { kind: 'control', from: 'first', to: 'second' },
-    { kind: 'control', from: 'second', to: 'done' },
-  ], {
-    ...agentResource,
-    review: { kind: 'skill', source: { kind: 'shared', rootId: 'isolated-root', path: 'shared-review' } },
-  })
+  const value = definition(
+    [agentNode('first', { skillRefs: ['review'] }), agentNode('second', { skillRefs: ['review'] }), { id: 'done', kind: 'output' }],
+    [
+      { kind: 'control', from: 'first', to: 'second' },
+      { kind: 'control', from: 'second', to: 'done' }
+    ],
+    {
+      ...agentResource,
+      review: { kind: 'skill', source: { kind: 'shared', rootId: 'isolated-root', path: 'shared-review' } }
+    }
+  )
   writeFileSync(join(h.rootDir, 'blueprint.json'), JSON.stringify(value))
   return { value, writeSkill, skillDir }
 }
@@ -467,7 +567,7 @@ test('C-04 driver-skill-update: second Attempt independently sees updated Skill 
 for (const [suffix, description, expected] of [
   ['scripts/helper.mjs', 'scripts', index => Buffer.from(`// SHARED_SCRIPT_${index === 0 ? 'FIRST' : 'SECOND'}`)],
   ['references/guide.md', 'references', index => Buffer.from(`SHARED_REFERENCE_${index === 0 ? 'FIRST' : 'SECOND'}`)],
-  ['assets/sample.bin', 'binary assets', index => Buffer.from([0, 1, index + 2, 255])],
+  ['assets/sample.bin', 'binary assets', index => Buffer.from([0, 1, index + 2, 255])]
 ]) {
   test(`C-04 driver-skill-tree: full ${description} bytes are materialized per Attempt`, async t => {
     const h = await harness(t)
@@ -522,17 +622,26 @@ test('C-04 control: semantic graph and settled original Attempt survive mutation
 })
 
 test('C-05 failure-once: provider failure dispatches once, without 50 blind retries', async t => {
-  const h = await harness(t, registryDouble(turn => turn.finish(PROVIDER_ERROR)))
+  const h = await harness(
+    t,
+    registryDouble(turn => turn.finish(PROVIDER_ERROR))
+  )
   const result = await admitAndDrain(h, argsFor(h, oneAgent()))
   const record = await readRun(h, result.runId)
-  assert.ok(record.attempts.every(attempt => attempt.result?.ok === false), 'control: every observed failure was a real executor typed provider failure')
+  assert.ok(
+    record.attempts.every(attempt => attempt.result?.ok === false),
+    'control: every observed failure was a real executor typed provider failure'
+  )
   assert.equal(h.host.calls.length, 1, 'TARGET: failed root agentTask must not be dispatched 50 times')
   assert.equal(record.attempts.length, 1)
   assert.equal(record.state, 'failed')
 })
 
 test('C-05 failure-terminal: provider failure cannot leave the Run running', async t => {
-  const h = await harness(t, registryDouble(turn => turn.finish(PROVIDER_ERROR)))
+  const h = await harness(
+    t,
+    registryDouble(turn => turn.finish(PROVIDER_ERROR))
+  )
   const result = await admitAndDrain(h, argsFor(h, oneAgent()))
   const record = await readRun(h, result.runId)
   assert.ok(record.attempts.length > 0 && record.attempts[0].result.ok === false)
@@ -558,14 +667,17 @@ test('C-05 unsupported-terminal: unhandled node leaves an observable failed Run'
 })
 
 function decisionDefinition(variant) {
-  return definition([
-    { id: 'approval', kind: 'humanDecision', ...(variant === 'legacy-branches' ? { branches: ['approve', 'reject'] } : {}) },
-    { id: 'approved', kind: 'output' },
-    { id: 'rejected', kind: 'output' },
-  ], [
-    { kind: 'control', from: 'approval@approve', to: 'approved' },
-    { kind: 'control', from: 'approval@reject', to: 'rejected' },
-  ])
+  return definition(
+    [
+      { id: 'approval', kind: 'humanDecision', ...(variant === 'legacy-branches' ? { branches: ['approve', 'reject'] } : {}) },
+      { id: 'approved', kind: 'output' },
+      { id: 'rejected', kind: 'output' }
+    ],
+    [
+      { kind: 'control', from: 'approval@approve', to: 'approved' },
+      { kind: 'control', from: 'approval@reject', to: 'rejected' }
+    ]
+  )
 }
 for (const variant of ['legacy-branches', 'humanDecision']) {
   test(`C-06 humanDecision (${variant} fixture): service admission durably waits for a human decision`, async t => {
@@ -584,10 +696,17 @@ for (const variant of ['legacy-branches', 'humanDecision']) {
     const decisionArgs = { runtimeRoot: h.runtimeRoot, runId: start.runId, decisionId: 'approve-once', action: 'approve' }
     // Both manual fixture variants use humanDecision explicitly. Exercise the
     // real public decision path without an artificial waiting record.
-    const approval = await h.service.decide(decisionArgs).then(value => ({ value }), error => ({ error }))
+    const approval = await h.service.decide(decisionArgs).then(
+      value => ({ value }),
+      error => ({ error })
+    )
     assert.equal(approval.error?.code, undefined, 'TARGET: a valid waiting decision must be accepted by the public service')
     const decisionSnapshot = await readRun(h, start.runId)
-    assert.equal(decisionSnapshot.attempts.find(attempt => attempt.nodeId === 'approval').state, 'succeeded', 'TARGET: approval must atomically settle the original pending Attempt')
+    assert.equal(
+      decisionSnapshot.attempts.find(attempt => attempt.nodeId === 'approval').state,
+      'succeeded',
+      'TARGET: approval must atomically settle the original pending Attempt'
+    )
     const record = await eventualRun(h, start.runId, record => record.state === 'succeeded')
     assert.equal(record.attempts.find(attempt => attempt.nodeId === 'approved')?.state, 'succeeded', 'TARGET: selected continuation must actually execute')
     assert.notEqual(record.attempts.find(attempt => attempt.nodeId === 'rejected')?.state, 'succeeded')
@@ -680,19 +799,32 @@ test('C-05 late-result immutability: a settled Attempt cannot have its original 
   try {
     const store = new RunStore(opened.domain)
     const args = argsFor(h, oneAgent())
-    const created = await store.createRun({ scope: 'run', requestId: 'late-result', payloadFingerprint: sha256(args.definitionJson) }, 'revision', args.definitionJson, args.inputJson)
+    const created = await store.createRun(
+      { scope: 'run', requestId: 'late-result', payloadFingerprint: sha256(args.definitionJson) },
+      'revision',
+      args.definitionJson,
+      args.inputJson
+    )
     const intent = await store.recordIntent(created.runId, { nodeId: 'work', kind: 'agentTask' })
-    await store.recordResult(created.runId, intent.attemptId, { ok: false, outcome: { kind: 'failed', detail: 'ORIGINAL_RESULT' }, evidence: 'original-failure' })
+    await store.recordResult(created.runId, intent.attemptId, {
+      ok: false,
+      outcome: { kind: 'failed', detail: 'ORIGINAL_RESULT' },
+      evidence: 'original-failure'
+    })
     const before = await store.get(created.runId)
     // Run intentionally remains running, matching the real store's settlement
     // window; guarding only terminal RUNS must not protect this incorrectly.
-    await store.recordResult(created.runId, intent.attemptId, { ok: true, outcome: { kind: 'succeeded', detail: 'LATE_RESULT' }, evidence: 'late-overwrite' }).catch(error => {
-      assert.match(error.code ?? '', /TERMINAL|SETTLED|CONFLICT/, 'TARGET: terminal-attempt rejection must be typed, not an unrelated exception')
-    })
+    await store
+      .recordResult(created.runId, intent.attemptId, { ok: true, outcome: { kind: 'succeeded', detail: 'LATE_RESULT' }, evidence: 'late-overwrite' })
+      .catch(error => {
+        assert.match(error.code ?? '', /TERMINAL|SETTLED|CONFLICT/, 'TARGET: terminal-attempt rejection must be typed, not an unrelated exception')
+      })
     const after = await store.get(created.runId)
     assert.deepEqual(after.attempts[0], before.attempts[0], 'TARGET: late result cannot replace a terminal Attempt state/result')
     assert.equal(after.seq, before.seq, 'TARGET: rejected/ignored duplicate settlement is a durable no-op')
-  } finally { await opened.close() }
+  } finally {
+    await opened.close()
+  }
 })
 
 async function pendingIntentFixture(h) {
@@ -700,10 +832,17 @@ async function pendingIntentFixture(h) {
   const opened = await openBlueprintDomain({ backend: 'json', path: join(h.runtimeRoot, 'store') })
   try {
     const store = new RunStore(opened.domain)
-    const created = await store.createRun({ scope: 'run', requestId: 'crashed-intent', payloadFingerprint: sha256(args.definitionJson) }, 'revision', args.definitionJson, args.inputJson)
+    const created = await store.createRun(
+      { scope: 'run', requestId: 'crashed-intent', payloadFingerprint: sha256(args.definitionJson) },
+      'revision',
+      args.definitionJson,
+      args.inputJson
+    )
     const intent = await store.recordIntent(created.runId, { nodeId: 'work', kind: 'agentTask', resourceDigests: { worker: sha256('PACKAGE_AGENT_ORIGINAL') } })
     return { runId: created.runId, attemptId: intent.attemptId }
-  } finally { await opened.close() } // restart boundary: no unsettled result invented
+  } finally {
+    await opened.close()
+  } // restart boundary: no unsettled result invented
 }
 
 test('C-10 restart public service: reopening an unresolved dispatch marks recovery_required without replay', async t => {
@@ -726,7 +865,9 @@ test('C-10 restart public service: reopening an unresolved dispatch marks recove
     assert.equal(inspection.runId, pending.runId)
     assert.equal(record.attempts.find(attempt => attempt.attemptId === pending.attemptId).state, 'recovery_required')
     assert.equal(record.attempts[0].result, undefined)
-  } finally { await fiber.dispose() }
+  } finally {
+    await fiber.dispose()
+  }
 })
 
 test('C-10 restart reducer: reconcile marks BOTH the Run and its corresponding Attempt recovery_required', async t => {
@@ -739,10 +880,16 @@ test('C-10 restart reducer: reconcile marks BOTH the Run and its corresponding A
     const record = await store.get(pending.runId)
     assert.equal(report.recoveryRequired.length, 1)
     assert.equal(record.state, 'recovery_required', 'control: production recovery reducer changed Run state')
-    assert.equal(record.attempts.find(attempt => attempt.attemptId === pending.attemptId).state, 'recovery_required', 'TARGET: reducer must mutate the durable draft Attempt, not an outer read copy')
+    assert.equal(
+      record.attempts.find(attempt => attempt.attemptId === pending.attemptId).state,
+      'recovery_required',
+      'TARGET: reducer must mutate the durable draft Attempt, not an outer read copy'
+    )
     assert.equal(record.attempts[0].result, undefined)
     const repeat = await reconcileOnStart(store)
     assert.equal(repeat.recoveryRequired.length, 0)
     assert.deepEqual(await store.get(pending.runId), record, 'TARGET: restart reconciliation is idempotent')
-  } finally { await reopened.close() }
+  } finally {
+    await reopened.close()
+  }
 })
