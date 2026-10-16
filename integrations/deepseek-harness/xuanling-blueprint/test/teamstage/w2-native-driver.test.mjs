@@ -606,6 +606,67 @@ test('F8 ordinary agent preflight preserves executor-ready without Team diagnost
   assert.deepEqual(await records(h), [])
 })
 
+test('C-01 ordinary Agents and native TeamStage hold exclusive Run ownership in both directions', async t => {
+  const gates = new Map(['a', 'work', 'b'].map(id => [id, Promise.withResolvers()]))
+  const started = new Set()
+  const observe = async predicate => {
+    for (let turn = 0; turn < 20_000; turn++) {
+      if (await predicate()) return true
+      await new Promise(resolve => setImmediate(resolve))
+    }
+    return false
+  }
+  let h, handle
+  h = await teamHarness(t, {
+    earlyReturn: true,
+    onMember: async (call, team) => {
+      const row = team.roster.find(row => row.id === call.agent.id)
+      const nodeId = row ? 'work' : (await records(h)).flatMap(run => run.attempts).find(attempt => attempt.sessionId === call.session.id)?.nodeId
+      assert.ok(gates.has(nodeId), 'only declared ordinary nodes and native Team members reach the model')
+      started.add(nodeId)
+      await gates.get(nodeId).promise
+      if (row) {
+        await completeTask(call, team)
+        await team.capture(call, { answer: 42 })
+        call.finish({ kind: 'completed' }, '')
+      } else call.finish({ kind: 'completed' }, nodeId.toUpperCase())
+    }
+  })
+  handle = await h.service.runtimeFor(h.runtimeRoot)
+  const value = teamDefinition()
+  const ordinary = id => ({ id, kind: 'agentTask', agentRef: 'worker' })
+  value.graph.nodes = [ordinary('a'), value.graph.nodes[0], ordinary('b'), value.graph.nodes[1]]
+  const doc = await h.save(value)
+  const admitted = await h.service.startSessionRun({
+    sessionId: h.rootAgent.id,
+    blueprintId: doc.blueprintId,
+    expectedRevision: doc.documentRevision,
+    inputJson: '{}',
+    requestId: randomUUID()
+  })
+  try {
+    assert.equal(await observe(() => started.has('a')), true)
+    assert.equal(await observe(() => h.team.calls.includes('create')), false, 'TEAM_STARTED_WITH_LIVE_AGENT: native stage waits until ordinary work drains')
+    assert.equal(started.has('b'), false)
+    gates.get('a').resolve()
+    assert.equal(await observe(() => started.has('work')), true)
+    assert.equal(await observe(() => started.has('b')), false, 'AGENT_STARTED_WITH_LIVE_TEAM: ordinary work waits until native stage settles')
+    gates.get('work').resolve()
+    assert.equal(await observe(() => started.has('b')), true)
+    gates.get('b').resolve()
+    await handle.driverTail
+    const record = await handle.store.get(admitted.runId)
+    assert.equal(record.state, 'succeeded')
+    assert.equal(record.teamStage.state, 'succeeded')
+    assert.ok(['a', 'work', 'b', 'sink'].every(id => record.attempts.find(attempt => attempt.nodeId === id)?.state === 'succeeded'))
+  } finally {
+    for (const gate of gates.values()) gate.resolve()
+    await handle.driverTail
+    await h.close()
+    assert.deepEqual(h.host.errors, [])
+  }
+})
+
 async function pluginDriverContext(t, h, selectSessions) {
   let observer
   const fiber = await h.ctx.plugin({

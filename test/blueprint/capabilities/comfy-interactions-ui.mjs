@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { selectStyledOption } from './styled-control-entry.mjs'
 /** W2 collector. Only main may launch after review, official build and freeze.
  * Adapts an isolated COPY of the actual DSH probe; original Host assertions,
  * gateway, boot graph, credentials isolation and timing budgets stay intact.
@@ -541,7 +542,7 @@ async function idle(page) {
   await closePublicMore(page)
 }
 async function choose(page, id) {
-  await idle(page); await page.locator(SELECTORS.select).selectOption(id)
+  await idle(page); await selectStyledOption(page, page.locator(SELECTORS.select), id)
   await page.waitForFunction(id => document.querySelector('[data-bp-canvas="root"]')?.getAttribute('data-bp-blueprint') === id, id)
   await idle(page); await settle(page)
 }
@@ -1393,7 +1394,7 @@ export async function runCanvasJourney(page, assert, api) {
     await action(page, 'import-blueprint').click(); await page.locator('[data-bp-overlay="import"]').waitFor({ state: 'visible' })
     importLockFacts.stages.push(await importLockSnapshot('ordinary-import'))
     check('CI-IMPORT-LOCK', 'trusted H disables Import and refuses Control/Meta O without document/Host/history writes; V restores ordinary import', importLockWitness(importLockFacts), importLockFacts)
-    await page.locator('[data-bp-import-target]').selectOption('comfy-empty'); await page.locator(SELECTORS.file).setInputFiles(archivePath)
+    await selectStyledOption(page, page.locator('[data-bp-import-target]'), 'comfy-empty'); await page.locator(SELECTORS.file).setInputFiles(archivePath)
     await page.locator('[data-bp-import-confirm]').check()
     const importResponseEvent = page.waitForResponse(response => /\/api\/blueprint\/importDefinition(?:\?|$)/.test(response.url()) && response.request().method() === 'POST')
     await action(page, 'import-apply').click(); await idle(page)
@@ -1408,7 +1409,9 @@ export async function runCanvasJourney(page, assert, api) {
     const nonemptyResponse = await realApi('importDefinition', { blueprintId: 'comfy-empty', archiveBase64: bytes.toString('base64') })
     await preparePublicAction(page, 'import-blueprint')
     await action(page, 'import-blueprint').click(); await page.locator('[data-bp-overlay="import"]').waitFor({ state: 'visible' })
-    const disabledNonempty = await page.locator('[data-bp-import-target] option[value="comfy-empty"]').isDisabled()
+    await page.locator('[data-bp-import-target]').click()
+    const disabledNonempty = await page.locator('.bp-select-list [data-bp-option-value="comfy-empty"]').getAttribute('aria-disabled') === 'true'
+    await page.locator('[data-bp-import-target]').press('Escape')
     await page.keyboard.press('Escape')
     check('CI-ARCHIVE-NONEMPTY', 'UI disables nonempty target and authoritative Host rejects replay with package unchanged', disabledNonempty && nonemptyResponse.body?.result?.error?.code === 'blueprint/import-failed' && same(imported, value(await realApi('loadDefinition', { blueprintId: 'comfy-empty' }), 'nonempty package unchanged')))
 

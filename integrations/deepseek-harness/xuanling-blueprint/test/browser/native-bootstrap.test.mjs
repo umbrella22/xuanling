@@ -143,12 +143,28 @@ const teamAction = (state = 'active', code = 'accepted') => ({
 
 async function provideConversationServices(client) {
   const binding = { sessionId: 'native-session', session: {} }
+  const bindings = new Map([[binding.sessionId, binding]])
+  const addresses = new Map()
+  const projectionReads = []
+  let onRefresh = () => {}
   class SessionsFixture extends Service {
     constructor(ctx) {
       super(ctx, 'sessions')
     }
     binding(sessionId) {
-      return sessionId === binding.sessionId ? binding : undefined
+      return bindings.get(sessionId)
+    }
+    subagentAddress(sessionId) {
+      return addresses.get(sessionId)
+    }
+    async refreshProjections(sessionId) {
+      projectionReads.push(sessionId)
+      await onRefresh(sessionId)
+    }
+    get list() {
+      return {
+        getSnapshot: () => ({ ids: ['native-session'], byId: { 'native-session': { id: 'native-session' } }, phase: 'ready', projectionsBySession: {} })
+      }
     }
   }
   class UiSessionFixture extends Service {
@@ -160,7 +176,7 @@ async function provideConversationServices(client) {
     uiSession = client.plugin(UiSessionFixture)
   await sessions
   await uiSession
-  return { sessions, uiSession }
+  return { sessions, uiSession, addresses, projectionReads, bindings, onRefresh: callback => (onRefresh = callback) }
 }
 
 async function fixture(t, { gateway = true, localeReady = true, conversationReady = false, setupHost } = {}) {
@@ -767,7 +783,8 @@ test('C-08 published remote export and official boot dependency match the host-f
     '@deepseek-ai/dsh-api-gateway',
     '@deepseek-ai/dsh-client-locale',
     '@deepseek-ai/dsh-client-ui-conversation',
-    '@deepseek-ai/dsh-client-ui-session'
+    '@deepseek-ai/dsh-client-ui-session',
+    '@deepseek-ai/dsh-client-ui-workspace'
   ])
   assert.deepEqual(Array.from(productionClient.inject), ['slots', 'remote', 'locale'], 'parent must not inject its own namespace')
   const hostPack = config.pack.find(pack => pack.platform === 'node')
@@ -919,6 +936,93 @@ test('C-01/C-07 late conversation services add only the native seat; loss withdr
   assert.equal(f.rows.size, 2, 'optional conversation teardown leaves global seats mounted')
   assert.equal(f.client.get('remote.blueprint')[cordis.symbols.original], namespace)
   assert.equal(f.carrierCalls.length, 0, 'service/seat transitions issue no business RPC')
+})
+
+test('execution sync C-02: optional native navigation arrives late, uses catalog addresses and revokes without replacing editor or controller', async t => {
+  const f = await fixture(t)
+  const plugin = f.client.plugin(productionClient)
+  await plugin
+  const services = await provideConversationServices(f.client)
+  await plugin
+  const panel = [...f.rows].find(row => row.options.name === 'main'),
+    row = [...f.rows].find(row => row.options.name === 'conversation.view'),
+    injected = row.options.inject('native-session'),
+    controller = injected.controller,
+    opened = []
+  assert.equal(typeof injected.openSession, 'function', 'native seat needs a read-only navigation capability even before optional service arrival')
+  assert.equal(await injected.openSession('child-before-service'), false)
+  const address = Object.freeze({ parentSessionId: 'native-session', childSessionId: 'execution-child', mode: 'one-shot' })
+  services.addresses.set(address.childSessionId, address)
+  class UiWorkspaceFixture extends Service {
+    constructor(ctx) {
+      super(ctx, 'uiWorkspace')
+    }
+    openSession(target) {
+      opened.push(target)
+    }
+  }
+  const workspace = f.client.plugin(UiWorkspaceFixture)
+  await workspace
+  await plugin
+  const ready = [...f.rows].find(row => row.options.name === 'conversation.view').options.inject('native-session')
+  assert.equal(ready.controller, controller, 'navigation availability must not discard history selection or polling ownership')
+  assert.equal(await ready.openSession('execution-child'), true)
+  assert.equal(opened[0], address, 'forward the native catalog address, including actual direct parent and mode')
+  assert.equal(await ready.openSession('native-session'), true)
+  assert.equal(opened[1], 'native-session', 'a known root is a SessionTarget identity, not a fabricated subagent address')
+  assert.equal(
+    [...f.rows].find(row => row.options.name === 'main'),
+    panel,
+    'global editor seat remains the same'
+  )
+  await workspace.dispose()
+  assert.equal(await ready.openSession('execution-child'), false, 'captured callback must not keep a withdrawn service alive')
+  assert.equal(opened.length, 2)
+  assert.equal(
+    [...f.rows].find(row => row.options.name === 'main'),
+    panel
+  )
+  assert.equal([...f.rows].find(row => row.options.name === 'conversation.view').options.inject('native-session').controller, controller)
+  assert.deepEqual(f.carrierCalls, [], 'navigation lifecycle cannot create, retry, cancel or mutate a Run')
+})
+
+test('execution sync C-02: child navigation refreshes only known catalog owner and refuses absent lineage instead of guessing a parent', async t => {
+  const f = await fixture(t)
+  const plugin = f.client.plugin(productionClient)
+  await plugin
+  const services = await provideConversationServices(f.client)
+  const opened = []
+  class UiWorkspaceFixture extends Service {
+    constructor(ctx) {
+      super(ctx, 'uiWorkspace')
+    }
+    openSession(target) {
+      opened.push(target)
+    }
+  }
+  await f.client.plugin(UiWorkspaceFixture)
+  await plugin
+  const row = [...f.rows].find(row => row.options.name === 'conversation.view'),
+    injected = row.options.inject('native-session'),
+    address = Object.freeze({ parentSessionId: 'native-session', childSessionId: 'cold-child', mode: 'one-shot' })
+  assert.equal(typeof injected.openSession, 'function', 'production bootstrap must wire native chat navigation')
+  services.onRefresh(owner => {
+    assert.equal(owner, 'native-session')
+    services.addresses.set(address.childSessionId, address)
+  })
+  assert.equal(await injected.openSession('cold-child'), true)
+  assert.deepEqual(services.projectionReads, ['native-session'])
+  assert.equal(opened[0], address)
+  services.onRefresh(() => {})
+  assert.equal(await injected.openSession('not-in-catalog'), false)
+  assert.deepEqual(services.projectionReads, ['native-session', 'native-session'])
+  assert.equal(opened.length, 1, 'unknown child is never opened as a plain root Session or invented one-shot child')
+  services.onRefresh(() => {
+    throw new Error('private-projection-error')
+  })
+  assert.equal(await injected.openSession('unavailable-child'), false, 'directory failure stays typed/unavailable at the UI boundary')
+  assert.equal(opened.length, 1)
+  assert.deepEqual(f.carrierCalls, [], 'projection lookup uses native read service and never Blueprint execution RPCs')
 })
 
 test('W2.6 durable C-02/C-07/C-09: installed Typert calls the real service, commits intent before Team effect and preserves ordinary Runs', async t => {

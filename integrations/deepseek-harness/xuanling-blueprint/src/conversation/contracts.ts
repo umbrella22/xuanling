@@ -123,6 +123,7 @@ export const runSnapshotCodec = () =>
     runId: id(),
     state: z.string(),
     definitionRevision: z.string(),
+    source: runSourceCodec().optional(),
     seq: z.number(),
     attempts: z.array(
       z.strictObject({

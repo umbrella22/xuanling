@@ -1,3 +1,4 @@
+import { selectStyledOption } from './styled-control-entry.mjs'
 // Actual CLI-installed DSH/native Edge collector. No route interception or fake graph.
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync, realpathSync, lstatSync } from 'node:fs'
 import { join, dirname, resolve, isAbsolute } from 'node:path'
@@ -460,7 +461,7 @@ export async function runCollector(options) {
       await page.getByRole('button', { name: /XuanLing Blueprint|玄灵蓝图/ }).click()
       const select = page.locator('[data-bp-select="blueprint"]')
       await select.waitFor()
-      await select.selectOption(fixture.AUTHOR_ID)
+      await selectStyledOption(page, select, fixture.AUTHOR_ID)
       const canonicalBeforeProjection = await api('loadDefinition', {
         blueprintId: fixture.AUTHOR_ID
       })
@@ -534,7 +535,7 @@ export async function runCollector(options) {
           title: await dialog.locator('[data-bp-resource-field="title"]').count(),
           description: await dialog.locator('[data-bp-resource-field="description"]').count(),
           configuration: await dialog.locator('[data-bp-resource-detail="configuration"]').count(),
-          advanced: await dialog.locator('[data-bp-resource-advanced] textarea').count()
+          advanced: await dialog.locator('[data-bp-resource-advanced] [data-bp-json-editor]').count()
         }
         check(
           'U09',
@@ -809,7 +810,7 @@ export async function runCollector(options) {
         await reloadedPanel.waitFor({ state: 'visible' })
         const reloadedSelect = page.locator('[data-bp-select="blueprint"]')
         await reloadedSelect.waitFor({ state: 'visible' })
-        await reloadedSelect.selectOption(fixture.AUTHOR_ID)
+        await selectStyledOption(page, reloadedSelect, fixture.AUTHOR_ID)
         await page.waitForFunction(id => document.querySelector('[data-bp-blueprint]')?.getAttribute('data-bp-blueprint') === id, fixture.AUTHOR_ID)
         await page.locator('.react-flow__node[data-id="input"]').waitFor()
         await page.waitForFunction(() => document.querySelector('[data-bp-dirty]')?.getAttribute('data-bp-dirty') === 'false')
@@ -869,6 +870,7 @@ export async function runCollector(options) {
             await resourceRow.click()
             const resourceDialog = page.locator('[data-bp-resource-dialog]')
             await resourceDialog.waitFor({ state: 'visible' })
+            const expectedResourceTitle = `Collector-visible agent - ${await resourceDialog.locator('[data-bp-resource-source]').innerText()}`
             await resourceDialog.locator('[data-bp-resource-field="title"]').fill('Collector-visible agent')
             await resourceDialog.locator('[data-bp-resource-field="description"]').fill('Collector safe description')
             await resourceDialog.locator('[data-bp-action="resource-apply"]').click()
@@ -887,12 +889,13 @@ export async function runCollector(options) {
             await resourceUndo.click()
             await resourceRedo.click()
             await page.waitForFunction(
-              () => document.querySelector('[data-bp-resource-row="blueprint:agent"] strong')?.textContent === 'Collector-visible agent'
+              title => document.querySelector('[data-bp-resource-row="blueprint:agent"] strong')?.textContent === title,
+              expectedResourceTitle
             )
             check(
               'U12',
               'resource Apply roundtrips as one Undo/Redo transaction',
-              resourceUndoEnabled && (await page.locator('[data-bp-resource-row="blueprint:agent"] strong').textContent()) === 'Collector-visible agent',
+              resourceUndoEnabled && (await page.locator('[data-bp-resource-row="blueprint:agent"] strong').textContent()) === expectedResourceTitle,
               { resourceUndoEnabled }
             )
           }
@@ -956,7 +959,7 @@ export async function runCollector(options) {
         }
         await panel.waitFor({ state: 'visible' })
         await page.locator('[data-bp-select="blueprint"]').waitFor({ state: 'visible' })
-        await page.locator('[data-bp-select="blueprint"]').selectOption(fixture.AUTHOR_ID)
+        await selectStyledOption(page, page.locator('[data-bp-select="blueprint"]'), fixture.AUTHOR_ID)
         await page.waitForFunction(id => document.querySelector('[data-bp-blueprint]')?.getAttribute('data-bp-blueprint') === id, fixture.AUTHOR_ID)
         await page.locator('.react-flow__node[data-id="input"]').waitFor()
         await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))))

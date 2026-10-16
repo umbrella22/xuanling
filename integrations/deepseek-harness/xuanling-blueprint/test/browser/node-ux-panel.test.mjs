@@ -102,6 +102,48 @@ test('resource rows merge public catalog with display metadata and preserve load
 const resourceSectionOf = f => one(f.render(), n => n.props['data-bp-section'] === 'resources')
 const resourceDialogOf = f => one(f.render(), n => n.props['data-bp-resource-dialog'] === true)
 
+test('resource cards categorize historical references once and expose full descriptions through hover and focus', async () => {
+  const f = await fixture()
+  const description = 'A complete resource description. '.repeat(12).trim()
+  for (const kind of ['agent', 'skill', 'mcp']) {
+    const ref = { kind, source: { kind: 'host', id: `host-${kind}` } }
+    f.workspace.editor.updateResource(`old-${kind}`, ref)
+    f.workspace.editor.updateResource(`alias-${kind}`, ref)
+  }
+  f.workspace.editor.updateResource('local-agent', { kind: 'agent', path: 'lib/agents/local.md' }, { title: 'Review agent', description })
+  f.workspace.editor.updateResource('local-skill', { kind: 'skill', source: { kind: 'shared', rootId: 'skills', path: 'review' } })
+  f.workspace.editor.updateResource('local-mcp', { kind: 'mcp', bindingId: 'tools' })
+  f.workspace.editor.updateResource('prompt', { kind: 'prompt', path: 'lib/prompts/review.md' })
+  f.workspace.resourceCatalog = [{ kind: 'agent', id: 'host-agent', displayName: 'Host agent', source: 'dsh', availability: 'available', description: '' }]
+  const before = f.workspace.editor.exportDefinition()
+  const section = resourceSectionOf(f)
+  for (const kind of ['agent', 'skill', 'mcp']) {
+    const category = one(section, n => n.props['data-bp-resource-category'] === kind)
+    assert.deepEqual(
+      all(category, n => n.props['data-bp-resource-row'])
+        .map(n => n.props['data-bp-resource-row'])
+        .sort(),
+      [`blueprint:local-${kind}`, `dsh:${kind}:host-${kind}`].sort()
+    )
+  }
+  const other = one(section, n => n.props['data-bp-resource-category'] === 'other')
+  assert.deepEqual(
+    all(other, n => n.props['data-bp-resource-row']).map(n => n.props['data-bp-resource-row']),
+    ['blueprint:prompt']
+  )
+  assert.equal(all(section, n => n.type === 'details' || n.type === 'form').length, 0, 'legacy lists and creation forms must not duplicate the category cards')
+  const card = one(section, n => n.props['data-bp-resource-row'] === 'blueprint:local-agent')
+  assert.equal(one(card, n => n.props['data-bp-resource-title']).children[0], 'Review agent - Blueprint')
+  assert.equal(one(card, n => n.props['data-bp-resource-description']).children[0], description)
+  for (const handler of ['onMouseEnter', 'onFocus']) {
+    card.props[handler]({ currentTarget: {} })
+    const tooltip = one(f.render(), n => n.props.content?.action === 'resource-blueprint:local-agent')
+    assert.equal(tooltip.props.content.text, description, 'ellipsis is presentation only; tooltip retains the entire description')
+    card.props.onMouseLeave()
+  }
+  assert.deepEqual(f.workspace.editor.exportDefinition(), before, 'display and tooltips preserve historical resource identities and metadata')
+})
+
 test('W4.3 RED actual resource dialog exposes structured metadata, safe configuration details and advanced JSON', async () => {
   const f = await fixture()
   f.workspace.editor.updateResource('worker', { kind: 'agent', path: 'lib/agents/worker.md' })
@@ -128,9 +170,7 @@ test('W4.3 RED invalid package path keeps the real dialog draft and leaves the e
   })
   f.render()
   dialog = resourceDialogOf(f)
-  one(dialog, n => n.props['aria-label'] === 'New resource JSON').props.onChange({
-    currentTarget: { value: '{"kind":"agent","path":"../secret.md"}' }
-  })
+  one(dialog, n => n.props.label === 'New resource JSON').props.onChange('{"kind":"agent","path":"../secret.md"}')
   f.render()
   dialog = resourceDialogOf(f)
   one(dialog, n => n.props['data-bp-action'] === 'resource-apply').props.onClick()
@@ -138,7 +178,7 @@ test('W4.3 RED invalid package path keeps the real dialog draft and leaves the e
   assert.equal(Object.hasOwn(definition.resources, 'unsafe'), false, 'invalid path must not be committed')
   assert.equal(all(f.render(), n => n.props['data-bp-resource-dialog'] === true).length, 1, 'failed Apply must retain the dialog draft')
   assert.equal(
-    one(resourceDialogOf(f), n => n.props['aria-label'] === 'New resource JSON').props.value,
+    one(resourceDialogOf(f), n => n.props.label === 'New resource JSON').props.value,
     '{"kind":"agent","path":"../secret.md"}',
     'failed Apply must retain the malformed semantic draft'
   )
@@ -163,7 +203,7 @@ test('malformed advanced resource drafts never render object values as configura
   const before = f.workspace.editor.exportDefinition()
   one(resourceSectionOf(f), n => n.props['data-bp-action'] === 'add-resource').props.onClick()
   const json = '{"kind":"agent","path":{"unexpected":"object"}}'
-  one(resourceDialogOf(f), n => n.props['aria-label'] === 'New resource JSON').props.onChange({ currentTarget: { value: json } })
+  one(resourceDialogOf(f), n => n.props.label === 'New resource JSON').props.onChange(json)
   const dialog = one(f.render(), n => n.props?.['data-bp-resource-dialog'] === true)
   const configuration = one(dialog, n => n.props?.['data-bp-resource-detail'] === 'configuration')
   for (const detail of all(configuration, n => n.type === 'dd')) {
@@ -172,7 +212,7 @@ test('malformed advanced resource drafts never render object values as configura
       'invalid drafts must not reach React as object children'
     )
   }
-  assert.equal(one(dialog, n => n.props['aria-label'] === 'New resource JSON').props.value, json)
+  assert.equal(one(dialog, n => n.props.label === 'New resource JSON').props.value, json)
   assert.deepEqual(f.workspace.editor.exportDefinition(), before)
 })
 
@@ -431,17 +471,17 @@ test('W4.3 RED invalid resource JSON retains draft and kind mismatch is rejected
   add.props.onClick()
   let tree = f.render()
   let dialog = one(tree, n => n.props?.['data-bp-resource-dialog'] === true)
-  const json = one(dialog, n => n.props?.['aria-label'] === f.t('resource.newJson'))
-  json.props.onChange({ target: { value: '{invalid json' } })
+  const json = one(dialog, n => n.props?.label === f.t('resource.newJson'))
+  json.props.onChange('{invalid json')
   tree = f.render()
   dialog = one(tree, n => n.props?.['data-bp-resource-dialog'] === true)
-  const retained = one(dialog, n => n.props?.['aria-label'] === f.t('resource.newJson'))
+  const retained = one(dialog, n => n.props?.label === f.t('resource.newJson'))
   assert.equal(retained.props.value, '{invalid json')
-  const kind = one(dialog, n => n.type === 'select')
+  const kind = one(dialog, n => n.type?.name === 'StyledSelect')
   kind.props.onChange({ target: { value: 'mcp' } })
   tree = f.render()
   dialog = one(tree, n => n.props?.['data-bp-resource-dialog'] === true)
-  assert.equal(one(dialog, n => n.props?.['aria-label'] === f.t('resource.newJson')).props.value, '{invalid json')
+  assert.equal(one(dialog, n => n.props?.label === f.t('resource.newJson')).props.value, '{invalid json')
   const apply = one(dialog, n => n.props?.['data-bp-action'] === 'resource-apply')
   apply.props.onClick()
   tree = f.render()

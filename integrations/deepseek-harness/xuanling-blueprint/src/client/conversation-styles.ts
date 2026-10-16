@@ -24,6 +24,7 @@ export const conversationCss = `
 .bp-conversation [data-bp-focus=true].bp-node{outline:1px solid var(--bp-accent);outline-offset:3px}
 .bp-conversation-attempts{display:flex;flex-direction:column;gap:8px;width:clamp(160px,26%,240px);min-width:0;min-height:0;height:100%;max-height:100%;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;padding:8px;color:var(--dsw-alias-label-secondary,var(--bp-muted));scrollbar-width:thin}
 .bp-conversation-attempts .bp-run-revision{min-width:0;overflow-wrap:anywhere;white-space:normal;flex-shrink:0}
+.bp-conversation-attempt{display:flex;flex-direction:column;gap:4px;min-width:0;flex-shrink:0}
 .bp-conversation-attempts button{min-width:40px;min-height:40px;text-align:left;white-space:normal;overflow-wrap:anywhere;padding:8px;flex-shrink:0;border-radius:var(--dsw-radius-sm,8px);background:var(--dsw-alias-bg-layer-2,var(--bp-raised));color:var(--dsw-alias-label-primary,var(--bp-text));border:0.5px solid var(--dsw-alias-border-l4,#80808030)}
 .bp-conversation-attempts button[aria-pressed=true]{box-shadow:inset 0 0 0 1px var(--bp-accent)}
 .bp-conversation-attempts button[data-bp-focus=true]{border-inline-start:2px solid var(--bp-accent)}

@@ -29,7 +29,7 @@ import { setNativeSettingsLocale } from './native-settings-journey.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const BP_ROOT = resolve(HERE, '..')
 const REPO = resolve(BP_ROOT, '..', '..')
-const DSH_VERSION_TARGET = '0.2.1-alpha.2'
+const DSH_VERSION_TARGET = '0.2.1-alpha.4'
 
 const args = process.argv.slice(2)
 const KEEP = args.includes('--keep')

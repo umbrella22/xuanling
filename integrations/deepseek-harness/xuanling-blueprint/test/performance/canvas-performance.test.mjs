@@ -40,7 +40,7 @@ export function syntheticPerformanceEvidence() {
     canonicalUnchanged: true
   }
 }
-const environment = { platform: 'darwin/arm64', node: process.version, browser_version: 'synthetic-source-fixture', dsh_version_output: '0.2.1-alpha.1' }
+const environment = { platform: 'darwin/arm64', node: process.version, browser_version: 'synthetic-source-fixture', dsh_version_output: '0.2.1-alpha.4' }
 
 test('all probe fixtures and the full 200/300/20 performance graph pass the actual production decoder/validator', t => {
   for (const definition of canvasDefinitions()) validateDefinition(decodeDefinition(JSON.stringify(definition)))
@@ -232,6 +232,8 @@ test('performance report boundary enforces full fixture/hash, trusted 20 samples
       mutate(p)
       assert.throws(() => validatePerformanceEvidence(p, environment), undefined, name)
     })
+  for (const dsh_version_output of ['', '0.2.1-alpha.1', '0.2.1-alpha.3'])
+    assert.throws(() => validatePerformanceEvidence(syntheticPerformanceEvidence(), { ...environment, dsh_version_output }))
   assert.throws(() => validatePerformanceEvidence(syntheticPerformanceEvidence(), { ...environment, browser_version: '' }))
   assert.throws(() => validatePerformanceEvidence(syntheticPerformanceEvidence(), { ...environment, platform: 'linux/arm64' }))
 })

@@ -1,0 +1,67 @@
+name: dsh-blueprint-package
+
+# Real keyless packed lifecycle. This proves only the selected runner's
+# web/headless package contracts, not full acceptance or Windows support.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  package:
+    name: packed lifecycle (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    env:
+      BP_PLAN_ID: dsh-blueprint-takeover-v1
+      BP_PACKAGE_REPORT_DIR: ${{ runner.temp }}/blueprint-package-reports
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v5.0.0
+        with:
+          package_json_file: integrations/deepseek-harness/xuanling-blueprint/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install plugin dependencies
+        working-directory: integrations/deepseek-harness/xuanling-blueprint
+        run: pnpm install --frozen-lockfile
+
+      - name: Install isolated harness dependencies
+        working-directory: test/blueprint
+        run: pnpm install --frozen-lockfile
+
+      - name: Build plugin artifact
+        working-directory: integrations/deepseek-harness/xuanling-blueprint
+        run: pnpm run build
+
+      - name: Verify fresh web and headless packed lifecycle
+        working-directory: integrations/deepseek-harness/xuanling-blueprint
+        run: node scripts/verify.mjs --suite package --plan-id "$BP_PLAN_ID" --report-dir "$BP_PACKAGE_REPORT_DIR"
+
+      # Only redacted receipts and packed public artifacts. Launcher homes,
+      # dependency trees and runtime/profile contents are excluded.
+      - name: Upload packed lifecycle evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blueprint-package-${{ matrix.os }}
+          path: |
+            ${{ env.BP_PACKAGE_REPORT_DIR }}/w8.package-report.json
+            ${{ env.BP_PACKAGE_REPORT_DIR }}/lifecycle-fresh-*/web/w8.lifecycle-web-report.json
+            ${{ env.BP_PACKAGE_REPORT_DIR }}/lifecycle-fresh-*/headless/w8.lifecycle-headless-report.json
+            ${{ env.BP_PACKAGE_REPORT_DIR }}/lifecycle-fresh-*/web/artifacts/*.tgz
+            ${{ env.BP_PACKAGE_REPORT_DIR }}/lifecycle-fresh-*/headless/artifacts/*.tgz
+          if-no-files-found: error

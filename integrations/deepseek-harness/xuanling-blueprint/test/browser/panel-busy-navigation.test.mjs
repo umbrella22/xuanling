@@ -146,7 +146,7 @@ function publicAction(tree, id) {
   return one(publicTree(seat.active, id), n => n.type === 'button' && n.props['data-bp-action'] === id)
 }
 const specs = [
-  ['Blueprint library', tree => one(tree, n => n.type === 'select' && n.props['aria-label'] === 'Blueprint library')],
+  ['Blueprint library', tree => one(tree, n => n.type?.name === 'StyledSelect' && n.props['aria-label'] === 'Blueprint library')],
   ['Refresh library', tree => publicAction(tree, 'refresh-library')],
   ['Inspect input', tree => one(tree, n => n.type === 'input' && n.props['aria-label'] === 'Inspect run ID')],
   ['Inspect submit', tree => one(tree, n => n.type === 'button' && n.props['data-bp-action'] === 'inspect-run')]
@@ -276,7 +276,14 @@ async function navigate(f, id) {
   findAll(f.render(), n => n.props.overlay?.kind === 'more-menu')[0]?.props.onClose()
   const select = specs[0][1](f.render())
   assert.notEqual(select.props.disabled, true, 'source invokes navigation only on an actionable production select')
-  const done = foreground(f, () => select.props.onChange({ target: { value: id } }))
+  const done = foreground(f, () => {
+    select.props.onChange({ target: { value: id } })
+    const confirmation = findAll(f.render(), node => node.type?.name === 'ConfirmationDialog')[0]
+    if (confirmation) {
+      f.confirmations.push(confirmation.props.description)
+      confirmation.props.onConfirm()
+    }
+  })
   await done
   assert.equal(f.workspace.blueprintId, id)
   assert.equal(specs[0][1](f.render()).props.value, id)
@@ -355,7 +362,7 @@ for (const mode of ['success', 'failure']) {
     assert.deepEqual(f.workspace.model.view, snapshot(BETA))
     for (const id of [ALPHA, BETA]) assert.deepEqual(JSON.parse(f.values.get(runBindingKey(id))), { blueprintId: id, runId: runId(id) })
     assert.deepEqual(mutations(f), [], 'success/failure/reopen never replay save/start/cancel/decision')
-    assert.equal(f.confirmations.length, 1, 'existing unsaved-draft confirmation is preserved')
+    assert.equal(f.confirmations.length, 0, 'layout-only drafts do not require navigation confirmation')
     assert.equal(f.frames.length, 2, 'existing post-navigation fit scheduling is preserved')
   })
 }
@@ -452,3 +459,194 @@ test('foreground library read without a document/Run disables all four controls 
   assert.deepEqual([...f.values], before)
   assert.deepEqual(mutations(f), [])
 })
+
+test('in-app navigation confirmation cancels without Host calls and rejects stale editor and repeated accept callbacks', async () => {
+  const f = await fixture()
+  f.workspace.editor.addNode({ id: 'pending-edit', kind: 'input', x: 40, y: 40, inputs: {}, outputs: { value: 'string' } })
+  const original = f.workspace.editor,
+    before = original.exportDefinition()
+  const request = () => specs[0][1](f.render()).props.onChange({ target: { value: ALPHA } })
+  const pending = () => one(f.render(), node => node.type?.name === 'ConfirmationDialog')
+  request()
+  const cancelled = pending()
+  assert.equal(cancelled.props.cancelLabel, 'Cancel')
+  cancelled.props.onCancel()
+  cancelled.props.onConfirm()
+  assert.equal(f.workspace.editor, original)
+  assert.deepEqual(original.exportDefinition(), before)
+  assert.deepEqual(f.calls, [], 'cancel and late accept have zero Host effects')
+  request()
+  const stale = pending()
+  f.workspace.newDraft('Other draft')
+  const replacement = f.workspace.editor
+  stale.props.onConfirm()
+  assert.equal(f.workspace.editor, replacement)
+  assert.deepEqual(f.calls, [], 'stale editor cannot navigate')
+  await f.workspace.load(BETA)
+  f.calls.length = 0
+  f.workspace.editor.addNode({ id: 'second-edit', kind: 'input', x: 40, y: 40, inputs: {}, outputs: { value: 'string' } })
+  request()
+  const accepted = pending()
+  const done = foreground(f, () => {
+    accepted.props.onConfirm()
+    accepted.props.onConfirm()
+  })
+  await done
+  assert.equal(f.workspace.blueprintId, ALPHA)
+  assert.deepEqual(
+    f.calls.filter(([method]) => method === 'loadDefinition'),
+    [['loadDefinition', ALPHA]],
+    'repeated accept dispatches exactly once'
+  )
+})
+
+test('new/delete in-app confirmations preserve the draft on cancel and never invoke native confirm', async () => {
+  const f = await fixture()
+  f.workspace.editor.addNode({ id: 'dirty-delete', kind: 'input', x: 40, y: 40, inputs: {}, outputs: { value: 'string' } })
+  const original = f.workspace.editor
+  for (const id of ['new-blueprint', 'delete-blueprint']) {
+    action(f.render(), id).props.onClick()
+    const dialog = one(f.render(), node => node.type?.name === 'ConfirmationDialog')
+    assert.ok(dialog.props.description.length > 10)
+    dialog.props.onCancel()
+    assert.equal(f.workspace.editor, original)
+    assert.deepEqual(f.calls, [])
+  }
+  assert.deepEqual(f.confirmations, [], 'window.confirm is never used')
+})
+
+// C-05 exercises the actual panel decision, independently of any new predicate API.
+const confirmationsIn = f => findAll(f.render(), node => node.type?.name === 'ConfirmationDialog')
+const requestSwitch = f => specs[0][1](f.render()).props.onChange({ target: { value: ALPHA } })
+const requestNew = f => action(f.render(), 'new-blueprint').props.onClick()
+for (const operation of ['switch', 'new']) {
+  for (const scenario of [
+    'saved unchanged',
+    'layout only',
+    'presentation node title',
+    'undo to baseline',
+    'reordered object keys',
+    'deleted to empty',
+    'fresh empty draft',
+    'empty renamed draft',
+    'restored empty draft',
+    'restored layout draft',
+    'legacy layout draft'
+  ]) {
+    test(`C-05 ${operation} bypasses confirmation for ${scenario} while preserving Save dirty/drafts`, async () => {
+      const f = await fixture()
+      const w = f.workspace
+      if (scenario === 'layout only' || scenario === 'restored layout draft' || scenario === 'legacy layout draft') {
+        w.editor.moveNode(w.editor.nodes[0].id, 123.25, -40.5)
+        w.editor.commitLayout()
+        if (scenario === 'legacy layout draft') {
+          const draft = JSON.parse(f.values.get(draftKey(BETA)))
+          delete draft.definitionJson
+          f.values.set(draftKey(BETA), JSON.stringify(draft))
+        }
+        if (scenario !== 'layout only') await w.load(BETA)
+        assert.equal(w.dirty, true, 'layout remains saveable')
+      }
+      if (scenario === 'presentation node title') {
+        w.editor.patchPresentation([w.editor.nodes[0].id], { title: 'Presentation title' })
+        assert.equal(w.dirty, true)
+      }
+      if (scenario === 'undo to baseline') {
+        w.editor.renameDefinition('Changed temporarily')
+        w.editor.undo()
+      }
+      if (scenario === 'reordered object keys') {
+        const reorder = value =>
+          Array.isArray(value)
+            ? value.map(reorder)
+            : value && typeof value === 'object'
+              ? Object.fromEntries(
+                  Object.entries(value)
+                    .reverse()
+                    .map(([k, v]) => [k, reorder(v)])
+                )
+              : value
+        const draft = { documentRevision: w.document.documentRevision, definitionJson: JSON.stringify(reorder(w.definition)), layout: w.editor.exportLayout() }
+        f.values.set(draftKey(BETA), JSON.stringify(draft))
+        await w.load(BETA)
+      }
+      if (scenario === 'deleted to empty') {
+        w.editor.setSelection(w.editor.nodes.map(node => node.id))
+        w.editor.deleteItems(
+          w.editor.nodes.map(node => node.id),
+          []
+        )
+        w.editor.renameDefinition('Changed but empty')
+        assert.equal(w.editor.nodes.length, 0)
+        assert.equal(w.dirty, true)
+      }
+      if (['fresh empty draft', 'empty renamed draft', 'restored empty draft'].includes(scenario)) {
+        w.newDraft('Empty')
+        if (scenario !== 'fresh empty draft') w.editor.renameDefinition('Empty renamed')
+        if (scenario === 'restored empty draft') {
+          const restored = new BlueprintWorkspace(w.host, w.storage)
+          await restored.initialize()
+          f.states[0] = restored
+          f.workspace = restored
+          assert.equal(restored.notice.key, 'status.draftRestored')
+          assert.equal(restored.dirty, true)
+        }
+      }
+      const valuesBefore = [...f.values]
+      f.calls.length = 0
+      if (operation === 'switch') {
+        requestSwitch(f)
+        assert.equal(confirmationsIn(f).length, 0, `${scenario}: no discard dialog`)
+        // perform starts synchronously; settle the concrete host read without a timer.
+        await new Promise(resolve => {
+          if (!f.workspace.busy) return resolve()
+          const off = f.workspace.subscribe(() => {
+            if (!f.workspace.busy) {
+              off()
+              resolve()
+            }
+          })
+        })
+        assert.equal(f.workspace.blueprintId, ALPHA)
+        assert.deepEqual([...f.values], valuesBefore, 'navigation preserves local draft bytes')
+      } else {
+        requestNew(f)
+        assert.equal(confirmationsIn(f).length, 0, `${scenario}: no discard dialog`)
+        assert.equal(f.workspace.isNewDraft, true)
+      }
+      assert.deepEqual(mutations(f), [])
+    })
+  }
+  for (const scenario of ['semantic edit', 'redo semantic edit', 'restored nonempty new draft', 'restored saved semantic draft']) {
+    test(`C-05 ${operation} protects ${scenario} and Cancel retains exact editor/draft`, async () => {
+      const f = await fixture()
+      let w = f.workspace
+      if (scenario === 'restored nonempty new draft') {
+        w.newDraft('Nonempty restored')
+        w.editor.addNode({ id: 'unsaved-node', kind: 'input', x: 0, y: 0, inputs: {}, outputs: { value: 'string' } })
+        w = new BlueprintWorkspace(w.host, w.storage)
+        await w.initialize()
+        f.states[0] = f.workspace = w
+        assert.equal(w.notice.key, 'status.draftRestored')
+      } else {
+        w.editor.renameDefinition('Meaningful change')
+        if (scenario === 'redo semantic edit') {
+          w.editor.undo()
+          w.editor.redo()
+        }
+        if (scenario === 'restored saved semantic draft') await w.load(BETA)
+      }
+      const before = { editor: w.editor, definition: w.definition, values: [...f.values] }
+      f.calls.length = 0
+      ;(operation === 'switch' ? requestSwitch : requestNew)(f)
+      const [dialog] = confirmationsIn(f)
+      assert.ok(dialog, 'meaningful nonempty edit requires confirmation')
+      dialog.props.onCancel()
+      dialog.props.onConfirm()
+      assert.equal(w.editor, before.editor)
+      assert.deepEqual(w.definition, before.definition)
+      assert.deepEqual([...f.values], before.values)
+      assert.deepEqual(f.calls, [])
+    })
+  }
+}

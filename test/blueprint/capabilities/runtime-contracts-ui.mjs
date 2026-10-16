@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { selectStyledOption, styledSelectValue } from './styled-control-entry.mjs'
 /** W3 C-05/06/07/08/10 mounted UI collector. Run only after main review/build.
  * Reuses the real isolated DSH probe, gateway, native Settings and React Flow.
  * No default profile or credential access. Transport fixtures below prove UI
@@ -71,7 +72,7 @@ export function prepareCanvasFixtures(tempRoot, decode, validate) {
 }
 async function idle(page) { await page.waitForFunction(() => !document.querySelector('[data-bp-action="refresh-library"]')?.disabled) }
 async function choose(page, id, count = 4) {
-  await idle(page); await page.locator('[data-bp-select="blueprint"]').selectOption(id)
+  await idle(page); await selectStyledOption(page, page.locator('[data-bp-select="blueprint"]'), id)
   await page.waitForFunction(({ id, count }) => document.querySelector('[data-bp-canvas="root"]')?.getAttribute('data-bp-blueprint') === id && document.querySelectorAll('[data-bp-node]').length === count, { id, count })
   await idle(page)
 }
@@ -104,7 +105,7 @@ async function preservation(page, api) {
     dirty: el.querySelector('[data-bp-dirty]')?.getAttribute('data-bp-dirty'),
     draft: localStorage.getItem(`xuanling-blueprint:draft:${encodeURIComponent(el.getAttribute('data-bp-blueprint'))}`),
     binding: localStorage.getItem(`xuanling-blueprint:recent-run:${encodeURIComponent(el.getAttribute('data-bp-blueprint'))}`),
-    fields: [...el.querySelectorAll('[data-bp-field],[data-bp-json]')].map(el => [el.getAttribute('data-bp-field') ?? el.getAttribute('data-bp-json'), el.value]),
+    fields: [...el.querySelectorAll('[data-bp-field],[data-bp-json]')].map(el => [el.getAttribute('data-bp-field') ?? el.getAttribute('data-bp-json'), el.getAttribute('data-bp-value') ?? el.value]),
     runId: el.querySelector('[data-bp-run]')?.textContent?.split(' · ')[0].trim(),
   }))
   return { ui, document: value(await api('loadDefinition', { blueprintId: ui.id }), 'preservation document'), run: await runSnapshot(page, api) }
@@ -121,8 +122,6 @@ export async function runCanvasJourney(page, record, api) {
     if (['saveDefinition', 'preflightRun', 'startRun'].includes(method)) requests.push({ method, args: requestArgs(request) })
   }
   page.on('request', observe)
-  const discard = dialog => dialog.accept()
-  page.on('dialog', discard)
   const assert = (id, description, ok, detail = '') => { record(id, description, ok, detail); ensure(ok, `${id}: ${description}`) }
   const receipt = { planId: PLAN_ID, keyRead: false, providerEvidence: false, transportFixtures: [], themes: [], bindings: [] }
   try {
@@ -130,13 +129,13 @@ export async function runCanvasJourney(page, record, api) {
     const palette = await page.locator('.bp-palette-entry').evaluateAll(items => items.map(el => el.getAttribute('data-bp-action')).sort())
     assert('RC-PALETTE', 'only accepted executors appear in the mounted palette', isDeepStrictEqual(palette, ['add-input', 'add-output', 'add-agentTask', 'add-humanDecision', 'add-condition', 'add-join'].sort()))
     await node(page, 'ui-gate').locator('.bp-node-title').click()
-    ensure(await page.locator('[data-bp-field="condition.inputPort"]').inputValue() === 'predicate', 'condition boolean port identity changed')
-    await page.locator('[data-bp-field="condition.trueBranch"]').selectOption('no')
+    ensure(await styledSelectValue(page.locator('[data-bp-field="condition.inputPort"]')) === 'predicate', 'condition boolean port identity changed')
+    await selectStyledOption(page, page.locator('[data-bp-field="condition.trueBranch"]'), 'no')
     await page.waitForFunction(() => !document.querySelector('[data-bp-action="undo"]').disabled)
     await action(page, 'undo').click()
-    ensure(await page.locator('[data-bp-field="condition.trueBranch"]').inputValue() === 'yes', 'condition undo lost exact branch')
+    ensure(await styledSelectValue(page.locator('[data-bp-field="condition.trueBranch"]')) === 'yes', 'condition undo lost exact branch')
     await node(page, 'merge').locator('.bp-node-title').click()
-    ensure(await page.locator('[data-bp-field="join"]').inputValue() === 'all', 'omitted join did not display default all')
+    ensure(await styledSelectValue(page.locator('[data-bp-field="join"]')) === 'all', 'omitted join did not display default all')
     assert('RC-INSPECTOR', 'real condition selectors and default-all join are editable and undoable without translating identifiers', true)
     const payload = '{ "predicate": true, "用户.payload": "unchanged" }'
     await input(page).fill(payload); await clickCheck(page)
@@ -213,7 +212,7 @@ export async function runCanvasJourney(page, record, api) {
     const statuses = await page.locator('[data-bp-check-status]').evaluateAll(items => [...new Set(items.map(el => el.getAttribute('data-bp-check-status')))].sort())
     assert('RC-SEVERITIES', 'real Host report renders block/warning/info/pass without translating static codes', isDeepStrictEqual(statuses, ['block', 'info', 'pass', 'warning']))
     await node(page, 'ui-agent').locator('.bp-node-title').click()
-    ensure(await page.locator('[data-bp-field="outputSchemaRef"]').inputValue() === 'schema', 'W2 schema binding lost')
+    ensure(await styledSelectValue(page.locator('[data-bp-field="outputSchemaRef"]')) === 'schema', 'W2 schema binding lost')
     await page.locator('[data-bp-inspector-advanced]').click()
     ensure(JSON.parse(await page.locator('[data-bp-json="options"]').inputValue()).toolAllowlist.length === 0, 'W2 allowlist field not retained')
     let before = requests.filter(r => r.method === 'startRun').length
@@ -292,7 +291,7 @@ export async function runCanvasJourney(page, record, api) {
     assert('RC-RELOAD', 'saved condition/default-all join and durable Run rebind on real browser reload without issuing a new command', isDeepStrictEqual(loadedDoc, finalDoc) && reloaded.runId === replay.runId && await page.locator('[data-bp-run]').getAttribute('data-bp-run') === 'succeeded' && requests.filter(r => r.method === 'startRun').length === startsBeforeReload && requests.filter(r => r.method === 'startRun').at(-1)?.args.requestId === retry.args.requestId)
     writeFileSync(join(evidenceDir, 'runtime-ui-evidence.json'), stringifyProbeEvidence(receipt))
     return { provenance: 'real DSH boot graph / gateway / native settings / React Flow; transport fixtures are UI-only', binding: receipt.bindings, runtimeContracts: receipt }
-  } finally { page.off('request', observe); page.off('dialog', discard) }
+  } finally { page.off('request', observe);  }
 }
 
 function replaceOnce(source, before, after) {

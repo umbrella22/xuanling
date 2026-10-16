@@ -73,7 +73,7 @@ function fakeReport({ args }, patch = {}) {
       platform: 'darwin/arm64',
       node: process.version,
       browser_version: 'synthetic-source-fixture',
-      dsh_version_output: '0.2.1-alpha.1'
+      dsh_version_output: '0.2.1-alpha.4'
     },
     assertions: requiredCanvasAssertions(mode).map(id => ({ id, passed: true })),
     artifacts: {

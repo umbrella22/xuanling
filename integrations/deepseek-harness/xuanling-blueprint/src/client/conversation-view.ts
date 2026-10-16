@@ -1,3 +1,4 @@
+import { StyledSelect } from './styled-controls.ts'
 import React from 'react'
 import { nodeContentKey, nodeContentMinimum, useNodeContentMeasurement } from './node-geometry.ts'
 import { ReactFlow, Handle, Position, BaseEdge, getSmoothStepPath } from '@xyflow/react'
@@ -16,10 +17,15 @@ import type { TeamStageProjection } from '../conversation/contracts.ts'
 import { installCanvasStyles } from './styles.ts'
 import { installConversationStyles } from './conversation-styles.ts'
 import { flowAriaLabels } from './presentation.ts'
+import type { ChatNavigation, OpenExecutionChat } from './chat-navigation.ts'
 
 export interface ConversationViewInjected {
   controller: ConversationController
+  openSession?: OpenExecutionChat
+  chatNavigation?: ChatNavigation
 }
+const noChatRequest = () => null
+const noChatSubscription = () => () => {}
 type Props = ConvViewProps & BlueprintLocaleProps & ConversationViewInjected
 type DisplayNode = FrozenFlowNode & { data: FrozenNodeData & { t: BlueprintLocaleProps['t']; onContentMeasure?: (height: number) => void } }
 type DisplayGroup = FrozenGroupNode & { data: FrozenGroupNode['data'] & { t: BlueprintLocaleProps['t'] } }
@@ -140,7 +146,13 @@ function displayState(state: string, t: BlueprintLocaleProps['t']): string {
   return state === 'idle' ? t('node.notRunning') : t('node.unknownState')
 }
 
-function renderTeamStage(team: TeamStageProjection, activities: TeamMemberActivity[], connected: boolean, t: BlueprintLocaleProps['t']): React.ReactElement {
+function renderTeamStage(
+  team: TeamStageProjection,
+  activities: TeamMemberActivity[],
+  connected: boolean,
+  t: BlueprintLocaleProps['t'],
+  openChat?: (sessionId: string) => void
+): React.ReactElement {
   const fact = (label: BlueprintLocaleKey, value: string, attributes: Record<string, string | number | undefined> = {}) =>
     React.createElement(
       'div',
@@ -215,7 +227,20 @@ function renderTeamStage(team: TeamStageProjection, activities: TeamMemberActivi
             t(`conversation.activity.${activity?.activity ?? 'unavailable'}`),
             activity?.elapsedSeconds === undefined ? '' : ` · ${t('conversation.activity.elapsed', { seconds: activity.elapsedSeconds })}`
           ),
-          member.sessionId === undefined ? null : React.createElement('code', null, member.sessionId)
+          member.sessionId === undefined ? null : React.createElement('code', null, member.sessionId),
+          openChat &&
+            React.createElement(
+              'button',
+              {
+                type: 'button',
+                'data-bp-open-member': member.memberId,
+                disabled: member.sessionId === undefined,
+                onClick: () => {
+                  if (member.sessionId !== undefined) openChat(member.sessionId)
+                }
+              },
+              t('conversation.openChat')
+            )
         )
       })
     ),
@@ -241,8 +266,19 @@ function renderTeamStage(team: TeamStageProjection, activities: TeamMemberActivi
 }
 
 /** DSH owns the resident composer and pendingInteraction. This seat only observes durable Runs. */
-export function ConversationBlueprintView({ controller, sessionId, t, inspectCall }: Props): React.ReactElement {
+export function ConversationBlueprintView({ controller, sessionId, t, inspectCall, openSession, chatNavigation, openView }: Props): React.ReactElement {
   const snapshot = React.useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
+  const chatRequest = React.useSyncExternalStore(chatNavigation?.subscribe ?? noChatSubscription, chatNavigation?.getSnapshot ?? noChatRequest, noChatRequest)
+  const [chatUnavailable, setChatUnavailable] = React.useState(false)
+  React.useEffect(() => {
+    if (chatRequest?.sessionId === sessionId && openView && chatNavigation?.consume(sessionId, chatRequest.requestId)) openView('chat', '')
+  }, [chatRequest, chatNavigation, sessionId, openView])
+  const openChat = (target: string) => {
+    void Promise.resolve(openSession?.(target, snapshot.value?.status === 'bound' ? snapshot.value.selected.source?.sessionId : undefined)).then(
+      opened => setChatUnavailable(opened !== true),
+      () => setChatUnavailable(true)
+    )
+  }
   const flow = React.useRef<ReactFlowInstance<DisplayFlowNode, FrozenFlowEdge> | null>(null)
   const [reducedMotion, setReducedMotion] = React.useState(() => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches)
   const [visible, setVisible] = React.useState(() => typeof document === 'undefined' || document.visibilityState !== 'hidden')
@@ -468,8 +504,9 @@ export function ConversationBlueprintView({ controller, sessionId, t, inspectCal
       'header',
       { className: 'bp-toolbar' },
       React.createElement(
-        'select',
+        StyledSelect,
         {
+          React,
           className: 'bp-conversation-run',
           'aria-label': t('conversation.runSelector'),
           value: bound?.selected.run.runId ?? '',
@@ -521,6 +558,7 @@ export function ConversationBlueprintView({ controller, sessionId, t, inspectCal
       )
     ),
     React.createElement('p', { className: 'bp-conversation-status', role: 'status' }, t(status)),
+    chatUnavailable && React.createElement('p', { role: 'status', 'data-bp-chat-unavailable': true }, t('conversation.chatUnavailable')),
     graph.collisionNodeIds
       ? React.createElement(
           'p',
@@ -585,7 +623,11 @@ export function ConversationBlueprintView({ controller, sessionId, t, inspectCal
                 const ids = (node as DisplayNode).data.attemptIds
                 // A node with several Attempts requires an explicit list choice;
                 // array position is not an authority for selecting the latest one.
-                if (ids.length === 1) controller.selectAttempt(ids[0]!)
+                if (ids.length === 1) {
+                  controller.selectAttempt(ids[0]!)
+                  const attempt = bound.selected.run.attempts.find(value => value.attemptId === ids[0])
+                  if ((node as DisplayNode).data.node.kind === 'agentTask' && attempt?.sessionId !== undefined) openChat(attempt.sessionId)
+                }
               },
               'aria-label': t('conversation.graph'),
               ariaLabelConfig: {
@@ -601,27 +643,69 @@ export function ConversationBlueprintView({ controller, sessionId, t, inspectCal
             { className: 'bp-conversation-attempts', 'aria-label': t('conversation.attempts') },
             React.createElement('strong', null, t('conversation.attempts')),
             React.createElement('span', { className: 'bp-run-revision' }, bound.selected.run.definitionRevision),
-            bound.selected.run.team ? renderTeamStage(bound.selected.run.team, memberActivities, snapshot.connection === 'connected', t) : null,
+            bound.selected.run.team
+              ? renderTeamStage(bound.selected.run.team, memberActivities, snapshot.connection === 'connected', t, openSession ? openChat : undefined)
+              : null,
             ...bound.selected.run.attempts.map((attempt, index) =>
               React.createElement(
-                'button',
+                'div',
                 {
                   key: attempt.attemptId ?? `legacy-${index}`,
-                  type: 'button',
-                  'data-bp-attempt-id': attempt.attemptId,
-                  'data-bp-attempt-state': attempt.state,
-                  'data-bp-focus': attempt.attemptId !== undefined && bound.selected.focusAttemptIds.includes(attempt.attemptId),
-                  'aria-pressed': attempt.attemptId !== undefined && attempt.attemptId === snapshot.selectedAttemptId,
-                  disabled: attempt.attemptId === undefined,
-                  onClick: () => {
-                    if (attempt.attemptId) {
-                      controller.selectAttempt(attempt.attemptId)
-                      fit([attempt.nodeId])
-                    }
-                  }
+                  className: 'bp-conversation-attempt'
                 },
-                t('run.attempt', { nodeId: attempt.nodeId, attempt: attempt.attempt, state: displayState(attempt.state, t) }),
-                React.createElement('small', null, attempt.attemptId ?? t('conversation.legacyAttempt'))
+                React.createElement(
+                  'button',
+                  {
+                    type: 'button',
+                    'data-bp-attempt-id': attempt.attemptId,
+                    'data-bp-attempt-state': attempt.state,
+                    'data-bp-focus': attempt.attemptId !== undefined && bound.selected.focusAttemptIds.includes(attempt.attemptId),
+                    'aria-pressed': attempt.attemptId !== undefined && attempt.attemptId === snapshot.selectedAttemptId,
+                    disabled: attempt.attemptId === undefined,
+                    onClick: () => {
+                      if (attempt.attemptId) {
+                        controller.selectAttempt(attempt.attemptId)
+                        fit([attempt.nodeId])
+                      }
+                    }
+                  },
+                  t('run.attempt', { nodeId: attempt.nodeId, attempt: attempt.attempt, state: displayState(attempt.state, t) }),
+                  React.createElement('small', null, attempt.attemptId ?? t('conversation.legacyAttempt'))
+                ),
+                openSession &&
+                  React.createElement(
+                    'button',
+                    {
+                      type: 'button',
+                      'data-bp-open-attempt': attempt.attemptId,
+                      disabled:
+                        attempt.attemptId === undefined ||
+                        attempt.sessionId === undefined ||
+                        !bound.selected.graph.nodes.some(node => node.id === attempt.nodeId && node.kind === 'agentTask'),
+                      onClick: () => {
+                        if (attempt.sessionId !== undefined && attempt.attemptId !== undefined) openChat(attempt.sessionId)
+                      }
+                    },
+                    t('conversation.openChat')
+                  ),
+                attempt.attemptId === snapshot.selectedAttemptId &&
+                  attempt.state === 'failed' &&
+                  React.createElement(
+                    'div',
+                    null,
+                    React.createElement('p', { 'data-bp-failure-explanation': attempt.attemptId }, t('conversation.failedHistory')),
+                    bound.selected.source &&
+                      openSession &&
+                      React.createElement(
+                        'button',
+                        {
+                          type: 'button',
+                          'data-bp-source-chat': bound.selected.source.sessionId,
+                          onClick: () => openChat(bound.selected.source!.sessionId)
+                        },
+                        t('conversation.sourceChat')
+                      )
+                  )
               )
             )
           )

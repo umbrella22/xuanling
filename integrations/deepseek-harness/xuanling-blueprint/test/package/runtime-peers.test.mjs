@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 import { hasPnpmImporterDependency, readPnpmLock } from './pnpm-lock.mjs'
 
 const PACKAGE_ROOT = fileURLToPath(new URL('../../', import.meta.url))
-const VERSION = '0.2.1-alpha.3'
+const VERSION = '0.2.1-alpha.4'
 const REQUIRED = [
   '@deepseek-ai/dsh-llm',
   '@deepseek-ai/dsh-session',

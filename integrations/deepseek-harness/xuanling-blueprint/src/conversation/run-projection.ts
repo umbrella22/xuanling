@@ -20,6 +20,7 @@ export function projectRunSnapshot(record: RunRecord, runtime?: TeamStageRuntime
     runId: record.runId,
     state: record.state,
     definitionRevision: record.definitionRevision,
+    ...(record.source === undefined ? {} : { source: { ...record.source } }),
     attempts: record.attempts.map(a => {
       const outcome = a.result?.outcome as { kind?: string; outputs?: unknown; value?: unknown } | undefined
       const hasOutput = outcome !== undefined && (Object.hasOwn(outcome, 'outputs') || Object.hasOwn(outcome, 'value'))

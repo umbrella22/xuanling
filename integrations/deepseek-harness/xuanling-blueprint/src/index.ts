@@ -129,6 +129,8 @@ export interface BlueprintConfig {
   /** Host-managed definitions; defaults to runtimeRoot/definitions, or the profile data directory. */
   libraryRoot?: string
   runtimeRoot?: string
+  /** Maximum ordinary graph nodes in flight within one Run; defaults to 4. */
+  maxConcurrentNodes?: number
   skillRoots?: SkillRoot[]
   toolBindings?: ToolBindings
   /** Native subagent registry routes, separate from the LLM provider. */
@@ -259,9 +261,14 @@ interface RuntimeHandle {
   driverTail: Promise<unknown>
   jobs: Map<string, Promise<void>>
   rerun: Set<string>
-  controllers: Map<string, AbortController>
+  controllers: Map<string, Map<string, AbortController>>
   cancellationTails: Map<string, Promise<RunRecord>>
   backgroundFailures: Map<string, Error>
+}
+
+interface NodeSettlement {
+  terminal: 'failed' | 'cancelled' | 'timed_out' | 'recovery_required'
+  detail: Record<string, unknown>
 }
 
 function publicTeamTask(value: unknown, runId: string): { id: string; revision: number; status?: string } {
@@ -344,6 +351,8 @@ export class BlueprintService extends TypertRemoteService {
     private readonly config: BlueprintConfig = {}
   ) {
     super(ctx, 'blueprint', { namespace: 'blueprint' })
+    if (config.maxConcurrentNodes !== undefined && (!Number.isSafeInteger(config.maxConcurrentNodes) || config.maxConcurrentNodes < 1))
+      throw new TypeError('maxConcurrentNodes must be a positive safe integer')
     installConversationTools(this.ctx, this, (args, source) =>
       this.startConfiguredRun(
         {
@@ -361,7 +370,7 @@ export class BlueprintService extends TypertRemoteService {
         await this.libraryTail
         await Promise.allSettled(this.opening.values())
         for (const handle of this.runtimes.values()) {
-          for (const controller of handle.controllers.values()) controller.abort()
+          for (const controllers of handle.controllers.values()) for (const controller of controllers.values()) controller.abort()
           await Promise.allSettled(handle.cancellationTails.values())
           await Promise.allSettled(handle.jobs.values())
           await handle.admissionTail
@@ -1444,338 +1453,422 @@ export class BlueprintService extends TypertRemoteService {
     sourceParent?: NativeSourceParent
   ): Promise<void> {
     const graph = compileGraph(definition)
-    while (true) {
-      const record = await handle.store.get(runId)
-      if (TERMINAL_RUN_STATES.includes(record.state) || ['waiting_input', 'recovery_required'].includes(record.state)) return
-      if (record.state === 'cancelling') {
-        if (record.teamStage !== undefined && !['succeeded', 'failed', 'cancelled', 'timed_out', 'recovery_required'].includes(record.teamStage.state)) {
-          await this.cancelTeamRun(handle, record)
+    const capacity = this.config.maxConcurrentNodes ?? 4
+    const controllers = new Map<string, AbortController>()
+    const active = new Map<string, Promise<void>>()
+    const completed: Array<{ nodeId: string; settlement?: NodeSettlement; error?: unknown }> = []
+    let stop: NodeSettlement | undefined
+    let fatal: unknown
+    let hasFatal = false
+    const exclusive = (nodeId: string) => {
+      const node = graph.nodeById.get(nodeId)!
+      // Both boundaries mutate Run-wide waiting/Team state. They own the Run
+      // alone, without changing the native TeamStage's own member scheduling.
+      return node.kind === 'humanDecision' || node.teamStage !== undefined
+    }
+    const abortAll = () => {
+      for (const controller of controllers.values()) controller.abort()
+    }
+    handle.controllers.set(runId, controllers)
+    try {
+      while (true) {
+        for (const done of completed.splice(0)) {
+          active.delete(done.nodeId)
+          if (done.error !== undefined) {
+            fatal = done.error
+            hasFatal = true
+          }
+          if (done.settlement !== undefined && (stop === undefined || done.settlement.terminal === 'recovery_required')) stop = done.settlement
+        }
+        const record = await handle.store.get(runId)
+        // A failed branch must retain its reason when earlier siblings are
+        // interrupted. Never choose the sibling cancellation by insertion order.
+        const failure = record.attempts.find(a => a.state === 'failed' || a.state === 'timed_out') ?? record.attempts.find(a => a.state === 'cancelled')
+        if (failure && stop === undefined)
+          stop = {
+            terminal: failure.state === 'timed_out' ? 'timed_out' : failure.state === 'cancelled' ? 'cancelled' : 'failed',
+            detail: { reason: 'attempt-settled-non-success' }
+          }
+        if (this.closing && !TERMINAL_RUN_STATES.includes(record.state) && record.state !== 'recovery_required') await handle.store.requestCancel(runId)
+        const terminal = TERMINAL_RUN_STATES.includes(record.state) || record.state === 'recovery_required'
+        if (stop !== undefined || hasFatal || terminal || record.state === 'cancelling' || this.closing) {
+          abortAll()
+          if (active.size) {
+            await Promise.race(active.values())
+            continue
+          }
+          if (hasFatal) throw fatal
+          // An unknown effect wins even if a concurrent cancellation/result
+          // temporarily terminalized known Attempts. Do not fabricate its result.
+          if (stop?.terminal === 'recovery_required') await handle.store.settleTerminal(runId, stop.terminal, stop.detail)
+          else if (!terminal) {
+            if (record.teamStage !== undefined && !['succeeded', 'failed', 'cancelled', 'timed_out', 'recovery_required'].includes(record.teamStage.state))
+              await this.cancelTeamRun(handle, record)
+            else await handle.store.settleTerminal(runId, stop?.terminal ?? 'cancelled', stop?.detail ?? { reason: 'no-in-flight-effect' })
+          }
           return
         }
-        await handle.store.settleTerminal(runId, 'cancelled', { reason: 'no-in-flight-effect' })
-        return
-      }
-      // Restored runnable records bypass new-Run admission. Refuse before
-      // preparing resources, writing dispatch intent or creating an Agent.
-      if (definition.graph.nodes.some(node => node.teamStage !== undefined) && record.source === undefined) {
-        await handle.store.settleTerminal(runId, 'failed', { reason: 'teamstage-executor-unavailable' })
-        return
-      }
-      const failure = record.attempts.find(a => ['failed', 'timed_out', 'cancelled'].includes(a.state))
-      if (failure) {
-        await handle.store.settleTerminal(runId, failure.state === 'timed_out' ? 'timed_out' : failure.state === 'cancelled' ? 'cancelled' : 'failed', {
-          reason: 'attempt-settled-non-success'
-        })
-        return
-      }
-      const decisions: Record<string, string> = {}
-      const states = new Map<string, Array<RunRecord['attempts'][number]['state']>>()
-      for (const a of record.attempts) {
-        states.set(a.nodeId, [...(states.get(a.nodeId) ?? []), a.state])
-        const outcome = a.result?.outcome as { branch?: string } | undefined
-        if (outcome?.branch) decisions[a.nodeId] = outcome.branch
-      }
-      const schedule = readyNodes(definition, { attempts: [...states].map(([nodeId, states]) => ({ nodeId, states })), decisions })
-      if (schedule.skipped.length) {
-        await handle.store.transition(runId, draft => {
-          if (draft.state === 'cancelling') return
-          for (const nodeId of schedule.skipped) {
-            if (!draft.attempts.some(a => a.nodeId === nodeId)) draft.attempts.push({ attemptId: `att-${randomUUID()}`, nodeId, attempt: 1, state: 'skipped' })
-          }
-        })
-        continue
-      }
-      if (!schedule.ready.length) {
+        if (record.state === 'waiting_input') return
+        if (definition.graph.nodes.some(node => node.teamStage !== undefined) && record.source === undefined) {
+          stop = { terminal: 'failed', detail: { reason: 'teamstage-executor-unavailable' } }
+          continue
+        }
+        const decisions: Record<string, string> = {}
+        const states = new Map<string, Array<RunRecord['attempts'][number]['state']>>()
+        for (const a of record.attempts) {
+          states.set(a.nodeId, [...(states.get(a.nodeId) ?? []), a.state])
+          const outcome = a.result?.outcome as { branch?: string } | undefined
+          if (outcome?.branch) decisions[a.nodeId] = outcome.branch
+        }
+        const schedule = readyNodes(definition, { attempts: [...states].map(([nodeId, states]) => ({ nodeId, states })), decisions })
+        if (schedule.skipped.length) {
+          await handle.store.transition(runId, draft => {
+            if (draft.state === 'cancelling') return
+            for (const nodeId of schedule.skipped) {
+              if (!draft.attempts.some(a => a.nodeId === nodeId))
+                draft.attempts.push({ attemptId: `att-${randomUUID()}`, nodeId, attempt: 1, state: 'skipped' })
+            }
+          })
+          continue
+        }
+        const ready = schedule.ready.filter(nodeId => !active.has(nodeId))
+        // Only Run-wide human/Team boundaries wait for unrelated work to
+        // drain. Ordinary structural nodes advance when their own dependencies
+        // settle, allowing fast branches to refill the available capacity.
+        const first = active.size > 0 && ready.some(exclusive) ? undefined : ready[0]
+        const hasExclusive = [...active.keys()].some(exclusive)
+        if (first !== undefined && active.size < capacity && !hasExclusive && (!exclusive(first) || active.size === 0)) {
+          // Reserve in memory BEFORE preparation awaits. The durable intent is
+          // still committed by executeRunNode before the first external effect.
+          const controller = new AbortController()
+          controllers.set(first, controller)
+          const job = this.executeRunNode(handle, runId, definition, record, first, controller, sourceParent)
+            .then(
+              settlement => {
+                completed.push({ nodeId: first, ...(settlement === undefined ? {} : { settlement }) })
+              },
+              error => {
+                completed.push({ nodeId: first, error })
+              }
+            )
+            .finally(() => {
+              controllers.delete(first)
+            })
+          active.set(first, job)
+          // Re-read after every admission/settlement. Fast branch descendants
+          // refill capacity without waiting for an unrelated slow branch.
+          continue
+        }
+        if (active.size) {
+          await Promise.race(active.values())
+          continue
+        }
         const complete = definition.graph.nodes.every(n => record.attempts.some(a => a.nodeId === n.id && ['succeeded', 'skipped'].includes(a.state)))
         await handle.store.settleTerminal(runId, complete ? 'succeeded' : 'recovery_required', {
           reason: complete ? 'selected-paths-settled' : 'no-safe-progress'
         })
         return
       }
-      const nodeId = schedule.ready[0]!
-      const node = graph.nodeById.get(nodeId)!
-      const controller = new AbortController()
-      handle.controllers.set(runId, controller)
-      let intent: Awaited<ReturnType<RunStore['recordIntent']>> | undefined
-      let diagnostics: Extract<AttemptDiagnostics, { status: 'available' }> | undefined
-      const settledDiagnostics = (code: string) => (diagnostics === undefined ? {} : { diagnostics: { ...diagnostics, acceptance: { code } } })
-      try {
-        const initial: unknown = JSON.parse(record.inputRef)
-        const bound: Record<string, unknown> = {}
-        const omitted = new Set<string>()
-        let bindingError: NodeValueError | undefined
-        for (const dep of graph.dataDeps.get(nodeId) ?? []) {
-          const parent = record.attempts.findLast(a => a.nodeId === dep.fromNode)
-          if (node.kind === 'join' && parent?.state === 'skipped') {
-            omitted.add(dep.toPort)
-            continue
-          }
-          const outcome = parent?.result?.outcome as { outputs?: Record<string, unknown> } | undefined
-          if (parent?.state !== 'succeeded') {
-            bindingError ??= new NodeValueError('binding-unavailable')
-            continue
-          }
-          if (!outcome?.outputs || !Object.hasOwn(outcome.outputs, dep.fromPort)) {
-            bindingError ??= new NodeValueError(node.kind === 'condition' ? 'condition-input-invalid' : 'binding-missing')
-            continue
-          }
-          const value = outcome.outputs[dep.fromPort]
-          if (!matchesWireType(value, graph.nodeById.get(dep.fromNode)?.outputs?.[dep.fromPort]) || !matchesWireType(value, node.inputs?.[dep.toPort])) {
-            bindingError ??= new NodeValueError(node.kind === 'condition' ? 'condition-input-invalid' : 'binding-invalid')
-          }
-          Object.defineProperty(bound, dep.toPort, { value, enumerable: true, writable: true, configurable: true })
+    } finally {
+      // This also covers an unexpected store/read failure: no background Agent
+      // may escape the owner job before scheduleRun writes its failure receipt.
+      abortAll()
+      await Promise.allSettled(active.values())
+      if (handle.controllers.get(runId) === controllers) handle.controllers.delete(runId)
+    }
+  }
+
+  private async executeRunNode(
+    handle: RuntimeHandle,
+    runId: string,
+    definition: ReturnType<typeof decodeDefinition>,
+    record: RunRecord,
+    nodeId: string,
+    controller: AbortController,
+    sourceParent?: NativeSourceParent
+  ): Promise<NodeSettlement | undefined> {
+    const graph = compileGraph(definition)
+    const node = graph.nodeById.get(nodeId)!
+    let intent: Awaited<ReturnType<RunStore['recordIntent']>> | undefined
+    let diagnostics: Extract<AttemptDiagnostics, { status: 'available' }> | undefined
+    const settledDiagnostics = (code: string) => (diagnostics === undefined ? {} : { diagnostics: { ...diagnostics, acceptance: { code } } })
+    try {
+      const initial: unknown = JSON.parse(record.inputRef)
+      const bound: Record<string, unknown> = {}
+      const omitted = new Set<string>()
+      let bindingError: NodeValueError | undefined
+      for (const dep of graph.dataDeps.get(nodeId) ?? []) {
+        const parent = record.attempts.findLast(a => a.nodeId === dep.fromNode)
+        if (node.kind === 'join' && parent?.state === 'skipped') {
+          omitted.add(dep.toPort)
+          continue
         }
-        // Multiple edges may target a port. A skipped sibling cannot erase an
-        // actually selected binding at that same declared port.
-        for (const port of Object.keys(bound)) omitted.delete(port)
-        const input = (graph.dataDeps.get(nodeId)?.length ?? 0) > 0 ? bound : initial
-        const inputJson = JSON.stringify(input)
-        const prepared =
-          node.kind === 'agentTask' && bindingError === undefined
-            ? node.teamStage === undefined
-              ? await handle.snapshots.prepare(runId, definition, node)
-              : await handle.snapshots.prepareTeam(runId, definition, node)
-            : undefined
-        if (this.closing || controller.signal.aborted) {
+        const outcome = parent?.result?.outcome as { outputs?: Record<string, unknown> } | undefined
+        if (parent?.state !== 'succeeded') {
+          bindingError ??= new NodeValueError('binding-unavailable')
+          continue
+        }
+        if (!outcome?.outputs || !Object.hasOwn(outcome.outputs, dep.fromPort)) {
+          bindingError ??= new NodeValueError(node.kind === 'condition' ? 'condition-input-invalid' : 'binding-missing')
+          continue
+        }
+        const value = outcome.outputs[dep.fromPort]
+        if (!matchesWireType(value, graph.nodeById.get(dep.fromNode)?.outputs?.[dep.fromPort]) || !matchesWireType(value, node.inputs?.[dep.toPort])) {
+          bindingError ??= new NodeValueError(node.kind === 'condition' ? 'condition-input-invalid' : 'binding-invalid')
+        }
+        Object.defineProperty(bound, dep.toPort, { value, enumerable: true, writable: true, configurable: true })
+      }
+      // Multiple edges may target a port. A skipped sibling cannot erase an
+      // actually selected binding at that same declared port.
+      for (const port of Object.keys(bound)) omitted.delete(port)
+      const input = (graph.dataDeps.get(nodeId)?.length ?? 0) > 0 ? bound : initial
+      const inputJson = JSON.stringify(input)
+      const prepared =
+        node.kind === 'agentTask' && bindingError === undefined
+          ? node.teamStage === undefined
+            ? await handle.snapshots.prepare(runId, definition, node)
+            : await handle.snapshots.prepareTeam(runId, definition, node)
+          : undefined
+      if (this.closing || controller.signal.aborted) {
+        if (this.closing) {
           const requested = await handle.store.requestCancel(runId)
           if (requested.teamStage !== undefined) await this.cancelTeamRun(handle, requested)
-          return
         }
-        const effectiveToolNames = prepared ? resolveEffectiveToolNames(this.ctx, definition, node, this.config.toolBindings) : []
-        // Capture once before durable intent; the explicit property below tells
-        // the executor not to read a later Host default, even when undefined.
-        const modelSelection =
-          prepared && node.teamStage === undefined
-            ? node.modelSelection === undefined
-              ? captureAgentModelSelection(this.ctx)
-              : {
-                  provider: node.modelSelection.provider,
-                  model: node.modelSelection.model,
-                  ...(node.modelSelection.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(node.modelSelection.reasoningEffort) })
-                }
-            : undefined
-        if (bindingError === undefined) {
-          diagnostics = {
-            status: 'available',
-            input: {
-              type: input === null ? 'null' : Array.isArray(input) ? 'array' : (typeof input as 'object' | 'string' | 'number' | 'boolean'),
-              bytes: Buffer.byteLength(inputJson),
-              sha256: createHash('sha256').update(inputJson).digest('hex')
-            },
-            resourceDigests: prepared?.resourceDigests ?? {},
-            ...(modelSelection === undefined ? {} : { modelSelection }),
-            tools: { effectiveNames: effectiveToolNames },
-            acceptance: { code: 'pending' }
-          }
+        return
+      }
+      const effectiveToolNames = prepared ? resolveEffectiveToolNames(this.ctx, definition, node, this.config.toolBindings) : []
+      // Capture once before durable intent; the explicit property below tells
+      // the executor not to read a later Host default, even when undefined.
+      const modelSelection =
+        prepared && node.teamStage === undefined
+          ? node.modelSelection === undefined
+            ? captureAgentModelSelection(this.ctx)
+            : {
+                provider: node.modelSelection.provider,
+                model: node.modelSelection.model,
+                ...(node.modelSelection.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(node.modelSelection.reasoningEffort) })
+              }
+          : undefined
+      if (bindingError === undefined) {
+        diagnostics = {
+          status: 'available',
+          input: {
+            type: input === null ? 'null' : Array.isArray(input) ? 'array' : (typeof input as 'object' | 'string' | 'number' | 'boolean'),
+            bytes: Buffer.byteLength(inputJson),
+            sha256: createHash('sha256').update(inputJson).digest('hex')
+          },
+          resourceDigests: prepared?.resourceDigests ?? {},
+          ...(modelSelection === undefined ? {} : { modelSelection }),
+          tools: { effectiveNames: effectiveToolNames },
+          acceptance: { code: 'pending' }
         }
-        // A rejected incomplete binding has no dispatch input/model/tool facts
-        // to invent. Still commit the Attempt before its typed rejection result.
-        const executionSessionId = node.kind === 'agentTask' && node.teamStage === undefined ? `bp-${randomUUID()}` : undefined
-        intent = await handle.store.recordIntent(runId, {
-          nodeId,
-          kind: node.kind,
-          ...(executionSessionId === undefined ? {} : { sessionId: executionSessionId }),
-          resourceDigests: diagnostics?.resourceDigests ?? {},
-          diagnostics: diagnostics ?? { status: 'unavailable' }
+      }
+      // A rejected incomplete binding has no dispatch input/model/tool facts
+      // to invent. Still commit the Attempt before its typed rejection result.
+      const executionSessionId = node.kind === 'agentTask' && node.teamStage === undefined ? `bp-${randomUUID()}` : undefined
+      intent = await handle.store.recordIntent(runId, {
+        nodeId,
+        kind: node.kind,
+        ...(executionSessionId === undefined ? {} : { sessionId: executionSessionId }),
+        resourceDigests: diagnostics?.resourceDigests ?? {},
+        diagnostics: diagnostics ?? { status: 'unavailable' }
+      })
+      // cancel may have committed while the intent or preparation was in progress.
+      const beforeDispatch = await handle.store.get(runId)
+      if (beforeDispatch.state === 'cancelling' || beforeDispatch.attempts.some(a => ['failed', 'timed_out', 'cancelled'].includes(a.state))) controller.abort()
+      if (controller.signal.aborted) {
+        await handle.store.recordResult(runId, intent.attemptId, {
+          ok: false,
+          outcome: { kind: 'cancelled' },
+          evidence: 'cancel-before-dispatch',
+          ...settledDiagnostics('cancelled')
         })
-        // cancel may have committed while the intent or preparation was in progress.
-        if ((await handle.store.get(runId)).state === 'cancelling') controller.abort()
-        if (controller.signal.aborted) {
+        return
+      }
+      if (bindingError !== undefined) throw bindingError
+      validateNodeInputs(node, input, omitted)
+      if (node.kind === 'condition') {
+        const config = node.condition!
+        const predicate = (input as Record<string, unknown>)[config.inputPort] as boolean
+        const branch = predicate ? config.trueBranch : config.falseBranch
+        const outputs = structuralOutputs(node, input, omitted)
+        await handle.store.recordResult(runId, intent.attemptId, {
+          ok: true,
+          outcome: { branch, outputs, value: predicate },
+          evidence: 'condition-boolean',
+          ...settledDiagnostics('not-required')
+        })
+        return
+      }
+      if (node.kind === 'humanDecision') {
+        await handle.store.transition(runId, draft => {
+          if (draft.state === 'cancelling') return
+          draft.state = 'waiting_input'
+          draft.attempts.find(a => a.attemptId === intent!.attemptId)!.state = 'waiting_input'
+        })
+        if ((await handle.store.get(runId)).state === 'cancelling') {
           await handle.store.recordResult(runId, intent.attemptId, {
             ok: false,
             outcome: { kind: 'cancelled' },
-            evidence: 'cancel-before-dispatch',
+            evidence: 'cancel-before-wait',
             ...settledDiagnostics('cancelled')
           })
-          continue
         }
-        if (bindingError !== undefined) throw bindingError
-        validateNodeInputs(node, input, omitted)
-        if (node.kind === 'condition') {
-          const config = node.condition!
-          const predicate = (input as Record<string, unknown>)[config.inputPort] as boolean
-          const branch = predicate ? config.trueBranch : config.falseBranch
-          const outputs = structuralOutputs(node, input, omitted)
-          await handle.store.recordResult(runId, intent.attemptId, {
-            ok: true,
-            outcome: { branch, outputs, value: predicate },
-            evidence: 'condition-boolean',
-            ...settledDiagnostics('not-required')
-          })
-          continue
-        }
-        if (node.kind === 'humanDecision') {
-          await handle.store.transition(runId, draft => {
-            if (draft.state === 'cancelling') return
-            draft.state = 'waiting_input'
-            draft.attempts.find(a => a.attemptId === intent!.attemptId)!.state = 'waiting_input'
-          })
-          if ((await handle.store.get(runId)).state === 'cancelling') {
-            await handle.store.recordResult(runId, intent.attemptId, {
-              ok: false,
-              outcome: { kind: 'cancelled' },
-              evidence: 'cancel-before-wait',
-              ...settledDiagnostics('cancelled')
-            })
-          }
-          return
-        }
-        if (node.kind === 'input' || node.kind === 'output' || (node.kind === 'join' && node.join !== 'any')) {
-          const outputs = structuralOutputs(node, input, omitted)
-          await handle.store.recordResult(runId, intent.attemptId, {
-            ok: true,
-            outcome: { outputs, value: input },
-            evidence: 'structural-node',
-            ...settledDiagnostics('not-required')
-          })
-          continue
-        }
-        if (prepared && diagnostics) {
-          const cwd = prepared.materialize(intent.attemptId)
-          if (node.teamStage !== undefined) {
-            const parent = sourceParent ?? (record.source === undefined ? undefined : captureNativeSourceParent(this.ctx, record.source.sessionId))
-            if (!parent) throw new TeamDriverError('teamstage-identity-unavailable')
-            assertNativeSourceParent(this.ctx, parent, record.source!.sessionId)
-            await new TeamStageDriver(this.ctx, handle.store, handle.root, this.config.teamProviders, this.teamObservations).execute({
-              record,
-              node,
-              attemptId: intent.attemptId,
-              source: parent.agent,
-              prepared: prepared as PreparedTeam,
-              effectiveToolNames,
-              input,
-              cwd,
-              signal: controller.signal,
-              mapOutputs: value => {
-                const outputs: Record<string, unknown> = {}
-                for (const [port, type] of Object.entries(node.outputs ?? {})) {
-                  if (type === 'string') outputs[port] = JSON.stringify(value)
-                  else if (type === 'json') outputs[port] = value
-                  else throw new NodeValueError('output-invalid')
-                  if (!matchesWireType(outputs[port], type)) throw new NodeValueError('output-invalid')
-                }
-                return outputs
-              }
-            })
-            continue
-          }
-          const registry = this.ctx.get('agents')
-          if (!registry) throw new AgentCompositionUnsupportedError('missing registry')
-          const executor = new BlueprintAgentExecutor(this.ctx, registry as never)
-          const evidence = await executor.execute({
-            runId,
+        return
+      }
+      if (node.kind === 'input' || node.kind === 'output' || (node.kind === 'join' && node.join !== 'any')) {
+        const outputs = structuralOutputs(node, input, omitted)
+        await handle.store.recordResult(runId, intent.attemptId, {
+          ok: true,
+          outcome: { outputs, value: input },
+          evidence: 'structural-node',
+          ...settledDiagnostics('not-required')
+        })
+        return
+      }
+      if (prepared && diagnostics) {
+        const cwd = prepared.materialize(intent.attemptId)
+        if (node.teamStage !== undefined) {
+          const parent = sourceParent ?? (record.source === undefined ? undefined : captureNativeSourceParent(this.ctx, record.source.sessionId))
+          if (!parent) throw new TeamDriverError('teamstage-identity-unavailable')
+          assertNativeSourceParent(this.ctx, parent, record.source!.sessionId)
+          await new TeamStageDriver(this.ctx, handle.store, handle.root, this.config.teamProviders, this.teamObservations).execute({
+            record,
+            node,
             attemptId: intent.attemptId,
-            nodeId,
-            sessionId: executionSessionId!,
-            agentMd: prepared.agentMd,
-            ...(prepared.agentPreset === undefined ? {} : { agentPreset: prepared.agentPreset }),
-            ...(prepared.agentComposition === undefined ? {} : { agentComposition: prepared.agentComposition }),
-            ...(prepared.hostAgentComposition === undefined ? {} : { hostAgentComposition: prepared.hostAgentComposition }),
-            skills: prepared.skills,
-            input: typeof input === 'string' ? input : inputJson,
+            source: parent.agent,
+            prepared: prepared as PreparedTeam,
+            effectiveToolNames,
+            input,
             cwd,
             signal: controller.signal,
-            ...(record.source === undefined ? {} : { source: record.source }),
-            ...(sourceParent === undefined ? {} : { sourceParent }),
-            effectiveToolNames,
-            modelSelection,
-            ...(prepared.outputSchema === undefined ? {} : { outputSchema: prepared.outputSchema })
-          })
-          if (evidence.outcome.kind === 'recovery_required') {
-            await handle.store.settleTerminal(runId, 'recovery_required', { reason: 'agent-effect-unknown', sessionId: evidence.sessionId })
-            return
-          }
-          // Schema-backed ports consume the authoritative tools/result capture,
-          // never JSON guessed from assistant prose or a provider's detail text.
-          let outcome = evidence.outcome
-          let acceptance = evidence.acceptance ?? { code: 'not-required' }
-          if (prepared.outputSchema !== undefined && outcome.ok && (acceptance.code !== 'accepted' || !Object.hasOwn(evidence, 'structuredOutput'))) {
-            const kind = acceptance.code === 'output-invalid' ? 'output-invalid' : 'structured-output-missing'
-            outcome = { ok: false, kind, detail: kind }
-            acceptance = { code: kind, ...(acceptance.issueCount === undefined ? {} : { issueCount: acceptance.issueCount }) }
-          }
-          diagnostics = { ...diagnostics, acceptance, tools: { effectiveNames: effectiveToolNames, denials: evidence.toolDenials ?? [] } }
-          const outputs: Record<string, unknown> = {}
-          if (outcome.ok) {
-            for (const [port, type] of Object.entries(node.outputs ?? {})) {
-              if (type === 'string') outputs[port] = prepared.outputSchema === undefined ? outcome.detail : JSON.stringify(evidence.structuredOutput)
-              else if (type === 'json') {
-                if (prepared.outputSchema === undefined) {
-                  try {
-                    outputs[port] = JSON.parse(outcome.detail)
-                  } catch {
-                    throw new NodeValueError('output-invalid')
-                  }
-                } else outputs[port] = evidence.structuredOutput
-              } else throw new NodeValueError('output-invalid')
-              if (!matchesWireType(outputs[port], type)) throw new NodeValueError('output-invalid')
+            mapOutputs: value => {
+              const outputs: Record<string, unknown> = {}
+              for (const [port, type] of Object.entries(node.outputs ?? {})) {
+                if (type === 'string') outputs[port] = JSON.stringify(value)
+                else if (type === 'json') outputs[port] = value
+                else throw new NodeValueError('output-invalid')
+                if (!matchesWireType(outputs[port], type)) throw new NodeValueError('output-invalid')
+              }
+              return outputs
             }
-          }
-          await handle.store.recordResult(runId, intent.attemptId, {
-            ok: outcome.ok,
-            outcome: { ...outcome, outputs },
-            evidence: outcome.ok ? 'agent-succeeded' : `agent-${outcome.kind}`,
-            diagnostics
           })
-          continue
-        }
-        await handle.store.recordResult(runId, intent.attemptId, {
-          ok: false,
-          outcome: { kind: 'unsupported-node' },
-          evidence: 'node-executor-unavailable',
-          ...settledDiagnostics('node-executor-unavailable')
-        })
-      } catch (error) {
-        const current = await handle.store.get(runId)
-        if (TERMINAL_RUN_STATES.includes(current.state)) return
-        if (error instanceof DurabilityFailureError) throw error
-        if (node.teamStage !== undefined && intent !== undefined) {
-          if (current.state === 'cancelling' && current.teamStage?.cancel !== undefined && controller.signal.aborted) {
-            // The durable cutoff owns settlement. Join its existing native
-            // interrupt/drain/delete work; an aborted execution alone cannot
-            // distinguish a known cancellation from an unknown Team effect.
-            await this.cancelTeamRun(handle, current)
-            return
-          }
-          const verifiedRejection = error instanceof TeamArtifactError || error instanceof TeamAcceptanceRejectedError
-          const issue = error instanceof TeamDriverError || verifiedRejection ? error.issueCode : 'teamstage-effect-unknown'
-          const known = [
-            'teamstage-tool-not-permitted',
-            'teamstage-tool-rejected',
-            'teamstage-provider-failed',
-            'teamstage-output-invalid',
-            'teamstage-structured-output-missing',
-            'teamstage-task-not-completed'
-          ].includes(issue)
-          const unknown =
-            (!known && !verifiedRejection) ||
-            current.teamStage?.effects?.some(effect => ['pending', 'recovery_required'].includes(effect.state)) ||
-            current.state === 'cancelling' ||
-            controller.signal.aborted
-          if (current.teamStage !== undefined && current.teamStage.state !== 'recovery_required') {
-            await handle.store.updateTeamStage(runId, { state: unknown ? 'recovery_required' : 'failed', ...(unknown ? { recovery: { code: issue } } : {}) })
-          }
-          if (unknown) {
-            await handle.store.settleTerminal(runId, 'recovery_required', { reason: issue })
-            return
-          }
-          await handle.store.recordResult(runId, intent.attemptId, { ok: false, outcome: { kind: issue }, evidence: issue, ...settledDiagnostics(issue) })
-          continue
-        }
-        const kind = error instanceof NodeValueError ? error.code : 'failed'
-        if (intent)
-          await handle.store.recordResult(runId, intent.attemptId, {
-            ok: false,
-            outcome: { kind, detail: error instanceof NodeValueError ? kind : 'node resources, binding or output rejected' },
-            evidence: 'node-failed',
-            ...settledDiagnostics(kind)
-          })
-        else {
-          await handle.store.settleTerminal(runId, 'failed', { reason: 'prepare-failed' })
           return
         }
-      } finally {
-        if (handle.controllers.get(runId) === controller) handle.controllers.delete(runId)
+        const registry = this.ctx.get('agents')
+        if (!registry) throw new AgentCompositionUnsupportedError('missing registry')
+        const executor = new BlueprintAgentExecutor(this.ctx, registry as never)
+        const evidence = await executor.execute({
+          runId,
+          attemptId: intent.attemptId,
+          nodeId,
+          sessionId: executionSessionId!,
+          agentMd: prepared.agentMd,
+          ...(prepared.agentPreset === undefined ? {} : { agentPreset: prepared.agentPreset }),
+          ...(prepared.agentComposition === undefined ? {} : { agentComposition: prepared.agentComposition }),
+          ...(prepared.hostAgentComposition === undefined ? {} : { hostAgentComposition: prepared.hostAgentComposition }),
+          skills: prepared.skills,
+          input: typeof input === 'string' ? input : inputJson,
+          cwd,
+          signal: controller.signal,
+          ...(record.source === undefined ? {} : { source: record.source }),
+          ...(sourceParent === undefined ? {} : { sourceParent }),
+          effectiveToolNames,
+          modelSelection,
+          ...(prepared.outputSchema === undefined ? {} : { outputSchema: prepared.outputSchema })
+        })
+        if (evidence.outcome.kind === 'recovery_required') {
+          return { terminal: 'recovery_required', detail: { reason: 'agent-effect-unknown', sessionId: evidence.sessionId } }
+        }
+        // Schema-backed ports consume the authoritative tools/result capture,
+        // never JSON guessed from assistant prose or a provider's detail text.
+        let outcome = evidence.outcome
+        let acceptance = evidence.acceptance ?? { code: 'not-required' }
+        if (prepared.outputSchema !== undefined && outcome.ok && (acceptance.code !== 'accepted' || !Object.hasOwn(evidence, 'structuredOutput'))) {
+          const kind = acceptance.code === 'output-invalid' ? 'output-invalid' : 'structured-output-missing'
+          outcome = { ok: false, kind, detail: kind }
+          acceptance = { code: kind, ...(acceptance.issueCount === undefined ? {} : { issueCount: acceptance.issueCount }) }
+        }
+        diagnostics = { ...diagnostics, acceptance, tools: { effectiveNames: effectiveToolNames, denials: evidence.toolDenials ?? [] } }
+        const outputs: Record<string, unknown> = {}
+        if (outcome.ok) {
+          for (const [port, type] of Object.entries(node.outputs ?? {})) {
+            if (type === 'string') outputs[port] = prepared.outputSchema === undefined ? outcome.detail : JSON.stringify(evidence.structuredOutput)
+            else if (type === 'json') {
+              if (prepared.outputSchema === undefined) {
+                try {
+                  outputs[port] = JSON.parse(outcome.detail)
+                } catch {
+                  throw new NodeValueError('output-invalid')
+                }
+              } else outputs[port] = evidence.structuredOutput
+            } else throw new NodeValueError('output-invalid')
+            if (!matchesWireType(outputs[port], type)) throw new NodeValueError('output-invalid')
+          }
+        }
+        await handle.store.recordResult(runId, intent.attemptId, {
+          ok: outcome.ok,
+          outcome: { ...outcome, outputs },
+          evidence: outcome.ok ? 'agent-succeeded' : `agent-${outcome.kind}`,
+          diagnostics
+        })
+        return
+      }
+      await handle.store.recordResult(runId, intent.attemptId, {
+        ok: false,
+        outcome: { kind: 'unsupported-node' },
+        evidence: 'node-executor-unavailable',
+        ...settledDiagnostics('node-executor-unavailable')
+      })
+    } catch (error) {
+      const current = await handle.store.get(runId)
+      if (TERMINAL_RUN_STATES.includes(current.state)) return
+      if (error instanceof DurabilityFailureError) throw error
+      if (node.teamStage !== undefined && intent !== undefined) {
+        if (current.state === 'cancelling' && current.teamStage?.cancel !== undefined && controller.signal.aborted) {
+          // The durable cutoff owns settlement. Join its existing native
+          // interrupt/drain/delete work; an aborted execution alone cannot
+          // distinguish a known cancellation from an unknown Team effect.
+          await this.cancelTeamRun(handle, current)
+          return
+        }
+        const verifiedRejection = error instanceof TeamArtifactError || error instanceof TeamAcceptanceRejectedError
+        const issue = error instanceof TeamDriverError || verifiedRejection ? error.issueCode : 'teamstage-effect-unknown'
+        const known = [
+          'teamstage-tool-not-permitted',
+          'teamstage-tool-rejected',
+          'teamstage-provider-failed',
+          'teamstage-output-invalid',
+          'teamstage-structured-output-missing',
+          'teamstage-task-not-completed'
+        ].includes(issue)
+        const unknown =
+          (!known && !verifiedRejection) ||
+          current.teamStage?.effects?.some(effect => ['pending', 'recovery_required'].includes(effect.state)) ||
+          current.state === 'cancelling' ||
+          controller.signal.aborted
+        if (current.teamStage !== undefined && current.teamStage.state !== 'recovery_required') {
+          await handle.store.updateTeamStage(runId, { state: unknown ? 'recovery_required' : 'failed', ...(unknown ? { recovery: { code: issue } } : {}) })
+        }
+        if (unknown) {
+          return { terminal: 'recovery_required', detail: { reason: issue } }
+        }
+        await handle.store.recordResult(runId, intent.attemptId, { ok: false, outcome: { kind: issue }, evidence: issue, ...settledDiagnostics(issue) })
+        return
+      }
+      const kind = error instanceof NodeValueError ? error.code : 'failed'
+      if (intent)
+        await handle.store.recordResult(runId, intent.attemptId, {
+          ok: false,
+          outcome: { kind, detail: error instanceof NodeValueError ? kind : 'node resources, binding or output rejected' },
+          evidence: 'node-failed',
+          ...settledDiagnostics(kind)
+        })
+      else {
+        // Cancellation can win while resource preparation has no intent.
+        // It must not create a new Attempt or replace the durable cutoff.
+        if (current.state === 'cancelling' || current.attempts.some(a => ['failed', 'timed_out', 'cancelled'].includes(a.state))) return
+        return { terminal: 'failed', detail: { reason: 'prepare-failed' } }
       }
     }
   }
@@ -1852,7 +1945,7 @@ export class BlueprintService extends TypertRemoteService {
       throw new RemoteError('blueprint/run-not-found', `run ${args.runId} not found`, { runId: args.runId })
     }
     const afterRequest = await handle.store.requestCancel(args.runId)
-    handle.controllers.get(args.runId)?.abort()
+    for (const controller of handle.controllers.get(args.runId)?.values() ?? []) controller.abort()
     const after = afterRequest.teamStage === undefined ? afterRequest : await this.cancelTeamRun(handle, afterRequest)
     if (after.teamStage === undefined && after.state === 'cancelling' && !handle.controllers.has(args.runId)) this.scheduleRun(handle, args.runId)
     return { runId: after.runId, state: after.state }

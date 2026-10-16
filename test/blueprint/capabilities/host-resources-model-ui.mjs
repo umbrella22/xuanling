@@ -1,3 +1,4 @@
+import { selectStyledOption } from './styled-control-entry.mjs'
 /** Real isolated DSH registry, RPC, Edge UI and MCP acceptance; no remote model calls. */
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, realpathSync, existsSync } from 'node:fs'
@@ -72,18 +73,20 @@ export function apply(ctx){ctx.effect(()=>ctx.agentPresets.register({id:'host-re
   const preview = page.getByRole('dialog', { name: /^(?:预览版说明|Preview Notice)$/ })
   await preview.waitFor({ state: 'visible' }); await preview.getByRole('button', { name: /^(?:继续|Continue)$/ }).click()
   await page.getByRole('button', { name: /XuanLing Blueprint|玄灵蓝图/ }).click()
-  await page.locator('[data-bp-select="blueprint"]').selectOption(blueprintId)
+  await selectStyledOption(page, page.locator('[data-bp-select="blueprint"]'), blueprintId)
   await page.locator('.react-flow__node-blueprint').click()
   const presetSelect = page.locator('[data-bp-field="agentRef"]')
-  const options = await presetSelect.locator('option').evaluateAll(rows => rows.map(row => ({ value: row.value, text: row.textContent })))
+  await presetSelect.click()
+  const options = await page.locator('.bp-select-list [role=option]').evaluateAll(rows => rows.map(row => ({ value: row.getAttribute('data-bp-option-value'), text: row.textContent?.replace(/✓$/, '') })))
+  await presetSelect.press('Escape')
   const hostOption = options.find(row => row.text?.includes('Host Review / QA'))
   check('Inspector renders DSH choices before local blueprint resource', hostOption && options.indexOf(hostOption) < options.findIndex(row => row.value === 'local'))
-  await presetSelect.selectOption(hostOption.value)
+  await selectStyledOption(page, presetSelect, hostOption.value)
   for (const [field, text] of [['skillRefs', 'host-review-skill'], ['toolsetRefs', toolId]]) {
     const label = page.locator('.bp-resource-bindings label').filter({ hasText: text })
     await label.locator(`input[data-bp-field="${field}"]`).check()
   }
-  await page.locator('[data-bp-field="model-mode"]').selectOption('explicit')
+  await selectStyledOption(page, page.locator('[data-bp-field="model-mode"]'), 'explicit')
   for (const [field, value] of [['provider', 'unconfigured-provider'], ['model', 'fixture-model'], ['reasoningEffort', 'high']]) await page.locator(`[data-bp-field="modelSelection.${field}"]`).fill(value)
   await page.locator('[data-bp-action="apply-model-route"]').click()
   await page.locator('[data-bp-action="save-layout"]').click()
@@ -95,13 +98,14 @@ export function apply(ctx){ctx.effect(()=>ctx.agentPresets.register({id:'host-re
   check('node summary uses Host display names and hides generated reference keys', nodeSummary === `Host Review / QA · host-review-skill · ${toolId}` && hostRefs.every(id => !nodeSummary.includes(id)))
   for (const id of hostRefs) {
     const label = catalog.find(row => row.kind === saved.resources[id].kind && row.id === saved.resources[id].source.id).displayName
-    const summary = await page.locator(`[data-bp-resource="${id}"] > summary`).innerText()
-    check(`resource summary displays Host label for ${saved.resources[id].kind}`, summary.startsWith(`${label} · `) && !summary.includes(id))
+    const ref = saved.resources[id]
+    const title = await page.locator(`[data-bp-resource-row="dsh:${ref.kind}:${ref.source.id}"] [data-bp-resource-title]`).innerText()
+    check(`resource title displays Host label for ${ref.kind}`, title.startsWith(`${label} - `) && !title.includes(id))
   }
   await page.screenshot({ path: join(reportDir, 'host-model-desktop.png'), fullPage: true })
   await page.reload({ waitUntil: 'domcontentloaded' })
   await page.getByRole('button', { name: /XuanLing Blueprint|玄灵蓝图/ }).click()
-  await page.locator('[data-bp-select="blueprint"]').selectOption(blueprintId)
+  await selectStyledOption(page, page.locator('[data-bp-select="blueprint"]'), blueprintId)
   await page.locator('.react-flow__node-blueprint').click()
   check('native reload restores provider, model and reasoning route', await page.locator('[data-bp-field="modelSelection.model"]').inputValue() === 'fixture-model' && await page.locator('[data-bp-field="modelSelection.reasoningEffort"]').inputValue() === 'high')
   await page.setViewportSize({ width: 800, height: 900 })

@@ -9,11 +9,13 @@
 
 import { attemptDiagnosticsCodec } from '../host/runtime-diagnostics.ts'
 import type { AttemptDiagnostics } from '../host/runtime-diagnostics.ts'
+import type { RunSource, TeamStageProjection } from '../conversation/contracts.ts'
 export type { AttemptDiagnostics } from '../host/runtime-diagnostics.ts'
 
 export interface RunAttemptView {
   nodeId: string
   attemptId?: string
+  sessionId?: string
   state: string
   attempt: number
   evidence?: string
@@ -28,6 +30,8 @@ export interface RunSnapshotView {
   state: string
   seq: number
   definitionRevision: string
+  source?: RunSource | undefined
+  team?: TeamStageProjection | undefined
   attempts: RunAttemptView[]
   logTail: Array<{ seq: number; kind: string }>
 }

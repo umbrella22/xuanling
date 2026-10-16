@@ -126,7 +126,7 @@ test('C-01 locale/framework imports erase fully from the browser bootstrap runti
   const manifest = JSON.parse(readFileSync(resolve(packageRoot, 'package.json'), 'utf8'))
   const lock = readPnpmLock(packageRoot)
   for (const name of ['@deepseek-ai/dsh-client-locale', '@deepseek-ai/dsh-client-ui-slots']) {
-    assert.equal(manifest.devDependencies[name], '0.2.1-alpha.3')
+    assert.equal(manifest.devDependencies[name], '0.2.1-alpha.4')
     assert.equal(manifest.dependencies?.[name], undefined, 'FRAMEWORK_TYPES_STAY_DEV_ONLY')
     assert.equal(hasPnpmImporterDependency(lock, 'devDependencies', name, manifest.devDependencies[name]), true)
   }

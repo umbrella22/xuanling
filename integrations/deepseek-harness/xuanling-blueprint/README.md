@@ -22,6 +22,15 @@ a new custom profile does not automatically include the Web application.
 Use the latest official DSH channel that provides the required capabilities.
 TeamStage additionally needs the native Agent Teams profile enabled explicitly.
 
+Independent ready nodes in one Run execute concurrently. Plugin configuration
+`maxConcurrentNodes` sets the maximum nodes in flight (default `4`; a positive
+safe integer). Set it to `1` for serial execution. A completed node frees its
+slot immediately, so a fast branch can advance while another branch is still
+running. Runs sharing one runtime remain queued in order. Human approvals and
+TeamStage nodes take exclusive Run ownership before entering their Run-wide
+waiting or native Team state. A node failure stops new dispatch and interrupts
+and drains live siblings; an unknown effect remains `recovery_required`.
+
 ## Two Places to Work
 
 | Entry | Purpose |
@@ -34,6 +43,17 @@ This is a normal empty view. Start a blueprint explicitly from that conversation
 to create a Run association; a sidebar Run does not automatically link the chat.
 Read failures and offline connections have their own loading/error states.
 The interface follows DSH's language and light/dark theme settings.
+
+In a conversation's Blueprint view, clicking an Agent node with one Attempt
+opens its native chat while it is running or after it finishes. For multiple
+Attempts, choose **View chat history** on the intended record. Sidebar Run
+details and Team members also provide chat actions. Legacy records without a
+verifiable session show that the chat is unavailable.
+
+Automatic retries within one call follow that Attempt's final result. Once a
+node has failed, its record stays failed even if the main chat continues the
+task. The failure explanation offers **Return to main chat** to view that
+later work. Sidebar Runs without a source chat do not show this action.
 
 ## Your First Workflow
 

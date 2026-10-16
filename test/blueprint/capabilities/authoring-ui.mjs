@@ -1,3 +1,4 @@
+import { selectStyledOption, styledSelectValue } from './styled-control-entry.mjs'
 /** Isolated installed DSH UI acceptance. No ambient provider or user data. */
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, realpathSync } from 'node:fs'
@@ -38,6 +39,7 @@ const check = (name, value) => {
   console.log(name)
 }
 const digest = path => createHash('sha256').update(readFileSync(path)).digest('hex')
+const resourceDescription = '用于代码审查的工具集，支持依赖检查、变更追踪和证据整理；完整简介应通过悬停提示展示，卡片内仅显示单行，过长内容使用省略号隐藏。 '.repeat(3).trim()
 const definition = id => ({
   schemaVersion: 1,
   id,
@@ -50,7 +52,10 @@ const definition = id => ({
     ],
     edges: [{ kind: 'data', from: 'input.result', to: 'output.result' }]
   },
-  presentation: { nodes: { input: { x: 30, y: 70 }, output: { x: 350, y: 70 } } }
+  presentation: {
+    nodes: { input: { x: 30, y: 70 }, output: { x: 350, y: 70 } },
+    resources: { tools: { title: '审查工具', description: resourceDescription } }
+  }
 })
 const apiFor = async authUrl => {
   const url = new URL(authUrl)
@@ -130,7 +135,131 @@ try {
   }
   await open(authUrl)
   const select = page.locator('[data-bp-select="blueprint"]')
-  await select.selectOption(a.blueprintId)
+  await selectStyledOption(page, select, a.blueprintId)
+  // Raw option clicks are essential here: automatic confirmation would hide regressions.
+  const requestNavigation = async id => {
+    await select.click()
+    const listId = await select.getAttribute('aria-controls')
+    await page.locator(`[id=${JSON.stringify(listId)}] [role="option"][data-bp-option-value=${JSON.stringify(id)}]`).click()
+  }
+  const waitNavigation = id => page.waitForFunction(expected => document.querySelector('[data-bp-canvas="root"]')?.getAttribute('data-bp-blueprint') === expected, id)
+  const nameInput = () => page.getByRole('textbox', { name: /^(?:Blueprint name|蓝图名称)$/, exact: true })
+  await nameInput().fill('Unsaved semantic navigation probe')
+  await requestNavigation(b.blueprintId)
+  await page.locator('[data-bp-confirm-dialog]').waitFor({ state: 'visible' })
+  await page.locator('[data-bp-confirm-cancel]').click()
+  check('semantic edit navigation Cancel retains the current document and exact title', await styledSelectValue(select) === a.blueprintId && await nameInput().inputValue() === 'Unsaved semantic navigation probe')
+  await page.locator('[data-bp-action="undo"]').click()
+  await requestNavigation(b.blueprintId)
+  check('undo to semantic baseline navigates without confirmation', await page.locator('[data-bp-confirm-dialog]').count() === 0)
+  await waitNavigation(b.blueprintId)
+  await requestNavigation(a.blueprintId)
+  check('saved unchanged document navigates without confirmation', await page.locator('[data-bp-confirm-dialog]').count() === 0)
+  await waitNavigation(a.blueprintId)
+  const nodeBounds = await page.locator('.react-flow__node-blueprint').first().boundingBox()
+  await page.mouse.move(nodeBounds.x + 60, nodeBounds.y + 18)
+  await page.mouse.down()
+  await page.mouse.move(nodeBounds.x + 110, nodeBounds.y + 65, { steps: 8 })
+  await page.mouse.up()
+  await page.locator('[data-bp-dirty="true"]').waitFor()
+  await requestNavigation(b.blueprintId)
+  check('presentation-only canvas movement leaves Save dirty but does not prompt navigation', await page.locator('[data-bp-confirm-dialog]').count() === 0)
+  await waitNavigation(b.blueprintId)
+  await requestNavigation(a.blueprintId)
+  await waitNavigation(a.blueprintId)
+  check('recovered layout draft remains dirty without a discard dialog', await page.locator('[data-bp-dirty]').getAttribute('data-bp-dirty') === 'true' && await page.locator('[data-bp-confirm-dialog]').count() === 0)
+  await page.locator('[data-bp-action="new-blueprint"]').click()
+  check('new editing ignores layout-only dirtiness', await page.locator('[data-bp-confirm-dialog]').count() === 0)
+  await nameInput().fill('Empty renamed navigation probe')
+  await requestNavigation(a.blueprintId)
+  check('empty renamed draft switches directly without confirmation', await page.locator('[data-bp-confirm-dialog]').count() === 0)
+  await waitNavigation(a.blueprintId)
+  await page.setViewportSize({ width: 2239, height: 1514 })
+  const categorySnapshot = async () => ({
+    dirty: await page.locator('[data-bp-dirty]').getAttribute('data-bp-dirty'),
+    undo: await page.locator('[data-bp-action="undo"]').isDisabled(),
+    drafts: await page.evaluate(() => JSON.stringify(Object.entries(localStorage).filter(([key]) => key.startsWith('xuanling-blueprint:')).sort()))
+  })
+  const categoryBefore = await categorySnapshot()
+  for (const category of ['agent', 'skill', 'mcp', 'other']) {
+    const toggle = page.locator(`[data-bp-resource-toggle="${category}"]`)
+    check(`${category} resource category is expanded by default`, await toggle.getAttribute('aria-expanded') === 'true')
+    const title = await toggle.innerText(), target = await toggle.getAttribute('aria-controls')
+    await toggle.click()
+    check(`${category} category collapses independently and keeps its count`, await toggle.getAttribute('aria-expanded') === 'false' && await toggle.innerText() === title && !(await page.locator(`[id="${target}"]`).isVisible()))
+    for (const other of ['agent', 'skill', 'mcp', 'other'].filter(value => value !== category)) assert.equal(await page.locator(`[data-bp-resource-toggle="${other}"]`).getAttribute('aria-expanded'), 'true')
+    await toggle.press('Enter')
+    await toggle.press('Space')
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'false')
+    await toggle.press('Enter')
+  }
+  check('resource category pointer/keyboard toggles preserve dirty, draft bytes and history', JSON.stringify(await categorySnapshot()) === JSON.stringify(categoryBefore))
+  const resourceRow = page.locator('[data-bp-resource-row="blueprint:tools"]')
+  await resourceRow.waitFor({ state: 'visible' })
+  const resourceLayout = await resourceRow.evaluate(row => {
+    const title = row.querySelector('[data-bp-resource-title]')
+    const description = row.querySelector('[data-bp-resource-description]')
+    const heading = document.querySelector('.bp-resource-heading h2')
+    const plus = document.querySelector('[data-bp-action="add-resource"]')
+    const titleRect = title.getBoundingClientRect(), descriptionRect = description.getBoundingClientRect()
+    const headingRect = heading.getBoundingClientRect(), plusRect = plus.getBoundingClientRect()
+    const style = getComputedStyle(description)
+    const rows = [...document.querySelectorAll('[data-bp-resource-row]')]
+    return {
+      title: title.textContent,
+      belowTitle: descriptionRect.top >= titleRect.bottom,
+      ellipsis: style.textOverflow === 'ellipsis' && style.whiteSpace === 'nowrap' && description.scrollWidth > description.clientWidth,
+      sameHeadingRow: Math.abs(headingRect.top + headingRect.height / 2 - plusRect.top - plusRect.height / 2) < 2,
+      plusOnly: plus.textContent === '+' && getComputedStyle(plus).borderTopWidth === '0px',
+      legacyCount: document.querySelectorAll('[data-bp-section="resources"] details,[data-bp-resource]').length,
+      uniqueCards: new Set(rows.map(element => element.dataset.bpResourceRow)).size === rows.length,
+      mcpCategory: row.closest('[data-bp-resource-category]')?.dataset.bpResourceCategory
+    }
+  })
+  receipt.resourceLayout = resourceLayout
+  check('resource title is name - source with single-line description underneath', ['审查工具 - Blueprint', '审查工具 - 蓝图资源'].includes(resourceLayout.title) && resourceLayout.belowTitle && resourceLayout.ellipsis)
+  check('resource + is borderless and aligned with its heading', resourceLayout.sameHeadingRow && resourceLayout.plusOnly)
+  check('historical resources have one category card with no legacy list or Add resource form', resourceLayout.legacyCount === 0 && resourceLayout.uniqueCards && resourceLayout.mcpCategory === 'mcp')
+  await resourceRow.hover()
+  const resourceTooltip = page.locator('[data-bp-tooltip="resource-blueprint:tools"]')
+  await resourceTooltip.waitFor({ state: 'visible' })
+  check('resource hover tooltip contains the complete untruncated description', (await resourceTooltip.innerText()) === resourceDescription)
+  await page.screenshot({ path: join(reportDir, 'resource-cards-tooltip-2239.png'), fullPage: true })
+  await resourceRow.focus()
+  check('resource keyboard focus also reveals full description', (await resourceTooltip.innerText()) === resourceDescription)
+  await page.keyboard.press('Escape')
+  await resourceTooltip.waitFor({ state: 'detached' })
+  const canvasBeforeDialog = await page.locator('[data-bp-canvas="surface"]').boundingBox()
+  await page.locator('[data-bp-action="add-resource"]').click()
+  const resourceDialog = page.locator('[data-bp-resource-dialog]')
+  const canvasDuringDialog = await page.locator('[data-bp-canvas="surface"]').boundingBox()
+  check('resource dialog overlays the workspace without changing canvas size', canvasDuringDialog.width === canvasBeforeDialog.width && canvasDuringDialog.height === canvasBeforeDialog.height)
+  await resourceDialog.getByRole('textbox', { name: /^(New resource ID|新资源 ID)$/, exact: true }).fill('cancelled-resource')
+  await page.locator('[data-bp-action="resource-cancel"]').focus()
+  await page.keyboard.press('Tab')
+  check('resource dialog Tab stays inside the modal', await resourceDialog.evaluate(element => element.contains(document.activeElement)))
+  const formGeometry = async () => resourceDialog.evaluate(element => {
+    const rect = element.getBoundingClientRect()
+    const fields = [...element.querySelectorAll('.bp-resource-fields>label')].map(field => { const box = field.getBoundingClientRect(); return { x: box.x, y: box.y, bottom: box.bottom, width: box.width } })
+    return { width: rect.width, fields, overflow: element.scrollWidth > element.clientWidth }
+  })
+  const wideForm = await formGeometry()
+  receipt.resourceForm = { wide: wideForm }
+  check('resource dialog uses 720px and pairs type/ID then name/description', wideForm.width >= 710 && wideForm.width <= 730 && wideForm.fields.length === 4 && Math.abs(wideForm.fields[0].y - wideForm.fields[1].y) < 1 && Math.abs(wideForm.fields[2].y - wideForm.fields[3].y) < 1 && wideForm.fields[1].x > wideForm.fields[0].x && !wideForm.overflow)
+  await page.screenshot({ path: join(reportDir, 'resource-dialog-2239.png'), fullPage: true })
+  await page.setViewportSize({ width: 390, height: 900 })
+  const narrowForm = await formGeometry()
+  receipt.resourceForm.narrow = narrowForm
+  check('narrow resource dialog stacks all four fields without horizontal overflow', narrowForm.width <= 358 && narrowForm.fields.every((field, index, fields) => index === 0 || field.y >= fields[index - 1].bottom) && !narrowForm.overflow)
+  check('narrow resource dialog retains CodeMirror', await resourceDialog.locator('.cm-editor').count() === 1)
+  await page.locator('[data-bp-action="resource-cancel"]').scrollIntoViewIfNeeded()
+  await page.screenshot({ path: join(reportDir, 'resource-dialog-narrow.png'), fullPage: true })
+  await page.setViewportSize({ width: 2239, height: 1514 })
+  await page.locator('[data-bp-action="resource-cancel"]').click()
+  check('resource dialog Cancel adds no card and restores + focus', (await page.locator('[data-bp-resource-row="blueprint:cancelled-resource"]').count()) === 0 && await page.locator('[data-bp-action="add-resource"]').evaluate(element => element === document.activeElement))
+  if (await page.locator('[data-bp-action="toggle-inspector"]').getAttribute('aria-expanded') === 'false')
+    await page.locator('[data-bp-action="toggle-inspector"]').click()
+  await page.setViewportSize({ width: 1600, height: 1000 })
   await page.locator('[data-bp-disclosure-toggle="run"]').click()
   const runInput = page.locator('[data-bp-run-input]')
   await runInput.waitFor({ state: 'visible' })
@@ -161,17 +290,14 @@ try {
   await cdp.send('Input.insertText', { text: '中文输入' })
   check('IME text retained', (await runInput.innerText()).includes('中文输入'))
   await runInput.fill('{}')
-  const resourceDetails = page.locator('[data-bp-resource="tools"]')
-  await resourceDetails.locator('summary').scrollIntoViewIfNeeded()
-  await resourceDetails.locator('summary').click()
-  const resource = page.locator('[data-bp-resource="tools"] .cm-content')
-  await resourceDetails.scrollIntoViewIfNeeded()
+  await page.locator('[data-bp-resource-row="blueprint:tools"]').click()
+  const resource = page.locator('[data-bp-resource-dialog] .cm-content')
   await resource.waitFor({ state: 'visible' })
   await resource.fill('{"kind":"mcp","bindingId":"edited"}')
-  await select.focus()
+  await page.locator('[data-bp-action="resource-apply"]').click()
   await page.locator('[data-bp-action="save-layout"]').click()
   check(
-    'resource editor blur applies exact value',
+    'resource dialog Apply preserves exact editor value',
     JSON.parse((await api('loadDefinition', { blueprintId: a.blueprintId })).definitionJson).resources.tools.bindingId === 'edited'
   )
   await page.locator('.react-flow__node-blueprint').first().click()
@@ -201,9 +327,9 @@ try {
   )
   await setNativeTheme(page, 'light', true)
   await page.screenshot({ path: join(reportDir, 'editor.png'), fullPage: true })
-  page.once('dialog', dialog => dialog.dismiss())
   await page.locator('[data-bp-action="delete-blueprint"]').click()
-  check('delete cancel preserves document', (await select.inputValue()) === a.blueprintId)
+  await page.locator('[data-bp-confirm-cancel]').click()
+  check('delete cancel preserves document', (await styledSelectValue(select)) === a.blueprintId)
   const current = await api('loadDefinition', { blueprintId: a.blueprintId })
   const preflight = await api('preflightRun', {
     blueprintId: a.blueprintId,
@@ -217,24 +343,22 @@ try {
     inputJson: '{}',
     requestId: 'before-delete'
   })
-  page.once('dialog', dialog => dialog.accept())
   await page.locator('[data-bp-action="delete-blueprint"]').click()
-  await page.waitForFunction(id => ![...document.querySelectorAll('[data-bp-select="blueprint"] option')].some(o => o.value === id), a.blueprintId)
+  await page.locator('[data-bp-confirm-accept]').click()
+  await page.waitForFunction(id => document.querySelector('[data-bp-canvas="root"]')?.getAttribute('data-bp-blueprint') !== id, a.blueprintId)
   check('delete removes host catalog identity', !(await api('listDefinitions')).definitions.some(d => d.blueprintId === a.blueprintId))
   check('delete preserves run history', (await api('inspectRun', { runId: run.runId })).runId === run.runId)
-  await select.selectOption(b.blueprintId)
+  await selectStyledOption(page, select, b.blueprintId)
   await page.waitForFunction(id => document.querySelector('[data-bp-blueprint]')?.getAttribute('data-bp-blueprint') === id, b.blueprintId)
-  const addResourceDetails = page.locator('[data-bp-section="resources"] details').last()
-  await addResourceDetails.locator('summary').scrollIntoViewIfNeeded()
-  await addResourceDetails.locator('summary').click()
-  await addResourceDetails.scrollIntoViewIfNeeded()
+  await page.locator('[data-bp-action="add-resource"]').click()
   await page.getByRole('textbox', { name: 'New resource ID', exact: true }).fill('added')
+  await selectStyledOption(page, page.getByRole('combobox', { name: 'Resource type', exact: true }), 'mcp')
   const newResource = page.getByRole('textbox', { name: 'New resource JSON', exact: true })
   await newResource.fill('{"kind":"mcp","bindingId":"added"}')
-  await page.getByRole('button', { name: 'Add resource', exact: true }).click()
+  await page.locator('[data-bp-action="resource-apply"]').click()
   await page.locator('[data-bp-action="save-layout"]').click()
   check(
-    'new resource FormData uses editor value',
+    'new resource dialog Apply uses editor value',
     JSON.parse((await api('loadDefinition', { blueprintId: b.blueprintId })).definitionJson).resources.added.bindingId === 'added'
   )
   await page.screenshot({ path: join(reportDir, 'after-delete.png'), fullPage: true })
@@ -256,7 +380,7 @@ try {
   }
   // Each library switch changes the run editor's React key and destroys its view.
   const switchEditor = async id => {
-    await select.selectOption(id)
+    await selectStyledOption(page, select, id)
     await page.waitForFunction(expected => document.querySelector('[data-bp-blueprint]')?.getAttribute('data-bp-blueprint') === expected, id)
     const input = page.locator('[data-bp-run-input]')
     await input.waitFor({ state: 'attached' })

@@ -141,15 +141,26 @@ function projectionFixture(definition = canvasDefinitions().find(d => d.id === '
         else selectedTarget = port
         return handle?.getBoundingClientRect() ?? null
       },
-      count: async () => (selector === '[data-bp-action="add-agentTask"]' ? 0 : root.querySelectorAll(selector).length),
+      count: async () =>
+        selector === '[data-bp-confirm-dialog]' ? 0 : selector === '[data-bp-action="add-agentTask"]' ? 0 : root.querySelectorAll(selector).length,
       last: () => locator(selector, true),
-      getAttribute: async name => (last ? renderedNodes().at(-1) : renderedNodes()[0]).getAttribute(name),
+      getAttribute: async name =>
+        selector === '[data-bp-select="blueprint"]'
+          ? (assert.equal(name, 'aria-controls'), 'fixture-blueprints')
+          : selector.includes('data-bp-option-value')
+            ? (assert.equal(name, 'aria-disabled'), 'false')
+            : (last ? renderedNodes().at(-1) : renderedNodes()[0]).getAttribute(name),
       evaluate: async fn => evaluate(fn, undefined, root),
       press: async key => {
         assert.equal(key, 'Enter')
         await locator(selector, last).click()
       },
       click: async () => {
+        if (selector === '[data-bp-select="blueprint"]') return
+        if (selector.includes('data-bp-option-value')) {
+          assert.ok(selector.includes(definition.id))
+          return
+        }
         const kind = selector.match(/data-bp-action="add-(input|output)"/)?.[1]
         if (!kind) throw new Error(`unsupported projection action ${selector}`)
         added++

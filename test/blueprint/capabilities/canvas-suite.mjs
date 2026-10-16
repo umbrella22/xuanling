@@ -24,7 +24,7 @@ export function validatePerformanceEvidence(perf, environment) {
   if (!perf || !isDeepStrictEqual(perf.budget, PERFORMANCE_BUDGET)) throw new Error('performance budget missing or changed')
   if (!isDeepStrictEqual(perf.fixture, fixtureEvidence(performanceDefinition()))) throw new Error('performance fixture/generator/hash differs from 200/300/20 contract')
   if (typeof perf.provenance !== 'string' || !perf.provenance.startsWith('real DSH closure factory')) throw new Error('performance is not attributed to the actual DSH mounted canvas')
-  if (environment?.platform !== 'darwin/arm64' || !/^v\d+\./.test(environment.node ?? '') || !environment.browser_version || environment.dsh_version_output !== '0.2.1-alpha.1') throw new Error('performance machine/runtime/browser provenance missing or outside frozen environment')
+  if (environment?.platform !== 'darwin/arm64' || !/^v\d+\./.test(environment.node ?? '') || !environment.browser_version || environment.dsh_version_output !== '0.2.1-alpha.4') throw new Error('performance machine/runtime/browser provenance missing or outside frozen environment')
   const { loadMs, paintP95Ms } = perf.measured ?? {}
   if (!Number.isFinite(loadMs) || loadMs <= 0 || loadMs > PERFORMANCE_BUDGET.loadMs) throw new Error('mounted canvas load exceeds 2000ms or is not measured')
   if (!Array.isArray(perf.samples) || perf.samples.length !== PERFORMANCE_BUDGET.interactions

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { selectStyledOption } from './styled-control-entry.mjs'
 /** Independent W3 collector. Main alone launches after source freeze/build.
  * Motion transport fixtures prove rendering only, never provider/effects.
  */
@@ -336,7 +337,7 @@ async function idle(page) {
   await preparePublicAction(page, 'refresh-library'); await page.waitForFunction(() => !document.querySelector('[data-bp-action="refresh-library"]')?.disabled); await closePublicMore(page)
 }
 async function choose(page, id) {
-  await idle(page); await page.locator('[data-bp-select="blueprint"]').selectOption(id)
+  await idle(page); await selectStyledOption(page, page.locator('[data-bp-select="blueprint"]'), id)
   await page.waitForFunction(id => document.querySelector('[data-bp-canvas="root"]')?.getAttribute('data-bp-blueprint') === id && document.querySelectorAll('[data-bp-node]').length === 5, id)
   await idle(page)
 }

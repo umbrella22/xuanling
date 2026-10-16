@@ -15,6 +15,7 @@ import { BlueprintService } from '../../src/index.ts'
 import { TYPERT } from '../../src/typert.host.ts'
 import * as persist from '../../src/definition/persist.ts'
 import { decodeDefinition, validateDefinition } from '../../src/definition/index.ts'
+import { acquireLibraryWriter } from '../../src/definition/library-state.ts'
 
 const doc = (more = {}) => ({
   schemaVersion: 1,
@@ -57,7 +58,14 @@ async function fixture(t, { missing = false, empty = false, host } = {}) {
     await ctx.fiber.dispose()
     rmSync(root, { recursive: true, force: true })
   })
-  return { service, root, rootDir, runtimeRoot, config }
+  return { service, root, rootDir, runtimeRoot, config, fiber }
+}
+const deferred = () => {
+  let resolve
+  const promise = new Promise(done => {
+    resolve = done
+  })
+  return { promise, resolve }
 }
 const requireDocumentApi = service => {
   for (const method of ['listDefinitions', 'loadDefinition', 'saveDefinition'])
@@ -331,6 +339,126 @@ test('document CAS: concurrent layout writers have one winner and retain the com
   assert.deepEqual(await h.service.loadDefinition({ blueprintId: 'sample' }), winner)
   assert.deepEqual(JSON.parse(readFileSync(join(h.rootDir, 'blueprint.json'), 'utf8')), JSON.parse(winner.definitionJson))
   assert.equal(winner.semanticRevision, loaded.semanticRevision)
+})
+
+test('document queue: physical root aliases serialize facade saves and rejected actions do not poison later writes', async t => {
+  const h = await fixture(t)
+  const loaded = await h.service.loadDefinition({ blueprintId: 'sample' })
+  const alias = join(h.root, 'queue-alias')
+  symlinkSync(h.rootDir, alias)
+  const entered = deferred(),
+    release = deferred()
+  // Hold the real production queue across an async boundary; facade save must
+  // join it even after the same configured ID changes to a physical-root alias.
+  const held = h.service.withDocument(h.rootDir, async () => {
+    entered.resolve()
+    await release.promise
+  })
+  let saving
+  try {
+    await entered.promise
+    h.config.blueprints = { sample: alias }
+    const before = readFileSync(join(h.rootDir, 'blueprint.json'))
+    let settled = false
+    saving = h.service
+      .saveDefinition({
+        blueprintId: 'sample',
+        expectedRevision: loaded.documentRevision,
+        definitionJson: JSON.stringify(doc({ name: 'After alias queue' }))
+      })
+      .finally(() => {
+        settled = true
+      })
+    await new Promise(setImmediate)
+    assert.equal(settled, false, 'alias facade save waits for the physical-root queue')
+    assert.deepEqual(readFileSync(join(h.rootDir, 'blueprint.json')), before, 'queued save has no early file side effect')
+  } finally {
+    release.resolve()
+    await Promise.allSettled([held, saving])
+  }
+  const saved = await saving
+  assert.deepEqual(await h.service.loadDefinition({ blueprintId: 'sample' }), saved)
+  assert.equal(JSON.parse(saved.definitionJson).name, 'After alias queue')
+  assert.deepEqual(JSON.parse(readFileSync(join(h.rootDir, 'blueprint.json'), 'utf8')), JSON.parse(saved.definitionJson))
+  await assert.rejects(h.service.saveDefinition({ blueprintId: 'sample', expectedRevision: loaded.documentRevision, definitionJson: loaded.definitionJson }), {
+    code: 'blueprint/revision-conflict'
+  })
+
+  const failedEntered = deferred(),
+    failRelease = deferred()
+  const failure = new Error('isolated queue action rejected')
+  const rejected = h.service.withDocument(alias, async () => {
+    failedEntered.resolve()
+    await failRelease.promise
+    throw failure
+  })
+  const rejection = assert.rejects(rejected, error => error === failure)
+  let retry
+  try {
+    await failedEntered.promise
+    let settled = false
+    retry = h.service
+      .saveDefinition({
+        blueprintId: 'sample',
+        expectedRevision: saved.documentRevision,
+        definitionJson: JSON.stringify(doc({ name: 'After rejected queue action' }))
+      })
+      .finally(() => {
+        settled = true
+      })
+    await new Promise(setImmediate)
+    assert.equal(settled, false, 'later facade write joins the pending action before its rejection')
+  } finally {
+    failRelease.resolve()
+    await Promise.allSettled([rejection, retry])
+  }
+  await rejection
+  const recovered = await retry
+  assert.equal(JSON.parse(recovered.definitionJson).name, 'After rejected queue action')
+  assert.deepEqual(await h.service.loadDefinition({ blueprintId: 'sample' }), recovered)
+  assert.deepEqual(JSON.parse(readFileSync(join(h.rootDir, 'blueprint.json'), 'utf8')), JSON.parse(recovered.definitionJson))
+})
+
+test('document library drain: actual service disposal waits for an entered library mutation and releases its writer lease', async t => {
+  const h = await fixture(t)
+  const entered = deferred(),
+    release = deferred(),
+    events = []
+  const marker = join(h.rootDir, 'drain-result.txt')
+  const mutation = h.service.withDocument(
+    h.rootDir,
+    async () => {
+      events.push('mutation-entered')
+      entered.resolve()
+      await release.promise
+      writeFileSync(marker, 'COMPLETE_LIBRARY_MUTATION')
+      events.push('mutation-complete')
+    },
+    true
+  )
+  let disposal
+  try {
+    await entered.promise
+    assert.throws(() => acquireLibraryWriter(join(h.runtimeRoot, 'definitions')), { code: 'COORDINATOR_ALREADY_ACTIVE' })
+    let disposed = false
+    disposal = h.fiber.dispose().then(() => {
+      disposed = true
+      events.push('disposed')
+    })
+    await new Promise(setImmediate)
+    assert.equal(h.service.closing, true, 'actual service cleanup has entered its closing path')
+    assert.equal(disposed, false, 'service disposal cannot finish before the library write')
+    assert.equal(existsSync(marker), false)
+  } finally {
+    release.resolve()
+    await Promise.allSettled([mutation, disposal])
+  }
+  await mutation
+  await disposal
+  assert.deepEqual(events, ['mutation-entered', 'mutation-complete', 'disposed'])
+  assert.equal(readFileSync(marker, 'utf8'), 'COMPLETE_LIBRARY_MUTATION')
+  const lease = acquireLibraryWriter(join(h.runtimeRoot, 'definitions'))
+  lease.release()
 })
 
 test('catalog IDs and strict service codecs: no prototype lookup, no untrusted locator or inline fallback', async t => {

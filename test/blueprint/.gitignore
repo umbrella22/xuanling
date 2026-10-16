@@ -1,4 +1,5 @@
 # Blueprint probe/test workspace local state (plan dsh-blueprint-plugin-v1).
 # The repository root .gitignore only lists npm/node_modules/, so this nested
 # rule keeps the installed probe runtime out of git status and the docs gate.
-node_modules/
+node_modules/*
+reports/*

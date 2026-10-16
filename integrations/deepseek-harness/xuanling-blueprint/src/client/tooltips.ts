@@ -5,6 +5,8 @@ import { clampOverlay } from './interaction-overlays.ts'
 export interface TooltipContent {
   action: string
   labelKey: BlueprintLocaleKey
+  /** Optional non-localized copy for dynamic content such as resource summaries. */
+  text?: string
   shortcut?: string | undefined
   reason?: BlueprintLocaleKey | null | undefined
   anchor: HTMLElement
@@ -69,7 +71,7 @@ export function WorkspaceTooltip({
       'data-bp-tooltip': content.action,
       style: { left: position.x, top: position.y }
     },
-    React.createElement('span', null, t(content.labelKey)),
+    React.createElement('span', null, content.text ?? t(content.labelKey)),
     content.shortcut && React.createElement('kbd', null, content.shortcut),
     content.reason && React.createElement('small', null, t(content.reason))
   )

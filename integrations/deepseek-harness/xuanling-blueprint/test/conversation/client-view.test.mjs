@@ -336,7 +336,7 @@ test('poll updates keep viewport identity and issue no fit; explicit historical 
   assert.equal(next.props.key, flow.props.key)
   assert.deepEqual(f.fits, [], 'render/polling must not imperatively recenter')
   f.setResponse(args => data(args.runId ?? 'r1', 3))
-  one(f.render(), node => node.type === 'select').props.onChange({ currentTarget: { value: 'r0' } })
+  one(f.render(), node => node.type?.name === 'StyledSelect').props.onChange({ currentTarget: { value: 'r0' } })
   await Promise.resolve()
   await Promise.resolve()
   assert.equal(f.controller.getSnapshot().value.selected.run.runId, 'r0')
@@ -363,6 +363,201 @@ test('clicking a node with several canonical Attempts does not guess a latest id
   assert.equal(f.controller.getSnapshot().selectedAttemptId, null)
   one(tree, node => node.props['data-bp-attempt-id'] === 'a3').props.onClick()
   assert.equal(f.controller.getSnapshot().selectedAttemptId, 'a3')
+})
+
+test('execution sync C-02: a unique running or completed Agent node opens its exact durable execution chat', async () => {
+  for (const attemptState of ['running', 'succeeded', 'failed']) {
+    const f = fixture(),
+      value = data(),
+      opened = []
+    value.selected.run.attempts[0].state = attemptState
+    value.selected.run.attempts[0].sessionId = 'execution-child-1'
+    f.props.openSession = async sessionId => {
+      opened.push(sessionId)
+      return true
+    }
+    f.setResponse(value)
+    await f.controller.refresh()
+    const before = structuredClone(f.controller.getSnapshot().value),
+      flow = one(f.render(), node => node.type === 'flow')
+    await flow.props.onNodeClick(
+      {},
+      flow.props.nodes.find(node => node.id === 'n1')
+    )
+    assert.equal(f.controller.getSnapshot().selectedAttemptId, 'a1')
+    assert.deepEqual(opened, ['execution-child-1'], `unique ${attemptState} node must open its execution Session`)
+    assert.deepEqual(f.controller.getSnapshot().value, before, 'navigation never rewrites the frozen Run or terminal Attempt')
+    assert.equal(f.reads.length, 1, 'click must not start, retry, cancel or inspect another Run')
+  }
+})
+
+test('execution sync C-02: multiple Attempts require an explicit chat action, independent of array order or ordinal ties', async () => {
+  const f = fixture(),
+    value = data(),
+    opened = []
+  value.selected.run.attempts[0].sessionId = 'older-child'
+  value.selected.run.attempts.push({ nodeId: 'n1', attemptId: 'a3', attempt: 1, state: 'failed', sessionId: 'chosen-child' })
+  f.props.openSession = async sessionId => {
+    opened.push(sessionId)
+    return true
+  }
+  f.setResponse(value)
+  await f.controller.refresh()
+  const tree = f.render(),
+    flow = one(tree, node => node.type === 'flow')
+  await flow.props.onNodeClick(
+    {},
+    flow.props.nodes.find(node => node.id === 'n1')
+  )
+  assert.equal(f.controller.getSnapshot().selectedAttemptId, null)
+  assert.deepEqual(opened, [], 'node ambiguity must not guess a latest child from display order')
+  const explicit = one(tree, node => node.props['data-bp-open-attempt'] === 'a3')
+  assert.equal(explicit.type, 'button')
+  assert.equal(explicit.props.disabled, false)
+  await explicit.props.onClick()
+  assert.deepEqual(opened, ['chosen-child'])
+})
+
+test('execution sync C-02: legacy, missing-Session and non-Agent nodes never manufacture a chat target', async () => {
+  const f = fixture(),
+    value = data(),
+    opened = []
+  value.selected.run.attempts[1].sessionId = 'must-not-open-tool-chat'
+  value.selected.graph.nodes[1].kind = 'toolCall'
+  value.selected.run.attempts.push({ nodeId: 'source', attempt: 1, state: 'succeeded', sessionId: 'legacy-without-attempt-id' })
+  f.props.openSession = async sessionId => {
+    opened.push(sessionId)
+    return true
+  }
+  f.setResponse(value)
+  await f.controller.refresh()
+  const tree = f.render(),
+    flow = one(tree, node => node.type === 'flow')
+  for (const id of ['n1', 'n2', 'source'])
+    await flow.props.onNodeClick(
+      {},
+      flow.props.nodes.find(node => node.id === id)
+    )
+  assert.deepEqual(opened, [])
+  const missing = one(tree, node => node.props['data-bp-open-attempt'] === 'a1')
+  assert.equal(missing.props.disabled, true, 'unavailable execution history must be visibly disabled')
+  assert.equal(all(tree, node => node.props['data-bp-open-attempt'] === 'a2' && !node.props.disabled).length, 0)
+  assert.equal(all(tree, node => node.props['data-bp-open-attempt'] === 'legacy-without-attempt-id').length, 0)
+})
+
+test('execution sync C-02: explicit Team member history opens that member Session without issuing Team mutations', async () => {
+  const f = fixture(),
+    value = stageData(),
+    opened = []
+  value.selected.run.team.members.push({ memberId: 'not-created', name: 'pending', phase: 'provisioning', status: 'inactive' })
+  f.props.openSession = async sessionId => {
+    opened.push(sessionId)
+    return true
+  }
+  f.setResponse(value)
+  await f.controller.refresh()
+  const tree = f.render(),
+    action = one(tree, node => node.props['data-bp-open-member'] === 'producer')
+  assert.equal(action.type, 'button')
+  assert.equal(action.props.disabled, false)
+  await action.props.onClick()
+  assert.deepEqual(opened, ['child-producer'])
+  assert.equal(one(tree, node => node.props['data-bp-open-member'] === 'not-created').props.disabled, true)
+  assert.equal(f.reads.length, 1, 'member history navigation is not a Team effect or model call')
+})
+
+test('execution sync C-03: failed Agent detail explains immutable history and offers child history plus the true source chat in both locales', async () => {
+  for (const dict of [zh, en]) {
+    const f = fixture(dict),
+      value = data(),
+      opened = []
+    value.selected.run.state = 'failed'
+    Object.assign(value.selected.run.attempts[0], { state: 'failed', sessionId: 'failed-child', errorCode: 'provider-failed' })
+    f.props.openSession = async sessionId => {
+      opened.push(sessionId)
+      return true
+    }
+    f.setResponse(value)
+    await f.controller.refresh()
+    f.controller.selectAttempt('a1')
+    const tree = f.render(),
+      explanation = one(tree, node => node.props['data-bp-failure-explanation'] === 'a1'),
+      text = JSON.stringify(explanation.children)
+    assert.match(text, dict === zh ? /主聊天.*(不会|不).*更新.*(运行|蓝图)/ : /main chat.*(does not|will not|won't).*update.*(run|blueprint)/i)
+    assert.doesNotMatch(text, dict === zh ? /已经接管成功|已恢复成功/ : /takeover succeeded|recovered successfully/i)
+    await one(tree, node => node.props['data-bp-open-attempt'] === 'a1').props.onClick()
+    await one(tree, node => node.props['data-bp-source-chat'] === 'source').props.onClick()
+    assert.deepEqual(opened, ['failed-child', 'source'])
+    assert.equal(f.controller.getSnapshot().value.selected.run.attempts[0].state, 'failed')
+    assert.equal(f.controller.getSnapshot().value.selected.run.state, 'failed')
+    assert.equal(f.reads.length, 1, 'opening history must not retry or resurrect a terminal Run')
+  }
+})
+
+test('execution sync C-03: a failed sidebar-origin Run with no source never guesses the current Session as its main chat', async () => {
+  const f = fixture(),
+    value = data()
+  value.selected.run.state = 'failed'
+  value.selected.run.attempts[0].state = 'failed'
+  delete value.selected.source
+  f.props.openSession = async () => {
+    assert.fail('no source or child Session exists to navigate to')
+  }
+  f.setResponse(value)
+  await f.controller.refresh()
+  f.controller.selectAttempt('a1')
+  const tree = f.render()
+  assert.equal(all(tree, node => node.props['data-bp-failure-explanation'] === 'a1').length, 1)
+  assert.equal(all(tree, node => node.props['data-bp-source-chat'] !== undefined && !node.props.disabled).length, 0)
+})
+
+test('execution sync C-02: only the requested target owner switches its persisted Blueprint tab to Chat, once', async t => {
+  const f = fixture(),
+    activated = [],
+    consumed = []
+  const globals = ['document', 'setInterval', 'clearInterval', 'addEventListener', 'removeEventListener']
+  const originals = new Map(globals.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]))
+  globalThis.document = { visibilityState: 'visible', getElementById: () => ({}), addEventListener() {}, removeEventListener() {} }
+  globalThis.setInterval = () => 1
+  globalThis.clearInterval = () => {}
+  globalThis.addEventListener = () => {}
+  globalThis.removeEventListener = () => {}
+  t.after(() => {
+    f.cleanup()
+    for (const [name, descriptor] of originals) {
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor)
+      else delete globalThis[name]
+    }
+  })
+  let request = { sessionId: 'target-child', requestId: 1 }
+  const listeners = new Set()
+  f.props.chatNavigation = {
+    getSnapshot: () => request,
+    subscribe(listener) {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+    consume(sessionId, requestId) {
+      consumed.push([sessionId, requestId])
+      if (request?.sessionId !== sessionId || request.requestId !== requestId) return false
+      request = null
+      return true
+    }
+  }
+  f.props.openView = (view, focus) => activated.push([view, focus])
+  f.render()
+  f.effects()
+  assert.deepEqual(activated, [], 'the source Blueprint tab must remain selected')
+  f.props.sessionId = 'target-child'
+  f.render()
+  f.effects()
+  assert.deepEqual(activated, [['chat', '']], 'the target Conversation owner activates its registered native Chat view')
+  assert.deepEqual(consumed, [['target-child', 1]])
+  f.render()
+  f.effects()
+  assert.equal(activated.length, 1, 'a rerender cannot replay the one-shot Chat request')
+  f.cleanup()
+  assert.equal(listeners.size, 0, 'target request subscription is released with the view')
 })
 
 test('raw state is rendered verbatim, future/ambiguous/terminal/offline states stop pulse and unavailable native inspection stays disabled', async () => {
@@ -444,7 +639,7 @@ test('unbound has no synthetic nodes; unavailable reads retain an explicit refre
   const tree = f.render()
   assert.equal(all(tree, node => node.type === 'flow').length, 0)
   assert.equal(tree.props['data-bp-run-id'], '')
-  assert.equal(one(tree, node => node.type === 'select').props.disabled, true)
+  assert.equal(one(tree, node => node.type?.name === 'StyledSelect').props.disabled, true)
   f.setResponse(() => {
     throw new Error('raw-provider-error')
   })

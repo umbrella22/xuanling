@@ -1,3 +1,4 @@
+import { StyledSelect, ConfirmationDialog } from './styled-controls.ts'
 /** Canvas-first DSH workspace. Translation is a renderer seat, never graph state. */
 import React from 'react'
 import { projectLayoutCollisions } from './layout-collisions.ts'
@@ -55,6 +56,7 @@ import type { TooltipContent } from './tooltips.ts'
 import type { MenuAction } from './menu-model.ts'
 import { blueprintIcon } from './icons.ts'
 import { resourceConfiguration, resourceDraftFromMetadata, resourceMetadataDetail, resourceMetadataFromDraft } from './resource-dialog.ts'
+import type { OpenExecutionChat } from './chat-navigation.ts'
 const h = React.createElement
 type ResourceCategory = 'agent' | 'skill' | 'mcp' | 'other'
 const RESOURCE_KINDS = ['agent', 'prompt', 'skill', 'schema', 'script', 'mcp', 'subflow'] as const
@@ -76,6 +78,7 @@ const resourceCategory = (kind: ResourceRef['kind']): ResourceCategory => (kind 
 const resourceSourceLabel = (row: ResourceLibraryRow, t: BlueprintLocaleProps['t']): string =>
   row.source === 'dsh' ? t('resource.host') : t('resource.blueprint')
 const resourceDescriptionLabel = (description: string, t: BlueprintLocaleProps['t']): string => description.trim() || t('resource.noDescription')
+const resourceCardTitle = (row: ResourceLibraryRow, t: BlueprintLocaleProps['t']): string => `${row.displayName} - ${resourceSourceLabel(row, t)}`
 const resourceConfigurationSourceLabel = (source: ReturnType<typeof resourceConfiguration>['source'], t: BlueprintLocaleProps['t']): string => {
   if (source === 'host') return t('resource.host')
   if (source === 'shared') return t('resource.sharedLabel')
@@ -136,7 +139,7 @@ export function resourceRows(
       continue
     }
     const metadata = definition?.presentation?.resources?.[id]
-    const displayName = metadata?.title?.trim() || ref.path || ref.bindingId || id
+    const displayName = metadata?.title?.trim() || id
     rows.push({
       key: `blueprint:${id}`,
       id,
@@ -469,44 +472,11 @@ interface PanelNotice {
   key: BlueprintLocaleKey
   params?: Record<string, unknown>
 }
-/** Resource JSON draft identity is the resource/editor, never locale or JSON content. */
-function ResourceJsonField({
-  label,
-  value,
-  onApply,
-  t,
-  disabled
-}: {
-  label: string
-  value: ResourceRef
-  onApply: (text: string) => void
-  t: BlueprintLocaleProps['t']
-  disabled: boolean
-}) {
-  const source = JSON.stringify(value, null, 2)
-  const [text, setText] = React.useState(source)
-  React.useEffect(() => setText(source), [source])
-  return h(
-    'label',
-    { className: 'bp-field' },
-    h('span', null, label),
-    h(JsonEditor, {
-      value: text,
-      rows: 3,
-      label,
-      t,
-      disabled,
-      onChange: setText,
-      onBlur: text => {
-        if (text !== source) onApply(text)
-      }
-    })
-  )
-}
 export interface PanelEnvironment {
   React?: typeof React
   hostLink: HostLink | undefined
   storage: DraftStorage | undefined
+  openSession?: OpenExecutionChat
 }
 export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType<BlueprintLocaleProps> {
   function WorkspacePanel({ t }: BlueprintLocaleProps): React.ReactElement {
@@ -516,6 +486,13 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
     const [selected, setSelected] = React.useState<string | null>(null)
     const [selectedEdges, setSelectedEdges] = React.useState<string[]>([])
     const [notice, setNotice] = React.useState<PanelNotice | null>(null)
+    const [chatUnavailable, setChatUnavailable] = React.useState(false)
+    const openChat = (sessionId: string, ownerId?: string) => {
+      void Promise.resolve(env.openSession?.(sessionId, ownerId)).then(
+        opened => setChatUnavailable(opened !== true),
+        () => setChatUnavailable(true)
+      )
+    }
     const [resourceDialog, setResourceDialog] = React.useState<{
       mode: 'add' | 'edit' | 'view'
       editor: GraphEditor
@@ -533,6 +510,7 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
     const [tooltip, setTooltip] = React.useState<TooltipContent | null>(null)
     const [spacePan, setSpacePan] = React.useState(false)
     const [libraryCollapsed, setLibraryCollapsed] = React.useState(false)
+    const [resourceCollapsed, setResourceCollapsed] = React.useState<Partial<Record<'agent' | 'skill' | 'mcp' | 'other', boolean>>>({})
     const [inspectorCollapsed, setInspectorCollapsed] = React.useState(false)
     const [sidebarId] = React.useState(() => `bp-sidebar-${crypto.randomUUID()}`)
     const [paletteOver, setPaletteOver] = React.useState(false)
@@ -553,9 +531,53 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
     const connectCancelled = React.useRef(false)
     const reconnecting = React.useRef<{ edgeId: string; copy: boolean } | null>(null)
     const resourceDialogTrigger = React.useRef<HTMLElement | null>(null)
+    const resourceReturnFocus = React.useRef<{ trigger: HTMLElement | null; editor: GraphEditor; blueprintId: string | null } | null>(null)
     const resourceDialogRef = React.useRef<HTMLDivElement | null>(null)
+    const confirmation = React.useRef<{ title: string; description: string; accept: () => void } | null>(null)
+    const closeConfirmation = () => {
+      confirmation.current = null
+      setTick(n => n + 1)
+    }
+    const requestConfirmation = (title: string, description: string, action: () => void, required = true) => {
+      if (workspace.busy || composing.current || confirmation.current) return
+      if (!required) {
+        action()
+        return
+      }
+      const capturedEditor = workspace.editor,
+        capturedId = workspace.blueprintId,
+        capturedEpoch = navigationEpoch.current
+      const pending = {
+        title,
+        description,
+        accept: () => {
+          if (confirmation.current !== pending) return
+          closeConfirmation()
+          if (
+            workspace.busy ||
+            composing.current ||
+            workspace.editor !== capturedEditor ||
+            workspace.blueprintId !== capturedId ||
+            navigationEpoch.current !== capturedEpoch
+          )
+            return
+          action()
+        }
+      }
+      confirmation.current = pending
+      setTick(n => n + 1)
+    }
     React.useEffect(() => {
-      if (resourceDialog) resourceDialogRef.current?.focus?.()
+      if (resourceDialog) {
+        resourceDialogRef.current?.focus?.()
+        return
+      }
+      const pending = resourceReturnFocus.current
+      resourceReturnFocus.current = null
+      if (!pending || pending.editor !== workspace.editor || pending.blueprintId !== workspace.blueprintId) return
+      const trigger = pending.trigger
+      const current = trigger?.isConnected ? trigger : rootRef.current?.querySelector<HTMLElement>('[data-bp-action="add-resource"]')
+      if (current && !(current as HTMLButtonElement).disabled) current.focus()
     }, [resourceDialog?.editor, resourceDialog?.blueprintId, resourceDialog?.refId, resourceDialog?.mode])
     const collisionContext = React.useRef<{ positions: Map<string, XY>; measurements: Map<string, { width: number; height: number }> }>({
       positions: new Map(),
@@ -1120,10 +1142,13 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
       return applied !== false
     }
     const closeResourceDialog = () => {
-      const trigger = resourceDialogTrigger.current
+      resourceReturnFocus.current = { trigger: resourceDialogTrigger.current, editor: workspace.editor, blueprintId: workspace.blueprintId }
       resourceDialogTrigger.current = null
+      // Responsive resize can hide the still-connected opener. Reveal its sidebar
+      // before the post-commit effect restores focus; a microtask cannot focus it.
+      setLibraryCollapsed(false)
+      if (rootRef.current && rootRef.current.clientWidth <= 780) setInspectorCollapsed(true)
       setResourceDialog(null)
-      if (trigger && typeof trigger.focus === 'function') queueMicrotask(() => trigger.focus())
     }
     const openResourceRow = (row: ResourceLibraryRow, trigger?: HTMLElement) => {
       resourceDialogTrigger.current = trigger ?? null
@@ -1417,7 +1442,7 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
       })
     }
     const keyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-      if (overlay) return
+      if (overlay || confirmation.current) return
       if (event.key === 'Escape' && tooltip) {
         setTooltip(null)
         return
@@ -1425,7 +1450,7 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
       const target = event.target as HTMLElement
       if (
         target?.closest?.(
-          '[data-bp-reroute], [data-bp-overlay=more-menu], summary, [data-bp-overlay=context-menu], [data-bp-overlay=node-search], [data-bp-overlay=rename], [data-bp-overlay=shortcuts], [data-bp-overlay=import], button, a, [role=button], .react-flow__controls, .react-flow__minimap'
+          '.bp-select, [role=listbox], [role=dialog], [data-bp-reroute], [data-bp-overlay=more-menu], summary, [data-bp-overlay=context-menu], [data-bp-overlay=node-search], [data-bp-overlay=rename], [data-bp-overlay=shortcuts], [data-bp-overlay=import], button, a, [role=button], .react-flow__controls, .react-flow__minimap'
         )
       )
         return
@@ -1463,7 +1488,7 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
         event.metaKey ||
         Math.abs(event.deltaX) <= Math.abs(event.deltaY) ||
         isEditingTarget(event.target) ||
-        (event.target as HTMLElement).closest?.('.nowheel,.react-flow__controls,.react-flow__minimap')
+        (event.target as HTMLElement).closest?.('.bp-select,.bp-confirm-dialog,.bp-resource-dialog,.nowheel,.react-flow__controls,.react-flow__minimap')
       )
         return
       // Leave vertical wheels and ctrl/pinch to XYFlow's native zoom handler.
@@ -1649,39 +1674,46 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
           'div',
           { className: 'bp-blueprint-picker' },
           h(
-            'select',
+            StyledSelect,
             {
+              React,
               'data-bp-select': 'blueprint',
               'aria-label': t('library.configuredBlueprint'),
               disabled: workspace.busy,
               value: workspace.blueprintId ?? '',
               onChange: (e: React.ChangeEvent<HTMLSelectElement>) => {
                 const requestedId = e.target.value
-                if (workspace.busy || composing.current || (workspace.dirty && !window.confirm(t('document.discardConfirm')))) return
-                const epoch = ++navigationEpoch.current
-                setResourceDialog(null)
-                perform(async () => {
-                  await workspace.load(requestedId)
-                  if (epoch !== navigationEpoch.current || workspace.blueprintId !== requestedId) return
-                  const loadedEditor = workspace.editor,
-                    binding = viewportStore.bind(requestedId)
-                  const captured = { id: requestedId, binding, state: binding.state }
-                  preferences.current = captured
-                  setSelected(null)
-                  setSelectedEdges([])
-                  setTick(n => n + 1)
-                  requestAnimationFrame(() => {
-                    if (
-                      epoch !== navigationEpoch.current ||
-                      workspace.editor !== loadedEditor ||
-                      workspace.blueprintId !== requestedId ||
-                      preferences.current !== captured
-                    )
-                      return
-                    if (binding.readStatus === 'restored') void flow.setViewport(binding.state.viewport, { duration: 0 })
-                    else void flow.fitView({ duration: 0, padding: 0.2 })
-                  })
-                })
+                requestConfirmation(
+                  t('dialog.discardTitle'),
+                  t('document.discardConfirm'),
+                  () => {
+                    const epoch = ++navigationEpoch.current
+                    setResourceDialog(null)
+                    perform(async () => {
+                      await workspace.load(requestedId)
+                      if (epoch !== navigationEpoch.current || workspace.blueprintId !== requestedId) return
+                      const loadedEditor = workspace.editor,
+                        binding = viewportStore.bind(requestedId)
+                      const captured = { id: requestedId, binding, state: binding.state }
+                      preferences.current = captured
+                      setSelected(null)
+                      setSelectedEdges([])
+                      setTick(n => n + 1)
+                      requestAnimationFrame(() => {
+                        if (
+                          epoch !== navigationEpoch.current ||
+                          workspace.editor !== loadedEditor ||
+                          workspace.blueprintId !== requestedId ||
+                          preferences.current !== captured
+                        )
+                          return
+                        if (binding.readStatus === 'restored') void flow.setViewport(binding.state.viewport, { duration: 0 })
+                        else void flow.fitView({ duration: 0, padding: 0.2 })
+                      })
+                    })
+                  },
+                  workspace.needsNavigationConfirmation
+                )
               }
             },
             h('option', { value: '', disabled: true }, t('library.chooseId')),
@@ -1696,14 +1728,20 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
             'data-bp-action': 'new-blueprint',
             disabled: workspace.busy,
             onClick: () => {
-              if (workspace.busy || composing.current || (workspace.dirty && !window.confirm(t('document.newConfirm')))) return
-              navigationEpoch.current++
-              setResourceDialog(null)
-              closeOverlay()
-              setNotice(null)
-              setSelected(null)
-              setSelectedEdges([])
-              workspace.newDraft(t('document.newName'))
+              requestConfirmation(
+                t('action.newBlueprint'),
+                t('document.newConfirm'),
+                () => {
+                  navigationEpoch.current++
+                  setResourceDialog(null)
+                  closeOverlay()
+                  setNotice(null)
+                  setSelected(null)
+                  setSelectedEdges([])
+                  workspace.newDraft(t('document.newName'))
+                },
+                workspace.needsNavigationConfirmation
+              )
             }
           },
           t('action.newBlueprint')
@@ -1715,22 +1753,22 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
             'data-bp-action': 'delete-blueprint',
             disabled: workspace.busy || !workspace.blueprintId || (!workspace.isNewDraft && !workspace.document),
             onClick: () => {
-              if (
-                workspace.busy ||
-                composing.current ||
-                !window.confirm(t(workspace.isNewDraft ? 'document.deleteDraftConfirm' : 'document.deleteConfirm', { name: workspace.definition?.name ?? '' }))
+              requestConfirmation(
+                t('action.deleteBlueprint'),
+                t(workspace.isNewDraft ? 'document.deleteDraftConfirm' : 'document.deleteConfirm', { name: workspace.definition?.name ?? '' }),
+                () => {
+                  const epoch = ++navigationEpoch.current
+                  setResourceDialog(null)
+                  closeOverlay()
+                  perform(async () => {
+                    await workspace.deleteCurrent(t('document.newName'))
+                    if (epoch !== navigationEpoch.current) return
+                    setNotice(null)
+                    setSelected(null)
+                    setSelectedEdges([])
+                  })
+                }
               )
-                return
-              const epoch = ++navigationEpoch.current
-              setResourceDialog(null)
-              closeOverlay()
-              perform(async () => {
-                await workspace.deleteCurrent(t('document.newName'))
-                if (epoch !== navigationEpoch.current) return
-                setNotice(null)
-                setSelected(null)
-                setSelectedEdges([])
-              })
             }
           },
           t('action.deleteBlueprint')
@@ -1931,12 +1969,13 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
                 'button',
                 {
                   type: 'button',
+                  className: 'bp-resource-add',
                   'data-bp-action': 'add-resource',
                   'aria-label': t('resource.openEditor'),
                   title: t('resource.openEditor'),
                   disabled: !editable,
-                  style: { minWidth: '40px', minHeight: '40px' },
                   onClick: (event?: React.MouseEvent<HTMLButtonElement>) => {
+                    setTooltip(null)
                     resourceDialogTrigger.current = event?.currentTarget ?? null
                     setResourceDialog({
                       mode: 'add',
@@ -1958,98 +1997,94 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
             ...(['agent', 'skill', 'mcp', 'other'] as const).map(category => {
               const rows = libraryRows[category]
               const label = category === 'other' ? t('resource.other') : resourceKindTitle(category, t)
+              const collapsed = resourceCollapsed[category] === true,
+                contentId = `${sidebarId}-resources-${category}`
               return h(
                 'div',
                 { key: category, 'data-bp-resource-category': category, className: 'bp-resource-category' },
-                h('h3', null, `${label} (${rows.length})`),
-                rows.length
-                  ? rows.map(row =>
-                      h(
-                        'button',
-                        {
-                          type: 'button',
-                          key: row.key,
-                          className: 'bp-resource-row',
-                          'data-bp-resource-row': row.key,
-                          onClick: (event?: React.MouseEvent<HTMLButtonElement>) => openResourceRow(row, event?.currentTarget),
-                          style: { minHeight: '40px' },
-                          title: resourceDescriptionLabel(row.description, t)
-                        },
-                        h('strong', null, row.displayName),
-                        h('span', null, `${resourceSourceLabel(row, t)} · ${resourceKindTitle(row.kind, t)}`),
-                        h('span', { className: 'bp-resource-description', 'data-bp-resource-description': true }, resourceDescriptionLabel(row.description, t)),
-                        h(
-                          'small',
-                          null,
-                          row.availability === 'available'
-                            ? t('resource.available')
-                            : row.availability === 'unknown'
-                              ? t('resource.availabilityUnchecked')
-                              : t('resource.unavailable')
-                        )
-                      )
-                    )
-                  : h('p', { className: 'bp-help' }, '—')
-              )
-            }),
-            ...Object.entries(definition?.resources ?? {}).map(([id, ref]) =>
-              h(
-                'details',
-                { key: `legacy-${id}`, 'data-bp-resource': id },
                 h(
-                  'summary',
+                  'h3',
                   null,
-                  `${resourceDisplayName(id, ref, workspace.resourceCatalog, definition?.presentation?.resources)} · ${resourceKindTitle(ref.kind, t)}`
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'bp-resource-toggle',
+                      'data-bp-resource-toggle': category,
+                      'aria-expanded': !collapsed,
+                      'aria-controls': contentId,
+                      onClick: () => {
+                        setTooltip(null)
+                        setResourceCollapsed(current => ({ ...current, [category]: !current[category] }))
+                      }
+                    },
+                    h('span', null, `${label} (${rows.length})`),
+                    h(
+                      'svg',
+                      {
+                        viewBox: '0 0 24 24',
+                        width: 16,
+                        height: 16,
+                        fill: 'none',
+                        stroke: 'currentColor',
+                        strokeWidth: 1.6,
+                        strokeLinecap: 'round',
+                        strokeLinejoin: 'round',
+                        'aria-hidden': true,
+                        focusable: false,
+                        'data-bp-expanded': !collapsed
+                      },
+                      h('path', { d: 'm9 5 7 7-7 7' })
+                    )
+                  )
                 ),
                 h(
-                  'p',
-                  { className: 'bp-help' },
-                  ref.source?.kind === 'host'
-                    ? `${t('resource.host')} · ${ref.source.id}`
-                    : ref.source?.kind === 'shared'
-                      ? t('resource.shared', { rootId: ref.source.rootId })
-                      : t('resource.package')
-                ),
-                h(ResourceJsonField, {
-                  key: `${workspace.blueprintId}-${id}`,
-                  label: t('resource.edit', { id }),
-                  value: ref,
-                  t,
-                  disabled: !editable,
-                  onApply: text => parseResource(text, parsed => guarded(() => editor.updateResource(id, parsed)))
-                })
+                  'div',
+                  { id: contentId, hidden: collapsed },
+                  rows.length
+                    ? rows.map(row => {
+                        const title = resourceCardTitle(row, t),
+                          description = resourceDescriptionLabel(row.description, t),
+                          tooltipAction = `resource-${row.key}`,
+                          showDescription = (event: React.SyntheticEvent<HTMLButtonElement>) =>
+                            setTooltip({ action: tooltipAction, labelKey: 'resource.noDescription', text: description, anchor: event.currentTarget })
+                        if (tooltip?.action === tooltipAction) currentTooltip = { ...tooltip, labelKey: 'resource.noDescription', text: description }
+                        return h(
+                          'button',
+                          {
+                            type: 'button',
+                            key: row.key,
+                            className: 'bp-resource-row',
+                            'data-bp-resource-row': row.key,
+                            'aria-label': `${title} · ${description}`,
+                            'aria-describedby': `bp-tooltip-${tooltipAction}`,
+                            onClick: (event?: React.MouseEvent<HTMLButtonElement>) => {
+                              setTooltip(null)
+                              openResourceRow(row, event?.currentTarget)
+                            },
+                            onMouseEnter: showDescription,
+                            onMouseLeave: () => setTooltip(null),
+                            onFocus: showDescription,
+                            onBlur: () => setTooltip(null)
+                          },
+                          h('strong', { className: 'bp-resource-title', 'data-bp-resource-title': true }, title),
+                          h('span', { className: 'bp-resource-description', 'data-bp-resource-description': true }, description),
+                          h('span', { className: 'bp-resource-meta' }, resourceKindTitle(row.kind, t)),
+                          h(
+                            'small',
+                            { className: 'bp-resource-status' },
+                            row.availability === 'available'
+                              ? t('resource.available')
+                              : row.availability === 'unknown'
+                                ? t('resource.availabilityUnchecked')
+                                : t('resource.unavailable')
+                          )
+                        )
+                      })
+                    : h('p', { className: 'bp-help' }, '—')
+                )
               )
-            ),
-            h(
-              'details',
-              null,
-              h('summary', null, t('resource.add')),
-              h(
-                'form',
-                {
-                  key: workspace.blueprintId,
-                  onSubmit: (e: React.FormEvent<HTMLFormElement>) => {
-                    e.preventDefault()
-                    const form = new FormData(e.currentTarget)
-                    const id = String(form.get('id'))
-                    if (!id || Object.hasOwn(definition?.resources ?? {}, id)) {
-                      setNotice({ key: 'resource.uniqueIdRequired' })
-                      return
-                    }
-                    parseResource(String(form.get('ref')), ref => guarded(() => editor.updateResource(id, ref)))
-                  }
-                },
-                h('input', { name: 'id', placeholder: t('resource.logicalId'), 'aria-label': t('resource.newId'), required: true }),
-                h(JsonEditor, {
-                  name: 'ref',
-                  label: t('resource.newJson'),
-                  t,
-                  disabled: !editable,
-                  defaultValue: '{"kind":"agent","path":"lib/agents/agent.md"}'
-                }),
-                h('button', { type: 'submit' }, t('resource.add'))
-              )
-            )
+            })
           )
         ),
         sidebarToggle('library', libraryCollapsed, () => setLibraryCollapsed(value => !value)),
@@ -2446,6 +2481,35 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
             snapshot && !overlayEligible && h('p', { className: 'bp-overlay-notice' }, t('run.overlayUnavailable')),
             h('p', { 'data-bp-connection': workspace.model.connectionState }, t(workspace.model.connectionState === 'stale' ? 'run.stale' : 'run.connected')),
             button('run.retryInspect', 'retry-inspect', () => perform(() => workspace.inspect()), !workspace.runId || workspace.busy),
+            chatUnavailable && h('p', { role: 'status', 'data-bp-chat-unavailable': true }, t('conversation.chatUnavailable')),
+            snapshot?.source &&
+              env.openSession &&
+              h(
+                'button',
+                {
+                  type: 'button',
+                  'data-bp-source-chat': snapshot.source.sessionId,
+                  onClick: () => openChat(snapshot.source!.sessionId)
+                },
+                t('conversation.sourceChat')
+              ),
+            ...(env.openSession ? (snapshot?.team?.members ?? []) : []).map(member =>
+              h(
+                'button',
+                {
+                  key: member.memberId,
+                  type: 'button',
+                  'data-bp-open-member': member.memberId,
+                  disabled: member.sessionId === undefined,
+                  onClick: () => {
+                    if (member.sessionId) openChat(member.sessionId, snapshot?.team?.leadSessionId)
+                  }
+                },
+                member.name ?? member.memberId,
+                ' · ',
+                t('conversation.openChat')
+              )
+            ),
             snapshot?.attempts.some(a => a.state === 'waiting_input') &&
               h(
                 'div',
@@ -2460,6 +2524,20 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
                 h('summary', null, t('run.attempt', { nodeId: a.nodeId, attempt: a.attempt, state: runStateTitle(a.state, t) })),
                 a.outputJson !== undefined && h('pre', { 'data-bp-output': a.nodeId }, a.outputJson),
                 a.errorCode && h('p', null, a.errorCode),
+                a.state === 'failed' && h('p', { 'data-bp-failure-explanation': a.attemptId ?? a.nodeId }, t('conversation.failedHistory')),
+                env.openSession &&
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      'data-bp-open-attempt': a.attemptId,
+                      disabled: a.attemptId === undefined || a.sessionId === undefined,
+                      onClick: () => {
+                        if (a.attemptId && a.sessionId) openChat(a.sessionId, snapshot?.source?.sessionId)
+                      }
+                    },
+                    t('conversation.openChat')
+                  ),
                 renderAttemptDiagnostics(a.diagnostics, t)
               )
             ),
@@ -2467,167 +2545,204 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
           )
         )
       ),
+      confirmation.current &&
+        h(ConfirmationDialog, {
+          React,
+          title: confirmation.current.title,
+          description: confirmation.current.description,
+          cancelLabel: t('dialog.cancel'),
+          confirmLabel: t('dialog.confirm'),
+          onCancel: closeConfirmation,
+          onConfirm: confirmation.current.accept
+        }),
       resourceDialog &&
         h(
           'div',
-          {
-            ref: resourceDialogRef,
-            role: 'dialog',
-            'aria-modal': 'true',
-            'aria-labelledby': 'bp-resource-dialog-title',
-            'data-bp-resource-dialog': true,
-            tabIndex: -1,
-            className: 'bp-resource-dialog',
-            onKeyDown: (event: React.KeyboardEvent) => {
-              if (event.key === 'Escape') {
-                event.preventDefault()
-                closeResourceDialog()
-              }
-            }
-          },
-          h(
-            'h2',
-            { id: 'bp-resource-dialog-title' },
-            resourceDialog.mode === 'add'
-              ? t('resource.add')
-              : resourceDialog.mode === 'view'
-                ? t('resource.view', { id: resourceDialog.id })
-                : t('resource.edit', { id: resourceDialog.id })
-          ),
-          h(
-            'label',
-            { className: 'bp-field' },
-            t('resource.kind'),
-            h(
-              'select',
-              {
-                'aria-label': t('resource.kind'),
-                value: resourceDialog.kind,
-                disabled: resourceDialog.mode !== 'add' || !editable,
-                onChange: event => {
-                  const target = (event.currentTarget ?? event.target) as HTMLSelectElement
-                  const kind = target.value as ResourceRef['kind']
-                  setResourceDialog(current => {
-                    if (!current) return current
-                    let json = current.json
-                    try {
-                      const parsed = JSON.parse(json)
-                      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) json = JSON.stringify({ ...parsed, kind }, null, 2)
-                    } catch {
-                      /* Apply retains malformed draft for the user to repair. */
-                    }
-                    return { ...current, kind, json }
-                  })
-                }
-              },
-              ...(['agent', 'skill', 'mcp', 'prompt', 'schema', 'script', 'subflow'] as const).map(kind =>
-                h('option', { key: kind, value: kind }, resourceKindTitle(kind, t))
-              )
-            )
-          ),
-          h(
-            'label',
-            { className: 'bp-field' },
-            t('resource.logicalId'),
-            h('input', {
-              'aria-label': t('resource.newId'),
-              value: resourceDialog.id,
-              disabled: resourceDialog.mode !== 'add' || !editable,
-              onChange: event => {
-                const target = (event.currentTarget ?? event.target) as HTMLInputElement
-                setResourceDialog(current => (current ? { ...current, id: target.value } : current))
-              }
-            })
-          ),
-          h(
-            'label',
-            { className: 'bp-field' },
-            t('resource.displayName'),
-            h('input', {
-              'data-bp-resource-field': 'title',
-              'aria-label': t('resource.displayName'),
-              value: resourceDialog.title,
-              disabled: resourceDialog.mode === 'view' || !editable,
-              onChange: event => {
-                const target = (event.currentTarget ?? event.target) as HTMLInputElement
-                setResourceDialog(current => (current ? { ...current, title: target.value } : current))
-              }
-            })
-          ),
-          h(
-            'label',
-            { className: 'bp-field' },
-            t('resource.description'),
-            h('textarea', {
-              'data-bp-resource-field': 'description',
-              'aria-label': t('resource.description'),
-              value: resourceDialog.description,
-              placeholder: t('resource.noDescription'),
-              readOnly: !editable || resourceDialog.mode === 'view',
-              rows: 3,
-              onChange: event => {
-                const target = (event.currentTarget ?? event.target) as HTMLTextAreaElement
-                setResourceDialog(current => (current ? { ...current, description: target.value } : current))
-              }
-            })
-          ),
-          !resourceDialog.description.trim() &&
-            h('p', { className: 'bp-help bp-resource-description-fallback', 'data-bp-resource-description-fallback': true }, t('resource.noDescription')),
-          h(
-            'dl',
-            { 'data-bp-resource-detail': 'identity', className: 'bp-resource-identity' },
-            h('dt', null, t('resource.source')),
-            h('dd', { 'data-bp-resource-source': resourceDialog.source }, resourceDialog.source === 'dsh' ? t('resource.host') : t('resource.blueprint')),
-            h('dt', null, t('resource.availability')),
-            h(
-              'dd',
-              { 'data-bp-resource-availability': resourceDialog.availability },
-              resourceDialog.availability === 'available'
-                ? t('resource.available')
-                : resourceDialog.availability === 'unknown'
-                  ? t('resource.availabilityUnchecked')
-                  : t('resource.unavailable')
-            )
-          ),
-          activeResourceConfiguration &&
-            h(
-              'dl',
-              { 'data-bp-resource-detail': 'configuration', className: 'bp-resource-configuration' },
-              h('dt', null, t('resource.configuration')),
-              h('dd', null, `${resourceConfigurationSourceLabel(activeResourceConfiguration.source, t)} · ${activeResourceConfiguration.identity}`),
-              activeResourceConfiguration.path && h('dt', null, t('resource.path')),
-              activeResourceConfiguration.path && h('dd', null, activeResourceConfiguration.path),
-              activeResourceConfiguration.bindingId && h('dt', null, t('resource.binding')),
-              activeResourceConfiguration.bindingId && h('dd', null, activeResourceConfiguration.bindingId),
-              activeResourceConfiguration.format && h('dt', null, t('resource.format')),
-              activeResourceConfiguration.format && h('dd', null, resourceConfigurationFormatLabel(activeResourceConfiguration.format, t))
-            ),
-          h(
-            'details',
-            { 'data-bp-resource-advanced': true, open: resourceDialog.mode !== 'view' },
-            h('summary', null, t('resource.advancedJson')),
-            h(
-              'label',
-              { className: 'bp-field' },
-              t('resource.newJson'),
-              h('textarea', {
-                'aria-label': t('resource.newJson'),
-                value: resourceDialog.json,
-                rows: 8,
-                readOnly: !editable || resourceDialog.mode === 'view',
-                onChange: event => {
-                  const target = (event.currentTarget ?? event.target) as HTMLTextAreaElement
-                  setResourceDialog(current => (current ? { ...current, json: target.value } : current))
-                }
-              })
-            )
-          ),
+          { className: 'bp-resource-backdrop' },
           h(
             'div',
-            { className: 'bp-resource-dialog-actions' },
-            resourceDialog.mode !== 'view' &&
-              h('button', { type: 'button', 'data-bp-action': 'resource-apply', disabled: !editable, onClick: applyResourceDialog }, t('interaction.apply')),
-            h('button', { type: 'button', 'data-bp-action': 'resource-cancel', onClick: closeResourceDialog }, t('interaction.close'))
+            {
+              ref: resourceDialogRef,
+              role: 'dialog',
+              'aria-modal': 'true',
+              'aria-labelledby': 'bp-resource-dialog-title',
+              'data-bp-resource-dialog': true,
+              tabIndex: -1,
+              className: 'bp-resource-dialog',
+              onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => {
+                if (event.key === 'Escape') {
+                  event.preventDefault()
+                  closeResourceDialog()
+                }
+                if (event.key === 'Tab' && !event.defaultPrevented) {
+                  const dialog = event.currentTarget
+                  const controls = Array.from(
+                    dialog.querySelectorAll<HTMLElement>(
+                      'button:not(:disabled),input:not(:disabled):not([type=hidden]),select:not(:disabled),textarea:not(:disabled),summary,[tabindex="0"]'
+                    )
+                  ).filter(element => element.getClientRects().length > 0)
+                  const first = controls[0],
+                    last = controls.at(-1)
+                  if (!first || !last) {
+                    event.preventDefault()
+                    dialog.focus()
+                  } else if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+                    event.preventDefault()
+                    last.focus()
+                  } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === dialog)) {
+                    event.preventDefault()
+                    first.focus()
+                  }
+                }
+              }
+            },
+            h(
+              'h2',
+              { id: 'bp-resource-dialog-title' },
+              resourceDialog.mode === 'add'
+                ? t('resource.add')
+                : resourceDialog.mode === 'view'
+                  ? t('resource.view', { id: resourceDialog.id })
+                  : t('resource.edit', { id: resourceDialog.id })
+            ),
+            h(
+              'div',
+              { className: 'bp-resource-fields' },
+              h(
+                'label',
+                { className: 'bp-field' },
+                t('resource.kind'),
+                h(
+                  StyledSelect,
+                  {
+                    React,
+                    'aria-label': t('resource.kind'),
+                    value: resourceDialog.kind,
+                    disabled: resourceDialog.mode !== 'add' || !editable,
+                    onChange: event => {
+                      const target = (event.currentTarget ?? event.target) as HTMLSelectElement
+                      const kind = target.value as ResourceRef['kind']
+                      setResourceDialog(current => {
+                        if (!current) return current
+                        let json = current.json
+                        try {
+                          const parsed = JSON.parse(json)
+                          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) json = JSON.stringify({ ...parsed, kind }, null, 2)
+                        } catch {
+                          /* Apply retains malformed draft for the user to repair. */
+                        }
+                        return { ...current, kind, json }
+                      })
+                    }
+                  },
+                  ...(['agent', 'skill', 'mcp', 'prompt', 'schema', 'script', 'subflow'] as const).map(kind =>
+                    h('option', { key: kind, value: kind }, resourceKindTitle(kind, t))
+                  )
+                )
+              ),
+              h(
+                'label',
+                { className: 'bp-field' },
+                t('resource.logicalId'),
+                h('input', {
+                  'aria-label': t('resource.newId'),
+                  value: resourceDialog.id,
+                  disabled: resourceDialog.mode !== 'add' || !editable,
+                  onChange: event => {
+                    const target = (event.currentTarget ?? event.target) as HTMLInputElement
+                    setResourceDialog(current => (current ? { ...current, id: target.value } : current))
+                  }
+                })
+              ),
+              h(
+                'label',
+                { className: 'bp-field' },
+                t('resource.displayName'),
+                h('input', {
+                  'data-bp-resource-field': 'title',
+                  'aria-label': t('resource.displayName'),
+                  value: resourceDialog.title,
+                  disabled: resourceDialog.mode === 'view' || !editable,
+                  onChange: event => {
+                    const target = (event.currentTarget ?? event.target) as HTMLInputElement
+                    setResourceDialog(current => (current ? { ...current, title: target.value } : current))
+                  }
+                })
+              ),
+              h(
+                'label',
+                { className: 'bp-field' },
+                t('resource.description'),
+                h('textarea', {
+                  'data-bp-resource-field': 'description',
+                  'aria-label': t('resource.description'),
+                  value: resourceDialog.description,
+                  placeholder: t('resource.noDescription'),
+                  readOnly: !editable || resourceDialog.mode === 'view',
+                  rows: 3,
+                  onChange: event => {
+                    const target = (event.currentTarget ?? event.target) as HTMLTextAreaElement
+                    setResourceDialog(current => (current ? { ...current, description: target.value } : current))
+                  }
+                })
+              )
+            ),
+            !resourceDialog.description.trim() &&
+              h('p', { className: 'bp-help bp-resource-description-fallback', 'data-bp-resource-description-fallback': true }, t('resource.noDescription')),
+            h(
+              'dl',
+              { 'data-bp-resource-detail': 'identity', className: 'bp-resource-identity' },
+              h('dt', null, t('resource.source')),
+              h('dd', { 'data-bp-resource-source': resourceDialog.source }, resourceDialog.source === 'dsh' ? t('resource.host') : t('resource.blueprint')),
+              h('dt', null, t('resource.availability')),
+              h(
+                'dd',
+                { 'data-bp-resource-availability': resourceDialog.availability },
+                resourceDialog.availability === 'available'
+                  ? t('resource.available')
+                  : resourceDialog.availability === 'unknown'
+                    ? t('resource.availabilityUnchecked')
+                    : t('resource.unavailable')
+              )
+            ),
+            activeResourceConfiguration &&
+              h(
+                'dl',
+                { 'data-bp-resource-detail': 'configuration', className: 'bp-resource-configuration' },
+                h('dt', null, t('resource.configuration')),
+                h('dd', null, `${resourceConfigurationSourceLabel(activeResourceConfiguration.source, t)} · ${activeResourceConfiguration.identity}`),
+                activeResourceConfiguration.path && h('dt', null, t('resource.path')),
+                activeResourceConfiguration.path && h('dd', null, activeResourceConfiguration.path),
+                activeResourceConfiguration.bindingId && h('dt', null, t('resource.binding')),
+                activeResourceConfiguration.bindingId && h('dd', null, activeResourceConfiguration.bindingId),
+                activeResourceConfiguration.format && h('dt', null, t('resource.format')),
+                activeResourceConfiguration.format && h('dd', null, resourceConfigurationFormatLabel(activeResourceConfiguration.format, t))
+              ),
+            h(
+              'details',
+              { 'data-bp-resource-advanced': true, open: resourceDialog.mode !== 'view' },
+              h('summary', null, t('resource.advancedJson')),
+              h(
+                'label',
+                { className: 'bp-field' },
+                t('resource.newJson'),
+                h(JsonEditor, {
+                  label: t('resource.newJson'),
+                  t,
+                  value: resourceDialog.json,
+                  rows: 8,
+                  disabled: !editable || resourceDialog.mode === 'view',
+                  onChange: json => setResourceDialog(current => (current ? { ...current, json } : current))
+                })
+              )
+            ),
+            h(
+              'div',
+              { className: 'bp-resource-dialog-actions' },
+              resourceDialog.mode !== 'view' &&
+                h('button', { type: 'button', 'data-bp-action': 'resource-apply', disabled: !editable, onClick: applyResourceDialog }, t('interaction.apply')),
+              h('button', { type: 'button', 'data-bp-action': 'resource-cancel', onClick: closeResourceDialog }, t('interaction.close'))
+            )
           )
         ),
       overlay &&

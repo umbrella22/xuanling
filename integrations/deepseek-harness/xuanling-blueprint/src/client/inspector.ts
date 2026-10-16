@@ -1,9 +1,10 @@
+import { StyledSelect } from './styled-controls.ts'
 /** Client-only editing drafts. The Host remains the authority on Save. */
 import { effectivePortVisibility, connectedPortEdges } from './port-visibility.ts'
 import type { PortSide } from './port-visibility.ts'
 import { nodeDisplayCapabilities } from './node-capabilities.ts'
 import { JsonEditor } from './json-editor.ts'
-import { createElement as h, useMemo, useSyncExternalStore } from 'react'
+import React, { createElement as h, useMemo, useSyncExternalStore } from 'react'
 import type { ChangeEvent } from 'react'
 import type { GraphNode, ResourceRef } from '../definition/types.ts'
 import type { HostResourceCatalogEntry } from './remote.ts'
@@ -461,9 +462,12 @@ export function renderNodeInspector(
       { key: field, className: 'bp-field' },
       t(label),
       h(
-        'select',
+        StyledSelect,
         {
+          React,
+          disabled,
           'data-bp-field': field,
+          'aria-label': t(label),
           value,
           onChange: (event: ChangeEvent<HTMLSelectElement>) => {
             const choice = choices.find(choice => choice.key === event.currentTarget.value)
@@ -583,9 +587,12 @@ export function renderNodeInspector(
             { key: field },
             t(`inspector.condition.${field}`),
             h(
-              'select',
+              StyledSelect,
               {
+                React,
+                disabled,
                 'data-bp-field': `condition.${field}`,
+                'aria-label': t(`inspector.condition.${field}`),
                 value: definition.condition?.[field] ?? '',
                 onChange: (event: ChangeEvent<HTMLSelectElement>) => session.patch({ condition: { ...config, [field]: event.currentTarget.value } })
               },
@@ -606,8 +613,15 @@ export function renderNodeInspector(
         { 'data-bp-join': true },
         t('inspector.join'),
         h(
-          'select',
-          { 'data-bp-field': 'join', value: definition.join ?? 'all', onChange: () => session.patch({ join: 'all' }) },
+          StyledSelect,
+          {
+            React,
+            disabled,
+            'data-bp-field': 'join',
+            'aria-label': t('inspector.join'),
+            value: definition.join ?? 'all',
+            onChange: () => session.patch({ join: 'all' })
+          },
           h('option', { value: 'all' }, t('inspector.joinAll')),
           definition.join === 'any' && h('option', { value: 'any', disabled: true }, t('inspector.joinAnyUnavailable'))
         )
@@ -622,8 +636,10 @@ export function renderNodeInspector(
           'label',
           null,
           h(
-            'select',
+            StyledSelect,
             {
+              React,
+              disabled,
               'data-bp-field': 'model-mode',
               'aria-label': t('inspector.modelRoute'),
               value: snapshot.modelRoute.explicit ? 'explicit' : 'default',

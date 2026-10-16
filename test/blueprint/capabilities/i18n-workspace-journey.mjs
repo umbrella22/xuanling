@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { selectStyledOption } from './styled-control-entry.mjs'
 /** Native installed-DSH acceptance; Settings owns language and theme preferences.
  * No copied locale runtime, fake t, DOM clicks, user profiles or credential access.
  * The ordinary host/canvas journey remains required; this adds locale contracts.
@@ -232,7 +233,7 @@ async function groupsJourney(page, assert, api) {
   try {
     await page.reload({ waitUntil: 'networkidle' })
     await reopen(page)
-    await page.locator('[data-bp-select="blueprint"]').selectOption('canvas-approval')
+    await selectStyledOption(page, page.locator('[data-bp-select="blueprint"]'), 'canvas-approval')
     await page.locator(`[data-bp-group="${id}"]`).waitFor({ state: 'visible' })
     await page.locator('[data-bp-run="cancelled"]').waitFor({ state: 'visible' })
     const reloaded = value(await api('loadDefinition', { blueprintId: 'canvas-approval' }), 'reloaded grouped fixture')

@@ -1,3 +1,4 @@
+import { StyledSelect } from './styled-controls.ts'
 import type React from 'react'
 import type { CanvasPort } from './graph-editor.ts'
 import type { XY } from '../definition/types.ts'
@@ -378,8 +379,9 @@ export function InteractionOverlay(props: OverlayProps): React.ReactElement {
         h('p', null, t('interaction.importHelp')),
         props.importDisabledReason && h('p', { role: 'status' }, t(`interaction.disabled.${props.importDisabledReason}`)),
         h(
-          'select',
+          StyledSelect,
           {
+            React,
             'data-bp-import-target': true,
             value: targetId,
             'aria-label': t('library.configuredBlueprint'),

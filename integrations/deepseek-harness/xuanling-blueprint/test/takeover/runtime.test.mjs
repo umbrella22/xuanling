@@ -460,10 +460,13 @@ test('C-03 driver-data: upstream input port data reaches the consuming public Ag
   const value = definition(
     [
       { id: 'source', kind: 'input', outputs: { payload: 'json' } },
-      agentNode('consume', { inputs: { request: 'json' } }),
+      agentNode('consume', { inputs: { request: 'json' }, outputs: { result: 'json' } }),
       { id: 'sink', kind: 'output', inputs: { result: 'json' } }
     ],
-    [{ kind: 'data', from: 'source.payload', to: 'consume.request' }],
+    [
+      { kind: 'data', from: 'source.payload', to: 'consume.request' },
+      { kind: 'data', from: 'consume.result', to: 'sink.result' }
+    ],
     agentResource
   )
   const result = await admitAndDrain(h, argsFor(h, value, { payload: { task: 'UPSTREAM_DATA_SENTINEL', amount: 7 } }))
@@ -472,6 +475,13 @@ test('C-03 driver-data: upstream input port data reaches the consuming public Ag
   assert.ok(h.host.calls.length > 0)
   assert.match(h.host.calls[0].followups[0], /UPSTREAM_DATA_SENTINEL/, 'TARGET: data-edge payload cannot be replaced by a placeholder')
   assert.match(h.host.calls[0].followups[0], /7/)
+  assert.equal(record.state, 'failed')
+  assert.equal(record.attempts.find(attempt => attempt.nodeId === 'consume').result.outcome.kind, 'provider-failed')
+  assert.equal(
+    record.attempts.some(attempt => attempt.nodeId === 'sink'),
+    false,
+    'failed consuming Agent must not dispatch the dependent sink'
+  )
 })
 
 test('C-03 driver-data: settled upstream agent output binds to the next agent input', async t => {

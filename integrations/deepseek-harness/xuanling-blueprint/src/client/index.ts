@@ -14,6 +14,7 @@ import { BLUEPRINT_LOCALE, en, zh } from './locales.ts'
 import { ConversationController, resolveConversationHost } from './conversation-controller.ts'
 import { ConversationBlueprintView } from './conversation-view.ts'
 import type { ConversationViewInjected } from './conversation-view.ts'
+import { NativeChatNavigation } from './chat-navigation.ts'
 
 interface SlotsRuntime {
   inject(key: string, register: () => () => void): () => void
@@ -25,28 +26,32 @@ const PANEL_ID = 'xuanling-blueprint'
 // The parent supplies its own namespace; injecting it here would deadlock boot.
 export const inject = ['slots', 'remote', 'locale'] as const
 
-const panelPlugin = {
-  inject: ['slots', 'remote.blueprint', 'locale'],
-  apply: applyPanel
-}
-
-const conversationPlugin = {
-  inject: ['slots', 'remote.blueprint', 'uiSession', 'sessions', 'locale'],
-  apply: applyConversation
-}
-
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
   ctx.effect(() => ctx.locale.register(BLUEPRINT_LOCALE, { zh, en }), 'xuanling-blueprint: dictionaries')
   const remote = ctx.get('remote') as TypertClientRemote
   const disposeMount = await remote.$mount(TYPERT_REMOTE)
-  const panel = ctx.plugin(panelPlugin)
+  const navigation = new NativeChatNavigation()
+  const nativeNavigation = ctx.plugin({
+    inject: ['sessions', 'uiWorkspace'],
+    apply: scope => {
+      scope.effect(() => navigation.connect(scope.get('sessions') as unknown as ISessions, scope.uiWorkspace), 'xuanling-blueprint: native chat navigation')
+    }
+  })
+  const panel = ctx.plugin({
+    inject: ['slots', 'remote.blueprint', 'locale'],
+    apply: scope => applyPanel(scope, navigation)
+  })
   // Optional session services may arrive later. Do not await this child: the
   // global workspace must remain usable without a conversation environment.
-  const conversation = ctx.plugin(conversationPlugin)
+  const conversation = ctx.plugin({
+    inject: ['slots', 'remote.blueprint', 'uiSession', 'sessions', 'locale'],
+    apply: scope => applyConversation(scope, navigation)
+  })
   try {
     await panel
   } catch (error) {
     await conversation.dispose()
+    await nativeNavigation.dispose()
     await panel.dispose()
     await disposeMount()
     console.error('[xuanling-blueprint] client apply failed:', error)
@@ -56,12 +61,13 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   // visible panel retains a HostLink after its own contribution is withdrawn.
   return async () => {
     await conversation.dispose()
+    await nativeNavigation.dispose()
     await panel.dispose()
     await disposeMount()
   }
 }
 
-function applyConversation(ctx: Context): void {
+function applyConversation(ctx: Context, navigation: NativeChatNavigation): void {
   const slots = ctx.get('slots') as SlotsRuntime
   const host = resolveConversationHost(ctx)
   const t = ctx.locale.bind(BLUEPRINT_LOCALE)
@@ -87,7 +93,11 @@ function applyConversation(ctx: Context): void {
                 controller = new ConversationController(host, sessionId)
                 controllers.set(binding, controller)
               }
-              return { controller }
+              return {
+                controller,
+                openSession: (target, owner = sessionId) => navigation.openSession(target, owner),
+                chatNavigation: navigation
+              }
             }
           },
           ConversationBlueprintView
@@ -97,7 +107,7 @@ function applyConversation(ctx: Context): void {
   )
 }
 
-function applyPanel(ctx: Context): void {
+function applyPanel(ctx: Context, navigation: NativeChatNavigation): void {
   const slots = ctx.get('slots') as SlotsRuntime
   const hostLink = resolveBlueprintHost(ctx)
   const t = ctx.locale.bind(BLUEPRINT_LOCALE)
@@ -105,6 +115,7 @@ function applyPanel(ctx: Context): void {
 
   const Panel = createBlueprintPanel({
     hostLink,
+    openSession: navigation.openSession,
     storage: typeof localStorage === 'undefined' ? undefined : localStorage
   })
 

@@ -56,6 +56,10 @@ jobs:
         working-directory: integrations/deepseek-harness/xuanling-blueprint
         run: pnpm run typecheck
 
+      - name: N-STATIC format
+        working-directory: integrations/deepseek-harness/xuanling-blueprint
+        run: pnpm run format:check
+
       - name: N-STATIC lint
         working-directory: integrations/deepseek-harness/xuanling-blueprint
         run: pnpm run lint
@@ -63,6 +67,16 @@ jobs:
       - name: N-BUILD
         working-directory: integrations/deepseek-harness/xuanling-blueprint
         run: pnpm run build
+
+      # Hydrated production-control fixtures use the harness Playwright and
+      # its msedge channel with synthetic data, without a real DSH profile.
+      - name: Install Edge for deterministic browser fixtures
+        working-directory: test/blueprint
+        run: pnpm exec playwright install --with-deps msedge
+
+      - name: Complete deterministic source regression
+        working-directory: integrations/deepseek-harness/xuanling-blueprint
+        run: pnpm test
 
       - name: N-FOUNDATION
         working-directory: integrations/deepseek-harness/xuanling-blueprint

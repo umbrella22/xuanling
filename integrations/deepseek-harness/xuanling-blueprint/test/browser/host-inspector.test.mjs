@@ -220,16 +220,25 @@ export const ReactFlow='flow',ReactFlowProvider='provider',Background='backgroun
       flow = elements(tree).find(item => item.type === 'flow')
     assert.equal(flow.props.nodes[0].data.summary, expected)
     for (const [id, ref] of Object.entries(definition.resources)) {
-      const details = elements(tree).find(item => item.props['data-bp-resource'] === id)
-      const summary = elements(details).find(item => item.type === 'summary').props.children
+      const key = ref.source?.kind === 'host' ? `dsh:${ref.kind}:${ref.source.id}` : `blueprint:${id}`
+      const row = elements(tree).find(item => item.props['data-bp-resource-row'] === key)
+      const title = elements(row).find(item => item.props['data-bp-resource-title']).props.children
       const label =
         ref.source?.kind === 'host' ? (availableCatalog.find(row => row.kind === ref.kind && row.id === ref.source.id)?.displayName ?? ref.source.id) : id
-      assert.equal(summary, `${label} · ${en[`resource.kind.${ref.kind}`]}`)
+      const source = en[ref.source?.kind === 'host' ? 'resource.host' : 'resource.blueprint']
+      assert.equal(title, `${label} - ${source}`)
       if (ref.source?.kind === 'host') {
-        assert.equal(summary.includes(id), false)
-        assert.deepEqual(elements(details).find(item => item.props.value?.kind === ref.kind)?.props.value, ref, 'resource JSON retains canonical source data')
+        assert.equal(title.includes(id), false)
+        row.props.onClick()
+        const dialog = elements(render()).find(item => item.props['data-bp-resource-dialog'])
+        const json = elements(dialog).find(item => item.props.label === en['resource.newJson'])
+        assert.deepEqual(JSON.parse(json.props.value), ref, 'resource dialog JSON retains canonical source data')
+        elements(dialog)
+          .find(item => item.props['data-bp-action'] === 'resource-cancel')
+          .props.onClick()
       }
     }
+    assert.equal(elements(tree).filter(item => item.props['data-bp-resource']).length, 0, 'legacy resource list must not duplicate categorized cards')
     assert.equal(JSON.stringify(workspace.editor.exportDefinition()), serialized, 'display never rewrites canonical keys or source identity')
   }
 })

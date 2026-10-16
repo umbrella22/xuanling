@@ -1,3 +1,4 @@
+import { selectStyledOption } from './styled-control-entry.mjs'
 // Real DSH boot-graph factory only. This module does not mount a standalone
 // renderer or synthesize pointer events. page.evaluate is observation/timing,
 // never el.click(), mask removal, React injection, or fabricated run state.
@@ -69,22 +70,8 @@ async function choose(page, id, expectedNodes) {
   // contract. Use the data selector in a real browser and retain the role
   // contract for deterministic fixtures that intentionally do not model DOM
   // select behavior on generic locators.
-  const dataSelect = page.locator('[data-bp-select="blueprint"]')
-  const dataCanSelect = typeof dataSelect.selectOption === 'function'
-  let dataCount = dataCanSelect ? 1 : 0
-  if (dataCanSelect && typeof dataSelect.count === 'function') {
-    try {
-      dataCount = await dataSelect.count()
-    } catch {
-      dataCount = 0
-    }
-  }
-  if (dataCanSelect && dataCount > 0) await dataSelect.selectOption(id)
-  else {
-    const roleSelect = page.getByRole('combobox', { name: 'Blueprint library' })
-    if (typeof roleSelect.selectOption !== 'function') throw new Error('blueprint selector cannot select an option')
-    await roleSelect.selectOption(id)
-  }
+  const select = page.locator('[data-bp-select="blueprint"]')
+  await selectStyledOption(page, select, id)
   await checkCount(page, '[data-bp-node]', expectedNodes)
   await page.waitForFunction(() => !document.querySelector('[data-bp-action="save-layout"]').disabled)
 }
@@ -314,9 +301,6 @@ async function runBindingJourney(page, assert, api, succeeded, alphaNodeCount) {
 
 export async function runCanvasJourney(page, assert, api) {
   const trace = []
-  page.on('dialog', dialog => {
-    void dialog.accept()
-  }) // Only this disposable profile's unsaved-edit prompt.
   await choose(page, 'canvas-alpha', 3)
   const loaded = value(await api('loadDefinition', { blueprintId: 'canvas-alpha' }), 'load alpha')
   trace.push({ action: 'load', id: 'canvas-alpha', document: loaded })
@@ -529,15 +513,13 @@ export async function runCanvasJourney(page, assert, api) {
   await search.fill('')
   const withAgent = await waitForCanvasGraph(page, graph, { addedNodeKind: 'agentTask' })
   const agentId = withAgent.nodes.find(n => !graph.nodes.some(previous => previous.id === n.id)).id
-  await page.getByRole('combobox', { name: 'Agent binding', exact: true }).selectOption('a')
+  await selectStyledOption(page, page.getByRole('combobox', { name: 'Agent binding', exact: true }), 'a')
   await page.getByRole('checkbox', { name: 'Skill · skill', exact: true }).check()
-  await page
-    .locator('[data-bp-section="resources"] summary')
-    .filter({ hasText: /^Add resource$/ })
-    .click()
+  await page.locator('[data-bp-action="add-resource"]').click()
   await page.getByRole('textbox', { name: 'New resource ID', exact: true }).fill('tools')
+  await selectStyledOption(page, page.getByRole('combobox', { name: 'Resource type', exact: true }), 'mcp')
   await page.getByRole('textbox', { name: 'New resource JSON', exact: true }).fill('{"kind":"mcp","bindingId":"bp_probe"}')
-  await page.getByRole('button', { name: 'Add resource', exact: true }).click()
+  await page.locator('[data-bp-action="resource-apply"]').click()
   const options = page.getByRole('textbox', {
     name: 'Node options (all existing fields preserved)',
     exact: true
@@ -547,11 +529,11 @@ export async function runCanvasJourney(page, assert, api) {
   edited.toolsetRefs = ['tools']
   await options.fill(JSON.stringify(edited))
   await options.press('Tab')
-  await page.locator('[data-bp-resource="a"] summary').click()
-  const resource = page.getByRole('textbox', { name: 'Resource a', exact: true })
-  const originalResource = JSON.parse(await resource.inputValue())
+  await page.locator('[data-bp-resource-row="blueprint:a"]').click()
+  const resource = page.getByRole('textbox', { name: 'New resource JSON', exact: true })
+  const originalResource = JSON.parse(await resource.innerText())
   await resource.fill(JSON.stringify(originalResource))
-  await resource.press('Tab')
+  await page.locator('[data-bp-action="resource-apply"]').click()
   await save(page)
   const saved = value(await api('loadDefinition', { blueprintId: 'canvas-alpha' }), 'load saved alpha')
   const savedDefinition = JSON.parse(saved.definitionJson)
@@ -738,10 +720,11 @@ export async function measureCanvasPerformance(page, assert, fixture, api) {
     const canvas = document.querySelector('[data-bp-canvas="surface"]')
     if (!select || !canvas) throw new Error('performance journey could not locate the mounted blueprint picker/canvas')
     window.__bpPerf = { samples: [], loadStart: null, loadMs: null }
-    select.addEventListener(
-      'change',
-      () => {
-        if (select.value !== 'canvas-performance') return
+    document.addEventListener(
+      'click',
+      function beginLoad(event) {
+        if (!event.target.closest?.('[data-bp-option-value="canvas-performance"]')) return
+        document.removeEventListener('click', beginLoad, true)
         const perf = window.__bpPerf
         perf.loadStart = performance.now()
         const check = () => {
@@ -763,7 +746,7 @@ export async function measureCanvasPerformance(page, assert, fixture, api) {
         observer.observe(canvas, { childList: true, subtree: true, attributes: true })
         check()
       },
-      { once: true, capture: true }
+      { capture: true }
     )
   })
   await choose(page, 'canvas-performance', 200)
@@ -776,7 +759,7 @@ export async function measureCanvasPerformance(page, assert, fixture, api) {
   assert(
     'PERF-FIXTURE',
     'all 200 nodes, 300 named edges and 20 resources are mounted, not replaced/hidden to satisfy budget',
-    (await nodes(page).count()) === 200 && (await edges(page).count()) === 300 && (await page.locator('[data-bp-resource]').count()) >= 20,
+    (await nodes(page).count()) === 200 && (await edges(page).count()) === 300 && (await page.locator('[data-bp-resource-row]').count()) >= 20,
     JSON.stringify({
       nodes: fixture.nodes,
       edges: fixture.edges,
@@ -842,7 +825,7 @@ export async function measureCanvasPerformance(page, assert, fixture, api) {
       (await page.locator('[data-bp-dirty]').getAttribute('data-bp-dirty')) === 'false' &&
       (await nodes(page).count()) === 200 &&
       (await edges(page).count()) === 300 &&
-      (await page.locator('[data-bp-resource]').count()) >= 20,
+      (await page.locator('[data-bp-resource-row]').count()) >= 20,
     'presentation viewport is transient, no semantics deleted'
   )
   return {

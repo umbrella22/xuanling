@@ -92,7 +92,7 @@ function publicTree(f, id) {
 }
 const action = (f, id) => one(publicTree(f, id), n => n.props['data-bp-action'] === id)
 const flowOf = f => one(f.render(), n => n.type === 'flow')
-async function fixture({ viewportRaw, load = true } = {}) {
+async function fixture({ viewportRaw, load = true, openSession } = {}) {
   const d = {
     schemaVersion: 1,
     id: 'flow',
@@ -137,7 +137,11 @@ async function fixture({ viewportRaw, load = true } = {}) {
     }),
     loadDefinition: async id => ({ ...structuredClone(doc), blueprintId: id, definitionJson: JSON.stringify({ ...d, id }) })
   }
-  const Panel = panel.createBlueprintPanel({ hostLink: host, storage: { getItem: k => values.get(k) ?? null, setItem: (k, v) => values.set(k, v) } })
+  const Panel = panel.createBlueprintPanel({
+    hostLink: host,
+    storage: { getItem: k => values.get(k) ?? null, setItem: (k, v) => values.set(k, v) },
+    ...(openSession ? { openSession } : {})
+  })
   const t = (k, params = {}) => {
     assert.ok(Object.hasOwn(en, k), `locale key ${k}`)
     return en[k].replace(/\{([^}]+)\}/g, (_, name) => String(params[name] ?? `{${name}}`))
@@ -156,6 +160,57 @@ async function fixture({ viewportRaw, load = true } = {}) {
   f.render()
   return f
 }
+test('execution sync sidebar: explicit history actions preserve dirty editor state and use durable source/Attempt/member identities', async () => {
+  const opened = [],
+    f = await fixture({
+      openSession: async (...args) => {
+        opened.push(args)
+        return true
+      }
+    })
+  f.workspace.editor.renameDefinition('Dirty local blueprint')
+  f.workspace.editor.setSelection(['a'])
+  const before = f.workspace.editor.exportDefinition()
+  f.workspace.model.applySnapshot({
+    runId: 'historic',
+    state: 'failed',
+    definitionRevision: 'other-frozen-revision',
+    seq: 3,
+    logTail: [],
+    source: { sessionId: 'real-source', kind: 'tool' },
+    attempts: [{ nodeId: 'historic-agent', attemptId: 'historic-attempt', attempt: 1, state: 'failed', sessionId: 'historic-child' }],
+    team: { leadSessionId: 'real-source', members: [{ memberId: 'member', name: 'worker', sessionId: 'member-child' }] }
+  })
+  const tree = f.render()
+  one(tree, node => node.props['data-bp-open-attempt'] === 'historic-attempt').props.onClick()
+  one(tree, node => node.props['data-bp-source-chat'] === 'real-source').props.onClick()
+  one(tree, node => node.props['data-bp-open-member'] === 'member').props.onClick()
+  assert.deepEqual(opened, [
+    ['historic-child', 'real-source'],
+    ['real-source', undefined],
+    ['member-child', 'real-source']
+  ])
+  assert.deepEqual(f.workspace.editor.exportDefinition(), before, 'history navigation cannot load or rewrite the frozen graph into the editor')
+  assert.deepEqual([...f.workspace.editor.selection], ['a'])
+  assert.equal(f.workspace.dirty, true)
+  assert.equal(f.workspace.model.view.state, 'failed')
+  assert.equal(all(tree, node => node.props['data-bp-failure-explanation'] === 'historic-attempt').length, 1)
+})
+test('execution sync sidebar: legacy source-less Run cannot invent a root action or execution Session', async () => {
+  const f = await fixture({ openSession: async () => assert.fail('no durable Session target exists') })
+  f.workspace.model.applySnapshot({
+    runId: 'legacy',
+    state: 'failed',
+    definitionRevision: 'frozen',
+    seq: 1,
+    logTail: [],
+    attempts: [{ nodeId: 'old', attempt: 1, state: 'failed' }]
+  })
+  const tree = f.render()
+  assert.equal(all(tree, node => node.props['data-bp-source-chat'] !== undefined).length, 0)
+  const action = one(tree, node => node.type === 'button' && node.children.includes(en['conversation.openChat']))
+  assert.equal(action.props.disabled, true)
+})
 test('W2 panel actually exposes frozen toolbar and gesture entrypoints', async () => {
   const f = await fixture()
   for (const id of ['mode-pan', 'mode-select', 'motion-toggle', 'shortcuts', 'export-blueprint', 'import-blueprint']) {
@@ -1123,7 +1178,7 @@ test('host controls C02 actual toolbar groups history, mode and run/tools while 
     )
   }
   const picker = one(header, n => n.props['data-bp-select'] === 'blueprint')
-  assert.equal(picker.type, 'select')
+  assert.equal(picker.type.name, 'StyledSelect')
   assert.equal(picker.props.role, undefined)
   assert.equal(typeof picker.props.onChange, 'function')
   assert.equal(picker.props.value, 'flow')
@@ -1241,9 +1296,9 @@ test('W4.2 stale resource dialog cannot apply to a newly loaded blueprint', asyn
   const f = await fixture()
   one(f.render(), n => n.props['data-bp-action'] === 'add-resource').props.onClick()
   let dialog = one(f.render(), n => n.props['data-bp-resource-dialog'] === true)
-  const json = one(dialog, n => n.props['aria-label'] === en['resource.newJson'])
+  const json = one(dialog, n => n.props.label === en['resource.newJson'])
   const draft = '{"kind":"agent","path":"old.md"}'
-  json.props.onChange({ target: { value: draft } })
+  json.props.onChange(draft)
   await f.workspace.load('flow-b')
   f.render()
   dialog = one(f.render(), n => n.props['data-bp-resource-dialog'] === true)
@@ -1260,13 +1315,13 @@ test('W4.2 rejected resource Apply retains the JSON draft while busy', async () 
   const draft = '{"kind":"agent","source":{"kind":"host","id":"agent-a"}}'
   one(dialog, n => n.props['aria-label'] === en['resource.newId']).props.onChange({ target: { value: 'pending-resource' } })
   dialog = one(f.render(), n => n.props['data-bp-resource-dialog'] === true)
-  one(dialog, n => n.props['aria-label'] === en['resource.newJson']).props.onChange({ target: { value: draft } })
+  one(dialog, n => n.props.label === en['resource.newJson']).props.onChange(draft)
   f.workspace.busy = true
   f.render()
   dialog = one(f.render(), n => n.props['data-bp-resource-dialog'] === true)
   one(dialog, n => n.props['data-bp-action'] === 'resource-apply').props.onClick()
   dialog = one(f.render(), n => n.props['data-bp-resource-dialog'] === true)
-  assert.equal(one(dialog, n => n.props['aria-label'] === en['resource.newJson']).props.value, draft)
+  assert.equal(one(dialog, n => n.props.label === en['resource.newJson']).props.value, draft)
   assert.deepEqual(f.workspace.editor.exportDefinition().resources, {})
   assert.equal(one(f.render(), n => n.props['data-bp-status-key']).props['data-bp-status-key'], 'resource.editUnavailable')
 })

@@ -1,3 +1,4 @@
+import { selectStyledOption } from '../../../../../test/blueprint/capabilities/styled-control-entry.mjs'
 // Canonical journey + unchanged onboarding helper / public-locator contracts.
 // This fixture models observable reload/modal/actionability, not DSH rendering,
 // trusted browser input, real transport or acceptance. Main owns those gates.
@@ -41,7 +42,8 @@ function canonical(path) {
     path === paths[0]
       ? segment("  await page.reload({ waitUntil: 'networkidle' })", '  // Genuine second writer', source.indexOf('  // Reopen a local unsaved layout:'))
       : segment('  const refreshing = observeBlueprintRequests(page)', '  // Hold a real host response')
-  return new AsyncFunction(
+  const execute = new AsyncFunction(
+    'selectStyledOption',
     'page',
     'assert',
     'api',
@@ -55,6 +57,7 @@ function canonical(path) {
     'closePublicMore',
     `${definitions}\n${body}`
   )
+  return (...args) => execute(selectStyledOption, ...args)
 }
 const calls = new Map(paths.map(path => [path, canonical(path)]))
 
@@ -103,6 +106,9 @@ function fixture(locale = 'en', options = {}) {
     }
   }
   function query(selector) {
+    if (selector === '[data-bp-select="blueprint"]') return [{ visible: panelVisible, name: 'Blueprint library', selector: true }]
+    if (selector.includes('data-bp-option-value')) return [{ visible: panelVisible, option: /data-bp-option-value="([^"]+)"/.exec(selector)[1] }]
+    if (selector === '[data-bp-confirm-dialog]') return []
     if (selector === '[role="dialog"]:visible') return visible(dialogs)
     // Old expanded layout: public actions are visible; no More or run details.
     if (['[data-bp-action="more-actions"]', '[data-bp-overlay="more-menu"]', 'details[data-bp-disclosure="run"]'].includes(selector)) return []
@@ -124,6 +130,8 @@ function fixture(locale = 'en', options = {}) {
       isDisabled: async () => single(get(), 'isDisabled').disabled,
       textContent: async () => single(get(), 'textContent').textContent,
       getAttribute: async name => {
+        if (name === 'aria-controls') return 'fixture-blueprints'
+        if (name === 'aria-disabled') return 'false'
         assert.equal(name, 'aria-label', 'actual DSH Modal title contract')
         return single(get(), 'getAttribute').name
       },
@@ -145,6 +153,16 @@ function fixture(locale = 'en', options = {}) {
       },
       async click(opts) {
         const element = single(visible(get()), 'click')
+        if (element.selector) {
+          assert.ok(panelVisible && dialogs.length === 0)
+          return
+        }
+        if (element.option) {
+          assert.ok(['canvas-alpha', 'canvas-beta'].includes(element.option))
+          selected = element.option
+          events.push({ type: 'choose', id: selected })
+          return
+        }
         if (element.dialog) {
           assert.deepEqual(opts, { timeout: 3000 }, 'ordinary onboarding click uses existing bound; no force')
           if (options.dismissError) throw options.dismissError

@@ -233,6 +233,13 @@ export class BlueprintWorkspace {
   get dirty(): boolean {
     return this.blueprintId !== null && JSON.stringify(this.editor.exportDefinition()) !== this.baselineJson
   }
+  /** Leaving an empty canvas is intentional even when names/resources changed.
+   * Save/draft dirty still includes presentation; navigation protects semantic
+   * edits to nonempty graphs. Unsaved new drafts have no saved semantic baseline.
+   */
+  get needsNavigationConfirmation(): boolean {
+    return this.blueprintId !== null && this.editor.nodes.length > 0 && definitionSemantics(this.editor.exportDefinition()) !== this.baselineSemantics
+  }
   get definition(): BlueprintDefinition | null {
     return this.blueprintId ? this.editor.exportDefinition() : null
   }

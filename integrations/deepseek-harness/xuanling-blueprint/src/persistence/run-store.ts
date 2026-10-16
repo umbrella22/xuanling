@@ -1050,6 +1050,9 @@ export class RunStore {
     const meta: { attemptId: string; seq: number; intent: NonNullable<AttemptRecord['intent']> | null } = { attemptId: '', seq: 0, intent: null }
     await this.transition(runId, draft => {
       if (!['queued', 'running'].includes(draft.state)) throw new AttemptSettledError()
+      // A concurrent branch failure is a dispatch cutoff even while its live
+      // siblings are draining and the parent Run is still nonterminal.
+      if (draft.attempts.some(a => ['failed', 'timed_out', 'cancelled'].includes(a.state))) throw new AttemptSettledError()
       if (draft.state === 'queued') draft.state = 'running'
       const seq = draft.seq + 1
       const intent = { seq, at: Date.now(), kind: attempt.kind, resourceDigests: structuredClone(resourceDigests) }
