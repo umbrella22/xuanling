@@ -1,18 +1,20 @@
 // Real Panel closure + Workspace/GraphEditor, controlled renderer seats.
-// Not a mounted browser/Inspector-buffer acceptance test; main owns that gate.
+// Only FlowApiBridge's local effect runs; this is not mounted browser/Inspector
+// buffer acceptance. Main owns that gate.
 import assert from 'node:assert/strict'
 import { registerHooks } from 'node:module'
 import test from 'node:test'
 import { canvasDefinitions } from '../../../../../test/blueprint/capabilities/canvas-fixtures.mjs'
-import { en } from '../../src/client/locales.ts'
-import { BlueprintWorkspace } from '../../src/client/workspace.ts'
+import { en } from '../../src/client/shared/i18n/locales.ts'
+import { BlueprintWorkspace } from '../../src/client/features/authoring/logic/workspace/workspace-controller.ts'
 
 const key = Symbol.for('blueprint.test.nodeux.panel'),
   seat = { active: null }
 globalThis[key] = seat
 seat.react = {
-  createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }),
+  createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.length ? children : [props?.children] }),
   memo: fn => fn,
+  useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
   useState(initial) {
     const f = seat.active,
       i = f.cursor++
@@ -37,7 +39,9 @@ seat.react = {
     return f.memos[i].value
   },
   useCallback: fn => fn,
-  useEffect() {}
+  useEffect(effect) {
+    if (seat.bridge) effect()
+  }
 }
 const url = code => `data:text/javascript,${encodeURIComponent(code)}`
 const react = url(
@@ -52,15 +56,27 @@ const client = new URL('../../src/client/', import.meta.url).href
 const hooks = registerHooks({
   resolve(spec, context, next) {
     if (context.parentURL?.startsWith(client) && spec === 'react') return { url: react, shortCircuit: true }
-    if (context.parentURL === `${client}panel.ts` && spec === '@xyflow/react') return { url: flow, shortCircuit: true }
-    if (context.parentURL === `${client}panel.ts` && spec === './inspector.ts') return { url: inspector, shortCircuit: true }
+    if (
+      (context.parentURL === `${client}features/authoring/ui/panel/panel-composition.tsx` ||
+        context.parentURL === `${client}features/authoring/ui/panel/panel-controller.tsx` ||
+        context.parentURL === `${client}features/authoring/ui/canvas/canvas-surface.tsx` ||
+        context.parentURL === `${client}features/authoring/ui/canvas/canvas-renderers.tsx`) &&
+      spec === '@xyflow/react'
+    )
+      return { url: flow, shortCircuit: true }
+    if (
+      (context.parentURL === `${client}features/authoring/ui/panel/panel-composition.tsx` ||
+        context.parentURL === `${client}features/authoring/ui/panel/panel-controller.tsx`) &&
+      spec === '../inspector/inspector-composition.tsx'
+    )
+      return { url: inspector, shortCircuit: true }
     return next(spec, context)
   }
 })
 let createBlueprintPanel
 let resourceRows
 try {
-  ;({ createBlueprintPanel, resourceRows } = await import(`${client}panel.ts`))
+  ;({ createBlueprintPanel, resourceRows } = await import(`${client}features/authoring/ui/panel/panel-composition.tsx`))
 } finally {
   hooks.deregister()
 }
@@ -114,7 +130,10 @@ test('resource cards categorize historical references once and expose full descr
   f.workspace.editor.updateResource('local-skill', { kind: 'skill', source: { kind: 'shared', rootId: 'skills', path: 'review' } })
   f.workspace.editor.updateResource('local-mcp', { kind: 'mcp', bindingId: 'tools' })
   f.workspace.editor.updateResource('prompt', { kind: 'prompt', path: 'lib/prompts/review.md' })
-  f.workspace.resourceCatalog = [{ kind: 'agent', id: 'host-agent', displayName: 'Host agent', source: 'dsh', availability: 'available', description: '' }]
+  f.workspace.host.listResources = async () => ({
+    resources: [{ kind: 'agent', id: 'host-agent', displayName: 'Host agent', source: 'dsh', availability: 'available', description: '' }]
+  })
+  await f.workspace.refreshResources()
   const before = f.workspace.editor.exportDefinition()
   const section = resourceSectionOf(f)
   for (const kind of ['agent', 'skill', 'mcp']) {
@@ -348,13 +367,26 @@ async function fixture(kind) {
     storage: { getItem: k => values.get(k) ?? null, setItem: (k, v) => values.set(k, v) }
   })
   seat.active = f
-  f.shell = Panel({ t: f.t })
-  assert.equal(f.shell.type, 'provider')
-  const entry = f.shell.children[0]
+  // Root owns Workspace/subscription; the composition child has its own hook seats.
+  const panelSeat = { states: [], refs: [], memos: [], cursor: 0, refCursor: 0, memoCursor: 0 }
   f.render = () => {
     seat.active = f
     f.cursor = f.refCursor = f.memoCursor = 0
-    return (f.tree = entry.type({ t: f.t }))
+    const entry = Panel({ t: f.t })
+    seat.active = panelSeat
+    panelSeat.cursor = panelSeat.refCursor = panelSeat.memoCursor = 0
+    f.tree = entry.type(entry.props)
+    f.shell = one(f.tree, n => n.type === 'provider')
+    assert.ok(one(f.shell, n => n.type === 'flow'))
+    const bridge = one(f.shell, n => n.type?.name === 'FlowApiBridge')
+    seat.active = f
+    seat.bridge = true
+    try {
+      bridge.type(bridge.props)
+    } finally {
+      seat.bridge = false
+    }
+    return f.tree
   }
   f.render()
   f.workspace = f.states[0]

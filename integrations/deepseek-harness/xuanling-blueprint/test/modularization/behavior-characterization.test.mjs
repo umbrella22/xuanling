@@ -36,9 +36,9 @@ const method = (ast, name) =>
     find(ast, node => node.type === 'MethodDefinition' && node.key.name === name && node.value.body),
     name
   )
-function edit(source, edits) {
+function edit(source, edits, lang = 'ts') {
   for (const { start, end, text } of edits.sort((a, b) => b.start - a.start)) source = source.slice(0, start) + text + source.slice(end)
-  parseAst(source, { lang: 'ts', sourceType: 'module' })
+  parseAst(source, { lang, sourceType: 'module' })
   return source
 }
 function sourceCopy() {
@@ -47,24 +47,43 @@ function sourceCopy() {
     root = join(repo, 'integrations/deepseek-harness/xuanling-blueprint')
   mkdirSync(root, { recursive: true })
   for (const path of ['src', 'test', 'package.json']) cpSync(join(plugin, path), join(root, path), { recursive: true })
+  mkdirSync(join(root, 'scripts'))
+  for (const name of ['test-tsx-register.mjs', 'test-tsx-loader.mjs']) cpSync(join(plugin, 'scripts', name), join(root, 'scripts', name))
   symlinkSync(join(plugin, 'node_modules'), join(root, 'node_modules'), 'dir')
+  symlinkSync(join(plugin, 'node_modules'), join(repo, 'node_modules'), 'dir')
   const capabilities = join(repo, 'test/blueprint/capabilities')
-  mkdirSync(capabilities, { recursive: true })
-  cpSync(join(repository, 'test/blueprint/capabilities/canvas-fixtures.mjs'), join(capabilities, 'canvas-fixtures.mjs'))
+  mkdirSync(join(repo, 'test/blueprint'), { recursive: true })
+  cpSync(join(repository, 'test/blueprint/capabilities'), capabilities, { recursive: true })
+  cpSync(join(repository, 'test/blueprint/package.json'), join(repo, 'test/blueprint/package.json'))
+  symlinkSync(join(repository, 'test/blueprint/node_modules'), join(repo, 'test/blueprint/node_modules'), 'dir')
   return { home, root }
 }
 function run(root, file, title) {
   const pattern = `^${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`
   const result = spawnSync(
     process.execPath,
-    ['--experimental-transform-types', '--test', '--test-concurrency=1', '--test-reporter=tap', `--test-name-pattern=${pattern}`, file],
+    [
+      '--experimental-transform-types',
+      '--import',
+      join(root, 'scripts/test-tsx-register.mjs'),
+      '--test',
+      '--test-concurrency=1',
+      '--test-reporter=tap',
+      `--test-name-pattern=${pattern}`,
+      file
+    ],
     {
       cwd: root,
       encoding: 'utf8',
       maxBuffer: 8 * 1024 * 1024,
       // Do not inherit NODE_TEST_CONTEXT: this is an independent test runner,
       // not a recursive invocation inside the parent runner's child seat.
-      env: { PATH: process.env.PATH, ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) }
+      env: {
+        PATH: process.env.PATH,
+        ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
+        ...(process.env.HOME ? { HOME: process.env.HOME } : {}),
+        ...(process.env.USERPROFILE ? { USERPROFILE: process.env.USERPROFILE } : {})
+      }
     }
   )
   assert.equal(result.error, undefined, 'behavior subprocess must start normally')
@@ -84,7 +103,10 @@ const cases = [
     id: 'resource-availability',
     file: 'test/browser/resource-library.test.mjs',
     title: 'resource availability distinguishes catalog matches and missing references while loading',
-    source: root => (existsSync(join(root, 'src/client/resource-library-model.ts')) ? 'src/client/resource-library-model.ts' : 'src/client/panel.ts'),
+    source: root =>
+      existsSync(join(root, 'src/client/features/authoring/logic/resources/resource-library-model.ts'))
+        ? 'src/client/features/authoring/logic/resources/resource-library-model.ts'
+        : 'src/client/features/authoring/ui/panel/panel-composition.tsx',
     mutate(source, ast) {
       const fn = one(
         find(ast, node => node.type === 'FunctionDeclaration' && node.id?.name === 'resourceRows'),
@@ -100,39 +122,144 @@ const cases = [
     failure: /expected: 'unknown'[\s\S]*actual: 'available'/
   },
   {
-    id: 'stale-confirmation',
-    file: 'test/browser/panel-busy-navigation.test.mjs',
-    title: 'in-app navigation confirmation cancels without Host calls and rejects stale editor and repeated accept callbacks',
-    source: () => 'src/client/panel.ts',
-    prepare(root) {
-      const path = join(root, this.file),
-        source = readFileSync(path, 'utf8')
-      const target = one(
+    id: 'resource-reference-alias',
+    file: 'test/browser/resource-library.test.mjs',
+    title: 'resource rows isolate returned reference mutations from canonical definition and future projections',
+    source: () => 'src/client/features/authoring/logic/resources/resource-library-model.ts',
+    mutate(source, ast) {
+      const clones = find(ast, node => node.type === 'CallExpression' && node.callee.name === 'structuredClone' && node.arguments[0]?.name === 'ref')
+      assert.equal(clones.length, 3, 'all resource reference output paths must isolate canonical values')
+      return edit(
+        source,
+        clones.map(node => ({ start: node.start, end: node.end, text: 'ref' }))
+      )
+    },
+    failure: /returned resource reference must not alias canonical state/
+  },
+  {
+    id: 'retained-group-facts',
+    file: 'test/comfy/ui-panel.test.mjs',
+    title: 'retained Panel group command samples current group facts before authorization',
+    source: () => 'src/client/features/authoring/ui/panel/panel-controller.tsx',
+    mutate(source, ast) {
+      const adapter = one(
+        find(ast, node => node.type === 'CallExpression' && node.callee.name === 'deriveCommandFacts'),
+        'production command facts adapter'
+      )
+      const editor = one(
+        find(adapter.arguments[0], node => node.type === 'Property' && node.key.name === 'editor'),
+        'current editor input'
+      )
+      return edit(source, [{ start: editor.value.start, end: editor.value.end, text: '{ ...current, groups: targetGroup ? [targetGroup] : [] }' }], 'tsx')
+    },
+    failure: /removed group must not authorize a retained copy command/
+  },
+  {
+    id: 'command-busy-policy',
+    file: 'test/comfy/policy.test.mjs',
+    title: 'C-02 busy, missing definitions, selection/history/admission and lock facts disable typed intents',
+    source: () => 'src/client/shared/controls/command-policy.ts',
+    mutate(source, ast) {
+      const policy = one(
+        find(ast, node => node.type === 'FunctionDeclaration' && node.id?.name === 'commandDisabledReason'),
+        'commandDisabledReason'
+      )
+      const guard = one(
+        find(policy, node => node.type === 'IfStatement' && hasIdentifier(node.test, 'busy') && hasIdentifier(node.test, 'viewCommands')),
+        'busy fact guard'
+      )
+      return edit(source, [{ start: guard.test.start, end: guard.test.end, text: 'false' }])
+    },
+    failure: /expected: 'disabled'[\s\S]*actual: 'command'/
+  },
+  {
+    id: 'panel-binding-admission',
+    file: 'test/browser/panel-snapshot-hydrated.test.mjs',
+    title: 'actual Panel retained save callback cannot save a later document',
+    source: () => 'src/client/features/authoring/ui/panel/panel-workspace-binding.ts',
+    mutate(source, ast) {
+      const admission = one(
         find(
-          parseAst(source, { lang: 'js', sourceType: 'module' }),
-          node => node.type === 'CallExpression' && node.callee.name === 'test' && node.arguments[0]?.value === this.title
+          ast,
+          node =>
+            node.type === 'VariableDeclarator' && node.id.type === 'Identifier' && node.id.name === 'isCurrent' && node.init?.type === 'ArrowFunctionExpression'
         ),
-        'existing stale confirmation test'
+        'active binding admission predicate'
       )
-      const identity = one(
-        find(target, node => node.type === 'CallExpression' && memberName(node.callee) === 'equal' && node.arguments[1]?.name === 'replacement'),
-        'replacement editor identity assertion'
+      return edit(source, [{ start: admission.init.start, end: admission.init.end, text: '() => true' }])
+    },
+    failure: /OLD_PANEL_SAVE_CALLBACK_SAVED_NEW_DOCUMENT/
+  },
+  {
+    id: 'workspace-refresh-fence',
+    file: 'test/browser/workspace-foundation.test.mjs',
+    title: 'resource refresh ignores an older response after a newer refresh',
+    source: root => {
+      const file = 'src/client/features/authoring/logic/workspace/workspace-controller.ts'
+      const source = readFileSync(join(root, file), 'utf8')
+      const ast = parseAst(source, { lang: 'ts', sourceType: 'module' })
+      const refresh = method(ast, 'refreshResources')
+      const importedCalls = find(refresh, node => node.type === 'CallExpression' && node.callee.type === 'Identifier').flatMap(call =>
+        ast.body.filter(
+          item =>
+            item.type === 'ImportDeclaration' &&
+            item.source.value.startsWith('.') &&
+            item.specifiers.some(specifier => specifier.local.name === call.callee.name && item.importKind !== 'type' && specifier.importKind !== 'type')
+        )
       )
-      writeFileSync(
-        path,
-        edit(source, [
-          { start: identity.arguments[1].end, end: identity.arguments[1].end, text: ", 'stale confirmation must preserve replacement editor identity'" }
-        ])
-      )
+      const resourceOwner = importedCalls.find(item => item.source.value === '../resources/workspace-resource-use-cases.ts')
+      return resourceOwner ? 'src/client/features/authoring/logic/resources/workspace-resource-use-cases.ts' : file
     },
     mutate(source, ast) {
-      const guard = one(
-        find(ast, node => node.type === 'IfStatement' && ['capturedEditor', 'capturedId', 'capturedEpoch'].every(name => hasIdentifier(node.test, name))),
-        'captured editor/id/epoch guard'
+      // Locate the live Host read and its enclosing try block in either the
+      // facade or extracted callable, rather than guessing a class method.
+      const attempt = one(
+        find(
+          ast,
+          node =>
+            node.type === 'TryStatement' &&
+            find(node.block, child => child.type === 'CallExpression' && memberName(child.callee) === 'listResources').length > 0
+        ),
+        'resource read attempt on actual facade delegation path'
       )
-      return edit(source, [{ start: guard.test.start, end: guard.test.end, text: 'workspace.busy || composing.current' }])
+      const fence = one(
+        find(
+          attempt.block,
+          node =>
+            node.type === 'IfStatement' && find(node.test, child => child.type === 'BinaryExpression' && ['!==', '!='].includes(child.operator)).length > 0
+        ),
+        'stale catalog response read/navigation fence'
+      )
+      return edit(source, [{ start: fence.test.start, end: fence.test.end, text: 'false' }])
     },
-    failure: /stale confirmation must preserve replacement editor identity[\s\S]*expected:[\s\S]*name: 'Other draft'[\s\S]*actual:[\s\S]*name: 'Canvas alpha'/
+    failure: /expected: 'new'[\s\S]*actual: 'old'/
+  },
+  {
+    id: 'renderer-group-marker',
+    file: 'test/browser/canvas-presentation.test.mjs',
+    title: 'group frame is presentation-only, isolated from executable selection/deletion and reversible history',
+    source: root =>
+      existsSync(join(root, 'src/client/features/authoring/ui/canvas/canvas-renderers.tsx'))
+        ? 'src/client/features/authoring/ui/canvas/canvas-renderers.tsx'
+        : 'src/client/features/authoring/ui/panel/panel-composition.tsx',
+    mutate(source, ast) {
+      const renderer = one(
+        find(ast, node => (node.type === 'FunctionExpression' || node.type === 'FunctionDeclaration') && node.id?.name === 'PresentationGroup'),
+        'PresentationGroup renderer'
+      )
+      const marker = one(
+        find(
+          renderer,
+          node =>
+            (node.type === 'Property' && node.key.type === 'Literal' && node.key.value === 'data-bp-group') ||
+            (node.type === 'JSXAttribute' && node.name?.type === 'JSXIdentifier' && node.name.name === 'data-bp-group')
+        ),
+        'group frame marker'
+      )
+      const value = marker.type === 'JSXAttribute' ? marker.value : marker.value
+      return edit(source, [{ start: value.start, end: value.end, text: marker.type === 'JSXAttribute' ? "{'mutated'}" : "'mutated'" }], 'tsx')
+    },
+    failure: /actual: 'mutated'/
   },
   {
     id: 'physical-root-alias-queue',
@@ -233,7 +360,7 @@ for (const scenario of cases) {
       assert.equal(normal.status, 0, `unmodified production behavior must pass first:\n${normal.output}`)
       const path = join(copy.root, scenario.source(copy.root)),
         before = readFileSync(path, 'utf8')
-      const after = scenario.mutate(before, parseAst(before, { lang: 'ts', sourceType: 'module' }))
+      const after = scenario.mutate(before, parseAst(before, { lang: path.endsWith('.tsx') ? 'tsx' : 'ts', sourceType: 'module' }))
       assert.notEqual(after, before)
       writeFileSync(path, after)
       const broken = run(copy.root, scenario.file, scenario.title)

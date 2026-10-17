@@ -299,6 +299,17 @@ async function runBindingJourney(page, assert, api, succeeded, alphaNodeCount) {
   return { switch: switchEvidence, refresh: refreshEvidence, asynchronous: asyncEvidence }
 }
 
+// JsonEditor mounts CodeMirror only after its wrapper enters the viewport.
+// Use ordinary scrolling and the public contenteditable, never textarea APIs.
+export async function prepareNodeOptionsEditor(page) {
+  const summary = page.locator('[data-bp-inspector-advanced]')
+  if (await summary.locator('..').getAttribute('open') === null) await summary.click()
+  await page.locator('.bp-node-inspector [data-bp-json-editor]').last().scrollIntoViewIfNeeded()
+  const editor = page.locator('[data-bp-json="options"][contenteditable="true"]')
+  await editor.waitFor({ state: 'visible' })
+  return editor
+}
+
 export async function runCanvasJourney(page, assert, api) {
   const trace = []
   await choose(page, 'canvas-alpha', 3)
@@ -520,12 +531,8 @@ export async function runCanvasJourney(page, assert, api) {
   await selectStyledOption(page, page.getByRole('combobox', { name: 'Resource type', exact: true }), 'mcp')
   await page.getByRole('textbox', { name: 'New resource JSON', exact: true }).fill('{"kind":"mcp","bindingId":"bp_probe"}')
   await page.locator('[data-bp-action="resource-apply"]').click()
-  const options = page.getByRole('textbox', {
-    name: 'Node options (all existing fields preserved)',
-    exact: true
-  })
-  if (!(await options.isVisible())) await page.locator('[data-bp-inspector-advanced]').click()
-  const edited = JSON.parse(await options.inputValue())
+  const options = await prepareNodeOptionsEditor(page)
+  const edited = JSON.parse(await options.innerText())
   edited.toolsetRefs = ['tools']
   await options.fill(JSON.stringify(edited))
   await options.press('Tab')

@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import postcss from 'postcss'
-import { installCanvasStyles } from '../../src/client/styles.ts'
+import { installCanvasStyles } from '../../src/client/shared/styles/styles.ts'
 
 const marker = '/* Host controls: DSH primitives, scoped outside the graph. */'
 function installedStyles() {

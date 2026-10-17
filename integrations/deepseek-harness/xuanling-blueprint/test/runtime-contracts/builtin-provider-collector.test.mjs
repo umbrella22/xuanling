@@ -306,7 +306,7 @@ const receiptSpec = () => ({
   cwd: '/workspace/blueprint',
   before: { revision: 'a'.repeat(40), source_sha256: 'b'.repeat(64), artifact_sha256: 'c'.repeat(64) },
   after: { revision: 'a'.repeat(40), source_sha256: 'b'.repeat(64), artifact_sha256: 'c'.repeat(64) },
-  identity: { os: 'darwin', arch: 'arm64', osRelease: '25.0', node: 'v24.11.1', dshVersion: '0.2.1-alpha.1' },
+  identity: { os: 'darwin', arch: 'arm64', osRelease: '25.0', node: 'v24.11.1', dshVersion: '0.2.1-rc.2' },
   result: { status: 'not-run', code: 'LIVE_CONFIGURATION_MISSING', exit_code: 2 },
   protocol: 'openai-completions'
 })

@@ -73,7 +73,7 @@ function fakeReport({ args }, patch = {}) {
       platform: 'darwin/arm64',
       node: process.version,
       browser_version: 'synthetic-source-fixture',
-      dsh_version_output: '0.2.1-alpha.4'
+      dsh_version_output: '0.2.1-rc.2'
     },
     assertions: requiredCanvasAssertions(mode).map(id => ({ id, passed: true })),
     artifacts: {
@@ -131,7 +131,7 @@ test('browser helper uses a new route on every execution, forwards explicit plan
     assert.ok(args.includes('--canvas-test=browser'))
     assert.ok(resolve(dirs[i]).startsWith(join(f.helpers.reportDir, 'suites', 'browser-probe-')))
     assert.equal(Object.hasOwn(options.env, 'DEEPSEEK_API_KEY'), false)
-    assert.equal(Object.hasOwn(options.env, 'HOME'), false)
+    assert.equal(options.env.HOME, process.env.HOME || process.env.USERPROFILE)
     assert.equal(Object.hasOwn(options.env, 'NODE_OPTIONS'), false)
   }
   assert.equal(readFileSync(f.oldReport, 'utf8'), f.prior)
@@ -272,4 +272,50 @@ test('performance module cannot pass from boolean assertions if its actual measu
       const [performance] = await performanceCases(f.helpers)
       await assert.rejects(performance.run())
     })
+})
+
+test('advanced node options scrolls the existing JSON wrapper before waiting for lazy CodeMirror', async () => {
+  const { prepareNodeOptionsEditor } = await import('../../../../../test/blueprint/capabilities/canvas-journey.mjs')
+  for (const alreadyOpen of [false, true]) {
+    const events = []
+    const editor = {
+      async waitFor(options) {
+        assert.deepEqual(options, { state: 'visible' })
+        events.push('editor.visible')
+      }
+    }
+    const summary = {
+      locator(selector) {
+        assert.equal(selector, '..')
+        return {
+          async getAttribute(name) {
+            assert.equal(name, 'open')
+            return alreadyOpen ? '' : null
+          }
+        }
+      },
+      async click() {
+        events.push('advanced.open')
+      }
+    }
+    const page = {
+      locator(selector) {
+        if (selector === '[data-bp-inspector-advanced]') return summary
+        if (selector === '.bp-node-inspector [data-bp-json-editor]')
+          return {
+            last() {
+              return {
+                async scrollIntoViewIfNeeded() {
+                  events.push('wrapper.scroll')
+                }
+              }
+            }
+          }
+        assert.equal(selector, '[data-bp-json="options"][contenteditable="true"]')
+        return editor
+      }
+    }
+    assert.equal(await prepareNodeOptionsEditor(page), editor)
+    assert.deepEqual(events, [...(alreadyOpen ? [] : ['advanced.open']), 'wrapper.scroll', 'editor.visible'])
+  }
 })

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { BlueprintWorkspace } from '../../src/client/workspace.ts'
-import { resolveBlueprintHost, BlueprintRemoteError } from '../../src/client/remote.ts'
+import { BlueprintWorkspace } from '../../src/client/features/authoring/logic/workspace/workspace-controller.ts'
+import { resolveBlueprintHost, BlueprintRemoteError } from '../../src/client/adapters/host/remote.ts'
 const definition = id => ({
   schemaVersion: 1,
   id,

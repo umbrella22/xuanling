@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { openNativeSettings } from './native-settings-journey.mjs'
 import { selectStyledOption } from './styled-control-entry.mjs'
 /** Native installed-DSH acceptance; Settings owns language and theme preferences.
  * No copied locale runtime, fake t, DOM clicks, user profiles or credential access.
@@ -46,16 +47,8 @@ function value(response, label) {
     throw new Error(`${label}: real RPC failed (${response?.body?.result?.error?.code ?? response?.status})`)
   return response.body.result.value
 }
-async function settings(page, allowShortcutFallback = false) {
-  if (!allowShortcutFallback) await page.getByRole('button', { name: /^(设置|Settings)$/ }).click()
-  else {
-    const trigger = page.getByRole('button', { name: /^(设置|Settings)$/ })
-    if ((await trigger.count()) && (await trigger.isVisible().catch(() => false))) await trigger.click()
-    else await page.keyboard.press('Meta+Alt+,')
-  }
-  const modal = page.locator('[data-shortcut-modal="settings"]')
-  await modal.waitFor({ state: 'visible' })
-  return modal
+async function settings(page) {
+  return openNativeSettings(page)
 }
 async function closeSettings(modal) {
   await modal.getByRole('button', { name: /^(关闭|Close)$/ }).click()

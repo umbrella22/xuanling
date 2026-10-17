@@ -1,3 +1,4 @@
+import { openNativeSettings } from './native-settings-journey.mjs'
 import { selectStyledOption, styledSelectValue } from './styled-control-entry.mjs'
 /** Isolated installed DSH UI acceptance. No ambient provider or user data. */
 import assert from 'node:assert/strict'
@@ -314,10 +315,7 @@ try {
   await setNativeTheme(page, 'dark', true)
   check('dark theme preserves unfinished JSON', (await options.innerText()) === '{ unfinished')
   await page.screenshot({ path: join(reportDir, 'editor-dark.png'), fullPage: true })
-  const settingsTrigger = page.getByRole('button', { name: /^(设置|Settings)$/ })
-  if ((await settingsTrigger.count()) && (await settingsTrigger.isVisible().catch(() => false))) await settingsTrigger.click()
-  else await page.keyboard.press('Meta+Alt+,')
-  const settings = page.locator('[data-shortcut-modal="settings"]')
+  const settings = await openNativeSettings(page)
   await settings.getByRole('button', { name: '中文', exact: true }).click()
   await page.getByRole('menuitem', { name: 'English', exact: true }).click()
   await settings.getByRole('button', { name: 'Close', exact: true }).click()

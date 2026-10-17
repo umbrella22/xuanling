@@ -2,11 +2,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import React from 'react'
-import { GraphEditor } from '../../src/client/graph-editor.ts'
-import { InspectorSession, renderNodeInspector } from '../../src/client/inspector.ts'
+import { GraphEditor } from '../../src/client/features/authoring/logic/graph/graph-editor.ts'
+import { InspectorSession, renderNodeInspector } from '../../src/client/features/authoring/ui/inspector/inspector-composition.tsx'
 import { decodeDefinition } from '../../src/definition/codec.ts'
 import { validateDefinition } from '../../src/definition/validator.ts'
-import { en } from '../../src/client/locales.ts'
+import { en } from '../../src/client/shared/i18n/locales.ts'
 const t = (key, params = {}) => {
   assert.ok(Object.hasOwn(en, key), key)
   return en[key].replace(/\{(\w+)\}/g, (_, name) => String(params[name]))

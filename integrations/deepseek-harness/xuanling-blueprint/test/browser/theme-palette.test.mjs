@@ -9,13 +9,19 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { createRequire, stripTypeScriptTypes } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { installCanvasStyles } from '../../src/client/styles.ts'
+import { installCanvasStyles } from '../../src/client/shared/styles/styles.ts'
 
 const harnessRequire = createRequire(new URL('../../../../../test/blueprint/package.json', import.meta.url))
 const { chromium } = harnessRequire('playwright')
-const source = readFileSync(new URL('../../src/client/styles.ts', import.meta.url), 'utf8')
+const source = readFileSync(new URL('../../src/client/shared/styles/styles.ts', import.meta.url), 'utf8')
 const sourceSha256 = createHash('sha256').update(source).digest('hex')
 const browserModule = stripTypeScriptTypes(source, { mode: 'transform' })
+const browserFragments = Object.fromEntries(
+  ['base', 'canvas', 'panel'].map(name => {
+    const fragment = readFileSync(new URL(`../../src/client/shared/styles/${name}.ts`, import.meta.url), 'utf8')
+    return [name, stripTypeScriptTypes(fragment, { mode: 'transform' })]
+  })
+)
 const styleId = 'xuanling-blueprint-canvas-css'
 const aliases = {
   base: '--dsw-alias-bg-base',
@@ -140,17 +146,25 @@ async function withFixture(palette, scheme, callback) {
     // Execute the production TS module with only types erased. In particular,
     // installer/CSS bytes are neither extracted, replaced nor reimplemented.
     await page.evaluate(
-      async ({ source, styleId }) => {
-        const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
+      async ({ source, fragments, styleId }) => {
+        const fragmentUrls = Object.fromEntries(
+          Object.entries(fragments).map(([name, text]) => [name, URL.createObjectURL(new Blob([text], { type: 'text/javascript' }))])
+        )
+        const rewritten = source
+          .replace("from './base.ts'", `from ${JSON.stringify(fragmentUrls.base)}`)
+          .replace("from './canvas.ts'", `from ${JSON.stringify(fragmentUrls.canvas)}`)
+          .replace("from './panel.ts'", `from ${JSON.stringify(fragmentUrls.panel)}`)
+        const url = URL.createObjectURL(new Blob([rewritten], { type: 'text/javascript' }))
         try {
           const module = await import(url)
           module.installCanvasStyles()
           globalThis.__bpCssFixture = { module, style: document.getElementById(styleId), installCalls: 1 }
         } finally {
           URL.revokeObjectURL(url)
+          for (const fragmentUrl of Object.values(fragmentUrls)) URL.revokeObjectURL(fragmentUrl)
         }
       },
-      { source: browserModule, styleId }
+      { source: browserModule, fragments: browserFragments, styleId }
     )
     const initial = await observe(page)
     assert.equal(initial.stylesheetCount, 1, 'production installer appends its actual stylesheet once')

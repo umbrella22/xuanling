@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { test } from 'node:test'
 
-const url = new URL('../../src/client/command-policy.ts', import.meta.url)
-const policy = await import(existsSync(url) ? url.href : '../../src/client/workspace.ts')
+const url = new URL('../../src/client/shared/controls/command-policy.ts', import.meta.url)
+const policy = await import(existsSync(url) ? url.href : '../../src/client/features/authoring/logic/workspace/workspace-controller.ts')
 
 test('C-02 central canvas shortcut policy is a callable behavior boundary', () => {
   assert.equal(typeof policy.resolveCanvasShortcut, 'function', 'CANVAS_COMMAND_POLICY_MISSING')

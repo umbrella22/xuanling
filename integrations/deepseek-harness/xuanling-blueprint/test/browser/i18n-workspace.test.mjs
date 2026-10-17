@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { inject } from '../../src/client/index.ts'
-import { BlueprintWorkspace } from '../../src/client/workspace.ts'
+import { BlueprintWorkspace } from '../../src/client/features/authoring/logic/workspace/workspace-controller.ts'
 
 const definition = {
   schemaVersion: 1,

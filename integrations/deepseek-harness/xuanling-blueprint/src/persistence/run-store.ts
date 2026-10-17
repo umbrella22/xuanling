@@ -1040,13 +1040,24 @@ export class RunStore {
    * (intent-before-effect, C-08). */
   async recordIntent(
     runId: string,
-    attempt: { nodeId: string; kind: string; resourceDigests?: Record<string, string>; diagnostics?: AttemptDiagnostics; sessionId?: string }
+    attempt: {
+      nodeId: string
+      kind: string
+      resourceDigests?: Record<string, string>
+      diagnostics?: AttemptDiagnostics
+      sessionId?: string
+      /** Build a reserved execution identity after the durable Attempt ID exists. */
+      sessionIdForAttempt?: (attemptId: string) => string
+    }
   ): Promise<{ attemptId: string; seq: number; intent: NonNullable<AttemptRecord['intent']> }> {
+    if (attempt.sessionId !== undefined && attempt.sessionIdForAttempt !== undefined) throw new AttemptSettledError()
     const sessionId = attempt.sessionId === undefined ? undefined : z.string().min(1).parse(attempt.sessionId)
     const diagnostics = attempt.diagnostics === undefined ? undefined : attemptDiagnosticsCodec().parse(attempt.diagnostics)
     const resourceDigests = attempt.resourceDigests ?? (diagnostics?.status === 'available' ? diagnostics.resourceDigests : {})
     if (diagnostics?.status === 'available' && !sameDigests(resourceDigests, diagnostics.resourceDigests)) throw new AttemptSettledError()
     const newAttemptId = `att-${randomUUID()}`
+    const generatedSessionId = attempt.sessionIdForAttempt === undefined ? undefined : z.string().min(1).parse(attempt.sessionIdForAttempt(newAttemptId))
+    const persistedSessionId = generatedSessionId ?? sessionId
     const meta: { attemptId: string; seq: number; intent: NonNullable<AttemptRecord['intent']> | null } = { attemptId: '', seq: 0, intent: null }
     await this.transition(runId, draft => {
       if (!['queued', 'running'].includes(draft.state)) throw new AttemptSettledError()
@@ -1063,7 +1074,7 @@ export class RunStore {
         state: 'running',
         attempt: 1,
         intent,
-        ...(sessionId === undefined ? {} : { sessionId }),
+        ...(persistedSessionId === undefined ? {} : { sessionId: persistedSessionId }),
         ...(diagnostics === undefined ? {} : { diagnostics: structuredClone(diagnostics) })
       })
       draft.log.push({ seq, at: intent.at, kind: 'intent', detail: { attemptId: newAttemptId, nodeId: attempt.nodeId, kind: attempt.kind } })

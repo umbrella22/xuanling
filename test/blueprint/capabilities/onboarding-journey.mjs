@@ -9,6 +9,10 @@ const steps = new Map([
   ['预览版说明', { kind: 'preview', action: '继续' }],
   ['Add an API key to get started', { kind: 'keyless', action: 'Configure later' }],
   ['添加一个 API Key 开始使用', { kind: 'keyless', action: '稍后配置' }],
+  // DSH >= 0.2.1-alpha.5 projects settings.models.sign-in into the credential step.
+  // AccountOnboarding's Close completes that step without starting sign-in.
+  ['Get started', { kind: 'account', action: 'Close' }],
+  ['开始使用', { kind: 'account', action: '关闭' }],
 ])
 
 export async function dismissOnboardingDialogs(page) {
@@ -20,7 +24,14 @@ export async function dismissOnboardingDialogs(page) {
     if (count !== 1) throw new Error('onboarding blocked by multiple visible dialogs')
     const title = await visibleDialogs.first().getAttribute('aria-label')
     const step = steps.get(title)
-    if (!step) throw new Error('onboarding blocked by an unrecognized visible dialog')
+    if (!step) {
+      // Unknown titles and arbitrary button text may contain user data. Query
+      // only the public onboarding actions, and never read body/input content.
+      const dialog = visibleDialogs.first()
+      const actions = [...new Set([...steps.values()].map(value => value.action))]
+      const counts = await Promise.all(actions.map(async action => `${action}=${await dialog.getByRole('button', { name: action, exact: true }).count()}`))
+      throw new Error(`onboarding blocked by an unrecognized visible dialog; label=${title == null ? 'missing' : 'unknown'}; ${counts.join(',')}`)
+    }
     if (dismissed.has(step.kind)) throw new Error('onboarding repeated an already-dismissed step')
 
     // Scope by the exact dialog title, never a global body button. Playwright

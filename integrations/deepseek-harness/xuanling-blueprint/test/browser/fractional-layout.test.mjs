@@ -2,8 +2,8 @@
 // codecs/revision helpers; in-memory HostLink/storage, not DSH/native UI QA.
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { GraphEditor } from '../../src/client/graph-editor.ts'
-import { BlueprintWorkspace, draftKey } from '../../src/client/workspace.ts'
+import { GraphEditor } from '../../src/client/features/authoring/logic/graph/graph-editor.ts'
+import { BlueprintWorkspace, draftKey } from '../../src/client/features/authoring/logic/workspace/workspace-controller.ts'
 import { decodeDefinition, validateDefinition } from '../../src/definition/index.ts'
 import { documentRevisions } from '../../src/definition/document.ts'
 

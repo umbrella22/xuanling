@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { NativeChatNavigation } from '../../src/client/chat-navigation.ts'
+import { NativeChatNavigation } from '../../src/client/features/conversation/logic/chat-navigation.ts'
 
 function fixture(t) {
   const addresses = new Map(),

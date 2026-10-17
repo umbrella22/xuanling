@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { test } from 'node:test'
 
-const url = new URL('../../src/client/viewport-state.ts', import.meta.url)
-const view = await import(existsSync(url) ? url.href : '../../src/client/workspace.ts')
+const url = new URL('../../src/client/features/authoring/logic/graph/viewport-state.ts', import.meta.url)
+const view = await import(existsSync(url) ? url.href : '../../src/client/features/authoring/logic/workspace/workspace-controller.ts')
 
 test('C-08 viewport preferences have a strict codec and generation-bound store', () => {
   assert.equal(typeof view.decodeViewportState, 'function', 'LOCAL_VIEWPORT_CODEC_MISSING')

@@ -30,6 +30,8 @@ XuanLing MCP 是面向编码 Agent 的跨平台本地 Model Context Protocol
 `@xuanling-rs/xuanling-dsh-blueprint@0.6.1` package。
 TeamStage复用原生输入和审批界面，验收结构化输出与实际artifact；
 不确定外部副作用进入`recovery_required`。DSH运行时跟随提供所需能力的最新官方频道。
+当前 Blueprint 开发环境和 CI fixture 使用该频道的 DSH `0.2.1-rc.2`；公共运行时兼容下限
+仍为 `>=0.2.1-alpha.5`，并参与预发布版本比较。
 
 ```sh
 pnpm add --save-exact @xuanling-rs/xuanling-dsh-blueprint@0.6.1

@@ -22,6 +22,13 @@ a new custom profile does not automatically include the Web application.
 Use the latest official DSH channel that provides the required capabilities.
 TeamStage additionally needs the native Agent Teams profile enabled explicitly.
 
+### DSH runtime compatibility
+
+The current development and CI fixture uses `@deepseek-ai/dsh` `0.2.1-rc.2`
+from the DSH `next` capability channel. The public runtime peer contract remains
+`>=0.2.1-alpha.5`, with prereleases included, so newer compatible DSH releases
+are accepted when the required capabilities remain available.
+
 Independent ready nodes in one Run execute concurrently. Plugin configuration
 `maxConcurrentNodes` sets the maximum nodes in flight (default `4`; a positive
 safe integer). Set it to `1` for serial execution. A completed node frees its

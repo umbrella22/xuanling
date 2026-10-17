@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { projectFrozenCanvas } from '../../src/client/conversation-canvas.ts'
+import { projectFrozenCanvas } from '../../src/client/features/conversation/ui/conversation-canvas.ts'
 const snapshot = () => ({
   connection: 'connected',
   value: {

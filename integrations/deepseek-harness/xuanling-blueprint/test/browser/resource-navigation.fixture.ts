@@ -1,9 +1,9 @@
 // Mounted production panel with synthetic Host DTOs and isolated local browser storage.
 import React from 'react'
 import { createRoot } from 'react-dom/client'
-import { createBlueprintPanel } from '../../src/client/panel.ts'
-import { installCanvasStyles } from '../../src/client/styles.ts'
-import { en } from '../../src/client/locales.ts'
+import { createBlueprintPanel } from '../../src/client/features/authoring/ui/panel/panel-composition.tsx'
+import { installCanvasStyles } from '../../src/client/shared/styles/styles.ts'
+import { en } from '../../src/client/shared/i18n/locales.ts'
 const definition = (id: string) => ({
   schemaVersion: 1 as const,
   id,

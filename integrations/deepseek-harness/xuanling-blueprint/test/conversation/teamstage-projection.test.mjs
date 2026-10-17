@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { ConversationController } from '../../src/client/conversation-controller.ts'
+import { ConversationController } from '../../src/client/features/conversation/logic/conversation-controller.ts'
 import { inspectSessionCodec } from '../../src/conversation/contracts.ts'
 
 const clone = value => structuredClone(value)

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { GraphEditor } from '../../src/client/graph-editor.ts'
-import { decodeClipboard } from '../../src/client/clipboard.ts'
+import { GraphEditor } from '../../src/client/features/authoring/logic/graph/graph-editor.ts'
+import { decodeClipboard } from '../../src/client/features/authoring/logic/graph/clipboard.ts'
 
 const fixture = () => ({
   schemaVersion: 1,

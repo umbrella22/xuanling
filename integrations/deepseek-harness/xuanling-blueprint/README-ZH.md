@@ -20,6 +20,13 @@ dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.6.1
 profile 不会自动包含 Web 应用。DSH 使用提供所需能力的最新官方频道。
 TeamStage 还需要显式启用原生 Agent Teams profile，普通智能体任务不需要它。
 
+### DSH 运行时兼容性
+
+当前开发环境和 CI fixture 使用 DSH `next` 能力频道中的
+`@deepseek-ai/dsh` `0.2.1-rc.2`。公共运行时兼容下限仍为
+`>=0.2.1-alpha.5`，并参与预发布版本比较；只要所需能力仍然存在，更高的兼容
+DSH 版本也可以加载。
+
 同一 Run 中已就绪且彼此独立的节点会并行执行。插件配置 `maxConcurrentNodes` 控制同时
 在途的节点数，默认 `4`，取值为正安全整数；设为 `1` 可串行执行。节点完成后立即补位，
 较快分支可以继续推进，无需等待无关的慢分支。同一 runtime 中的多个 Run 仍按顺序排队。

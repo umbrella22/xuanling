@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { readFileSync } from 'node:fs'
 import { isDeepStrictEqual } from 'node:util'
-import { contextCommands } from '../../src/client/command-policy.ts'
+import { contextCommands } from '../../src/client/shared/controls/command-policy.ts'
 import {
   OBJECT_COMMAND_GROUPS,
   MORE_ACTION_GROUPS,

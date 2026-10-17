@@ -60,10 +60,14 @@ The probe and lifecycle collector provision `pnpm@11.27.1` in fresh temporary to
 homes. A local package tarball does not make these installation journeys offline;
 preinstalled repository dependencies alone do not remove registry access.
 
-The current probe checks DSH CLI output `0.2.1-alpha.2`, while the performance
-validator checks `0.2.1-alpha.1` and package dependencies select `0.2.1-alpha.3`.
-These are conflicting verification prerequisites pending a real-host validation
-and version-contract decision. Deterministic CI success cannot resolve that gap.
+Blueprint declares DSH runtime peers as `>=0.2.1-alpha.5`. The DSH compatibility
+preflight and collector version guards use SemVer with prereleases included:
+lower or malformed versions fail; the minimum and higher versions pass the
+version gate. Required service/module capabilities remain independently checked.
+The current development and harness fixture is pinned to `0.2.1-rc.2` from the
+DSH `next` capability channel for reproducible builds. Reports record the actual
+installed version; a newer version passing the compatibility gate does not count
+as a full behavior-validation receipt.
 
 ## Reports and unavailable environments
 

@@ -1,3 +1,4 @@
+import { supportsDshVersion } from './dsh-version.mjs'
 import { spawn, spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
@@ -213,7 +214,7 @@ export async function prepareProfile(options, fixture, tempRoot, steps) {
     env = isolatedEnvironment(home)
   for (const path of [home, cwd, join(home, 'tmp')]) mkdirSync(path, { recursive: true, mode: 0o700 })
   const version = execute(CLI, ['--version'], env, cwd, steps, 'version', 15000)
-  ensure(version.stdout.trim() === '0.2.1-alpha.4', 'HOST_VERSION_MISMATCH')
+  ensure(supportsDshVersion(version.stdout.trim()), 'HOST_VERSION_MISMATCH')
   const config = fixture ? await fixture.prepare({ root: tempRoot, mode: options.mode }) : { blueprints: {} }
   ensure(config && typeof config.blueprints === 'object' && !Array.isArray(config.blueprints), 'FIXTURE_CONFIG_INVALID')
   for (const path of Object.values(config.blueprints)) {

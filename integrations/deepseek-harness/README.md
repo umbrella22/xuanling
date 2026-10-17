@@ -44,6 +44,14 @@ retains all Harness-native tools, and loads two on-demand workflow Skills. The
 Memory Skill is active in this profile; the File Skill applies only when a
 separate tools bundle makes the XuanLing fs family visible.
 
+## DSH runtime compatibility
+
+The published DSH bundles currently resolve their official DSH bridge and Skill
+packages from the `0.2.1-rc.2` DSH `next` capability channel. Blueprint and the
+bundles keep the public runtime floor at `>=0.2.1-alpha.5`, with prereleases
+included in compatibility checks. Keep the installed DSH capabilities aligned
+with the selected channel when combining bundles in one profile.
+
 ## Bundles
 
 | Bundle | Behavior | Use case |

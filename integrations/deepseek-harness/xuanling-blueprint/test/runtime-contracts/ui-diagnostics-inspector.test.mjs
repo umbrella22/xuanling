@@ -2,13 +2,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { BlueprintClientModel } from '../../src/client/model.ts'
-import { resolveBlueprintHost } from '../../src/client/remote.ts'
-import { renderAttemptDiagnostics, projectAttemptDiagnostics } from '../../src/client/diagnostics.ts'
-import { GraphEditor } from '../../src/client/graph-editor.ts'
-import { InspectorSession, renderNodeInspector, parseInspectorJson } from '../../src/client/inspector.ts'
-import { BUILTIN_NODE_CATALOG, searchBuiltinNodes } from '../../src/client/node-catalog.ts'
-import { en, zh } from '../../src/client/locales.ts'
+import { BlueprintClientModel } from '../../src/client/features/authoring/logic/run/client-model.ts'
+import { resolveBlueprintHost } from '../../src/client/adapters/host/remote.ts'
+import { renderAttemptDiagnostics, projectAttemptDiagnostics } from '../../src/client/shared/diagnostics/diagnostics.ts'
+import { GraphEditor } from '../../src/client/features/authoring/logic/graph/graph-editor.ts'
+import { InspectorSession, renderNodeInspector, parseInspectorJson } from '../../src/client/features/authoring/ui/inspector/inspector-composition.tsx'
+import { BUILTIN_NODE_CATALOG, searchBuiltinNodes } from '../../src/client/features/authoring/logic/graph/node-catalog.ts'
+import { en, zh } from '../../src/client/shared/i18n/locales.ts'
 const t =
   dict =>
   (key, params = {}) =>

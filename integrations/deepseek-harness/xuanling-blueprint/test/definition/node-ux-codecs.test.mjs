@@ -3,8 +3,8 @@ import test from 'node:test'
 import { decodeDefinition } from '../../src/definition/codec.ts'
 import { validateDefinition } from '../../src/definition/validator.ts'
 import { computeRevision } from '../../src/definition/revision.ts'
-import { GraphEditor } from '../../src/client/graph-editor.ts'
-import { decodeClipboard } from '../../src/client/clipboard.ts'
+import { GraphEditor } from '../../src/client/features/authoring/logic/graph/graph-editor.ts'
+import { decodeClipboard } from '../../src/client/features/authoring/logic/graph/clipboard.ts'
 import { frozenPresentationCodec } from '../../src/conversation/contracts.ts'
 const definition = () => ({
   schemaVersion: 1,

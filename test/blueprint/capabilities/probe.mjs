@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { supportsDshVersion, DSH_COMPATIBILITY_RANGE } from './dsh-version.mjs'
 // W0.2 external capability probe for the DSH blueprint plugin plan
 // (plan: docs/plans/dsh-blueprint-plugin-development-plan.md, plan_id dsh-blueprint-plugin-v1).
 //
@@ -29,7 +30,8 @@ import { setNativeSettingsLocale } from './native-settings-journey.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const BP_ROOT = resolve(HERE, '..')
 const REPO = resolve(BP_ROOT, '..', '..')
-const DSH_VERSION_TARGET = '0.2.1-alpha.4'
+const DSH_VERSION_TARGET = DSH_COMPATIBILITY_RANGE
+export const PROBE_BOOT_ARGS = Object.freeze(['--profile', 'blueprint-web', '--no-open'])
 
 const args = process.argv.slice(2)
 const KEEP = args.includes('--keep')
@@ -202,6 +204,15 @@ export function isolatedProbeEnv(home, source = process.env) {
 }
 const ISOLATED_ENV = isolatedProbeEnv
 
+// Browser OS integration needs the operator's normal home (not a synthetic
+// macOS keychain location). Playwright still owns a fresh temporary userDataDir;
+// only HOME/USERPROFILE change here, never the credential environment allowlist.
+export function probeBrowserEnv(home, source = process.env) {
+  const originalHome = source.HOME || source.USERPROFILE
+  if (typeof originalHome !== 'string' || originalHome.trim() === '') throw new Error('BROWSER_HOME_UNAVAILABLE: HOME or USERPROFILE is required for browser launch')
+  return { ...isolatedProbeEnv(home, source), HOME: originalHome, USERPROFILE: source.USERPROFILE || originalHome }
+}
+
 async function main() {
   const tempRoot = mkdtempSync(join(tmpdir(), 'xuanling-bp-probe-'))
   mkdirSync(REPORT_DIR, { recursive: true })
@@ -226,7 +237,7 @@ async function main() {
   }
   const version = run(dshBin, ['--version'], { env: ISOLATED_ENV(home), cwd })
   report.environment.dsh_version_output = version.stdout.trim()
-  const s0ok = assert('P0', `dsh CLI is ${DSH_VERSION_TARGET}`, version.status === 0 && version.stdout.trim() === DSH_VERSION_TARGET, version.stdout.trim() || version.stderr.trim())
+  const s0ok = assert('P0', `dsh CLI satisfies ${DSH_VERSION_TARGET}`, version.status === 0 && supportsDshVersion(version.stdout.trim()), version.stdout.trim() || version.stderr.trim())
   s0.done({ status: s0ok ? 'passed' : 'failed' })
   if (!s0ok) {
     finalize(1)
@@ -391,7 +402,7 @@ async function main() {
 
   // S5: boot the profile (E-HOST-BOOT) and verify serving surfaces.
   const s5 = step('S5', 'E-HOST-BOOT: boot blueprint-web and verify plugin surfaces')
-  const boot = spawn(dshBin, ['--profile', 'blueprint-web'], { env, cwd, stdio: ['ignore', 'pipe', 'pipe'] })
+  const boot = spawn(dshBin, PROBE_BOOT_ARGS, { env, cwd, stdio: ['ignore', 'pipe', 'pipe'] })
   let bootLog = ''
   let baseUrl = null
   const bootPromise = new Promise((resolveBoot) => {
@@ -669,7 +680,7 @@ async function main() {
   try {
     const pw = await import('playwright')
     browserTried = true
-    const browser = await pw.chromium.launch({ channel: 'msedge', headless: true, env: ISOLATED_ENV(home) })
+    const browser = await pw.chromium.launch({ channel: 'msedge', headless: true, env: probeBrowserEnv(home) })
     report.environment.browser_version = browser.version()
     const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, reducedMotion: 'reduce' })
     page.setDefaultTimeout(15000)

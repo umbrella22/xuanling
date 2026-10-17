@@ -331,3 +331,62 @@ for (const locale of ['en', 'zh']) {
     )
   })
 }
+
+test('DIAGNOSTIC: unknown dialog evidence exposes only allowlisted public action counts', async () => {
+  const secret = 'private-user-title-sk-sensitive-value'
+  const f = fixture('en', 'none', { dialogs: [modal(secret, ['Continue', 'private action'])] })
+  await assert.rejects(dismissOnboardingDialogs(f.page), error => {
+    assert.match(error.message, /unrecognized visible dialog/)
+    assert.match(error.message, /label=unknown/)
+    assert.match(error.message, /Continue=1/)
+    assert.match(error.message, /Configure later=0/)
+    assert.ok(!error.message.includes(secret))
+    assert.ok(!error.message.includes('private action'))
+    return true
+  })
+  assert.deepEqual(f.attemptedClicks, [])
+})
+
+test('DIAGNOSTIC: missing aria-label remains a failure with safe evidence', async () => {
+  const f = fixture('en', 'none', { dialogs: [modal(null, ['Configure later'])] })
+  await assert.rejects(dismissOnboardingDialogs(f.page), /label=missing/)
+  assert.deepEqual(f.attemptedClicks, [])
+})
+
+for (const [title, close, signIn, addKey] of [
+  ['Get started', 'Close', 'Sign in', 'Add API Key'],
+  ['开始使用', '关闭', '登录', '添加 API Key']
+]) {
+  test(`TARGET: ${title} account onboarding closes keylessly without login or API setup`, async () => {
+    const f = fixture('en', 'none', {
+      dialogs: [modal(title, [close, signIn, addKey])],
+      onClick: (button, api) => {
+        assert.equal(button.name, close)
+        api.setDialogs([])
+      }
+    })
+    await dismissOnboardingDialogs(f.page)
+    assert.deepEqual(
+      f.clicks.map(click => [click.dialog, click.name]),
+      [[title, close]]
+    )
+    assert.deepEqual(f.visibleTitles(), [])
+  })
+  test(`TARGET: Preview can settle asynchronously into ${title} account onboarding`, async () => {
+    const f = fixture('en', 'preview', {
+      onClick: (button, api) => api.setDialogs(button.name === 'Continue' ? [modal(title, [close, signIn, addKey])] : [])
+    })
+    await dismissOnboardingDialogs(f.page)
+    assert.deepEqual(
+      f.clicks.map(click => click.name),
+      ['Continue', close]
+    )
+    assert.deepEqual(f.visibleTitles(), [])
+  })
+}
+
+test('CONTROL: account dialog without its exact Close cannot trigger sign-in or API setup', async () => {
+  const f = fixture('en', 'none', { dialogs: [modal('Get started', ['Sign in', 'Add API Key'])], bodyButtons: ['Close'] })
+  await assert.rejects(dismissOnboardingDialogs(f.page))
+  assert.deepEqual(f.clicks, [])
+})

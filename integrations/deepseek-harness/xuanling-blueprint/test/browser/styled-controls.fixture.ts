@@ -1,9 +1,9 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
-import { StyledSelect, ConfirmationDialog } from '../../src/client/styled-controls.ts'
-import { createBlueprintPanel } from '../../src/client/panel.ts'
-import { installCanvasStyles } from '../../src/client/styles.ts'
-import { en } from '../../src/client/locales.ts'
+import { StyledSelect, ConfirmationDialog } from '../../src/client/shared/controls/styled-controls.ts'
+import { createBlueprintPanel } from '../../src/client/features/authoring/ui/panel/panel-composition.tsx'
+import { installCanvasStyles } from '../../src/client/shared/styles/styles.ts'
+import { en } from '../../src/client/shared/i18n/locales.ts'
 const h = React.createElement
 const t = (key: keyof typeof en, params: Record<string, unknown> = {}) => en[key].replace(/\{([^}]+)\}/g, (_, name) => String(params[name] ?? `{${name}}`))
 const Panel = createBlueprintPanel({ hostLink: undefined, storage: undefined })

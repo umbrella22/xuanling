@@ -38,6 +38,12 @@ dependency；不需要全局 npm package、`npx` 或安装时下载 binary。
 工作流 Skill。该 profile 会使用 Memory Skill；只有另一个 tools bundle 让 XuanLing fs 工具可见
 时，File Skill 才会应用。
 
+## DSH 运行时兼容性
+
+当前发布的 DSH bundle 会从 DSH `next` 能力频道解析官方 bridge 和 Skill 包
+`0.2.1-rc.2`。Blueprint 和各 bundle 的公共运行时下限仍为 `>=0.2.1-alpha.5`，并参与
+预发布版本比较。在同一个 profile 组合 bundle 时，请保持已安装的 DSH 能力与所选频道一致。
+
 ## Bundle
 
 | Bundle | 行为 | 适用场景 |

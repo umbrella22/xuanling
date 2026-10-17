@@ -1,9 +1,9 @@
 // W1 production command/projection oracles; not installed/browser acceptance.
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { GraphEditor } from '../../src/client/graph-editor.ts'
-import { presentationGroupFrames } from '../../src/client/presentation.ts'
-import { PALETTE_NODE_FOOTPRINT } from '../../src/client/node-placement.ts'
+import { GraphEditor } from '../../src/client/features/authoring/logic/graph/graph-editor.ts'
+import { presentationGroupFrames } from '../../src/client/features/authoring/presenters/canvas-presentation.ts'
+import { PALETTE_NODE_FOOTPRINT } from '../../src/client/features/authoring/logic/graph/node-placement.ts'
 
 const definition = () => ({
   schemaVersion: 1,

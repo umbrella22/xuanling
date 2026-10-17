@@ -1665,14 +1665,18 @@ export class BlueprintService extends TypertRemoteService {
       }
       // A rejected incomplete binding has no dispatch input/model/tool facts
       // to invent. Still commit the Attempt before its typed rejection result.
-      const executionSessionId = node.kind === 'agentTask' && node.teamStage === undefined ? `bp-${randomUUID()}` : undefined
+      // Reserve the suffix before the durable intent, but bind the identity to
+      // the Attempt ID generated inside recordIntent's atomic write.
+      const executionSessionSuffix = node.kind === 'agentTask' && node.teamStage === undefined ? randomUUID().slice(0, 8) : undefined
+      const sessionIdForAttempt = executionSessionSuffix === undefined ? undefined : (attemptId: string) => `bp-${runId}-${attemptId}-${executionSessionSuffix}`
       intent = await handle.store.recordIntent(runId, {
         nodeId,
         kind: node.kind,
-        ...(executionSessionId === undefined ? {} : { sessionId: executionSessionId }),
+        ...(sessionIdForAttempt === undefined ? {} : { sessionIdForAttempt }),
         resourceDigests: diagnostics?.resourceDigests ?? {},
         diagnostics: diagnostics ?? { status: 'unavailable' }
       })
+      const executionSessionId = sessionIdForAttempt?.(intent.attemptId)
       // cancel may have committed while the intent or preparation was in progress.
       const beforeDispatch = await handle.store.get(runId)
       if (beforeDispatch.state === 'cancelling' || beforeDispatch.attempts.some(a => ['failed', 'timed_out', 'cancelled'].includes(a.state))) controller.abort()

@@ -869,7 +869,7 @@ if (config?.mode === 'live') {
     profile: {
       isolated: true,
       install_mode: 'linked',
-      dsh_version: '0.2.1-alpha.2',
+      dsh_version: '0.2.1-rc.2',
       team_profile: TEAM_PROFILE
     },
     key_read: false,

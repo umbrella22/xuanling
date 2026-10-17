@@ -25,14 +25,19 @@ import { BlueprintService } from '../../src/index.ts'
 import { decodeDefinition, validateDefinition } from '../../src/definition/index.ts'
 import { computeRevision } from '../../src/definition/revision.ts'
 import { BLUEPRINT_INVOCATIONS } from '../../src/typert-descriptors.ts'
-import { BlueprintWorkspace } from '../../src/client/workspace.ts'
-import { BlueprintClientModel } from '../../src/client/model.ts'
-import { resolveBlueprintHost } from '../../src/client/remote.ts'
-import { GraphEditor, editorNodeDisplayTitle } from '../../src/client/graph-editor.ts'
-import { BUILTIN_NODE_CATALOG, searchBuiltinNodes } from '../../src/client/node-catalog.ts'
-import { parseInspectorJson, applyInspectorPatch, InspectorSession, renderNodeInspector } from '../../src/client/inspector.ts'
-import { en, zh } from '../../src/client/locales.ts'
-import { flowAriaLabels, runStateTitle } from '../../src/client/presentation.ts'
+import { BlueprintWorkspace } from '../../src/client/features/authoring/logic/workspace/workspace-controller.ts'
+import { BlueprintClientModel } from '../../src/client/features/authoring/logic/run/client-model.ts'
+import { resolveBlueprintHost } from '../../src/client/adapters/host/remote.ts'
+import { GraphEditor, editorNodeDisplayTitle } from '../../src/client/features/authoring/logic/graph/graph-editor.ts'
+import { BUILTIN_NODE_CATALOG, searchBuiltinNodes } from '../../src/client/features/authoring/logic/graph/node-catalog.ts'
+import {
+  parseInspectorJson,
+  applyInspectorPatch,
+  InspectorSession,
+  renderNodeInspector
+} from '../../src/client/features/authoring/ui/inspector/inspector-composition.tsx'
+import { en, zh } from '../../src/client/shared/i18n/locales.ts'
+import { flowAriaLabels, runStateTitle } from '../../src/client/features/authoring/presenters/canvas-presentation.ts'
 
 const sha = value => createHash('sha256').update(value).digest('hex')
 const json = JSON.stringify
@@ -762,7 +767,7 @@ test('C-07 public DTO capability: optional diagnostics exists and rejects raw fi
   }
 })
 test('C-07 diagnostics presentation capability: existing panel must consume durable diagnostics', () => {
-  const source = readFileSync(new URL('../../src/client/panel.ts', import.meta.url), 'utf8')
+  const source = readFileSync(new URL('../../src/client/features/authoring/ui/panel/panel-controller.tsx', import.meta.url), 'utf8')
   assert.equal(/\bdiagnostics\b/.test(source), true, 'C-07 DIAGNOSTICS_NOT_RENDERED: existing Attempt presentation only displays outputJson/errorCode')
   // This explicit source capability is intentionally NOT a rendering/browser
   // green. W3 collector must inspect real zh/en UI, reload and raw sentinels.

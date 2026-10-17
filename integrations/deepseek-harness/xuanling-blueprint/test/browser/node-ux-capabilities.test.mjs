@@ -2,9 +2,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import React from 'react'
-import { GraphEditor } from '../../src/client/graph-editor.ts'
-import { InspectorSession, renderNodeInspector } from '../../src/client/inspector.ts'
-import { en } from '../../src/client/locales.ts'
+import { GraphEditor } from '../../src/client/features/authoring/logic/graph/graph-editor.ts'
+import { InspectorSession, renderNodeInspector } from '../../src/client/features/authoring/ui/inspector/inspector-composition.tsx'
+import { en } from '../../src/client/shared/i18n/locales.ts'
 const t = (key, params = {}) => {
   assert.ok(Object.hasOwn(en, key), key)
   return en[key].replace(/\{(\w+)\}/g, (_, n) => String(params[n]))
@@ -101,13 +101,14 @@ test('W2.2 TeamStage real Inspector retains four bindings but hides forbidden mo
 })
 
 import { registerHooks } from 'node:module'
-import { BlueprintWorkspace } from '../../src/client/workspace.ts'
+import { BlueprintWorkspace } from '../../src/client/features/authoring/logic/workspace/workspace-controller.ts'
 const key = Symbol.for('blueprint.test.capabilities'),
   seat = { active: null }
 globalThis[key] = seat
 seat.react = {
-  createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }),
+  createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.length ? children : [props?.children] }),
   memo: fn => fn,
+  useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
   useState(initial) {
     const f = seat.active,
       i = f.cursor++
@@ -132,13 +133,15 @@ seat.react = {
     return f.memos[i].value
   },
   useCallback: fn => fn,
-  useEffect() {}
+  useEffect(effect) {
+    if (seat.runBridgeEffect) seat.active.bridgeCleanup = effect()
+  }
 }
 const url = code => `data:text/javascript,${encodeURIComponent(code)}`
 const reactUrl = url(
   `export default globalThis[Symbol.for('blueprint.test.capabilities')].react; export const createElement=globalThis[Symbol.for('blueprint.test.capabilities')].react.createElement;`
 )
-const flow = url(`export const useReactFlow=()=>globalThis[Symbol.for('blueprint.test.capabilities')].active.flow;
+const flow = url(`export const useReactFlow=()=>globalThis[Symbol.for('blueprint.test.capabilities')].active.flowApi;
 export const Position={Left:'left',Right:'right'},MarkerType={ArrowClosed:'arrowclosed'};
 export const ReactFlow='flow',ReactFlowProvider='provider',Background='background',Controls='controls',MiniMap='minimap',Handle='handle',NodeResizer='resizer',BaseEdge='base-edge'; export const getSmoothStepPath=()=>['M 0 0 L 1 1',0,0];`)
 // Inspector is a frozen opaque boundary here, not a fake editor implementation.
@@ -147,14 +150,26 @@ const client = new URL('../../src/client/', import.meta.url).href
 const hooks = registerHooks({
   resolve(spec, context, next) {
     if (context.parentURL?.startsWith(client) && spec === 'react') return { url: reactUrl, shortCircuit: true }
-    if (context.parentURL === `${client}panel.ts` && spec === '@xyflow/react') return { url: flow, shortCircuit: true }
-    if (context.parentURL === `${client}panel.ts` && spec === './inspector.ts') return { url: inspector, shortCircuit: true }
+    if (
+      (context.parentURL === `${client}features/authoring/ui/panel/panel-composition.tsx` ||
+        context.parentURL === `${client}features/authoring/ui/panel/panel-controller.tsx` ||
+        context.parentURL === `${client}features/authoring/ui/canvas/canvas-surface.tsx` ||
+        context.parentURL === `${client}features/authoring/ui/canvas/canvas-renderers.tsx`) &&
+      spec === '@xyflow/react'
+    )
+      return { url: flow, shortCircuit: true }
+    if (
+      (context.parentURL === `${client}features/authoring/ui/panel/panel-composition.tsx` ||
+        context.parentURL === `${client}features/authoring/ui/panel/panel-controller.tsx`) &&
+      spec === '../inspector/inspector-composition.tsx'
+    )
+      return { url: inspector, shortCircuit: true }
     return next(spec, context)
   }
 })
 let createBlueprintPanel
 try {
-  ;({ createBlueprintPanel } = await import(`${client}panel.ts`))
+  ;({ createBlueprintPanel } = await import(`${client}features/authoring/ui/panel/panel-composition.tsx`))
 } finally {
   hooks.deregister()
 }
@@ -164,6 +179,41 @@ test.after(() => {
 
 const all = (tree, predicate) =>
   !tree || typeof tree !== 'object' ? [] : [...(predicate(tree) ? [tree] : []), ...(tree.children ?? []).flat(Infinity).flatMap(child => all(child, predicate))]
+
+// Render the real root and child with independent React hook owners. The local
+// Flow bridge commits its API before callbacks run, as it does after mounting.
+function panelRenderer(Panel, f, t) {
+  const owner = { states: [], refs: [], memos: [], cursor: 0, refCursor: 0, memoCursor: 0 }
+  f.flowApi = f.flow
+  return () => {
+    seat.active = owner
+    owner.cursor = owner.refCursor = owner.memoCursor = 0
+    const entry = Panel({ t })
+    f.workspace = entry.props.workspace
+    assert.equal(f.workspace, owner.states[0])
+    assert.equal(entry.props.workspaceSnapshot, f.workspace.getSnapshot())
+    seat.active = f
+    f.cursor = f.refCursor = f.memoCursor = 0
+    let tree = entry.type(entry.props)
+    const provider = all(tree, n => n.type === 'provider')[0]
+    assert.ok(provider)
+    if (f.providerKey !== provider.props.key) {
+      f.bridgeCleanup?.()
+      const bridge = all(provider, n => typeof n.type === 'function' && typeof n.props.onReady === 'function')[0]
+      assert.ok(bridge)
+      seat.runBridgeEffect = true
+      try {
+        bridge.type(bridge.props)
+      } finally {
+        seat.runBridgeEffect = false
+      }
+      f.providerKey = provider.props.key
+      f.cursor = f.refCursor = f.memoCursor = 0
+      tree = entry.type(entry.props)
+    }
+    return tree
+  }
+}
 for (const kind of kinds.filter(k => k !== 'unknown'))
   test(`W2.2 actual Panel ${kind} has meaningful binding summary only`, async () => {
     const definition = {
@@ -213,16 +263,9 @@ for (const kind of kinds.filter(k => k !== 'unknown'))
       hostLink: host,
       storage: { getItem: () => null, setItem() {} }
     })
-    seat.active = f
-    const shell = Panel({ t })
-    const entry = shell.children[0]
-    const render = () => {
-      seat.active = f
-      f.cursor = f.refCursor = f.memoCursor = 0
-      return entry.type({ t })
-    }
+    const render = panelRenderer(Panel, f, t)
     render()
-    const workspace = f.states[0]
+    const workspace = f.workspace
     assert.ok(workspace instanceof BlueprintWorkspace)
     await workspace.initialize()
     await workspace.load(definition.id)

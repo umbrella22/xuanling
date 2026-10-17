@@ -5,15 +5,18 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
+import { createRequire, stripTypeScriptTypes } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { evaluatePluginCompatibility } from '@deepseek-ai/dsh-app-boot'
+import { parseAst } from 'vite/rolldown/parseAst'
 import { hasPnpmImporterDependency, readPnpmLock } from './pnpm-lock.mjs'
 
 const PACKAGE_ROOT = fileURLToPath(new URL('../../', import.meta.url))
-const VERSION = '0.2.1-alpha.4'
+const VERSION = '0.2.1-rc.2'
+const MINIMUM_RANGE = '>=0.2.1-alpha.5'
 const REQUIRED = [
   '@deepseek-ai/dsh-llm',
   '@deepseek-ai/dsh-session',
@@ -32,29 +35,74 @@ const SOURCE_FILES = [
 const json = path => JSON.parse(readFileSync(path, 'utf8'))
 const hash = bytes => createHash('sha256').update(bytes).digest('hex')
 
-function imports(source) {
+function imports(source, filename = 'runtime.mjs') {
   const entries = []
-  for (const match of source.matchAll(/^(?:import|export)\s+(?!type\b)(?:[^'";]*?\bfrom\s+)?['"]([^'"]+)['"]/gm)) {
-    entries.push({ name: match[1], kind: 'static' })
+  const normalized = filename.endsWith('.ts') ? stripTypeScriptTypes(source, { mode: 'transform' }) : source
+  const ast = parseAst(normalized, undefined, filename)
+  for (const node of ast.body) {
+    if ((node.type === 'ImportDeclaration' || node.type === 'ExportNamedDeclaration' || node.type === 'ExportAllDeclaration') && node.source?.value) {
+      entries.push({ name: node.source.value, kind: 'static' })
+    }
   }
-  for (const match of source.matchAll(/\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g)) entries.push({ name: match[1], kind: 'dynamic' })
+  const literalValue = node => {
+    if (node?.type === 'Literal' && typeof node.value === 'string') return node.value
+    if (node?.type === 'TemplateLiteral' && node.expressions.length === 0 && node.quasis.length === 1) return node.quasis[0].value.cooked
+    return undefined
+  }
+  const visit = node => {
+    if (!node || typeof node !== 'object') return
+    if (node.type === 'ImportExpression') {
+      const name = literalValue(node.source)
+      if (name !== undefined) entries.push({ name, kind: 'dynamic' })
+    }
+    for (const value of Object.values(node)) {
+      if (Array.isArray(value)) value.forEach(visit)
+      else if (value && typeof value === 'object') visit(value)
+    }
+  }
+  visit(ast)
   return entries
 }
 
 const external = name => name.startsWith('@deepseek-ai/') || name === 'zod'
 const packageName = name => (name.startsWith('@') ? name.split('/').slice(0, 2).join('/') : name)
 
-test('all six public runtime peers have fixed required declarations and matching lock metadata', () => {
+test('public runtime peers declare a minimum while development dependencies stay reproducible', () => {
   const manifest = json(join(PACKAGE_ROOT, 'package.json')),
     lock = readPnpmLock(PACKAGE_ROOT)
   assert.deepEqual(
-    REQUIRED.filter(name => manifest.peerDependencies[name] !== VERSION),
+    Object.keys(manifest.peerDependencies).filter(name => name.startsWith('@deepseek-ai/dsh') && manifest.peerDependencies[name] !== MINIMUM_RANGE),
     [],
-    'Missing fixed public runtime peers'
+    'DSH public peers must expose the supported minimum, not an exact development tuple'
   )
+  for (const [root, section] of [
+    [PACKAGE_ROOT, 'devDependencies'],
+    [resolve(PACKAGE_ROOT, '../../../test/blueprint'), 'dependencies']
+  ]) {
+    const development = json(join(root, 'package.json'))
+    const developmentLock = readPnpmLock(root)
+    for (const [name, version] of Object.entries(development[section]).filter(([name]) => name.startsWith('@deepseek-ai/dsh'))) {
+      assert.equal(version, VERSION, `${name}: reproducible development version`)
+      assert.equal(hasPnpmImporterDependency(developmentLock, section, name, VERSION), true, `${name}: lock importer drift`)
+    }
+  }
   for (const name of REQUIRED) {
+    assert.equal(manifest.peerDependencies[name], MINIMUM_RANGE, `${name}: required public peer missing or range drift`)
     assert.notEqual(manifest.peerDependenciesMeta?.[name]?.optional, true)
     assert.equal(hasPnpmImporterDependency(lock, 'devDependencies', name, VERSION), true, `${name}: pnpm importer version drift`)
+  }
+})
+
+test('real DSH compatibility preflight rejects below the minimum and accepts equal or newer runtimes', () => {
+  const manifest = json(join(PACKAGE_ROOT, 'package.json'))
+  for (const version of ['0.2.0-rc.2', '0.2.0', '0.2.1-alpha.4']) {
+    const issue = evaluatePluginCompatibility(manifest, {}, version)
+    assert.ok(issue, `${version} must be rejected`)
+    assert.equal(issue.exempted, false)
+    assert.ok(Object.keys(issue.requirements).length > 0)
+  }
+  for (const version of ['0.2.1-alpha.5', '0.2.1-alpha.6', '0.2.1-alpha.10', '0.2.1-rc.1', '0.2.1', '0.2.2-alpha.1', '0.3.0', '1.0.0']) {
+    assert.equal(evaluatePluginCompatibility(manifest, {}, version), undefined, `${version} must satisfy the minimum`)
   }
 })
 
@@ -136,13 +184,13 @@ try {
   const visit = path => {
     if (visited.has(path)) return
     visited.add(path)
-    for (const entry of imports(readFileSync(path, 'utf8'))) {
+    for (const entry of imports(readFileSync(path, 'utf8'), path)) {
       if (entry.name.startsWith('.')) visit(resolve(dirname(path), entry.name))
       else if (external(entry.name)) emitted.push(entry)
     }
   }
   visit(join(plugin, 'lib/index.js'))
-  const source = SOURCE_FILES.flatMap(path => imports(readFileSync(join(PACKAGE_ROOT, path), 'utf8'))).filter(entry => external(entry.name))
+  const source = SOURCE_FILES.flatMap(path => imports(readFileSync(join(PACKAGE_ROOT, path), 'utf8'), path)).filter(entry => external(entry.name))
   for (const inventory of [source, emitted]) {
     for (const name of REQUIRED) {
       assert.ok(

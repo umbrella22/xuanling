@@ -81,6 +81,7 @@ for (const backend of ['json', 'sqlite'])
       })
       h = await teamHarness(t, {
         earlyReturn: true,
+        beforeDrain: () => release.promise,
         onMember: async (call, team) => {
           mutationResult = await team.capture(call, { task_id: team.task.id, expected_revision: team.task.revision, action: 'claim' }, 'team_task_update')
           // A resumed native result must not allow output or another mutation.
@@ -228,7 +229,7 @@ for (const backend of ['json', 'sqlite'])
 
 export async function teamHarness(
   t,
-  { count = 1, onMember, providers = true, nativeFault, earlyReturn = false, childTools = true, scopedSessions = false, ...options } = {}
+  { count = 1, onMember, providers = true, nativeFault, earlyReturn = false, childTools = true, scopedSessions = false, beforeDrain, ...options } = {}
 ) {
   let team
   const h = await harness(t, {
@@ -425,11 +426,42 @@ export async function teamHarness(
       } catch (error) {
         refusal = error
       }
+      // The observation-window tests intentionally pause a production job.
+      // Start the unchanged settlement budget only after their explicit release.
+      if (beforeDrain) await beforeDrain()
       await drain(h)
       return { admitted, refusal, doc, startArgs, record: admitted ? (await records(h)).find(r => r.runId === admitted.runId) : undefined }
     }
   }
 }
+
+test('test-owned barrier gates settlement observation without delaying production work', async t => {
+  const reached = Promise.withResolvers(),
+    release = Promise.withResolvers()
+  t.after(() => release.resolve())
+  const h = await teamHarness(t, {
+    beforeDrain: () => {
+      reached.resolve('barrier')
+      return release.promise
+    }
+  })
+  let settled = false
+  const starting = h.start().then(result => {
+    settled = true
+    return result
+  })
+  assert.equal(await Promise.race([reached.promise, starting.then(() => 'settled')]), 'barrier')
+  // Production finishes while start's observation remains paused by the test.
+  await drain(h)
+  assert.equal(h.host.calls.length > 0, true, 'production work starts before barrier release')
+  assert.equal(settled, false, 'start must not finish its gated settlement phase')
+  release.resolve()
+  const { record, refusal } = await starting
+  assert.equal(refusal, undefined)
+  assert.equal(record.state, 'succeeded')
+  assert.equal(h.drivers.size, 0)
+  assert.equal(h.host.pending.size, 0)
+})
 
 test('TeamStage does not create a private total deadline; DSH owns provider and disposal timing', async t => {
   t.mock.method(AbortSignal, 'timeout', () => {

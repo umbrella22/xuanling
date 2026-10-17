@@ -4,8 +4,9 @@ import assert from 'node:assert/strict'
 import { registerHooks } from 'node:module'
 import test from 'node:test'
 import { canvasDefinitions } from '../../../../../test/blueprint/capabilities/canvas-fixtures.mjs'
-import { zh, en } from '../../src/client/locales.ts'
-import { BlueprintWorkspace } from '../../src/client/workspace.ts'
+import { zh, en } from '../../src/client/shared/i18n/locales.ts'
+import { BlueprintWorkspace } from '../../src/client/features/authoring/logic/workspace/workspace-controller.ts'
+import { BlueprintRemoteError } from '../../src/client/adapters/host/remote.ts'
 import { adoptUserNodes } from '@xyflow/system'
 
 const key = Symbol.for('blueprint.test.presentation'),
@@ -14,6 +15,7 @@ globalThis[key] = seat
 seat.react = {
   createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }),
   memo: fn => fn,
+  useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
   useState(initial) {
     const f = seat.active,
       i = f.cursor++
@@ -38,7 +40,9 @@ seat.react = {
     return f.memos[i].value
   },
   useCallback: fn => fn,
-  useEffect() {}
+  useEffect(effect) {
+    if (seat.runBridgeEffect) seat.active.bridgeCleanup = effect()
+  }
 }
 const url = code => `data:text/javascript,${encodeURIComponent(code)}`
 const react = url(
@@ -53,14 +57,26 @@ const client = new URL('../../src/client/', import.meta.url).href
 const hooks = registerHooks({
   resolve(spec, context, next) {
     if (context.parentURL?.startsWith(client) && spec === 'react') return { url: react, shortCircuit: true }
-    if (context.parentURL === `${client}panel.ts` && spec === '@xyflow/react') return { url: flow, shortCircuit: true }
-    if (context.parentURL === `${client}panel.ts` && spec === './inspector.ts') return { url: inspector, shortCircuit: true }
+    if (
+      (context.parentURL === `${client}features/authoring/ui/panel/panel-composition.tsx` ||
+        context.parentURL === `${client}features/authoring/ui/panel/panel-controller.tsx` ||
+        context.parentURL === `${client}features/authoring/ui/canvas/canvas-surface.tsx` ||
+        context.parentURL === `${client}features/authoring/ui/canvas/canvas-renderers.tsx`) &&
+      spec === '@xyflow/react'
+    )
+      return { url: flow, shortCircuit: true }
+    if (
+      (context.parentURL === `${client}features/authoring/ui/panel/panel-composition.tsx` ||
+        context.parentURL === `${client}features/authoring/ui/panel/panel-controller.tsx`) &&
+      spec === '../inspector/inspector-composition.tsx'
+    )
+      return { url: inspector, shortCircuit: true }
     return next(spec, context)
   }
 })
 let createBlueprintPanel
 try {
-  ;({ createBlueprintPanel } = await import(`${client}panel.ts`))
+  ;({ createBlueprintPanel } = await import(`${client}features/authoring/ui/panel/panel-composition.tsx`))
 } finally {
   hooks.deregister()
 }
@@ -68,7 +84,12 @@ test.after(() => {
   delete globalThis[key]
 })
 const all = (tree, predicate) =>
-  !tree || typeof tree !== 'object' ? [] : [...(predicate(tree) ? [tree] : []), ...(tree.children ?? []).flat(Infinity).flatMap(child => all(child, predicate))]
+  !tree || typeof tree !== 'object'
+    ? []
+    : [
+        ...(predicate(tree) ? [tree] : []),
+        ...(tree.children?.length ? tree.children : [tree.props?.children]).flat(Infinity).flatMap(child => all(child, predicate))
+      ]
 const one = (tree, predicate) => {
   const found = all(tree, predicate)
   assert.equal(found.length, 1)
@@ -174,17 +195,39 @@ async function fixture() {
     return f.dict[k].replace(/\{([^}]+)\}/g, (_, p) => String(params[p] ?? `{${p}}`))
   }
   const Panel = createBlueprintPanel({ hostLink: host, storage: { getItem: k => values.get(k) ?? null, setItem: (k, v) => values.set(k, v) } })
-  seat.active = f
-  f.shell = Panel({ t: f.t })
-  assert.equal(f.shell.type, 'provider')
-  const entry = f.shell.children[0]
+  // Root and workspace are separate React component hook owners. Re-render the
+  // root to receive the latest immutable snapshot before rendering its child.
+  const owner = { states: [], refs: [], memos: [], cursor: 0, refCursor: 0, memoCursor: 0 }
   f.render = () => {
+    seat.active = owner
+    owner.cursor = owner.refCursor = owner.memoCursor = 0
+    f.shell = Panel({ t: f.t })
+    assert.equal(typeof f.shell.type, 'function')
+    assert.equal(f.shell.props.workspace, owner.states[0], 'the root owns the canonical Workspace')
+    assert.equal(f.shell.props.workspaceSnapshot, owner.states[0].getSnapshot(), 'the child receives the current snapshot')
     seat.active = f
     f.cursor = f.refCursor = f.memoCursor = 0
-    return (f.tree = entry.type({ t: f.t }))
+    f.tree = f.shell.type(f.shell.props)
+    const provider = one(f.tree, n => n.type === 'provider')
+    assert.ok(all(provider, n => n.type === 'flow').length === 1, 'the local provider contains the canvas')
+    if (f.providerKey !== provider.props.key) {
+      f.bridgeCleanup?.()
+      const bridge = one(provider, n => typeof n.type === 'function' && typeof n.props.onReady === 'function')
+      seat.runBridgeEffect = true
+      try {
+        bridge.type(bridge.props)
+      } finally {
+        seat.runBridgeEffect = false
+      }
+      f.providerKey = provider.props.key
+      // FlowApiBridge publishes the API to WorkspacePanel after its first commit.
+      f.cursor = f.refCursor = f.memoCursor = 0
+      f.tree = f.shell.type(f.shell.props)
+    }
+    return f.tree
   }
   f.render()
-  f.workspace = f.states[0]
+  f.workspace = owner.states[0]
   assert.ok(f.workspace instanceof BlueprintWorkspace)
   await f.workspace.initialize()
   await f.workspace.load(definition.id)
@@ -195,7 +238,8 @@ async function fixture() {
   return f
 }
 
-const { executableNodeIds, flowAriaLabels, presentationGroupFrames, resourceKindTitle, runStateTitle } = await import('../../src/client/presentation.ts')
+const { executableNodeIds, flowAriaLabels, presentationGroupFrames, resourceKindTitle, runStateTitle } =
+  await import('../../src/client/features/authoring/presenters/canvas-presentation.ts')
 const { defaultAriaLabelConfig } = await import('@xyflow/system')
 
 test('stable native translator switches canvas vocabulary without editor/provider/input/Inspector identity changes', async () => {
@@ -222,7 +266,7 @@ test('stable native translator switches canvas vocabulary without editor/provide
   assert.equal(after.type, inspectorBefore.type)
   assert.equal(after.props.key, editor.nodes[0].id)
   assert.equal(after.props.t, f.t)
-  assert.equal(f.shell.children[0].props.t, f.t)
+  assert.equal(f.shell.props.t, f.t)
   assert.equal(flowOf(f).props.ariaLabelConfig['controls.fitView.ariaLabel'], zh['flow.controls.fitView.ariaLabel'])
   assert.deepEqual(f.calls, [], 'locale render must not replay a command')
 })
@@ -427,7 +471,9 @@ test('typed connection feedback and workspace notices retranslate without changi
   flowOf(f).props.onConnect({ source: 'in', sourceHandle: 'bogus:missing', target: 'out', targetHandle: 'data:value' })
   assert.equal(feedback().props['data-bp-status-key'], 'connection.undeclaredPort')
   const g = await fixture()
-  g.workspace.notice = { key: 'status.error', params: { code: 'blueprint/transport-unavailable' } }
+  await g.workspace.perform(async () => {
+    throw new BlueprintRemoteError('blueprint/transport-unavailable')
+  })
   g.dict = zh
   const status = one(g.render(), n => n.props['data-bp-status-key'])
   assert.equal(status.props['data-bp-status-key'], 'status.error')

@@ -173,9 +173,11 @@ test('L01-L04: delete persists, replays, rejects stale save/create and preserves
 })
 
 test('X01/J01: current export only, every JSON field uses the shared editor', () => {
-  const panel = readFileSync(new URL('../../src/client/panel.ts', import.meta.url), 'utf8')
-  const inspector = readFileSync(new URL('../../src/client/inspector.ts', import.meta.url), 'utf8')
+  const panel = readFileSync(new URL('../../src/client/features/authoring/ui/panel/panel-controller.tsx', import.meta.url), 'utf8')
+  const inspector = readFileSync(new URL('../../src/client/features/authoring/ui/inspector/inspector-view.tsx', import.meta.url), 'utf8')
+  const inspectorEntry = readFileSync(new URL('../../src/client/features/authoring/ui/inspector/inspector-composition.tsx', import.meta.url), 'utf8')
   assert.equal(panel.includes("moreAction('export-legacy'"), false, 'old format action must be removed')
+  assert.ok(inspectorEntry.includes("from './inspector-view.tsx'") && inspectorEntry.includes('return inspectorView('), 'Inspector uses its extracted view')
   assert.ok(panel.includes('JsonEditor') && inspector.includes('JsonEditor'), 'all JSON field surfaces adopt the editor')
 })
 

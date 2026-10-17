@@ -9,8 +9,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { createBlueprintPanel } from '../../src/client/panel.ts'
-import { en } from '../../src/client/locales.ts'
+import { createBlueprintPanel } from '../../src/client/features/authoring/ui/panel/panel-composition.tsx'
+import { en } from '../../src/client/shared/i18n/locales.ts'
 
 const fixtureT = (key, params = {}) => {
   assert.ok(Object.hasOwn(en, key), `existing English dictionary key: ${key}`)

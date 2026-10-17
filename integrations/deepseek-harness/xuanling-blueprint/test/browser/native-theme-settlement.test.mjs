@@ -10,6 +10,7 @@ const themeOracle =
 const acceptedBody = scheme => ({ result: { ok: true, value: { ns: 'ui-theme', revision: 1, value: { preference: scheme, fontSize: 14 } } } })
 const mutationArgs = scheme => ({ ns: 'ui-theme', ops: [{ op: 'set', path: ['preference'], value: scheme }], expectedRevision: 0 })
 const changedSteps = [
+  'account.click',
   'settings.click',
   'settings.visible',
   'theme.aria-pressed',
@@ -137,13 +138,13 @@ function fixture({ scheme = 'dark', selected = false, autoReply = true, ignored 
   })
   const page = publicOnly({
     getByRole(role, options) {
-      assert.equal(role, 'button')
-      assert.deepEqual(options, { name: /^(设置|Settings)$/ })
+      assert.ok(['button', 'menuitem'].includes(role))
+      assert.deepEqual(options, { name: role === 'button' ? /^(账号菜单|Account menu)$/ : /^(设置|Settings)$/ })
       return publicOnly({
         async click(options) {
           assert.equal(options, undefined, 'ordinary native Settings only')
-          record('settings.click')
-          open = true
+          record(role === 'button' ? 'account.click' : 'settings.click')
+          if (role === 'menuitem') open = true
         }
       })
     },
@@ -257,7 +258,7 @@ for (const [label, reply] of invalidReplies) {
   test(`${label} matching Host response rejects instead of optimistic success or retry`, async () => {
     const f = fixture({ reply })
     await assert.rejects(setNativeTheme(f.page, f.scheme), /native dark theme mutation was not accepted/)
-    assert.deepEqual(f.events, changedSteps.slice(0, 6), 'no DOM wait, Close, fallback or retry after invalid acceptance')
+    assert.deepEqual(f.events, changedSteps.slice(0, 7), 'no DOM wait, Close, fallback or retry after invalid acceptance')
     assert.deepEqual(f.matches, [true])
   })
 }
@@ -266,10 +267,11 @@ test('malformed JSON parsing failure is the original error, not an accepted/fall
   const error = new SyntaxError('invalid public fixture JSON')
   const f = fixture({ reply: { jsonError: error } })
   await assert.rejects(setNativeTheme(f.page, f.scheme), received => received === error)
-  assert.deepEqual(f.events, changedSteps.slice(0, 6))
+  assert.deepEqual(f.events, changedSteps.slice(0, 7))
 })
 
 for (const stage of [
+  'account.click',
   'settings.click',
   'settings.visible',
   'theme.aria-pressed',
@@ -285,7 +287,7 @@ for (const stage of [
     const error = new Error(`public native failure: ${stage}`)
     const f = fixture({ failAt: stage, failure: error })
     await assert.rejects(setNativeTheme(f.page, f.scheme), received => received === error)
-    const expected = stage === 'response.wait' ? changedSteps.slice(0, 5) : changedSteps.slice(0, changedSteps.indexOf(stage) + 1)
+    const expected = stage === 'response.wait' ? changedSteps.slice(0, 6) : changedSteps.slice(0, changedSteps.indexOf(stage) + 1)
     assert.deepEqual(f.events, expected)
     // A click failure must not leave an unhandled later wait rejection.
     if (stage === 'theme.click') f.responseWait.reject(new Error('later response wait failure after click failure'))

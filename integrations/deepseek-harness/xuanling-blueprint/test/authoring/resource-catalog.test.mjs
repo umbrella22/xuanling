@@ -8,7 +8,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { ToolRuntime, defineTool } from '@deepseek-ai/dsh-tools'
 import { BlueprintService } from '../../src/index.ts'
 import { BLUEPRINT_INVOCATIONS } from '../../src/typert-descriptors.ts'
-import { resolveBlueprintHost } from '../../src/client/remote.ts'
+import { resolveBlueprintHost } from '../../src/client/adapters/host/remote.ts'
 
 async function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), 'blueprint-resource-authoring-'))

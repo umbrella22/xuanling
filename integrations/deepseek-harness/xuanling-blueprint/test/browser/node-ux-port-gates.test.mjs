@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { GraphEditor } from '../../src/client/graph-editor.ts'
-import { CanvasInteractions } from '../../src/client/flow-interactions.ts'
-import { effectivePortVisibility } from '../../src/client/port-visibility.ts'
+import { GraphEditor } from '../../src/client/features/authoring/logic/graph/graph-editor.ts'
+import { CanvasInteractions } from '../../src/client/features/authoring/logic/graph/flow-interactions.ts'
+import { effectivePortVisibility } from '../../src/client/features/authoring/logic/graph/port-visibility.ts'
 const node = id => ({
   id,
   kind: 'input',

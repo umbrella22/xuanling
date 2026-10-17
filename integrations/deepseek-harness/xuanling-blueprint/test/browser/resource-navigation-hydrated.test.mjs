@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createServer } from 'vite'
+import { probeBrowserEnv } from '../../../../../test/blueprint/capabilities/probe.mjs'
 const requireHarness = createRequire(new URL('../../../../../test/blueprint/package.json', import.meta.url))
 const { chromium } = requireHarness('playwright')
 let server, browser, page, home, url
@@ -20,6 +21,8 @@ before(async () => {
       noDiscovery: true,
       include: [
         'react',
+        'react/jsx-runtime',
+        'react/jsx-dev-runtime',
         'react-dom/client',
         '@xyflow/react',
         'zod',
@@ -46,7 +49,7 @@ before(async () => {
   await server.listen()
   url = `http://127.0.0.1:${server.httpServer.address().port}`
   home = mkdtempSync(join(tmpdir(), 'bp-controls-hydrated-'))
-  browser = await chromium.launch({ channel: 'msedge', headless: true, env: { PATH: process.env.PATH, HOME: home, TMPDIR: home } })
+  browser = await chromium.launch({ channel: 'msedge', headless: true, env: probeBrowserEnv(home) })
   page = await browser.newPage({ viewport: { width: 1100, height: 900 } })
   page.on('pageerror', error => console.error(error.message))
 })

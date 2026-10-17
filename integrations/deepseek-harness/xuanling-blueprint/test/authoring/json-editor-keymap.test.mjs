@@ -3,7 +3,7 @@ import test from 'node:test'
 import { EditorState, EditorSelection } from '@codemirror/state'
 import { history, isolateHistory } from '@codemirror/commands'
 import { json } from '@codemirror/lang-json'
-import { jsonEditorKeymap, formatJson } from '../../src/client/json-editor.ts'
+import { jsonEditorKeymap, formatJson } from '../../src/client/features/authoring/logic/inspector/json-editor.ts'
 
 function fixture(doc, selection = EditorSelection.cursor(0), readOnly = false) {
   const target = { state: EditorState.create({ doc, selection, extensions: [json(), history(), EditorState.readOnly.of(readOnly)] }), composing: false }

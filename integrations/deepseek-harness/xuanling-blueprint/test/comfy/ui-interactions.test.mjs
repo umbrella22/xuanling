@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import * as ui from '../../src/client/flow-interactions.ts'
-import { GraphEditor } from '../../src/client/graph-editor.ts'
+import * as ui from '../../src/client/features/authoring/logic/graph/flow-interactions.ts'
+import { GraphEditor } from '../../src/client/features/authoring/logic/graph/graph-editor.ts'
 
 const definition = () => ({
   schemaVersion: 1,

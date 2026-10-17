@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { supportsDshVersion } from './dsh-version.mjs'
 import { selectStyledOption } from './styled-control-entry.mjs'
 /** W2 collector. Only main may launch after review, official build and freeze.
  * Adapts an isolated COPY of the actual DSH probe; original Host assertions,
@@ -1496,7 +1497,7 @@ export function validateComfyReport(report, context) {
   ensure(realFile(reportDir, report?.artifacts?.sidebar_screenshot) && realFile(join(reportDir, 'tools'), report?.artifacts?.host_tools_contract?.reportPath), 'screenshot/nested security file missing or physically outside fresh directory')
   // This shared validator preserves all original Host/browser contracts.
   const original = validateCanvasReport(report, { mode: 'browser', planId, reportDir, packageRoot, invokedAt, finishedAt })
-  ensure(report.environment.dsh_version_output === '0.2.1-alpha.1' && /^v\d+\./.test(report.environment.node ?? '') && typeof report.environment.browser_version === 'string' && report.environment.browser_version.length > 0, 'real DSH/browser/runtime provenance missing')
+  ensure(supportsDshVersion(report.environment.dsh_version_output) && /^v\d+\./.test(report.environment.node ?? '') && typeof report.environment.browser_version === 'string' && report.environment.browser_version.length > 0, 'real DSH/browser/runtime provenance missing')
   ensure(isAbsolute(report.environment.temp_root ?? '') && /(?:^|[/\\])xuanling-bp-probe-[^/\\]+$/.test(report.environment.temp_root)
     && report.artifacts.auth_cookie_set === true && report.artifacts.index_has_boot === true && report.artifacts.client_bundle?.status === 200 && report.artifacts.client_bundle.closure === true
     && report.artifacts.boot_entries?.some(entry => entry.id === BLUEPRINT_PACKAGE), 'authenticated isolated DSH boot/closure provenance absent')

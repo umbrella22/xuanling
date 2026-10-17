@@ -5,7 +5,7 @@ import test from 'node:test'
 import { registerHooks } from 'node:module'
 import { readFileSync } from 'node:fs'
 import postcss from 'postcss'
-import { en, zh } from '../../src/client/locales.ts'
+import { en, zh } from '../../src/client/shared/i18n/locales.ts'
 const seat = { active: null },
   key = Symbol.for('blueprint.comfy.motion-ui')
 globalThis[key] = seat
@@ -13,6 +13,7 @@ seat.react = {
   Fragment: 'fragment',
   createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }),
   memo: fn => fn,
+  useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
   useState(initial) {
     const f = seat.active,
       i = f.cursor++
@@ -33,6 +34,10 @@ seat.react = {
   useMemo: fn => fn(),
   useCallback: fn => fn,
   useEffect(fn, deps) {
+    if (seat.runBridgeEffect) {
+      seat.active.bridgeCleanup = fn()
+      return
+    }
     const f = seat.active,
       i = f.effectCursor++
     const prev = f.effects[i]
@@ -41,16 +46,21 @@ seat.react = {
 }
 const dataUrl = code => `data:text/javascript,${encodeURIComponent(code)}`
 const react = dataUrl(
-  `export default globalThis[Symbol.for('blueprint.comfy.motion-ui')].react; export const { useEffect, useRef, useState } = globalThis[Symbol.for('blueprint.comfy.motion-ui')].react; export const createElement=globalThis[Symbol.for('blueprint.comfy.motion-ui')].react.createElement`
+  `export default globalThis[Symbol.for('blueprint.comfy.motion-ui')].react; export const { useEffect, useRef, useState, useSyncExternalStore } = globalThis[Symbol.for('blueprint.comfy.motion-ui')].react; export const createElement=globalThis[Symbol.for('blueprint.comfy.motion-ui')].react.createElement`
 )
 const flow = dataUrl(`export const useReactFlow=()=>globalThis[Symbol.for('blueprint.comfy.motion-ui')].active.flow;
 export const Position={Left:'left',Right:'right'},MarkerType={ArrowClosed:'arrowclosed'};
 export const ReactFlow='flow',ReactFlowProvider='provider',Background='background',Controls='controls',MiniMap='minimap',Handle='handle',NodeResizer='resizer',BaseEdge='base-edge';
 export const getSmoothStepPath=({sourceX,sourceY,targetX,targetY})=>['M '+sourceX+' '+sourceY+' C 80 20 120 40 '+targetX+' '+targetY,100,30];`)
 const client = new URL('../../src/client/', import.meta.url).href
+const panelController = `${client}features/authoring/ui/panel/panel-controller.tsx`
 const hooks = registerHooks({
   resolve(spec, context, next) {
-    if (context.parentURL === `${client}panel.ts` && spec === './inspector.ts') return { url: dataUrl('export function NodeInspector(){}'), shortCircuit: true }
+    if (
+      (context.parentURL === `${client}features/authoring/ui/panel/panel-composition.tsx` || context.parentURL === panelController) &&
+      spec === '../inspector/inspector-composition.tsx'
+    )
+      return { url: dataUrl('export function NodeInspector(){}'), shortCircuit: true }
     if (context.parentURL?.startsWith(client) && spec === 'react') return { url: react, shortCircuit: true }
     if (context.parentURL?.startsWith(client) && spec === '@xyflow/react') return { url: flow, shortCircuit: true }
     return next(spec, context)
@@ -58,13 +68,15 @@ const hooks = registerHooks({
 })
 let panel
 try {
-  panel = await import(`${client}panel.ts`)
+  panel = await import(`${client}features/authoring/ui/panel/panel-composition.tsx`)
 } finally {
   hooks.deregister()
 }
 test.after(() => delete globalThis[key])
 const all = (tree, pred) =>
-  !tree || typeof tree !== 'object' ? [] : [...(pred(tree) ? [tree] : []), ...(tree.children ?? []).flat(Infinity).flatMap(c => all(c, pred))]
+  !tree || typeof tree !== 'object'
+    ? []
+    : [...(pred(tree) ? [tree] : []), ...(tree.children?.length ? tree.children : [tree.props?.children]).flat(Infinity).flatMap(c => all(c, pred))]
 const one = (tree, pred) => {
   const found = all(tree, pred)
   assert.equal(found.length, 1)
@@ -186,26 +198,49 @@ async function fixture(options = {}) {
     assert.ok(Object.hasOwn(f.locale, k), `locale key ${k}`)
     return f.locale[k].replace(/\{([^}]+)\}/g, (_, name) => String(params[name] ?? `{${name}}`))
   }
-  seat.active = f
-  const entry = Panel({ t }).children[0]
+  const owner = { states: [], refs: [], effects: [], pending: new Map(), cursor: 0, refCursor: 0, effectCursor: 0, stateWrites: 0 }
   f.render = () => {
+    seat.active = owner
+    owner.cursor = owner.refCursor = 0
+    owner.effectCursor = 0
+    const entry = Panel({ t })
     seat.active = f
     f.cursor = f.refCursor = f.effectCursor = 0
-    return (f.tree = entry.type({ t }))
+    f.tree = entry.type(entry.props)
+    const provider = one(f.tree, n => n.type === 'provider')
+    assert.equal(all(provider, n => n.type === 'flow').length, 1, 'the provider contains the canvas')
+    if (f.providerKey !== provider.props.key) {
+      f.bridgeCleanup?.()
+      const bridge = one(provider, n => typeof n.type === 'function' && typeof n.props.onReady === 'function')
+      seat.runBridgeEffect = true
+      try {
+        bridge.type(bridge.props)
+      } finally {
+        seat.runBridgeEffect = false
+      }
+      f.providerKey = provider.props.key
+      f.cursor = f.refCursor = 0
+      f.effectCursor = 0
+      f.tree = entry.type(entry.props)
+    }
+    return f.tree
   }
   f.commit = () => {
-    for (const [i, effect] of f.pending) {
-      f.effects[i]?.cleanup?.()
-      f.effects[i] = { ...effect, cleanup: effect.fn() }
+    for (const hooks of [owner, f]) {
+      for (const [i, effect] of hooks.pending) {
+        hooks.effects[i]?.cleanup?.()
+        hooks.effects[i] = { ...effect, cleanup: effect.fn() }
+      }
+      hooks.pending.clear()
     }
-    f.pending.clear()
   }
   f.close = () => {
-    for (const effect of f.effects) effect?.cleanup?.()
+    f.bridgeCleanup?.()
+    for (const hooks of [owner, f]) for (const effect of hooks.effects) effect?.cleanup?.()
     env.restore()
   }
   f.render()
-  f.workspace = f.states[0]
+  f.workspace = owner.states[0]
   await f.workspace.initialize()
   await f.workspace.load('flow')
   f.render()
@@ -498,7 +533,7 @@ test('C10/11 locale/environment changes preserve component identity, graph facts
   }
 })
 test('C11 installed CSS animates only light dash offset/opacity and absolute node opacity, with static reduced fallback', async () => {
-  const { installCanvasStyles } = await import('../../src/client/styles.ts'),
+  const { installCanvasStyles } = await import('../../src/client/shared/styles/styles.ts'),
     env = environment()
   let installed
   env.doc.getElementById = () => null
@@ -520,8 +555,8 @@ test('C11 installed CSS animates only light dash offset/opacity and absolute nod
     const keyframes = blocks.map(block => block.toString()).join('\n')
     assert.doesNotMatch(keyframes, /\b(?:transform|width|height|top|left|margin|padding)\s*:/)
     assert.match(installed, /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*animation:\s*none/)
-    const source = readFileSync(new URL('../../src/client/panel.ts', import.meta.url), 'utf8')
-    assert.equal((source.match(/setInterval\(/g) ?? []).length, 1, 'only existing inspect timer')
+    const source = readFileSync(new URL('../../src/client/adapters/browser/panel-browser-effects.ts', import.meta.url), 'utf8')
+    assert.equal((source.match(/setTimer\(/g) ?? []).length, 1, 'only existing inspect timer')
     assert.doesNotMatch(source, /\.animate\(|setTimeout\(/)
   } finally {
     env.restore()

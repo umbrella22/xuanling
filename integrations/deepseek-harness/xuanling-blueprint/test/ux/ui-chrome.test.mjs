@@ -1,9 +1,9 @@
 // Callable product controls and layout effects; native geometry/locale acceptance is main-owned.
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { iconControl } from '../../src/client/compact-chrome.ts'
-import { WorkspaceTooltip } from '../../src/client/tooltips.ts'
-import { en, zh } from '../../src/client/locales.ts'
+import { iconControl } from '../../src/client/features/compact/logic/compact-chrome.ts'
+import { WorkspaceTooltip } from '../../src/client/shared/controls/tooltips.ts'
+import { en, zh } from '../../src/client/shared/i18n/locales.ts'
 const h = (type, props, ...children) => ({ type, props: props ?? {}, children })
 const all = (tree, pred) =>
   !tree || typeof tree !== 'object' ? [] : [...(pred(tree) ? [tree] : []), ...(tree.children ?? []).flat(Infinity).flatMap(child => all(child, pred))]

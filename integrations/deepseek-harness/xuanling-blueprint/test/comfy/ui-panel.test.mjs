@@ -4,13 +4,14 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { registerHooks } from 'node:module'
 import { readFileSync } from 'node:fs'
-import { en } from '../../src/client/locales.ts'
+import { en } from '../../src/client/shared/i18n/locales.ts'
 const seat = { active: null },
   key = Symbol.for('blueprint.comfy.ui')
 globalThis[key] = seat
 seat.react = {
   createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }),
   memo: fn => fn,
+  useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
   useState(initial) {
     const f = seat.active,
       i = f.cursor++
@@ -24,11 +25,13 @@ seat.react = {
   },
   useMemo: fn => fn(),
   useCallback: fn => fn,
-  useEffect() {}
+  useEffect(effect) {
+    if (seat.runBridgeEffect) seat.active.bridgeCleanup = effect()
+  }
 }
 const dataUrl = code => `data:text/javascript,${encodeURIComponent(code)}`
 const react = dataUrl(
-  `export default globalThis[Symbol.for('blueprint.comfy.ui')].react; export const { useEffect, useRef, useState } = globalThis[Symbol.for('blueprint.comfy.ui')].react; export const createElement=globalThis[Symbol.for('blueprint.comfy.ui')].react.createElement`
+  `export default globalThis[Symbol.for('blueprint.comfy.ui')].react; export const { useEffect, useMemo, useRef, useState, useSyncExternalStore } = globalThis[Symbol.for('blueprint.comfy.ui')].react; export const createElement=globalThis[Symbol.for('blueprint.comfy.ui')].react.createElement`
 )
 const flow = dataUrl(`export const useReactFlow=()=>globalThis[Symbol.for('blueprint.comfy.ui')].active.flow;
 export const Position={Left:'left',Right:'right'},MarkerType={ArrowClosed:'arrowclosed'};
@@ -37,21 +40,30 @@ export const getSmoothStepPath=({sourceX,sourceY,targetX,targetY})=>['M '+source
 const client = new URL('../../src/client/', import.meta.url).href
 const hooks = registerHooks({
   resolve(spec, context, next) {
-    if (context.parentURL === `${client}panel.ts` && spec === './inspector.ts') return { url: dataUrl('export function NodeInspector(){}'), shortCircuit: true }
+    if (
+      (context.parentURL === `${client}features/authoring/ui/panel/panel-composition.tsx` ||
+        context.parentURL === `${client}features/authoring/ui/panel/panel-controller.tsx` ||
+        context.parentURL === `${client}features/authoring/ui/canvas/canvas-surface.tsx`) &&
+      spec === '../inspector/inspector-composition.tsx'
+    )
+      return { url: dataUrl('export function NodeInspector(){}'), shortCircuit: true }
     if (context.parentURL?.startsWith(client) && spec === 'react') return { url: react, shortCircuit: true }
     if (context.parentURL?.startsWith(client) && spec === '@xyflow/react') return { url: flow, shortCircuit: true }
     return next(spec, context)
   }
 })
-let panel
+let panel, canvasRenderers
 try {
-  panel = await import(`${client}panel.ts`)
+  panel = await import(`${client}features/authoring/ui/panel/panel-composition.tsx`)
+  canvasRenderers = await import(`${client}features/authoring/ui/canvas/canvas-renderers.tsx`)
 } finally {
   hooks.deregister()
 }
 test.after(() => delete globalThis[key])
 const all = (tree, pred) =>
-  !tree || typeof tree !== 'object' ? [] : [...(pred(tree) ? [tree] : []), ...(tree.children ?? []).flat(Infinity).flatMap(c => all(c, pred))]
+  !tree || typeof tree !== 'object'
+    ? []
+    : [...(pred(tree) ? [tree] : []), ...(tree.children?.length ? tree.children : [tree.props?.children]).flat(Infinity).flatMap(c => all(c, pred))]
 const one = (tree, pred) => {
   const found = all(tree, pred)
   assert.equal(found.length, 1)
@@ -92,6 +104,19 @@ function publicTree(f, id) {
 }
 const action = (f, id) => one(publicTree(f, id), n => n.props['data-bp-action'] === id)
 const flowOf = f => one(f.render(), n => n.type === 'flow')
+function holdBusy(workspace) {
+  let release
+  const done = workspace.perform(
+    () =>
+      new Promise(resolve => {
+        release = resolve
+      })
+  )
+  return async () => {
+    release()
+    await done
+  }
+}
 async function fixture({ viewportRaw, load = true, openSession } = {}) {
   const d = {
     schemaVersion: 1,
@@ -146,15 +171,33 @@ async function fixture({ viewportRaw, load = true, openSession } = {}) {
     assert.ok(Object.hasOwn(en, k), `locale key ${k}`)
     return en[k].replace(/\{([^}]+)\}/g, (_, name) => String(params[name] ?? `{${name}}`))
   }
-  seat.active = f
-  const entry = Panel({ t }).children[0]
+  const owner = { states: [], refs: [], cursor: 0, refCursor: 0 }
   f.render = () => {
+    seat.active = owner
+    owner.cursor = owner.refCursor = 0
+    const entry = Panel({ t })
     seat.active = f
     f.cursor = f.refCursor = 0
-    return (f.tree = entry.type({ t }))
+    f.tree = entry.type(entry.props)
+    const provider = one(f.tree, n => n.type === 'provider')
+    assert.equal(all(provider, n => n.type === 'flow').length, 1, 'the provider contains the canvas')
+    if (f.providerKey !== provider.props.key) {
+      f.bridgeCleanup?.()
+      const bridge = one(provider, n => typeof n.type === 'function' && typeof n.props.onReady === 'function')
+      seat.runBridgeEffect = true
+      try {
+        bridge.type(bridge.props)
+      } finally {
+        seat.runBridgeEffect = false
+      }
+      f.providerKey = provider.props.key
+      f.cursor = f.refCursor = 0
+      f.tree = entry.type(entry.props)
+    }
+    return f.tree
   }
   f.emptyTree = f.render()
-  f.workspace = f.states[0]
+  f.workspace = owner.states[0]
   await f.workspace.initialize()
   if (load) await f.workspace.load('flow')
   f.render()
@@ -244,10 +287,10 @@ test('C02 selection mode and canvas shortcuts mutate real editor; typing/IME/bus
   const before = editor.exportDefinition()
   assert.equal(keydown({ key: 'Delete', target: { tagName: 'INPUT' } }), false)
   assert.equal(keydown({ key: 'Delete', nativeEvent: { isComposing: true }, isComposing: true }), false)
-  f.workspace.busy = true
+  const finishBusy = holdBusy(f.workspace)
   keydown({ key: 'Delete' })
   assert.deepEqual(editor.exportDefinition(), before)
-  f.workspace.busy = false
+  await finishBusy()
   keydown({ key: 'h', ctrlKey: false })
   keydown({ key: 'Delete' })
   assert.deepEqual(editor.exportDefinition(), before)
@@ -599,7 +642,7 @@ for (const reason of ['canvas-locked', 'busy']) {
     const priorKeyDown = one(f.render(), n => n.props['data-bp-canvas'] === 'root').props.onKeyDown
     action(f, 'import-blueprint').props.onClick()
     const initial = one(f.render(), n => n.props.overlay?.kind === 'import')
-    if (reason === 'busy') f.workspace.busy = true
+    if (reason === 'busy') holdBusy(f.workspace)
     else priorKeyDown({ key: 'h', target: { closest: s => (s.includes('canvas') ? {} : null) }, nativeEvent: {}, preventDefault() {} })
     const current = one(f.render(), n => n.props.overlay?.kind === 'import')
     assert.equal(current.props.importDisabledReason, reason, 'C09_EXISTING_IMPORT_MUST_PROJECT_CURRENT_AVAILABILITY')
@@ -643,7 +686,7 @@ test('C05 actual Flow seat places reconnect center beyond enlarged port hit area
     editor = f.workspace.editor
   const radius = flowOf(f).props.reconnectRadius
   assert.equal(radius, 24, 'C05_RECONNECT_CENTER_MUST_CLEAR_PORT_HIT_AREA')
-  const styles = readFileSync(new URL('../../src/client/styles.ts', import.meta.url), 'utf8')
+  const styles = readFileSync(new URL('../../src/client/shared/styles/base.ts', import.meta.url), 'utf8')
   const portWidth = Number(styles.match(/\.bp-workspace \.react-flow__handle\{width:(\d+)px/)[1])
   const hitInset = Number(styles.match(/\.bp-workspace \.react-flow__handle:before\{[^}]*inset:-(\d+)px/)[1])
   // XYFlow offsets the updater center outward by its radius, in graph units.
@@ -824,7 +867,7 @@ test('C05 actual route renderer pointer cancel/outside restore route without his
   }
   const route = () => {
     edge = flowOf(f).props.edges[0]
-    return one(panel.BlueprintEdge({ ...edge, sourceX: 50, sourceY: 50, targetX: 400, targetY: 50 }), n => n.props['data-bp-reroute'])
+    return one(canvasRenderers.BlueprintEdge({ ...edge, sourceX: 50, sourceY: 50, targetX: 400, targetY: 50 }), n => n.props['data-bp-reroute'])
   }
   const target = { setPointerCapture() {}, releasePointerCapture() {}, closest: s => (s.includes('data-bp-reroute') ? {} : null) }
   const event = (x, y) => ({
@@ -1140,9 +1183,9 @@ test('host controls C01 both panes stay mounted in empty, busy, locked and mode-
   const editor = f.workspace.editor,
     stored = [...f.values],
     before = editor.exportDefinition()
-  f.workspace.busy = true
+  const finishBusy = holdBusy(f.workspace)
   panes()
-  f.workspace.busy = false
+  await finishBusy()
   canvasKey(f, 'h')
   panes()
   canvasKey(f, 'h')
@@ -1263,12 +1306,12 @@ test('compact C03 old More callbacks cannot mutate a destination after A to B to
   const f = await fixture()
   action(f, 'more-actions').props.onClick()
   const stale = one(f.render(), n => n.props.overlay?.kind === 'more-menu').props.moreActions.find(item => item.action === 'motion-toggle')
-  f.workspace.busy = true
+  const finishBusy = holdBusy(f.workspace)
   const refresh = one(f.render(), n => n.props.overlay?.kind === 'more-menu').props.moreActions.find(item => item.action === 'refresh-library')
   assert.equal(refresh.enabled, false)
   refresh.onSelect()
   assert.equal(f.workspace.busy, true)
-  f.workspace.busy = false
+  await finishBusy()
   await f.workspace.load('flow-b')
   f.render()
   await f.workspace.load('flow')
@@ -1316,7 +1359,7 @@ test('W4.2 rejected resource Apply retains the JSON draft while busy', async () 
   one(dialog, n => n.props['aria-label'] === en['resource.newId']).props.onChange({ target: { value: 'pending-resource' } })
   dialog = one(f.render(), n => n.props['data-bp-resource-dialog'] === true)
   one(dialog, n => n.props.label === en['resource.newJson']).props.onChange(draft)
-  f.workspace.busy = true
+  holdBusy(f.workspace)
   f.render()
   dialog = one(f.render(), n => n.props['data-bp-resource-dialog'] === true)
   one(dialog, n => n.props['data-bp-action'] === 'resource-apply').props.onClick()
@@ -1383,3 +1426,20 @@ for (const warningCount of [2, 0]) {
     ])
   })
 }
+
+test('retained Panel group command samples current group facts before authorization', async () => {
+  const f = await fixture(),
+    editor = f.workspace.editor
+  editor.setSelection(['a', 'b'])
+  editor.groupSelection('Team')
+  const frame = flowOf(f).props.nodes.find(n => n.type === 'presentationGroup')
+  frame.data.onMenu({ clientX: 220, clientY: 100, target: { closest: () => null }, preventDefault() {}, stopPropagation() {} })
+  const menu = one(f.render(), n => n.props.overlay?.kind === 'context-menu')
+  assert.equal(menu.props.commands.find(c => c.command === 'rename').enabled, true)
+  editor.groups = []
+  editor.setSelection([])
+  const before = editor.exportDefinition()
+  menu.props.onCommand('copy')
+  assert.equal(editor.selection.size, 0, 'removed group must not authorize a retained copy command')
+  assert.deepEqual(editor.exportDefinition(), before)
+})

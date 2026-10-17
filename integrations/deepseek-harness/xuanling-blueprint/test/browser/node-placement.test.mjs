@@ -7,7 +7,7 @@ import { registerHooks } from 'node:module'
 import test from 'node:test'
 import { canvasDefinitions } from '../../../../../test/blueprint/capabilities/canvas-fixtures.mjs'
 import { decodeDefinition, validateDefinition } from '../../src/definition/index.ts'
-import { en } from '../../src/client/locales.ts'
+import { en } from '../../src/client/shared/i18n/locales.ts'
 
 // Explicit injected-locale fixture seat, not native DSH locale acceptance.
 const fixtureT = (key, params = {}) => {
@@ -18,10 +18,14 @@ const fixtureT = (key, params = {}) => {
 const seat = { active: null }
 const seatKey = Symbol.for('xuanling.blueprint.test.palette-placement')
 globalThis[seatKey] = seat
-const panelUrl = new URL('../../src/client/panel.ts', import.meta.url).href
+const panelUrl = new URL('../../src/client/features/authoring/ui/panel/panel-composition.tsx', import.meta.url).href
+const panelControllerUrl = new URL('../../src/client/features/authoring/ui/panel/panel-controller.tsx', import.meta.url).href
+const canvasSurfaceUrl = new URL('../../src/client/features/authoring/ui/canvas/canvas-surface.tsx', import.meta.url).href
+const canvasRendererUrl = new URL('../../src/client/features/authoring/ui/canvas/canvas-renderers.tsx', import.meta.url).href
 seat.react = {
-  createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }),
+  createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.length ? children : [props?.children] }),
   memo: component => component,
+  useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
   useState(initial) {
     const f = seat.active,
       i = f.stateCursor++
@@ -40,7 +44,9 @@ seat.react = {
   },
   useMemo: factory => factory(),
   useCallback: callback => callback,
-  useEffect() {}
+  useEffect(effect) {
+    if (seat.runBridgeEffect) seat.active.bridgeCleanup = effect()
+  }
 }
 const moduleUrl = source => `data:text/javascript,${encodeURIComponent(source)}`
 const reactUrl = moduleUrl(`export default globalThis[Symbol.for('xuanling.blueprint.test.palette-placement')].react`)
@@ -50,14 +56,21 @@ export const Position = { Left: 'left', Right: 'right' }, MarkerType = { ArrowCl
 export const ReactFlow = 'flow', ReactFlowProvider = 'provider', Background = 'background', Controls = 'controls', MiniMap = 'minimap', Handle = 'handle', NodeResizer = 'resizer', BaseEdge = 'base-edge'; export const getSmoothStepPath=()=>['M 0 0 L 1 1',0,0];`)
 const hooks = registerHooks({
   resolve(specifier, context, next) {
-    if (context.parentURL === panelUrl && ['react', '@xyflow/react'].includes(specifier))
+    if (
+      (context.parentURL === panelUrl ||
+        context.parentURL === panelControllerUrl ||
+        context.parentURL === canvasSurfaceUrl ||
+        context.parentURL === canvasRendererUrl ||
+        (specifier === 'react' && context.parentURL?.includes('/src/client/features/authoring/ui/panel/'))) &&
+      ['react', '@xyflow/react'].includes(specifier)
+    )
       return { url: specifier === 'react' ? reactUrl : flowUrl, shortCircuit: true }
     return next(specifier, context)
   }
 })
 const { createBlueprintPanel } = await import(panelUrl)
 hooks.deregister()
-const { findVisibleNodePosition, placePaletteNode, PALETTE_NODE_FOOTPRINT } = await import('../../src/client/node-placement.ts')
+const { findVisibleNodePosition, placePaletteNode, PALETTE_NODE_FOOTPRINT } = await import('../../src/client/features/authoring/logic/graph/node-placement.ts')
 
 const box = (x, y, width, height) => ({ x, y, left: x, top: y, right: x + width, bottom: y + height, width, height })
 const DEFAULT_SIZE = { width: 220, height: 183 }
@@ -158,19 +171,37 @@ async function panelFixture(options = {}) {
     }
   }
   const Panel = createBlueprintPanel({ hostLink: host, storage: undefined })
-  seat.active = f
-  const shell = Panel({ t: fixtureT }),
-    WorkspacePanel = shell.children[0].type
+  const owner = { states: [], refs: [], stateCursor: 0, refCursor: 0 }
   f.render = () => {
+    seat.active = owner
+    owner.stateCursor = owner.refCursor = 0
+    const entry = Panel({ t: fixtureT })
+    f.workspace = entry.props.workspace
+    assert.equal(f.workspace, owner.states[0])
+    assert.equal(entry.props.workspaceSnapshot, f.workspace.getSnapshot())
     seat.active = f
-    f.stateCursor = 0
-    f.refCursor = 0
-    f.tree = WorkspacePanel({ t: fixtureT })
+    f.stateCursor = f.refCursor = 0
+    f.tree = entry.type(entry.props)
+    const provider = find(f.tree, el => el.type === 'provider')
+    assert.ok(provider)
+    if (f.providerKey !== provider.props.key) {
+      f.bridgeCleanup?.()
+      const bridge = find(provider, el => typeof el.type === 'function' && typeof el.props.onReady === 'function')
+      assert.ok(bridge)
+      seat.runBridgeEffect = true
+      try {
+        bridge.type(bridge.props)
+      } finally {
+        seat.runBridgeEffect = false
+      }
+      f.providerKey = provider.props.key
+      f.stateCursor = f.refCursor = 0
+      f.tree = entry.type(entry.props)
+    }
     find(f.tree, el => el.props.className === 'bp-workspace').props.ref.current = f.root
     return f.tree
   }
   f.render()
-  f.workspace = f.states[0]
   await f.workspace.initialize()
   await f.workspace.load(definition.id)
   // Preserve the already accepted legal in -> spare connection; Add must not
@@ -409,9 +440,9 @@ test('free-space search accepts compact exact-fit slots and reports true exhaust
 })
 
 test('fallback silhouette has current BlueprintNode/styles rendering provenance for all four fresh palette kinds, not a giant product cap', async () => {
-  const source = readFileSync(new URL('../../src/client/styles.ts', import.meta.url), 'utf8')
-  const match = /const css =\s*("(?:\\.|[^"\\])*")/s.exec(source)
-  assert.ok(match, 'source installer must expose the vendor CSS string')
+  const source = readFileSync(new URL('../../src/client/shared/styles/base.ts', import.meta.url), 'utf8')
+  const match = /export const baseCss =\s*("(?:\\.|[^"\\])*")/s.exec(source)
+  assert.ok(match, 'canonical base style fragment must expose the vendor CSS string')
   const css = JSON.parse(match[1])
   assert.match(css, /\.bp-node\{width:220px;/)
   assert.match(css, /\.bp-workspace\{[^}]*line-height:1\.5/)
@@ -508,10 +539,17 @@ test('palette drag cancellation, foreign drops, busy workspace and switched edit
   surface().props.onDrop(event)
   assert.deepEqual(f.workspace.editor.exportDefinition(), before)
   entry().props.onDragStart(event)
-  f.workspace.busy = true
+  let releaseBusy
+  const busyWork = f.workspace.perform(
+    () =>
+      new Promise(resolve => {
+        releaseBusy = resolve
+      })
+  )
   surface().props.onDrop(event)
   assert.deepEqual(f.workspace.editor.exportDefinition(), before)
-  f.workspace.busy = false
+  releaseBusy()
+  await busyWork
   entry().props.onDragStart(event)
   f.workspace.newDraft('Drag isolation')
   surface().props.onDrop(event)

@@ -250,7 +250,7 @@ test("the skills bundle manifest declares the dsh bundle and pins its dependenci
   ]);
   assert.equal(
     manifest.dependencies?.["@deepseek-ai/dsh-skill-filesystem"],
-    "^0.1.0-rc.5",
+    "^0.2.1-rc.2",
     "pins the harness skill provider package",
   );
 });

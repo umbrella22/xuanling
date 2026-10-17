@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { supportsDshVersion } from './dsh-version.mjs'
 import { selectStyledOption, styledSelectValue } from './styled-control-entry.mjs'
 /** W3 C-05/06/07/08/10 mounted UI collector. Run only after main review/build.
  * Reuses the real isolated DSH probe, gateway, native Settings and React Flow.
@@ -306,7 +307,7 @@ function validateReport(report, output, invokedAt, finishedAt, planId) {
   const ids = new Set()
   for (const assertion of report.assertions) { ensure(assertion.passed === true && !ids.has(assertion.id), `failed/duplicate assertion: ${assertion.id}`); ids.add(assertion.id) }
   for (const id of [...HOST_ASSERTIONS, ...UI_ASSERTIONS]) ensure(ids.has(id), `required assertion missing: ${id}`)
-  ensure(report.environment.dsh_version_output === '0.2.1-alpha.1' && report.environment.browser_version, 'real DSH/browser provenance absent')
+  ensure(supportsDshVersion(report.environment.dsh_version_output) && report.environment.browser_version, 'real DSH/browser provenance absent')
   const tools = report.artifacts?.host_tools_contract
   ensure(confined(output, report.artifacts?.sidebar_screenshot) && existsSync(report.artifacts.sidebar_screenshot) && confined(join(output, 'tools'), tools?.reportPath) && existsSync(tools.reportPath), 'isolated screenshot/security report absent')
   const nested = JSON.parse(readFileSync(tools.reportPath, 'utf8'))

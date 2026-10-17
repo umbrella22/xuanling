@@ -105,8 +105,8 @@ test('C-03 source provenance: compat body is unchanged; full pinned MIT notice a
   const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'))
   const lock = readPnpmLock(fileURLToPath(new URL('../../', import.meta.url)))
   assert.ok(pkg.files.includes('THIRD-PARTY-NOTICES.md'), 'C-03: packed candidate includes attribution/license')
-  assert.equal(pkg.peerDependencies['@deepseek-ai/dsh-tools'], '0.2.1-alpha.4')
-  assert.equal(hasPnpmImporterDependency(lock, 'devDependencies', '@deepseek-ai/dsh-tools', '0.2.1-alpha.4'), true)
+  assert.equal(pkg.peerDependencies['@deepseek-ai/dsh-tools'], '>=0.2.1-alpha.5')
+  assert.equal(hasPnpmImporterDependency(lock, 'devDependencies', '@deepseek-ai/dsh-tools', '0.2.1-rc.2'), true)
   assert.equal(
     Object.hasOwn(pkg.dependencies ?? {}, '@deepseek-ai/dsh-tools'),
     false,

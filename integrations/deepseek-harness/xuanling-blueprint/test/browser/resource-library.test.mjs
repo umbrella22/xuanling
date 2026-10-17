@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { resourceRows } from '../../src/client/panel.ts'
+import { resourceRows } from '../../src/client/features/authoring/ui/panel/panel-composition.tsx'
 
 const ref = (kind, source) => ({ kind, ...(source ? { source } : {}) })
 const deepFreeze = value => {
@@ -233,4 +233,13 @@ test('resource projection accepts absent and empty definitions without inventing
   for (const definition of [null, deepFreeze({}), deepFreeze({ resources: {} })]) {
     assert.deepEqual(resourceRows(definition, Object.freeze([]), 'loading'), { agent: [], skill: [], mcp: [], other: [] })
   }
+})
+
+test('resource rows isolate returned reference mutations from canonical definition and future projections', () => {
+  const definition = { resources: { prompt: { kind: 'prompt', source: { kind: 'package', path: 'original.md' } } } }
+  const before = structuredClone(definition)
+  const rows = resourceRows(definition, [], 'current')
+  rows.other[0].ref.source.path = 'consumer-edit.md'
+  assert.deepEqual(definition, before, 'returned resource reference must not alias canonical state')
+  assert.equal(resourceRows(definition, [], 'current').other[0].ref.source.path, 'original.md')
 })

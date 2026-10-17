@@ -78,7 +78,7 @@ test('C07 presentation references match whole triples including kind and raw end
 })
 
 test('C07 old/new definition, editor layout, document revision roundtrip', async () => {
-  const { GraphEditor, editorNodeDisplayTitle } = await import('../../src/client/graph-editor.ts')
+  const { GraphEditor, editorNodeDisplayTitle } = await import('../../src/client/features/authoring/logic/graph/graph-editor.ts')
   const { documentRevisions } = await import('../../src/definition/document.ts')
   const d = base()
   d.metadata = { exact: ['用户', { raw: 'kept' }] }

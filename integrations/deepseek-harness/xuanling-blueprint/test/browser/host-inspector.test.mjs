@@ -2,11 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import React from 'react'
 import { registerHooks } from 'node:module'
-import { GraphEditor } from '../../src/client/graph-editor.ts'
-import { InspectorSession, renderNodeInspector } from '../../src/client/inspector.ts'
-import { decodeClipboard } from '../../src/client/clipboard.ts'
+import { GraphEditor } from '../../src/client/features/authoring/logic/graph/graph-editor.ts'
+import { InspectorSession, renderNodeInspector } from '../../src/client/features/authoring/ui/inspector/inspector-composition.tsx'
+import { decodeClipboard } from '../../src/client/features/authoring/logic/graph/clipboard.ts'
 import { decodeDefinition, validateDefinition } from '../../src/definition/index.ts'
-import { en } from '../../src/client/locales.ts'
+import { en } from '../../src/client/shared/i18n/locales.ts'
 
 const initial = {
   schemaVersion: 1,
@@ -120,16 +120,18 @@ test('Explicit model draft rejects blank fields and Undo synchronizes applied an
 
 test('production panel displays Host labels without exposing generated reference keys', async t => {
   // Control only hook/Flow seats; the loaded workspace, panel and editor are real.
-  const states = [],
-    refs = []
-  let stateCursor = 0,
-    refCursor = 0
+  const owner = { states: [], refs: [], stateCursor: 0, refCursor: 0 },
+    child = { states: [], refs: [], stateCursor: 0, refCursor: 0 }
+  let active = owner,
+    runBridgeEffect = false
   const seatKey = Symbol.for('xuanling.blueprint.test.host-resource-display')
   globalThis[seatKey] = {
     react: {
       ...React,
+      useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
       useState(initial) {
-        const i = stateCursor++
+        const states = active.states,
+          i = active.stateCursor++
         if (!(i in states)) states[i] = typeof initial === 'function' ? initial() : initial
         return [
           states[i],
@@ -139,17 +141,21 @@ test('production panel displays Host labels without exposing generated reference
         ]
       },
       useRef(initial) {
-        return (refs[refCursor++] ??= { current: initial })
+        return (active.refs[active.refCursor++] ??= { current: initial })
       },
       useMemo: factory => factory(),
       useCallback: callback => callback,
-      useEffect() {}
+      useEffect(effect) {
+        if (runBridgeEffect) child.bridgeCleanup = effect()
+      }
     }
   }
   t.after(() => {
     delete globalThis[seatKey]
   })
-  const panelUrl = new URL('../../src/client/panel.ts', import.meta.url).href
+  const panelUrl = new URL('../../src/client/features/authoring/ui/panel/panel-composition.tsx', import.meta.url).href
+  const panelControllerUrl = new URL('../../src/client/features/authoring/ui/panel/panel-controller.tsx', import.meta.url).href
+  const canvasSurfaceUrl = new URL('../../src/client/features/authoring/ui/canvas/canvas-surface.tsx', import.meta.url).href
   const moduleUrl = source => `data:text/javascript,${encodeURIComponent(source)}`
   const reactUrl = moduleUrl(`export default globalThis[Symbol.for('xuanling.blueprint.test.host-resource-display')].react`)
   const flowUrl = moduleUrl(`export const useReactFlow=()=>({});
@@ -157,7 +163,13 @@ export const Position={Left:'left',Right:'right'},MarkerType={ArrowClosed:'arrow
 export const ReactFlow='flow',ReactFlowProvider='provider',Background='background',Controls='controls',MiniMap='minimap',Handle='handle',NodeResizer='resizer',BaseEdge='base-edge';export const getSmoothStepPath=()=>['M 0 0',0,0];`)
   const hooks = registerHooks({
     resolve(specifier, context, next) {
-      if (context.parentURL === panelUrl && ['react', '@xyflow/react'].includes(specifier))
+      if (
+        (context.parentURL === panelUrl ||
+          context.parentURL === panelControllerUrl ||
+          context.parentURL === canvasSurfaceUrl ||
+          (specifier === 'react' && context.parentURL?.includes('/src/client/features/authoring/ui/panel/'))) &&
+        ['react', '@xyflow/react'].includes(specifier)
+      )
         return { url: specifier === 'react' ? reactUrl : flowUrl, shortCircuit: true }
       return next(specifier, context)
     }
@@ -200,22 +212,43 @@ export const ReactFlow='flow',ReactFlowProvider='provider',Background='backgroun
     }
   }
   const Panel = createBlueprintPanel({ hostLink: host, storage: undefined })
-  const shell = Panel({ t: translate }),
-    WorkspacePanel = shell.props.children.type
   const render = () => {
-    stateCursor = 0
-    refCursor = 0
-    return WorkspacePanel({ t: translate })
+    active = owner
+    owner.stateCursor = owner.refCursor = 0
+    const entry = Panel({ t: translate })
+    assert.equal(entry.props.workspace, owner.states[0])
+    assert.equal(entry.props.workspaceSnapshot, owner.states[0].getSnapshot())
+    active = child
+    child.stateCursor = child.refCursor = 0
+    let tree = entry.type(entry.props)
+    const provider = elements(tree).find(el => el.type === 'provider')
+    assert.ok(provider)
+    if (child.providerKey !== provider.key) {
+      child.bridgeCleanup?.()
+      const bridge = elements(provider).find(el => typeof el.type === 'function' && typeof el.props.onReady === 'function')
+      assert.ok(bridge)
+      runBridgeEffect = true
+      try {
+        bridge.type(bridge.props)
+      } finally {
+        runBridgeEffect = false
+      }
+      child.providerKey = provider.key
+      child.stateCursor = child.refCursor = 0
+      tree = entry.type(entry.props)
+    }
+    return tree
   }
   render()
-  const workspace = states[0]
+  const workspace = owner.states[0]
   await workspace.initialize()
   await workspace.load(definition.id)
   for (const [availableCatalog, expected] of [
     [catalog, 'Review / QA · Review · Search'],
     [[], 'Review / QA · review · mcp__search__query']
   ]) {
-    workspace.resourceCatalog = availableCatalog
+    workspace.host.listResources = async () => ({ resources: availableCatalog })
+    await workspace.refreshResources()
     const tree = render(),
       flow = elements(tree).find(item => item.type === 'flow')
     assert.equal(flow.props.nodes[0].data.summary, expected)

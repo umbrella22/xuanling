@@ -35,6 +35,9 @@ and a digest manifest, plus the pnpm-installable
 `@xuanling-rs/xuanling-dsh-blueprint@0.6.1` package. TeamStage preserves the native composer and approval UI,
 verifies structured output and physical artifacts, and records uncertain effects
 as recovery-required. DSH runtime support follows its latest capability channel.
+The current Blueprint development and CI fixture uses DSH `0.2.1-rc.2` from that
+channel, while the public runtime peer contract remains `>=0.2.1-alpha.5` with
+prereleases included.
 
 ```sh
 pnpm add --save-exact @xuanling-rs/xuanling-dsh-blueprint@0.6.1

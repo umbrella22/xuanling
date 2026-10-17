@@ -223,7 +223,7 @@ test("bundle manifests declare the dsh bundle and pin the npm version", () => {
     assert.equal(manifest.version, npmPackage.version, `${bundle}: version tracks the npm package`);
     assert.equal(manifest.license, "MIT", `${bundle}: license`);
     assert.ok(
-      manifest.dependencies?.["@deepseek-ai/dsh-mcp-client"] === "^0.1.0-rc.5",
+      manifest.dependencies?.["@deepseek-ai/dsh-mcp-client"] === "^0.2.1-rc.2",
       `${bundle}: pins the harness MCP bridge package`,
     );
     const expectedFiles = bundle === "xuanling-memory"
@@ -265,7 +265,7 @@ test("bundle manifests declare the dsh bundle and pin the npm version", () => {
   assert.equal(replace.name, "@xuanling-rs/xuanling-dsh-tools-replace");
   assert.equal(
     replace.dependencies?.["@deepseek-ai/dsh-tool-fs"],
-    "^0.1.0-rc.5",
+    "^0.2.1-rc.2",
     "replacement facade uses the official native image implementation",
   );
 });

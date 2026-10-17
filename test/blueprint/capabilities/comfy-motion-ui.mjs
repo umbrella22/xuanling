@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { supportsDshVersion } from './dsh-version.mjs'
 import { selectStyledOption } from './styled-control-entry.mjs'
 /** Independent W3 collector. Main alone launches after source freeze/build.
  * Motion transport fixtures prove rendering only, never provider/effects.
@@ -15,8 +16,8 @@ import { HOST_ASSERTIONS, validateCanvasReport } from './canvas-suite.mjs'
 import { setNativeTheme } from './i18n-workspace-journey.mjs'
 import { redactProbeEvidenceText, stringifyProbeEvidence } from './probe-evidence.mjs'
 import { BLUEPRINT_PACKAGE, BLUEPRINT_INVOCATIONS } from '../../../integrations/deepseek-harness/xuanling-blueprint/src/typert-descriptors.ts'
-import { projectRuntimeMotion } from '../../../integrations/deepseek-harness/xuanling-blueprint/src/client/runtime-motion.ts'
-import { en, zh } from '../../../integrations/deepseek-harness/xuanling-blueprint/src/client/locales.ts'
+import { projectRuntimeMotion } from '../../../integrations/deepseek-harness/xuanling-blueprint/src/client/shared/styles/runtime-motion.ts'
+import { en, zh } from '../../../integrations/deepseek-harness/xuanling-blueprint/src/client/shared/i18n/locales.ts'
 import { captureEvidenceFingerprint } from '../../../integrations/deepseek-harness/xuanling-blueprint/scripts/verify.mjs'
 import { HOST_CONTROLS_PLAN_ID, COMPACT_PLAN_ID, reportPathAllowed, preparePublicAction, prepareRunInput, closePublicMore, setPublicNativeLocale as setNativeLocale } from './compact-ui-entry.mjs'
 export { measureCanvasPerformance, PERFORMANCE_BUDGET, HOST_CONTROLS_PLAN_ID }
@@ -176,7 +177,7 @@ export function adaptProbe(original) {
   source = replaceOnce(source, pathToFileURL(join(HERE, 'canvas-journey.mjs')).href, self)
   source = replaceOnce(source, "const pw = await import('playwright')", `const pw = await import(${JSON.stringify(pathToFileURL(join(ROOT, 'test/blueprint/node_modules/playwright/index.mjs')).href)})`)
   source = replaceOnce(source, 'let browserTried = false', `let browserTried = false\n  let ownedEdge`)
-  source = replaceOnce(source, "const browser = await pw.chromium.launch({ channel: 'msedge', headless: true, env: ISOLATED_ENV(home) })", `const { launchOwnedEdge, observeNavigation } = await import(${JSON.stringify(self)})\n    ownedEdge = await launchOwnedEdge(pw, ISOLATED_ENV(home), tempRoot)\n    const browser = ownedEdge.browser`)
+  source = replaceOnce(source, "const browser = await pw.chromium.launch({ channel: 'msedge', headless: true, env: probeBrowserEnv(home) })", `const { launchOwnedEdge, observeNavigation } = await import(${JSON.stringify(self)})\n    ownedEdge = await launchOwnedEdge(pw, probeBrowserEnv(home), tempRoot)\n    const browser = ownedEdge.browser`)
   source = replaceOnce(source, "const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, reducedMotion: 'reduce' })", `const page = await ownedEdge.context.newPage()\n    await page.setViewportSize({ width: 1600, height: 1000 })\n    await page.emulateMedia({ reducedMotion: 'reduce' })`)
   source = replaceOnce(source, "await page.goto(baseUrl, { waitUntil: 'networkidle', timeout: 60_000 })", `const navigation = observeNavigation(page, process.env.BP_MOTION_ARTIFACT_DIR)\n    try { await page.goto(baseUrl, { waitUntil: 'networkidle', timeout: 60_000 }) }\n    catch (error) {\n      try { report.artifacts.motion_navigation = await navigation.failed(error) }\n      catch { report.artifacts.motion_navigation = { diagnosticWriteFailed: true } }\n      throw error\n    } finally { navigation.stop() }`)
   source = replaceOnce(source, 'await browser.close()', 'await ownedEdge.close()')
@@ -494,7 +495,7 @@ export function validateMotionReport(report, context) {
     && realFile(join(reportDir, 'tools'), report?.artifacts?.host_tools_contract?.reportPath), 'original screenshot/nested tools physical confinement missing')
   const original = validateCanvasReport(report, { mode: 'browser', planId, reportDir, packageRoot, invokedAt, finishedAt })
   const { environment: env, artifacts: artifacts } = report, receipt = artifacts.canvas_journey.comfyMotion
-  ensure(env.dsh_version_output === '0.2.1-alpha.1' && /^v\d+\./.test(env.node ?? '') && env.browser_version && env.platform === 'darwin/arm64'
+  ensure(supportsDshVersion(env.dsh_version_output) && /^v\d+\./.test(env.node ?? '') && env.browser_version && env.platform === 'darwin/arm64'
     && isAbsolute(env.temp_root ?? '') && /(?:^|\/)xuanling-bp-probe-[^/]+$/.test(env.temp_root), 'real isolated DSH/browser environment provenance absent')
   ensure(artifacts.auth_cookie_set === true && artifacts.index_has_boot === true && artifacts.client_bundle?.status === 200 && artifacts.client_bundle.closure === true
     && artifacts.boot_entries?.some(entry => entry.id === BLUEPRINT_PACKAGE) && !artifacts.browser_error, 'actual authenticated boot identity/closure missing or browser failed')

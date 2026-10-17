@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { supportsDshVersion } from './dsh-version.mjs'
 /** Independent mounted compact UX collector. Only main launches after build,
  * review and freeze. Synthetic validator inputs never prove native behavior. */
 import { spawnSync } from 'node:child_process'
@@ -17,7 +18,7 @@ import { HOST_CONTROLS_PLAN_ID, COMPACT_PLAN_ID, reportPathAllowed, preparePubli
 import { stringifyProbeEvidence, redactProbeEvidenceText } from './probe-evidence.mjs'
 import { captureEvidenceFingerprint } from '../../../integrations/deepseek-harness/xuanling-blueprint/scripts/verify.mjs'
 import { BLUEPRINT_PACKAGE, BLUEPRINT_INVOCATIONS } from '../../../integrations/deepseek-harness/xuanling-blueprint/src/typert-descriptors.ts'
-import { BUILTIN_NODE_CATALOG } from '../../../integrations/deepseek-harness/xuanling-blueprint/src/client/node-catalog.ts'
+import { BUILTIN_NODE_CATALOG } from '../../../integrations/deepseek-harness/xuanling-blueprint/src/client/features/authoring/logic/graph/node-catalog.ts'
 export { prepareCanvasFixtures, measureCanvasPerformance, launchOwnedEdge, observeNavigation, PERFORMANCE_BUDGET }
 export const PLAN_ID = COMPACT_PLAN_ID
 export { HOST_CONTROLS_PLAN_ID }
@@ -785,7 +786,7 @@ export function validateCompactReport(report, context) {
   ensure(fileInside(reportDir, report?.artifacts?.sidebar_screenshot) && fileInside(join(reportDir, 'tools'), report?.artifacts?.host_tools_contract?.reportPath), 'compact original screenshot/tools physical isolation missing')
   const original = validateCanvasReport(report, { mode: 'browser', planId, reportDir, packageRoot, invokedAt, finishedAt })
   const { environment: env, artifacts } = report, ui = artifacts.canvas_journey?.compactUX, native = artifacts.motion_browser
-  ensure(env.dsh_version_output === '0.2.1-alpha.1' && env.platform === 'darwin/arm64' && /^v\d+\./.test(env.node ?? '') && text(env.browser_version)
+  ensure(supportsDshVersion(env.dsh_version_output) && env.platform === 'darwin/arm64' && /^v\d+\./.test(env.node ?? '') && text(env.browser_version)
     && isAbsolute(env.temp_root ?? '') && /(?:^|\/)xuanling-bp-probe-[^/]+$/.test(env.temp_root), 'compact real isolated native environment missing')
   ensure(artifacts.auth_cookie_set === true && artifacts.index_has_boot === true && artifacts.client_bundle?.status === 200 && artifacts.client_bundle.closure === true
     && artifacts.boot_entries?.some(e => e.id === BLUEPRINT_PACKAGE) && !artifacts.browser_error, 'compact authenticated actual DSH boot/closure missing')
@@ -814,7 +815,7 @@ export function validateCollectorGate(report, context) {
 async function main() {
   const options = parseCli(process.argv.slice(2))
   if (options.help) {
-    console.log(`node --experimental-transform-types ${join(HERE, 'compact-ux-ui.mjs')} --plan-id ${PLAN_ID} --report-dir <absolute-NEW-directory-under-docs/validation/blueprint/current/compact-ux/w2>\nHost controls mode: --plan-id ${HOST_CONTROLS_PLAN_ID} --report-dir <absolute-NEW-directory-under-docs/validation/blueprint/current/host-controls/w2>\nMain review, official build and owned freeze required before native launch. Isolated actual DSH 0.2.1-alpha.1 and installed Microsoft Edge, Playwright, darwin/arm64, owned CDP noDefaults/default context. Original Host/browser assertions and 200/300/20, 2000ms/100ms performance export preserved. Fixed ${UX_CASES.length} compact cases plus ${HOST_CONTROL_CASES.length} required host-control cases in host mode, 1700px one row, four native themes and 1100px screenshot, complete durable Run/Host/draft/exact viewport facts. No keys/default profiles/provider or OS clipboard access. Missing case, stale provenance, process failure or escaping path fails nonzero. Run original Comfy and motion CLIs separately with this same explicit plan in fresh W2 directories.`)
+    console.log(`node --experimental-transform-types ${join(HERE, 'compact-ux-ui.mjs')} --plan-id ${PLAN_ID} --report-dir <absolute-NEW-directory-under-docs/validation/blueprint/current/compact-ux/w2>\nHost controls mode: --plan-id ${HOST_CONTROLS_PLAN_ID} --report-dir <absolute-NEW-directory-under-docs/validation/blueprint/current/host-controls/w2>\nMain review, official build and owned freeze required before native launch. Isolated actual DSH 0.2.1-rc.2 and installed Microsoft Edge, Playwright, darwin/arm64, owned CDP noDefaults/default context. Original Host/browser assertions and 200/300/20, 2000ms/100ms performance export preserved. Fixed ${UX_CASES.length} compact cases plus ${HOST_CONTROL_CASES.length} required host-control cases in host mode, 1700px one row, four native themes and 1100px screenshot, complete durable Run/Host/draft/exact viewport facts. No keys/default profiles/provider or OS clipboard access. Missing case, stale provenance, process failure or escaping path fails nonzero. Run original Comfy and motion CLIs separately with this same explicit plan in fresh W2 directories.`)
     return
   }
   ensure(!existsSync(options.reportDir), 'compact report directory already exists; fresh output required')

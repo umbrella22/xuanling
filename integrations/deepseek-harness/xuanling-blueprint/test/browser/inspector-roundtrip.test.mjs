@@ -4,10 +4,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { GraphEditor } from '../../src/client/graph-editor.ts'
+import { GraphEditor } from '../../src/client/features/authoring/logic/graph/graph-editor.ts'
 import { decodeDefinition } from '../../src/definition/codec.ts'
 import { validateDefinition } from '../../src/definition/validator.ts'
-import { en, zh } from '../../src/client/locales.ts'
+import { en, zh } from '../../src/client/shared/i18n/locales.ts'
 import {
   NodeInspector,
   InspectorSession,
@@ -15,7 +15,7 @@ import {
   parseInspectorJson,
   applyInspectorPatch,
   referenceMembership
-} from '../../src/client/inspector.ts'
+} from '../../src/client/features/authoring/ui/inspector/inspector-composition.tsx'
 
 const definition = {
   schemaVersion: 1,

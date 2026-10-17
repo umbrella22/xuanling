@@ -10,8 +10,8 @@ import { hasPnpmImporterDependency, readPnpmLock } from '../package/pnpm-lock.mj
 import { fileURLToPath } from 'node:url'
 import { RUN_STATES, ATTEMPT_STATES } from '../../src/persistence/records.ts'
 import { defaultAriaLabelConfig } from '@xyflow/system'
-import { BLUEPRINT_LOCALE, en, zh } from '../../src/client/locales.ts'
-import { BUILTIN_NODE_CATALOG, nodeDisplayTitle, nodeKindTitle } from '../../src/client/node-catalog.ts'
+import { BLUEPRINT_LOCALE, en, zh } from '../../src/client/shared/i18n/locales.ts'
+import { BUILTIN_NODE_CATALOG, nodeDisplayTitle, nodeKindTitle } from '../../src/client/features/authoring/logic/graph/node-catalog.ts'
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const parameters = template => [...template.matchAll(/\{(\w+)\}/g)].map(match => match[1]).sort()
@@ -37,9 +37,9 @@ test('C-01 typed namespace, standard props t and foundation descriptor coverage 
   writeFileSync(
     entry,
     `
-    import { en, zh } from ${JSON.stringify(resolve(packageRoot, 'src/client/locales.ts'))};
-    import type { BlueprintLocaleProps, BlueprintLocaleKey } from ${JSON.stringify(resolve(packageRoot, 'src/client/locales.ts'))};
-    import type { ViewMessageKey } from ${JSON.stringify(resolve(packageRoot, 'src/client/view-contract.ts'))};
+    import { en, zh } from ${JSON.stringify(resolve(packageRoot, 'src/client/shared/i18n/locales.ts'))};
+    import type { BlueprintLocaleProps, BlueprintLocaleKey } from ${JSON.stringify(resolve(packageRoot, 'src/client/shared/i18n/locales.ts'))};
+    import type { ViewMessageKey } from ${JSON.stringify(resolve(packageRoot, 'src/client/shared/contracts/view-contract.ts'))};
     declare const props: BlueprintLocaleProps;
     props.t('panel.label');
     props.t('node.input.title');
@@ -119,14 +119,14 @@ test('C-01 every current durable Run and Attempt state has bilingual display cop
 })
 
 test('C-01 locale/framework imports erase fully from the browser bootstrap runtime graph', () => {
-  const locales = stripTypeScriptTypes(readFileSync(resolve(packageRoot, 'src/client/locales.ts'), 'utf8'), { mode: 'transform' })
+  const locales = stripTypeScriptTypes(readFileSync(resolve(packageRoot, 'src/client/shared/i18n/locales.ts'), 'utf8'), { mode: 'transform' })
   const bootstrap = stripTypeScriptTypes(readFileSync(resolve(packageRoot, 'src/client/index.ts'), 'utf8'), { mode: 'transform' })
   assert.equal(locales.includes('@deepseek-ai/dsh-client-ui-slots'), false, 'NAMESPACE_AUGMENTATION_IS_TYPE_ONLY')
   assert.equal(bootstrap.includes('@deepseek-ai/dsh-client-locale/client'), false, 'NO_SECOND_LOCALE_RUNTIME')
   const manifest = JSON.parse(readFileSync(resolve(packageRoot, 'package.json'), 'utf8'))
   const lock = readPnpmLock(packageRoot)
   for (const name of ['@deepseek-ai/dsh-client-locale', '@deepseek-ai/dsh-client-ui-slots']) {
-    assert.equal(manifest.devDependencies[name], '0.2.1-alpha.4')
+    assert.equal(manifest.devDependencies[name], '0.2.1-rc.2')
     assert.equal(manifest.dependencies?.[name], undefined, 'FRAMEWORK_TYPES_STAY_DEV_ONLY')
     assert.equal(hasPnpmImporterDependency(lock, 'devDependencies', name, manifest.devDependencies[name]), true)
   }

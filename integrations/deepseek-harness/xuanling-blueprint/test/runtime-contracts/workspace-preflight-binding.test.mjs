@@ -1,8 +1,8 @@
 /** C-07/C-08/C-10 production workspace and wire contracts, not browser proof. */
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { BlueprintWorkspace } from '../../src/client/workspace.ts'
-import { resolveBlueprintHost } from '../../src/client/remote.ts'
+import { BlueprintWorkspace } from '../../src/client/features/authoring/logic/workspace/workspace-controller.ts'
+import { resolveBlueprintHost } from '../../src/client/adapters/host/remote.ts'
 
 const definition = id => ({
   schemaVersion: 1,

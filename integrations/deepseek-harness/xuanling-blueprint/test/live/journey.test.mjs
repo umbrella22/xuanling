@@ -283,11 +283,11 @@ test('synthetic nonce response traverses actual Agent/Run/downstream but is neve
       assert.equal(error.synthetic_evidence.behavior_assertions.downstreamMatched, true)
       assert.equal(error.synthetic_evidence.behavior_assertions.completed, true)
       const behavior = error.synthetic_evidence.behavior_assertions
-      assert.match(behavior.sessionId, /^bp-[a-f0-9-]{36}$/, 'actual reserved execution ID must traverse the production Run/Agent path')
-      assert.equal(
-        behavior.sessionId.startsWith(`bp-${behavior.runId}-${behavior.attemptId}-`),
-        false,
-        'the real path must exercise canonical identity, not legacy prefix fallback'
+      const sessionPrefix = `bp-${behavior.runId}-${behavior.attemptId}-`
+      assert.match(behavior.sessionId, /^[A-Za-z0-9_-]+$/, 'actual reserved execution ID must traverse the production Run/Agent path')
+      assert.ok(
+        behavior.sessionId.startsWith(sessionPrefix) && behavior.sessionId.length > sessionPrefix.length,
+        'the real path must bind execution identity to the durable Run and Attempt'
       )
       assert.ok(
         error.synthetic_evidence.sessions.some(

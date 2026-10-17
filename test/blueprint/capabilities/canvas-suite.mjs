@@ -1,3 +1,4 @@
+import { supportsDshVersion } from './dsh-version.mjs'
 // Shared launch/report boundary for the browser and performance suites. Each
 // invocation gets a NEW child directory, never a historical w0 fallback.
 import { spawnSync } from 'node:child_process'
@@ -24,7 +25,7 @@ export function validatePerformanceEvidence(perf, environment) {
   if (!perf || !isDeepStrictEqual(perf.budget, PERFORMANCE_BUDGET)) throw new Error('performance budget missing or changed')
   if (!isDeepStrictEqual(perf.fixture, fixtureEvidence(performanceDefinition()))) throw new Error('performance fixture/generator/hash differs from 200/300/20 contract')
   if (typeof perf.provenance !== 'string' || !perf.provenance.startsWith('real DSH closure factory')) throw new Error('performance is not attributed to the actual DSH mounted canvas')
-  if (environment?.platform !== 'darwin/arm64' || !/^v\d+\./.test(environment.node ?? '') || !environment.browser_version || environment.dsh_version_output !== '0.2.1-alpha.4') throw new Error('performance machine/runtime/browser provenance missing or outside frozen environment')
+  if (environment?.platform !== 'darwin/arm64' || !/^v\d+\./.test(environment.node ?? '') || !environment.browser_version || !supportsDshVersion(environment.dsh_version_output)) throw new Error('performance machine/runtime/browser provenance missing or outside frozen environment')
   const { loadMs, paintP95Ms } = perf.measured ?? {}
   if (!Number.isFinite(loadMs) || loadMs <= 0 || loadMs > PERFORMANCE_BUDGET.loadMs) throw new Error('mounted canvas load exceeds 2000ms or is not measured')
   if (!Array.isArray(perf.samples) || perf.samples.length !== PERFORMANCE_BUDGET.interactions
@@ -75,7 +76,11 @@ export async function runCanvasSuite(helpers, mode) {
   const planId = helpers.planId ?? 'dsh-blueprint-takeover-v1'
   const probeDir = join(repoRoot, 'test', 'blueprint')
   const env = {}
-  for (const key of ['PATH', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TMPDIR', 'TMP', 'TEMP', 'SystemRoot', 'SYSTEMROOT', 'COMSPEC', 'PATHEXT']) if (process.env[key] !== undefined) env[key] = process.env[key]
+  // Keep the probe's credential environment isolated while preserving the
+  // operator home required by Playwright's real browser launcher. The probe
+  // still replaces DSH_HOME and its browser user data directory with fresh
+  // temporary paths.
+  for (const key of ['PATH', 'HOME', 'USERPROFILE', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TMPDIR', 'TMP', 'TEMP', 'SystemRoot', 'SYSTEMROOT', 'COMSPEC', 'PATHEXT']) if (process.env[key] !== undefined) env[key] = process.env[key]
   const invokedAt = Date.now()
   const child = spawnSync(process.execPath, [join(probeDir, 'capabilities', 'probe.mjs'),
     `--plugin-dir=${packageRoot}`, '--expect=blueprint', `--canvas-test=${mode}`,

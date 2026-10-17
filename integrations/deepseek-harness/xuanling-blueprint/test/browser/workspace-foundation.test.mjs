@@ -2,10 +2,10 @@
 // not evidence of native DSH registration, locale switching or mounted UI.
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { BlueprintWorkspace, draftKey, runBindingKey } from '../../src/client/workspace.ts'
-import { resourceRows } from '../../src/client/panel.ts'
-import { GraphEditor, canConnect, editorNodeDisplayTitle } from '../../src/client/graph-editor.ts'
-import { BlueprintRemoteError } from '../../src/client/remote.ts'
+import { BlueprintWorkspace, draftKey, runBindingKey } from '../../src/client/features/authoring/logic/workspace/workspace-controller.ts'
+import { resourceRows } from '../../src/client/features/authoring/ui/panel/panel-composition.tsx'
+import { GraphEditor, canConnect, editorNodeDisplayTitle } from '../../src/client/features/authoring/logic/graph/graph-editor.ts'
+import { BlueprintRemoteError } from '../../src/client/adapters/host/remote.ts'
 import {
   BUILTIN_NODE_CATALOG,
   builtinNodeMetadata,
@@ -13,8 +13,8 @@ import {
   nodeDisplayTitle,
   nodeKindTitle,
   resourceAvailabilityNotice
-} from '../../src/client/node-catalog.ts'
-import { connectionNotice } from '../../src/client/view-contract.ts'
+} from '../../src/client/features/authoring/logic/graph/node-catalog.ts'
+import { connectionNotice } from '../../src/client/shared/contracts/view-contract.ts'
 import { decodeDefinition } from '../../src/definition/codec.ts'
 import { validateDefinition } from '../../src/definition/validator.ts'
 import { BLUEPRINT_INVOCATIONS } from '../../src/typert-descriptors.ts'

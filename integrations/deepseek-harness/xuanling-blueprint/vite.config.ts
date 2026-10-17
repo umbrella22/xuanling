@@ -22,8 +22,8 @@ export default defineConfig({
         'resource-admission': 'src/security/resource-admission.ts',
         'tool-adapter': 'src/host/tool-adapter.ts',
         portability: 'src/portability/index.ts',
-        'client-model': 'src/client/model.ts',
-        'client-editor': 'src/client/graph-editor.ts',
+        'client-model': 'src/client/features/authoring/logic/run/client-model.ts',
+        'client-editor': 'src/client/features/authoring/logic/graph/graph-editor.ts',
         persistence: 'src/persistence/index.ts',
         orchestration: 'src/orchestration/index.ts'
       },
@@ -31,10 +31,12 @@ export default defineConfig({
       outDir: 'lib',
       outExtensions: () => ({ js: '.js' }),
       platform: 'node',
-      external: [/^@deepseek-ai\//, /^node:/, 'zod'],
+      deps: { neverBundle: [/^@deepseek-ai\//, /^node:/, 'zod'] },
       dts: false,
       clean: true,
-      minify: false
+      // Host files are distributable runtime artifacts too; keep the same
+      // production minification policy as the browser closure.
+      minify: true
     },
     {
       // Client face: the official closure-factory bundle format consumed by
@@ -48,9 +50,16 @@ export default defineConfig({
       // Fold bundled third-party dev/production branches in the client only.
       // DSH's browser factory has no process global; do not install a shim.
       define: { 'process.env.NODE_ENV': JSON.stringify('production') },
-      // The shared strict codec is a peer on the host, not a DSH browser seed.
-      deps: { alwaysBundle: ['zod'] },
-      external: ['react', 'react/jsx-runtime', 'react/jsx-dev-runtime', 'react-dom', 'react-dom/client'],
+      // Zustand reads import.meta.env only for development diagnostics. The
+      // browser CJS closure has no import.meta; fold that branch at transform time.
+      inputOptions: { transform: { define: { 'import.meta': '{}' } } },
+      suppressWarnings: [/MODULE_LEVEL_DIRECTIVE/],
+      // CJS is intentional: DSH's browser ModuleLoader consumes this closure.
+      checks: { legacyCjs: false },
+      deps: {
+        neverBundle: ['react', 'react/jsx-runtime', 'react/jsx-dev-runtime', 'react-dom', 'react-dom/client'],
+        alwaysBundle: ['zod']
+      },
       banner: `window.__ModuleLoader__.load({ id: '@xuanling-rs/xuanling-dsh-blueprint', factory(require) { var module = { exports: {} }; var exports = module.exports;`,
       footer: `return module.exports; } });`,
       dts: false,

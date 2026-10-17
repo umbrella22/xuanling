@@ -326,7 +326,7 @@ test('C-08 receipts whitelist fields, bind both fingerprints and reject stale su
     before,
     after: before,
     result: { status: 'passed', code: 'STRUCTURED_LIVE_VERIFIED', exit_code: 0 },
-    identity: { os: 'darwin', arch: 'arm64', osRelease: '25.0', node: 'v24.11.1', dshVersion: '0.2.1-alpha.1' },
+    identity: { os: 'darwin', arch: 'arm64', osRelease: '25.0', node: 'v24.11.1', dshVersion: '0.2.1-rc.2' },
     protocol: 'openai-completions',
     assertions: { exactNonceMatched: true, raw: 'SECRET' },
     raw: 'SECRET'
@@ -335,7 +335,7 @@ test('C-08 receipts whitelist fields, bind both fingerprints and reject stale su
   assert.equal(r.status, 'passed')
   assert.equal(r.before.source_sha256, before.source_sha256)
   assert.equal(r.after.artifact_sha256, before.artifact_sha256)
-  assert.equal(r.identity.dshVersion, '0.2.1-alpha.1')
+  assert.equal(r.identity.dshVersion, '0.2.1-rc.2')
   assert.equal(r.exact_command, 'node test/live/runtime-contracts-journey.mjs --plan-id dsh-blueprint-runtime-contracts-v1 --report-dir /tmp/report')
   assert.equal(JSON.stringify(r).includes('SECRET'), false)
   const stale = createReceipt({ ...spec, after: { ...before, source_sha256: 'd'.repeat(64) } })
@@ -541,7 +541,7 @@ test('C-08 failure receipt preserves only fixed acceptance/result codes, never r
     cwd: '/workspace/blueprint',
     before: fingerprint,
     after: fingerprint,
-    identity: { os: 'darwin', arch: 'arm64', osRelease: '25.0', node: 'v24.11.1', dshVersion: '0.2.1-alpha.1' },
+    identity: { os: 'darwin', arch: 'arm64', osRelease: '25.0', node: 'v24.11.1', dshVersion: '0.2.1-rc.2' },
     assertions: { acceptance_code: 'accepted', producer_result_code: 'succeeded', raw: 'RAW_ERROR_SECRET' },
     result: { status: 'failed', code: 'STRUCTURED_ACCEPTANCE_MISMATCH', exit_code: 1 }
   }

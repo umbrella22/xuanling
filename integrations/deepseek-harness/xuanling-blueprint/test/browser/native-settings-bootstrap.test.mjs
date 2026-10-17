@@ -8,6 +8,7 @@ import { setNativeSettingsLocale } from '../../../../../test/blueprint/capabilit
 const settingsSelector = '[data-shortcut-modal="settings"]'
 const panelSelector = '[data-bp-canvas="root"]'
 const englishSteps = [
+  'account.click',
   'settings.click',
   'settings.visible',
   'language.click',
@@ -22,6 +23,7 @@ function fixture(initial = 'zh', { failAt, failure, entry = false } = {}) {
   let locale = initial,
     open = false,
     menu = false,
+    accountMenu = false,
     visibleObserved = false,
     rowObserved = false,
     closedObserved = false
@@ -31,6 +33,7 @@ function fixture(initial = 'zh', { failAt, failure, entry = false } = {}) {
   const publicOnly = object =>
     new Proxy(object, {
       get(target, key) {
+        if (key === 'then') return undefined // Async helpers may return a public locator.
         assert.ok(Object.hasOwn(target, key), `non-public adapter operation: ${String(key)}`)
         return target[key]
       }
@@ -84,6 +87,14 @@ function fixture(initial = 'zh', { failAt, failure, entry = false } = {}) {
   })
   const page = publicOnly({
     getByRole(role, options) {
+      if (role === 'menuitem' && options.name instanceof RegExp) {
+        assert.deepEqual(options, { name: /^(设置|Settings)$/ })
+        assert.ok(accountMenu, 'Settings must be chosen from the public account menu')
+        return button('settings.click', () => {
+          accountMenu = false
+          open = true
+        })
+      }
       if (role === 'menuitem') {
         assert.ok(open && menu, 'open the native portalled language menu first')
         assert.ok(['English', '中文'].includes(options.name))
@@ -101,10 +112,10 @@ function fixture(initial = 'zh', { failAt, failure, entry = false } = {}) {
           sidebarActivated = true
         })
       }
-      assert.deepEqual(options, { name: /^(设置|Settings)$/ })
+      assert.deepEqual(options, { name: /^(账号菜单|Account menu)$/ })
       assert.ok(onboarded, 'never bypass onboarding')
-      return button('settings.click', () => {
-        open = true
+      return button('account.click', () => {
+        accountMenu = true
       })
     },
     locator(selector) {
@@ -142,6 +153,7 @@ test('supported Chinese selection uses exact native menu/row labels, not an Engl
   const f = fixture('en')
   await setNativeSettingsLocale(f.page, 'zh')
   assert.deepEqual(f.events, [
+    'account.click',
     'settings.click',
     'settings.visible',
     'language.click',

@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { test } from 'node:test'
 
-const url = new URL('../../src/client/runtime-motion.ts', import.meta.url)
-const motion = await import(existsSync(url) ? url.href : '../../src/client/model.ts')
+const url = new URL('../../src/client/shared/styles/runtime-motion.ts', import.meta.url)
+const motion = await import(existsSync(url) ? url.href : '../../src/client/features/authoring/logic/run/client-model.ts')
 
 test('C-10 raw Run/Attempt motion is a callable projection boundary', () => {
   assert.equal(typeof motion.projectRuntimeMotion, 'function', 'RAW_RUNTIME_MOTION_PROJECTION_MISSING')

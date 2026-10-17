@@ -1,3 +1,4 @@
+import { openNativeSettings } from './native-settings-journey.mjs'
 /** Public input preparation only. Every activation uses Playwright's trusted
  * locator/keyboard path. evaluate is reserved for passive public observations. */
 import { existsSync, lstatSync, realpathSync } from 'node:fs'
@@ -117,9 +118,7 @@ export async function prepareRunInput(page) {
  * Original layout still uses the original text-labelled entry. */
 export async function setPublicNativeLocale(page, id) {
   requireFact(['zh', 'en'].includes(id), 'unsupported acceptance locale')
-  await page.getByRole('button', { name: /^(设置|Settings)$/ }).click()
-  const modal = page.locator('[data-shortcut-modal="settings"]')
-  await modal.waitFor({ state: 'visible' })
+  const modal = await openNativeSettings(page)
   const selected = modal.getByRole('button', { name: /^(中文|English)$/ }), label = id === 'zh' ? '中文' : 'English'
   if ((await selected.textContent()).trim() !== label) { await selected.click(); await page.getByRole('menuitem', { name: label, exact: true }).click() }
   await modal.getByText(id === 'zh' ? '语言' : 'Language', { exact: true }).waitFor({ state: 'visible' })

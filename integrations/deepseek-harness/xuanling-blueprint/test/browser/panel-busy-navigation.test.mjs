@@ -1,15 +1,16 @@
 // Actual production Panel closure + actual BlueprintWorkspace/GraphEditor.
 // React/Flow hook seats, frame scheduling and confirm are controlled below.
-// Effects (DOM styles/poll timers) are not mounted; callbacks are SOURCE probes,
+// Only the local FlowApiBridge effect is mounted; DOM styles/poll timers are not.
+// Callbacks are SOURCE probes,
 // NOT native browser/pointer acceptance. Main owns the unchanged DSH gate.
 import assert from 'node:assert/strict'
 import { registerHooks } from 'node:module'
 import test from 'node:test'
 import { canvasDefinitions } from '../../../../../test/blueprint/capabilities/canvas-fixtures.mjs'
 import { decodeDefinition, validateDefinition } from '../../src/definition/index.ts'
-import { en } from '../../src/client/locales.ts'
-import { BlueprintRemoteError } from '../../src/client/remote.ts'
-import { BlueprintWorkspace, draftKey, runBindingKey } from '../../src/client/workspace.ts'
+import { en } from '../../src/client/shared/i18n/locales.ts'
+import { BlueprintRemoteError } from '../../src/client/adapters/host/remote.ts'
+import { BlueprintWorkspace, draftKey, runBindingKey } from '../../src/client/features/authoring/logic/workspace/workspace-controller.ts'
 
 // Explicit injected-locale fixture seat, not native DSH locale acceptance.
 const fixtureT = (key, params = {}) => {
@@ -21,8 +22,9 @@ const seat = { active: null }
 const seatKey = Symbol.for('xuanling.blueprint.test.foreground-navigation')
 globalThis[seatKey] = seat
 seat.react = {
-  createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }),
+  createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.length ? children : [props?.children] }),
   memo: component => component,
+  useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
   useState(initial) {
     const f = seat.active,
       i = f.stateCursor++
@@ -41,17 +43,27 @@ seat.react = {
   },
   useMemo: factory => factory(),
   useCallback: callback => callback,
-  useEffect() {}
+  useEffect(effect) {
+    if (seat.bridge) effect()
+  }
 }
 const moduleUrl = source => `data:text/javascript,${encodeURIComponent(source)}`
 const reactUrl = moduleUrl(`export default globalThis[Symbol.for('xuanling.blueprint.test.foreground-navigation')].react`)
 const flowUrl = moduleUrl(`export const useReactFlow = () => globalThis[Symbol.for('xuanling.blueprint.test.foreground-navigation')].active.flow;
 export const Position = { Left: 'left', Right: 'right' }, MarkerType = { ArrowClosed: 'arrowclosed' };
 export const ReactFlow = 'flow', ReactFlowProvider = 'provider', Background = 'background', Controls = 'controls', MiniMap = 'minimap', Handle = 'handle', NodeResizer = 'resizer', BaseEdge = 'base-edge'; export const getSmoothStepPath=()=>['M 0 0 L 1 1',0,0];`)
-const panelUrl = new URL('../../src/client/panel.ts', import.meta.url).href
+const panelUrl = new URL('../../src/client/features/authoring/ui/panel/panel-composition.tsx', import.meta.url).href
+const panelControllerUrl = new URL('../../src/client/features/authoring/ui/panel/panel-controller.tsx', import.meta.url).href
+const canvasSurfaceUrl = new URL('../../src/client/features/authoring/ui/canvas/canvas-surface.tsx', import.meta.url).href
 const hooks = registerHooks({
   resolve(specifier, context, next) {
-    if (context.parentURL === panelUrl && ['react', '@xyflow/react'].includes(specifier))
+    if (
+      (context.parentURL === panelUrl ||
+        context.parentURL === panelControllerUrl ||
+        context.parentURL === canvasSurfaceUrl ||
+        (specifier === 'react' && context.parentURL?.includes('/src/client/features/authoring/ui/panel/'))) &&
+      ['react', '@xyflow/react'].includes(specifier)
+    )
       return { url: specifier === 'react' ? reactUrl : flowUrl, shortCircuit: true }
     return next(specifier, context)
   }
@@ -219,14 +231,30 @@ async function fixture({ loaded = true, boundRuns = true, hostAvailable = true }
   const storage = { getItem: key => f.values.get(key) ?? null, setItem: (key, value) => f.values.set(key, value) }
   const Panel = createBlueprintPanel({ hostLink: hostAvailable ? host : undefined, storage })
   seat.active = f
-  const shell = Panel({ t: fixtureT })
-  assert.equal(shell.type, 'provider', 'actual panel owns the React Flow provider')
-  const WorkspacePanel = shell.children[0].type
+  // Root owns Workspace/subscription; the composition child has its own hook seats.
+  const panelSeat = { states: [], refs: [], stateCursor: 0, refCursor: 0 }
   f.render = () => {
     seat.active = f
     f.stateCursor = 0
     f.refCursor = 0
-    return (f.tree = WorkspacePanel({ t: fixtureT }))
+    const entry = Panel({ t: fixtureT })
+    seat.active = panelSeat
+    panelSeat.stateCursor = panelSeat.refCursor = 0
+    f.tree = entry.type(entry.props)
+    const provider = one(f.tree, n => n.type === 'provider')
+    assert.ok(
+      one(provider, n => n.type === 'flow'),
+      'actual panel owns the React Flow provider'
+    )
+    const bridge = one(provider, n => n.type?.name === 'FlowApiBridge')
+    seat.active = f
+    seat.bridge = true
+    try {
+      bridge.type(bridge.props)
+    } finally {
+      seat.bridge = false
+    }
+    return f.tree
   }
   f.render()
   f.workspace = f.states[0]

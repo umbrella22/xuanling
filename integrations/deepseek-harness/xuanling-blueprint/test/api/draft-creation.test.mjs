@@ -7,7 +7,7 @@ import test from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
 import { ToolRuntime } from '@deepseek-ai/dsh-tools'
 import { BlueprintService } from '../../src/index.ts'
-import { BlueprintWorkspace, newDraftKey } from '../../src/client/workspace.ts'
+import { BlueprintWorkspace, newDraftKey } from '../../src/client/features/authoring/logic/workspace/workspace-controller.ts'
 import { BLUEPRINT_INVOCATIONS } from '../../src/typert-descriptors.ts'
 
 async function fixture(t) {

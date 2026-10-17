@@ -1868,7 +1868,7 @@ function synthetic(t) {
     environment: {
       canvas_test: 'browser',
       node: 'v24.11.1',
-      dsh_version_output: '0.2.1-alpha.1',
+      dsh_version_output: '0.2.1-rc.2',
       browser_version: 'synthetic Chromium',
       temp_root: '/tmp/xuanling-bp-probe-synthetic'
     },

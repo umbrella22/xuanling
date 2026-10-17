@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { GraphEditor } from '../../src/client/graph-editor.ts'
+import { GraphEditor } from '../../src/client/features/authoring/logic/graph/graph-editor.ts'
 
 export const fixture = () => ({
   schemaVersion: 1,

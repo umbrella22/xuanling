@@ -1,8 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { InteractionOverlay, clampOverlay, archiveBase64, archiveBytes, downloadBlueprint } from '../../src/client/interaction-overlays.ts'
-import { contextCommands } from '../../src/client/command-policy.ts'
-import { zh, en } from '../../src/client/locales.ts'
+import {
+  InteractionOverlay,
+  clampOverlay,
+  archiveBase64,
+  archiveBytes,
+  downloadBlueprint
+} from '../../src/client/features/authoring/ui/overlays/interaction-overlays.tsx'
+import { contextCommands } from '../../src/client/shared/controls/command-policy.ts'
+import { zh, en } from '../../src/client/shared/i18n/locales.ts'
 const all = (tree, pred) =>
   !tree || typeof tree !== 'object' ? [] : [...(pred(tree) ? [tree] : []), ...(tree.children ?? []).flat(Infinity).flatMap(c => all(c, pred))]
 function fixture(overlay, options = {}) {
@@ -13,8 +19,8 @@ function fixture(overlay, options = {}) {
     useRef: initial => (f.refs[f.refCursor++] ??= { current: initial }),
     useState(initial) {
       const i = f.cursor++
-      if (!(i in f.states)) f.states[i] = initial
-      return [f.states[i], v => (f.states[i] = v)]
+      if (!(i in f.states)) f.states[i] = typeof initial === 'function' ? initial() : initial
+      return [f.states[i], v => (f.states[i] = typeof v === 'function' ? v(f.states[i]) : v)]
     },
     useEffect: effect => f.effects.push(effect)
   }

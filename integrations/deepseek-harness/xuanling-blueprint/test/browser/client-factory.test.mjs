@@ -31,7 +31,7 @@ test('C-08 only the browser client pack folds third-party NODE_ENV while retaini
   assert.ok(client)
   assert.equal(client.define?.['process.env.NODE_ENV'], '"production"', 'CLIENT_PACK_MUST_FOLD_THIRD_PARTY_NODE_ENV')
   assert.equal(host.define?.['process.env.NODE_ENV'], undefined, 'HOST_PACK_ENVIRONMENT_MUST_REMAIN_UNCHANGED')
-  assert.deepEqual(client.external, sharedIds, 'REACT_SINGLETON_EXTERNALS_MUST_NOT_BE_REPLACED_OR_POLYFILLED')
+  assert.deepEqual(client.deps?.neverBundle, sharedIds, 'REACT_SINGLETON_EXTERNALS_MUST_NOT_BE_REPLACED_OR_POLYFILLED')
 })
 
 test('C-08 actual packaged factory imports with real shared React seeds and no process/global/Buffer', t => {

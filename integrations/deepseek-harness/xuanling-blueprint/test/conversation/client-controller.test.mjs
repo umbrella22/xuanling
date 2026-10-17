@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { ConversationController, resolveConversationHost, conversationFocusNodes } from '../../src/client/conversation-controller.ts'
-import { projectFrozenCanvas, conversationInspectableCall } from '../../src/client/conversation-canvas.ts'
+import {
+  ConversationController,
+  resolveConversationHost,
+  conversationFocusNodes
+} from '../../src/client/features/conversation/logic/conversation-controller.ts'
+import { projectFrozenCanvas, conversationInspectableCall } from '../../src/client/features/conversation/ui/conversation-canvas.ts'
 import { inspectSessionCodec } from '../../src/conversation/contracts.ts'
 
 const summary = (runId, createdAt) => ({ runId, createdAt, state: 'running', definitionRevision: 'frozen-v1', blueprintId: 'blueprint-a' })

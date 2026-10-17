@@ -8,13 +8,13 @@ import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
 import * as collector from '../../../../../test/blueprint/capabilities/comfy-motion-ui.mjs'
 import { HOST_CONTROLS_PLAN_ID, reportPathAllowed, closePublicMore, prepareRunInput } from '../../../../../test/blueprint/capabilities/compact-ui-entry.mjs'
-import { projectRuntimeMotion } from '../../src/client/runtime-motion.ts'
+import { projectRuntimeMotion } from '../../src/client/shared/styles/runtime-motion.ts'
 import { BLUEPRINT_INVOCATIONS, BLUEPRINT_PACKAGE } from '../../src/typert-descriptors.ts'
-import { en, zh } from '../../src/client/locales.ts'
+import { en, zh } from '../../src/client/shared/i18n/locales.ts'
 import { decodeDefinition } from '../../src/definition/codec.ts'
 import { validateDefinition } from '../../src/definition/validator.ts'
-import { GraphEditor } from '../../src/client/graph-editor.ts'
-import { resolveCanvasShortcut } from '../../src/client/command-policy.ts'
+import { GraphEditor } from '../../src/client/features/authoring/logic/graph/graph-editor.ts'
+import { resolveCanvasShortcut } from '../../src/client/shared/controls/command-policy.ts'
 import { getHandlePosition, Position } from '@xyflow/system'
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../..')
 const TEST_PLAN_ID = process.env.BP_COLLECTOR_PLAN_ID ?? HOST_CONTROLS_PLAN_ID
@@ -580,7 +580,7 @@ function fixture(t) {
       temp_root: tempRoot,
       platform: 'darwin/arm64',
       node: process.version,
-      dsh_version_output: '0.2.1-alpha.1',
+      dsh_version_output: '0.2.1-rc.2',
       browser_version: 'unit-browser'
     },
     artifacts: {

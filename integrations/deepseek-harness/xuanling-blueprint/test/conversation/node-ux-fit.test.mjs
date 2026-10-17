@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { registerHooks } from 'node:module'
-import { ConversationController } from '../../src/client/conversation-controller.ts'
-import { en } from '../../src/client/locales.ts'
+import { ConversationController } from '../../src/client/features/conversation/logic/conversation-controller.ts'
+import { en } from '../../src/client/shared/i18n/locales.ts'
 const key = Symbol.for('blueprint.test.frozen.fit')
 const seat = { active: null }
 globalThis[key] = seat
@@ -44,7 +44,7 @@ const hooks = registerHooks({
         url: url("export default globalThis[Symbol.for('blueprint.test.frozen.fit')].react"),
         shortCircuit: true
       }
-    if (context.parentURL === `${client}conversation-view.ts` && spec === '@xyflow/react')
+    if (context.parentURL?.startsWith(`${client}features/conversation/`) && spec === '@xyflow/react')
       return {
         url: url(
           "export const ReactFlow='flow',Handle='handle',BaseEdge='edge';export const Position={Left:'left',Right:'right'};export const getSmoothStepPath=()=>['M 0 0 L 1 1'];"
@@ -56,7 +56,7 @@ const hooks = registerHooks({
 })
 let View
 try {
-  ;({ ConversationBlueprintView: View } = await import(`${client}conversation-view.ts`))
+  ;({ ConversationBlueprintView: View } = await import(`${client}features/conversation/ui/conversation-view.tsx`))
 } finally {
   hooks.deregister()
 }

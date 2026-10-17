@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { BlueprintWorkspace, draftKey, newDraftKey } from '../../src/client/workspace.ts'
+import { BlueprintWorkspace, draftKey, newDraftKey } from '../../src/client/features/authoring/logic/workspace/workspace-controller.ts'
 
 function fixture() {
   const data = new Map(),

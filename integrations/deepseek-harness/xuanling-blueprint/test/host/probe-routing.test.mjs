@@ -11,8 +11,10 @@ import { fileURLToPath } from 'node:url'
 import { getCases } from './host.mjs'
 import {
   probeReportRouting,
+  PROBE_BOOT_ARGS,
   probeArtifactPaths,
   isolatedProbeEnv,
+  probeBrowserEnv,
   waitForTerminal,
   rawScriptUnavailable,
   terminalCancelEvidence
@@ -390,4 +392,33 @@ test('runner passes resolved explicit/default report-dir/plan-id to suite helper
     assert.equal(report.passed, true)
   }
   assert.equal(existsSync(join(root, 'test', 'blueprint', 'reports', 'w0')), false)
+})
+
+test('probe actual boot invocation disables opening the operator browser', () => {
+  assert.deepEqual(PROBE_BOOT_ARGS, ['--profile', 'blueprint-web', '--no-open'])
+  assert.ok(Object.isFrozen(PROBE_BOOT_ARGS))
+  assert.match(readFileSync(probe, 'utf8'), /spawn\(dshBin, PROBE_BOOT_ARGS,/)
+})
+
+test('browser keeps the operator HOME without inheriting credentials while DSH stays isolated', () => {
+  const source = { HOME: '/operator-home', PATH: '/tools', DEEPSEEK_API_KEY: 'must-not-inherit', NODE_OPTIONS: 'must-not-inherit', DSH_HOME: '/operator-dsh' }
+  const browser = probeBrowserEnv('/temporary-home', source)
+  const dsh = isolatedProbeEnv('/temporary-home', source)
+  assert.equal(browser.HOME, '/operator-home')
+  assert.equal(browser.USERPROFILE, '/operator-home')
+  assert.equal(browser.DSH_HOME, '/temporary-home/dsh')
+  assert.equal(dsh.HOME, '/temporary-home')
+  assert.equal(dsh.DSH_HOME, '/temporary-home/dsh')
+  assert.equal(browser.PATH, '/tools')
+  assert.equal(browser.DEEPSEEK_API_KEY, undefined)
+  assert.equal(browser.NODE_OPTIONS, undefined)
+  const sourceText = readFileSync(probe, 'utf8')
+  assert.match(sourceText, /chromium\.launch\(\{ channel: 'msedge', headless: true, env: probeBrowserEnv\(home\) \}\)/)
+  assert.ok(!sourceText.includes('launchPersistentContext'), 'Playwright owns its fresh temporary browser userDataDir')
+})
+
+test('browser HOME uses Windows USERPROFILE fallback and fails explicitly when neither is available', () => {
+  assert.equal(probeBrowserEnv('/temporary-home', { USERPROFILE: 'C:\\Users\\operator' }).HOME, 'C:\\Users\\operator')
+  assert.throws(() => probeBrowserEnv('/temporary-home', {}), /BROWSER_HOME_UNAVAILABLE/)
+  assert.throws(() => probeBrowserEnv('/temporary-home', { HOME: '' }), /BROWSER_HOME_UNAVAILABLE/)
 })

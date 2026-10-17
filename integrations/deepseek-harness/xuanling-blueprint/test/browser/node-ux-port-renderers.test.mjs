@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import React from 'react'
-import { GraphEditor } from '../../src/client/graph-editor.ts'
-import { InspectorSession, renderNodeInspector } from '../../src/client/inspector.ts'
+import { GraphEditor } from '../../src/client/features/authoring/logic/graph/graph-editor.ts'
+import { InspectorSession, renderNodeInspector } from '../../src/client/features/authoring/ui/inspector/inspector-composition.tsx'
 import { frozenPresentationCodec } from '../../src/conversation/contracts.ts'
-import { en, zh } from '../../src/client/locales.ts'
+import { en, zh } from '../../src/client/shared/i18n/locales.ts'
 const translate =
   d =>
   (k, p = {}) => {
@@ -36,8 +36,9 @@ const key = Symbol.for('blueprint.test.port.renderers'),
   seat = { active: null }
 globalThis[key] = seat
 seat.react = {
-  createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }),
+  createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.length ? children : [props?.children] }),
   memo: fn => fn,
+  useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
   useState(initial) {
     const f = seat.active,
       i = f.cursor++
@@ -62,13 +63,15 @@ seat.react = {
     return f.memos[i].value
   },
   useCallback: fn => fn,
-  useEffect() {}
+  useEffect(effect) {
+    if (seat.runBridgeEffect) seat.active.bridgeCleanup = effect()
+  }
 }
 const url = code => `data:text/javascript,${encodeURIComponent(code)}`
 const reactUrl = url(
   `export default globalThis[Symbol.for('blueprint.test.port.renderers')].react; export const createElement=globalThis[Symbol.for('blueprint.test.port.renderers')].react.createElement;`
 )
-const flow = url(`export const useReactFlow=()=>globalThis[Symbol.for('blueprint.test.port.renderers')].active.flow;
+const flow = url(`export const useReactFlow=()=>globalThis[Symbol.for('blueprint.test.port.renderers')].active.flowApi;
 export const Position={Left:'left',Right:'right'},MarkerType={ArrowClosed:'arrowclosed'};
 export const ReactFlow='flow',ReactFlowProvider='provider',Background='background',Controls='controls',MiniMap='minimap',Handle='handle',NodeResizer='resizer',BaseEdge='base-edge'; export const getSmoothStepPath=()=>['M 0 0 L 1 1',0,0];`)
 // Inspector is a frozen opaque boundary here, not a fake editor implementation.
@@ -77,14 +80,26 @@ const client = new URL('../../src/client/', import.meta.url).href
 const hooks = registerHooks({
   resolve(spec, context, next) {
     if (context.parentURL?.startsWith(client) && spec === 'react') return { url: reactUrl, shortCircuit: true }
-    if (context.parentURL === `${client}panel.ts` && spec === '@xyflow/react') return { url: flow, shortCircuit: true }
-    if (context.parentURL === `${client}panel.ts` && spec === './inspector.ts') return { url: inspector, shortCircuit: true }
+    if (
+      (context.parentURL === `${client}features/authoring/ui/panel/panel-composition.tsx` ||
+        context.parentURL === `${client}features/authoring/ui/panel/panel-controller.tsx` ||
+        context.parentURL === `${client}features/authoring/ui/canvas/canvas-surface.tsx` ||
+        context.parentURL === `${client}features/authoring/ui/canvas/canvas-renderers.tsx`) &&
+      spec === '@xyflow/react'
+    )
+      return { url: flow, shortCircuit: true }
+    if (
+      (context.parentURL === `${client}features/authoring/ui/panel/panel-composition.tsx` ||
+        context.parentURL === `${client}features/authoring/ui/panel/panel-controller.tsx`) &&
+      spec === '../inspector/inspector-composition.tsx'
+    )
+      return { url: inspector, shortCircuit: true }
     return next(spec, context)
   }
 })
 let createBlueprintPanel
 try {
-  ;({ createBlueprintPanel } = await import(`${client}panel.ts`))
+  ;({ createBlueprintPanel } = await import(`${client}features/authoring/ui/panel/panel-composition.tsx`))
 } finally {
   hooks.deregister()
 }
@@ -94,6 +109,41 @@ test.after(() => {
 
 const all = (tree, predicate) =>
   !tree || typeof tree !== 'object' ? [] : [...(predicate(tree) ? [tree] : []), ...(tree.children ?? []).flat(Infinity).flatMap(child => all(child, predicate))]
+
+// Render the real root and child with independent React hook owners. The local
+// Flow bridge commits its API before callbacks run, as it does after mounting.
+function panelRenderer(Panel, f, t) {
+  const owner = { states: [], refs: [], memos: [], cursor: 0, refCursor: 0, memoCursor: 0 }
+  f.flowApi = f.flow
+  return () => {
+    seat.active = owner
+    owner.cursor = owner.refCursor = owner.memoCursor = 0
+    const entry = Panel({ t })
+    f.workspace = entry.props.workspace
+    assert.equal(f.workspace, owner.states[0])
+    assert.equal(entry.props.workspaceSnapshot, f.workspace.getSnapshot())
+    seat.active = f
+    f.cursor = f.refCursor = f.memoCursor = 0
+    let tree = entry.type(entry.props)
+    const provider = all(tree, n => n.type === 'provider')[0]
+    assert.ok(provider)
+    if (f.providerKey !== provider.props.key) {
+      f.bridgeCleanup?.()
+      const bridge = all(provider, n => typeof n.type === 'function' && typeof n.props.onReady === 'function')[0]
+      assert.ok(bridge)
+      seat.runBridgeEffect = true
+      try {
+        bridge.type(bridge.props)
+      } finally {
+        seat.runBridgeEffect = false
+      }
+      f.providerKey = provider.props.key
+      f.cursor = f.refCursor = f.memoCursor = 0
+      tree = entry.type(entry.props)
+    }
+    return tree
+  }
+}
 for (const dict of [en, zh])
   test(`Inspector real toggles and connected typed refusal ${dict === en ? 'en' : 'zh'}`, () => {
     const editor = GraphEditor.fromDefinition(definition()),
@@ -169,30 +219,24 @@ for (const connected of [false, true])
       memoCursor: 0,
       flow: { getNodes: () => [], fitView: async () => true, screenToFlowPosition: p => p }
     }
-    seat.active = f
-    const shell = createBlueprintPanel({
-        hostLink: host,
-        storage: { getItem: () => null, setItem() {} }
-      })({ t: translate(en) }),
-      entry = shell.children[0]
-    const render = () => {
-      seat.active = f
-      f.cursor = f.refCursor = f.memoCursor = 0
-      return entry.type({ t: translate(en) })
-    }
+    const Panel = createBlueprintPanel({
+      hostLink: host,
+      storage: { getItem: () => null, setItem() {} }
+    })
+    const render = panelRenderer(Panel, f, translate(en))
     render()
-    await f.states[0].initialize()
-    await f.states[0].load(d.id)
+    await f.workspace.initialize()
+    await f.workspace.load(d.id)
     const flow = all(render(), n => n.type === 'flow')[0],
       n = flow.props.nodes.find(n => n.id === 'a')
     const body = flow.props.nodeTypes.blueprint({ id: n.id, data: n.data, selected: false })
     assert.equal(all(body, e => e.props['data-bp-port-edge-priority']).length, connected ? 1 : 0)
     if (!connected) {
       const oldHeight = n.data.minHeight
-      f.states[0].editor.patchPresentation(['a'], { ports: { inputs: true } })
+      f.workspace.editor.patchPresentation(['a'], { ports: { inputs: true } })
       const refreshed = all(render(), e => e.type === 'flow')[0].props.nodes.find(e => e.id === 'a')
       assert.ok(refreshed.data.minHeight > oldHeight, 'actual parent Panel updates visible row geometry')
-      f.states[0].editor.undo()
+      f.workspace.editor.undo()
       assert.equal(all(render(), e => e.type === 'flow')[0].props.nodes.find(e => e.id === 'a').data.minHeight, oldHeight)
     }
     const handles = all(body, e => e.type === 'handle')
@@ -201,10 +245,10 @@ for (const connected of [false, true])
       connected ? ['data:出.中文'] : []
     )
     assert.equal(flow.props.edges.length, connected ? 1 : 0)
-    assert.deepEqual(f.states[0].editor.exportDefinition().graph, d.graph)
+    assert.deepEqual(f.workspace.editor.exportDefinition().graph, d.graph)
   })
 
-import { ConversationController } from '../../src/client/conversation-controller.ts'
+import { ConversationController } from '../../src/client/features/conversation/logic/conversation-controller.ts'
 const frozenKey = Symbol.for('blueprint.test.port.frozen')
 const frozenSeat = { active: null }
 globalThis[frozenKey] = frozenSeat
@@ -241,12 +285,12 @@ const frozenUrl = source => `data:text/javascript,${encodeURIComponent(source)}`
 const frozenClient = new URL('../../src/client/', import.meta.url).href
 const frozenHooks = registerHooks({
   resolve(spec, context, next) {
-    if (context.parentURL?.startsWith(`${frozenClient}conversation-view.ts`) && spec === 'react')
+    if (context.parentURL?.startsWith(`${frozenClient}features/conversation/`) && spec === 'react')
       return {
         url: frozenUrl("export default globalThis[Symbol.for('blueprint.test.port.frozen')].react"),
         shortCircuit: true
       }
-    if (context.parentURL?.startsWith(`${frozenClient}conversation-view.ts`) && spec === '@xyflow/react')
+    if (context.parentURL?.startsWith(`${frozenClient}features/conversation/`) && spec === '@xyflow/react')
       return {
         url: frozenUrl(
           "export const ReactFlow='flow',Handle='handle',BaseEdge='edge';export const Position={Left:'left',Right:'right'};export const getSmoothStepPath=()=>['M 0 0 L 1 1'];"
@@ -258,7 +302,7 @@ const frozenHooks = registerHooks({
 })
 let View
 try {
-  ;({ ConversationBlueprintView: View } = await import(`${frozenClient}conversation-view.ts?port-renderer-seat`))
+  ;({ ConversationBlueprintView: View } = await import(`${frozenClient}features/conversation/ui/conversation-view.tsx?port-renderer-seat`))
 } finally {
   frozenHooks.deregister()
 }
