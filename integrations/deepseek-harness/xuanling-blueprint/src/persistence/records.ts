@@ -44,6 +44,7 @@ export const TEAM_ACCEPTANCE_CODES = ['accepted', 'rejected'] as const
 export type TeamAcceptanceCode = (typeof TEAM_ACCEPTANCE_CODES)[number]
 export const TEAM_STAGE_SCHEMA_VERSION = 1 as const
 export const TEAM_OUTPUT_ACCEPTANCE_SCHEMA_VERSION = 1 as const
+export const RUN_RECORD_SCHEMA_VERSION = 1 as const
 export const TEAM_EFFECT_STATES = ['pending', 'succeeded', 'failed', 'recovery_required'] as const
 export type TeamEffectState = (typeof TEAM_EFFECT_STATES)[number]
 export const TEAM_KNOWN_CHECKS = ['schema', 'digest', 'artifact-digest', 'agreement'] as const
@@ -474,6 +475,8 @@ export interface TransitionEvent {
 }
 
 export interface RunRecord {
+  /** Additive record schema marker; legacy records are read as version 1. */
+  schemaVersion: typeof RUN_RECORD_SCHEMA_VERSION
   blueprintId?: string
   source?: RunSource
   runId: string
@@ -503,8 +506,22 @@ export interface CommandRecord {
   createdAt: number
 }
 
+/** Derived lifecycle facts live beside, rather than inside, RunRecord. This
+ * keeps canonical execution facts and their seq/terminal semantics immutable
+ * while allowing an explicit, reversible history archive action. */
+export interface RunLifecycleRecord {
+  runId: string
+  archived: boolean
+  updatedAt: number
+}
+
 export const runRecordSchema = z
   .object({
+    // Legacy RunRecords predate the marker.  Keep their enumerable decoded
+    // shape stable while exposing the effective v1 marker to code that needs
+    // to branch on the record format.  New records are always written with
+    // an explicit enumerable schemaVersion by RunStore.createRun().
+    schemaVersion: z.literal(RUN_RECORD_SCHEMA_VERSION).optional(),
     blueprintId: z.string().min(1).optional(),
     source: runSourceCodec().optional(),
     runId: z.string().min(1),
@@ -543,6 +560,17 @@ export const runRecordSchema = z
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['teamStage', 'runId'], message: 'team stage runId must match parent runId' })
     }
   })
+  .transform(value => {
+    if (value.schemaVersion === undefined) {
+      Object.defineProperty(value, 'schemaVersion', {
+        value: RUN_RECORD_SCHEMA_VERSION,
+        enumerable: false,
+        configurable: true,
+        writable: true
+      })
+    }
+    return value as RunRecord
+  })
 
 export const commandRecordSchema = z.object({
   commandKey: z.string().min(1),
@@ -553,7 +581,14 @@ export const commandRecordSchema = z.object({
   createdAt: z.number()
 })
 
+export const runLifecycleSchema = z.object({
+  runId: z.string().min(1),
+  archived: z.boolean(),
+  updatedAt: z.number()
+})
+
 export const recordsSchema = {
   runs: runRecordSchema,
-  commands: commandRecordSchema
+  commands: commandRecordSchema,
+  run_lifecycle: runLifecycleSchema
 }

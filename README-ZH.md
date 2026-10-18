@@ -1,46 +1,48 @@
-# XuanLing MCP
+# XuanLing
 
-[English](README.md) | 简体中文
+[English](README.md) · [CHANGELOG](CHANGELOG.md) · MIT
 
-XuanLing MCP 是面向编码 Agent 的跨平台本地 Model Context Protocol
-服务器。它通过 stdio 提供 42 个类型化工具，覆盖文件系统操作、进程执行、项目探测、
-持久化记忆、Artifact 与长生命周期会话。
+面向编码 Agent 的本地执行与记忆层。
 
-该服务器适用于需要确定性 schema、结构化失败、显式文件系统能力边界，以及禁止记忆写入
-静默进入规范状态的 MCP Host。
+XuanLing 是一个运行在编码 Agent 旁边的 Rust 工具运行时：提供类型化 MCP Server、
+DeepSeek Harness bundles，以及可选的图形化工作流编辑器。所有内容都在本机运行：MCP Server 使用
+stdio，原生二进制通过 npm 安装且安装时不编译、不远程下载，Memory 数据保存在本地 SQLite
+数据库中。
+
+仓库围绕同一套内核提供四个使用面：
+
+| 你想做什么 | 使用 | 从这里开始 |
+| --- | --- | --- |
+| 给任意 MCP Host 提供文件系统、进程、Artifact 与记忆工具 | XuanLing MCP Server（43 个类型化工具） | [安装](#xuanling-mcp-server) · [包说明](npm/packages/xuanling-mcp/README-ZH.md) |
+| 在 DeepSeek Harness（DSH）中使用 XuanLing | 四个带 lazy 工具投影的 DSH bundle | [DSH 集成](integrations/deepseek-harness/README-ZH.md) |
+| 在 DSH 中构建并运行可视化智能体工作流 | Blueprint：持久 Run 与可选 TeamStage | [Blueprint 说明](integrations/deepseek-harness/xuanling-blueprint/README-ZH.md) |
+| 在 ZCode 中使用 XuanLing | 增量式或文件系统替换式 marketplace 插件 | [ZCode 插件](integrations/zcode-plugin/plugins/xuanling-mcp/README-ZH.md) |
+
+![蓝图画布上的 Rust 多 Agent 代码审查工作流](integrations/deepseek-harness/xuanling-blueprint/assets/readme/rust-review-blueprint.png)
+
+*DeepSeek Harness 中的可选 Blueprint 编辑器。图中的工作流并行运行四个专门审查 Agent，汇合结果
+后再写出综合报告。该流程是已保存的示例，不是内置模板。*
 
 ## 核心能力
 
-- **类型化文件系统操作**：提供严格编辑、SHA-256 前置条件、分页搜索、可续读内容和显式
-  输出预算。
-- **Proposal-first Memory v2**：提供不可变记录版本、显式评审、project/workspace scope
-  隔离和确定性词法召回。
-- **直接进程执行**：使用 program + argv，不隐式启动 shell；取消操作作用于完整后代
-  进程树。
-- **可选工具 Profile**：每个 Host 只需暴露实际使用的能力族。
-- **原生 npm 分发**：支持 macOS、Linux 和 Windows；安装时不编译 Rust、不运行
-  `postinstall`，也不远程下载二进制文件。
-- **稳定 MCP 合同**：由 protocol、golden、持久化、重启和跨平台测试套件验证。
+- **43 个类型化工具**，覆盖文件系统、进程执行、项目探测、Artifact、长生命周期 Session 和
+  proposal-first 的 Memory v2。
+- **显式能力边界下的文件系统安全。** 可重复的 `--workspace-root` 与 `--read-root`、
+  SHA-256 preimage 校验、类型化输出预算和可续读结果。
+- **Proposal-first 记忆。** 候选写入保持 pending，只有显式审阅通过具体 revision 后才会推进
+  规范记录；规范记录不可变，并按 global、project、workspace 隔离。
+- **直接进程执行。** 使用 program + argv，不隐式启动 shell，取消操作作用于完整后代进程树。
+- **可选工具 profile。** 每个 MCP Host 只暴露实际需要的能力族；未指定时默认 `all`。
+- **可验证的原生分发。** npm 安装平台启动器和匹配的原生二进制，不执行 `postinstall`
+  编译、不远程下载，并在启动前校验 SHA-256。
 
-## 原生 DSH 蓝图与 TeamStage
+## XuanLing MCP Server
 
-可选的[Blueprint插件](integrations/deepseek-harness/xuanling-blueprint/README-ZH.md)
-提供类型化图编辑、持久化图执行与可选原生Agent Teams阶段。
-0.6.1通过GitHub Release提供可安装tarball与文件摘要manifest，同时提供可由 pnpm 安装的
-`@xuanling-rs/xuanling-dsh-blueprint@0.6.1` package。
-TeamStage复用原生输入和审批界面，验收结构化输出与实际artifact；
-不确定外部副作用进入`recovery_required`。DSH运行时跟随提供所需能力的最新官方频道。
-当前 Blueprint 开发环境和 CI fixture 使用该频道的 DSH `0.2.1-rc.2`；公共运行时兼容下限
-仍为 `>=0.2.1-alpha.5`，并参与预发布版本比较。
+MCP Server 通过 stdio 暴露完整目录，可与任意 MCP Client 配合使用。
 
-```sh
-pnpm add --save-exact @xuanling-rs/xuanling-dsh-blueprint@0.6.1
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.6.1
-```
+### 安装
 
-## 安装
-
-npm 启动器要求 Node.js 18.17 或更高版本，并为当前平台安装匹配的原生二进制包。
+启动器要求 Node.js 18.17 或更高版本，并会为当前平台安装匹配的原生包。
 
 ```sh
 npm install --global @xuanling-rs/xuanling-mcp@0.6.1
@@ -71,8 +73,8 @@ MCP Client 也可以通过 `npx` 固定同一版本，无需全局安装：
 }
 ```
 
-固定 package 版本可保证活动项目发现的 MCP schema 保持稳定。对于频繁启动的服务器，
-全局安装或项目内安装可以省去每次启动时的 package 解析过程。
+固定 package 版本可保证活动项目发现的 MCP schema 保持稳定；全局或项目内安装也能省去每次启动
+时的 package 解析过程。
 
 ### 支持平台
 
@@ -82,50 +84,28 @@ MCP Client 也可以通过 `npx` 固定同一版本，无需全局安装：
 | Linux | `x64` | glibc 2.35 或更高版本 |
 | Windows | `x64` | MSVC runtime |
 
-不支持的 OS、CPU 或 libc 组合会返回明确的启动器错误。安装过程不会编译 Rust 或下载
-可执行文件。启动器会在启动服务器前校验 package metadata 和原生二进制文件的 SHA-256。
+不支持的 OS、CPU 或 libc 组合会返回明确的启动器错误。启动器会在启动服务器前校验 package
+metadata 与原生二进制的 SHA-256。
 
-### 从源码构建
+### 工具 Profile
 
-源码构建要求 Rust 1.98。
-
-```sh
-cargo build --locked --release -p xuanling-mcp
-./target/release/xuanling-mcp --workspace-root /absolute/path/to/project
-```
-
-## 工具 Profile
-
-默认 catalog 包含全部 42 个工具。重复使用 `--tool-profile` 可以组合多个规模更小且稳定的
-工具组：
+默认 catalog 包含全部 43 个工具。重复使用 `--tool-profile` 可以组合多个更小的工具组：
 
 | Profile | 工具数 | 能力族 |
 | --- | ---: | --- |
 | `core` | 3 | 系统信息与可移植路径检查 |
-| `fs` | 16 | 文件读取、搜索、预览与修改 |
+| `fs` | 17 | 文件读取、搜索、预览与修改 |
 | `process` | 5 | 直接进程执行与项目探测/执行 |
-| `memory` | 9 | Memory v2 提案、评审、召回与反馈 |
+| `memory` | 9 | Memory v2 提案、审阅、召回与反馈 |
 | `advanced` | 9 | Artifact、ChangeSet、Pipeline 与 Session |
-| `all` | 42 | 完整 catalog；未提供 profile 时的默认值 |
+| `all` | 43 | 完整 catalog；未提供 profile 时的默认值 |
 
-`all` 与其他 profile 同时出现时优先生效。工具发现和调用分发使用同一份选择，因此被隐藏的
+`all` 与其他 profile 同时出现时优先生效。工具发现与调用分发使用同一份选择，因此被隐藏的
 工具无法通过名称绕过 profile 调用。
 
-### 目录传输
+### 文件系统安全
 
-`tools/list` 会把选定的静态目录按每页八个工具返回。应持续使用 opaque `nextCursor`，直到该字段
-消失；格式错误、过期或属于另一目录的 cursor 会返回 JSON-RPC `-32602` 与
-`data.reason: "invalid_cursor"`，不会从第一页静默重启。初始化 metadata 通过
-`xuanling.tool_count` 公布过滤后完整目录的数量，并通过 `xuanling.catalog_sha256` 公布覆盖全部
-模型可见定义的稳定摘要。
-
-工具目录在 server process 生命周期中不会变化，因此 XuanLing 不会错误声明
-`tools.listChanged`。分页只限制 MCP transport frame；完整目录是否进入模型上下文仍由 Host 的
-projection policy 决定。
-
-## 文件系统安全
-
-未提供任何能力 flag 时，文件系统访问不受限制。生产 Host 配置应声明至少一个 root：
+未提供任何能力 flag 时，XuanLing 的文件系统访问不受限制。生产 Host 应至少声明一个 root：
 
 - `--workspace-root <PATH>` 可重复，允许读取、写入、删除，并允许在该 root 内设置子进程
   工作目录。
@@ -133,40 +113,34 @@ projection policy 决定。
   子进程工作目录。
 - 仅提供 `--read-root` 会形成只读部署。
 
-修改类工具支持显式 preimage 校验。整文件覆盖和精确编辑使用 `expected_sha256`，
+修改类工具支持显式 preimage 校验：整文件覆盖和精确编辑使用 `expected_sha256`，
 `fs_patch` 使用 `expected_preimage_sha256`。文件在读取后发生变化时，工具会在写入前返回
-conflict。
+conflict。支持窗口输出的工具接受显式 selector（例如
+`{"mode":"bounded","max_bytes":65536}`）；被截断的读取和搜索会返回类型化 cursor 或 resume
+token，不会静默丢弃剩余结果。
 
-支持窗口输出的工具接受显式 selector，例如
-`{"mode":"bounded","max_bytes":65536}`。被截断的读取和搜索会返回类型化 cursor 或
-resume token，不会静默丢弃剩余结果。
+文件系统能力只约束 XuanLing 自身打开的路径，不是任意子进程的 OS sandbox。工具审批和恶意
+进程隔离仍由 MCP Host 及其执行环境负责。
 
-文件系统能力只约束 XuanLing 自身打开的路径，不是任意子进程的 OS sandbox。工具审批和
-恶意进程隔离仍由 MCP Host 及其执行环境负责。
+### Memory v2
 
-## Memory v2
-
-Memory v2 将提案与规范记录分离：
+Memory 将提案与规范记录分离：
 
 1. `memory_search` 和 `memory_get` 读取 active 记录。
-2. `memory_candidate_create`、`memory_candidate_replace` 或
-   `memory_candidate_archive` 创建 pending proposal。
-3. `memory_review` 接受或拒绝指定 proposal revision。只有接受评审才会原子推进规范记录的
+2. `memory_candidate_create`、`memory_candidate_replace` 或 `memory_candidate_archive`
+   创建 pending proposal。
+3. `memory_review` 接受或拒绝指定 proposal revision；只有接受审阅才会原子推进规范记录的
    head。
-4. 不可变版本、终态评审和 append-only feedback 保留审计与确定性恢复所需的历史。
+4. 不可变版本、终态审阅和 append-only feedback 保留审计与确定性恢复所需的历史。
 
 Scope 使用严格 tagged value 表示 `global`、`project` 和 `workspace`。只有调用方明确请求时
-才执行 workspace -> project -> global 的祖先检索；检索永远不会跨 sibling project。
+才执行 workspace → project → global 的祖先检索；检索永远不会跨 sibling project。召回基于
+SQLite FTS5 执行确定性词法查询计划、多通道融合、可见性过滤和稳定重排。默认发行版不要求或
+下载 embedding 模型，召回过程也不会访问网络。
 
-召回基于 SQLite FTS5（`unicode61` 与 trigram）执行确定性词法查询计划、多通道融合、
-可见性过滤和稳定重排。默认发行版不要求或下载 embedding 模型，召回过程也不会访问网络。
-
-默认数据库路径为 `~/.xuanling/memory.db`。使用 `--memory-db <PATH>` 可以覆盖该路径，
-`--default-namespace <VALUE>` 可以设置默认 namespace。stdio server 只在第一次有效 Memory 工具
-调用时解析并打开数据库；initialize、发现、非 Memory 工具和格式错误的 Memory 请求不会创建或
-迁移数据库。Memory 初始化失败不会禁用其他工具；Memory 调用会返回结构化 unavailable 错误。
-
-### 维护命令
+默认数据库路径为 `~/.xuanling/memory.db`，可使用 `--memory-db <PATH>` 覆盖。stdio server
+只在第一次有效 Memory 调用时打开数据库；启动、发现、非 Memory 工具和格式错误的 Memory 请求
+不会创建或迁移数据库。
 
 规范数据可以导出、导入空数据库，并用于重建派生搜索 projection：
 
@@ -180,6 +154,29 @@ xuanling-mcp --memory-db /path/to/memory.db memory rebuild-index
 单次事务写入；`rebuild-index` 永远不会修改 canonical row。
 
 ## DeepSeek Harness
+
+[DSH 集成](integrations/deepseek-harness/README-ZH.md) 把 XuanLing 工具加入 DeepSeek Harness
+profile。四个 bundle 对应不同取舍：
+
+| Bundle | 增加的能力 | 适用场景 |
+| --- | --- | --- |
+| `xuanling-dsh-memory` | 完整九工具 Memory v2 生命周期与 lazy schema projection | 推荐的日常配置 |
+| `xuanling-dsh-skills` | 文件与 Memory 工作流 Skill，以及严格覆盖策略 | 搭配恰好一个工具 bundle |
+| `xuanling-dsh-tools` | 完整 XuanLing 目录，保留原生工具并 lazy 激活 | 需要 Artifact、项目、文件系统与进程工具 |
+| `xuanling-dsh-tools-replace` | 同名文件系统 facade，使用 XuanLing CAS/批处理语义 | 希望 XuanLing 替换 DSH 原生文本文件工具 |
+
+推荐从 `xuanling-dsh-memory` 加 `xuanling-dsh-skills` 开始。可选的
+[Blueprint 插件](integrations/deepseek-harness/xuanling-blueprint/README-ZH.md) 增加图形编辑器、
+持久 Run 与可选原生 Agent Teams 阶段，需要单独安装。
+
+```sh
+dsh plugin --profile web add \
+  @xuanling-rs/xuanling-dsh-memory@0.6.1 \
+  @xuanling-rs/xuanling-dsh-skills@0.6.1
+```
+
+把 `web` 换成实际使用的 profile。内置 `headless` profile 用法相同；新建的自定义 profile 只包含
+基础 bundle，不会自动包含 Web 或 Headless 应用。
 
 ### 复制仓库链接，问答式安装
 
@@ -197,18 +194,26 @@ checkout 安装；profile package 仍只来自公开 npm registry。交互式问
 仍可使用下方的手动集成指南。
 <!-- xuanling-dsh-conversational-install:end -->
 
-[`integrations/deepseek-harness`](integrations/deepseek-harness/) 提供 Host 专用 bundle，
-包括增量 Memory 工具、增量或替换式文件工具、schema projection、严格覆盖策略和两个按需加载的
-工作流 Skill。该集成位于 Rust 工具合同之外，因此 DeepSeek Harness 专用路由和策略可以独立
-演进，不会改变其他 Host 使用的 MCP catalog。
+这些 bundle 使用 Host 侧 lazy projection：完整 MCP 目录会被缓存，但模型最初只看到
+`mcp_catalog__xuanling`，再按需激活精确工具名。这样降低了初始 schema 成本，同时不改变
+Server 合同。Bundle 选择与运行配置见
+[DSH 集成说明](integrations/deepseek-harness/README-ZH.md)。
 
-内置 DSH runtime bundle 使用 Host 侧 lazy projection：它会缓存 MCP 目录的全部分页，但起初只
-暴露 `mcp_catalog__xuanling`。模型先通过这个紧凑控制工具检索并激活精确 raw name，再调用常规
-`mcp__xuanling__*` 工具。这样可以降低初始 schema 成本，且不会把 MCP 分页或 `list_changed`
-误当成 capability selection。
+## Blueprint
 
-Bundle 选择、安装和运行配置见
-[DeepSeek Harness 集成指南](integrations/deepseek-harness/README-ZH.md)。
+[Blueprint](integrations/deepseek-harness/xuanling-blueprint/README-ZH.md) 是可选的 DSH 插件，
+用于可视化工作流。把输入、智能体任务、人工决策、条件、汇合（全部）和输出节点连接成图，绑定
+DSH 现有 Agent、Skill 和 MCP 工具，并为每个智能体任务选择模型。Run 会冻结定义与包内资源，
+在每次外部副作用之前记录 intent；无法确认的结果保留为 `recovery_required`，不会自动重放。
+工作流可以导出/导入为可移植 ZIP 包；可选的 TeamStage 模式可把一个智能体任务作为原生 DSH
+Agent Teams 阶段执行。
+
+## ZCode
+
+[ZCode 插件](integrations/zcode-plugin/plugins/xuanling-mcp/README-ZH.md) 通过
+`umbrella22/xuanling-zcode-marketplace` marketplace 提供同样经过验证的原生运行时。增量式
+`xuanling-mcp` 插件保留 ZCode 原生文件工具；可选的 `xuanling-mcp-replace` 插件用 XuanLing
+的 hash 前置条件编辑路径替换它们。同一时间只能安装一个变体。
 
 ## 仓库结构
 
@@ -217,13 +222,20 @@ Bundle 选择、安装和运行配置见
 | `crates/xuanling-toolkit` | 跨平台文件系统、进程、项目、Session 与 Artifact 实现。 |
 | `crates/xuanling-memory` | Memory v2 生命周期、SQLite 持久化、词法召回与 JSONL 维护。 |
 | `crates/xuanling-mcp` | stdio MCP Server、类型化 Handler、Profile 与 Protocol 合同。 |
-| `integrations` | 可安装的 Host 专用 Adapter、Policy 与 Skill。 |
+| `integrations/deepseek-harness` | DSH 集成 bundle 与可选 Blueprint 插件。 |
+| `integrations/zcode-plugin` | ZCode marketplace 插件。 |
 | `npm` | Node 启动器、原生 package staging、完整性校验与发布自动化。 |
-| `test` | 仅供仓库验收使用的 fixture、probe、evaluation overlay 与报告。 |
-| `docs` | 已接受决策、架构、集成合同与执行记录。 |
+| `test` | 仅供仓库使用的合同 fixture、probe 与发布验证资产。 |
+| `.agents/skills/xuanling-dsh-install` | 问答式安装流程使用的 DSH 安装 Skill。 |
 
-当前文档索引见 [`docs/README.md`](docs/README.md)。仓库出处和 detached workspace 边界记录在
-[`docs/repository-boundary.md`](docs/repository-boundary.md)。
+计划、验收证据与事件记录保存在开发机的 `docs/` 下，不进入 tracked tree，也不属于公开 checkout。
+
+## 版本与兼容性
+
+当前仓库版本是 `0.6.1`。已发布的 npm 版本与本仓库当前修订可能面向不同的 DSH 频道：安装前请查看
+[CHANGELOG.md](CHANGELOG.md)、[Releases](https://github.com/umbrella22/xuanling/releases) 以及
+对应集成 README 中该版本的确切频道与 peer 下限。DSH 会在安装时校验 profile 的运行时；不兼容的
+插件版本会被禁用，而不会被启动。
 
 ## 开发
 
@@ -242,15 +254,10 @@ cargo test -p xuanling-mcp --test golden
 npm --prefix npm run check
 npm --prefix npm run check:docs
 npm --prefix npm test
-
-# 非门禁：在单一 server process 内测试完整分页目录。
-cargo build --locked --release -p xuanling-mcp
-npm --prefix npm run benchmark:catalog -- --binary target/release/xuanling-mcp
 ```
 
-完整 Host 合同和错误映射见
-[MCP 集成指南](docs/guides/xuanling-mcp-integration.md)。npm package 组装与发布流程见
-[`npm/README-ZH.md`](npm/README-ZH.md)。
+npm package 组装与发布流程见 [npm/README-ZH.md](npm/README-ZH.md)；测试资产清单见
+[test/README-ZH.md](test/README-ZH.md)。
 
 ## 许可证
 

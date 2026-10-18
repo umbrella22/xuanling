@@ -16,9 +16,23 @@ export class IllegalTransitionError extends Error {
 }
 
 const ALLOWED: Record<RunState, readonly RunState[]> = {
-  queued: ['running', 'cancelled'],
-  running: ['waiting_input', 'cancelling', 'succeeded', 'failed', 'timed_out', 'recovery_required'],
-  waiting_input: ['running', 'cancelling', 'recovery_required'],
+  // Admission may settle before the scheduler gets a chance to dispatch
+  // (for example a resource freeze failure or a structurally empty graph).
+  // Those terminal outcomes are explicit, durable paths rather than an
+  // invitation for arbitrary queued-state mutation.
+  // A queued TeamStage may already own a durable cancellation cutoff before
+  // the scheduler has dispatched the graph.  That path must remain explicit;
+  // queued human input is still rejected because waiting_input requires a
+  // committed Attempt and its execution intent.
+  queued: ['running', 'cancelling', 'cancelled', 'succeeded', 'failed', 'timed_out', 'recovery_required'],
+  // A known cancellation may be settled directly once the scheduler has
+  // drained its active effects.  Unknown or in-flight cancellation still
+  // uses the explicit `cancelling` state.
+  running: ['waiting_input', 'cancelling', 'cancelled', 'succeeded', 'failed', 'timed_out', 'recovery_required'],
+  // A human decision has no in-flight external effect. Cancelling it can
+  // therefore settle directly to the known terminal state without opening an
+  // unknown-effect window.
+  waiting_input: ['running', 'cancelling', 'cancelled', 'recovery_required'],
   cancelling: ['cancelled', 'failed', 'timed_out', 'succeeded', 'recovery_required'],
   recovery_required: ['succeeded', 'failed', 'cancelled', 'timed_out'],
   succeeded: [],

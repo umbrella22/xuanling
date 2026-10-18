@@ -1,7 +1,7 @@
 /**
  * Scheduling pure logic (C-07/§8.2): from a validated definition and the run
  * snapshot, compute which nodes are ready / skipped / blocked. Pure JSON
- * in-out, no I/O, no clocks (budgets arrive as parameters) — the coordinator
+ * in-out, no I/O, no clocks (runtime limits arrive as coordinator parameters) — the coordinator
  * persists decisions, this module only computes them. Only actually selected
  * paths execute; join policies are explicit; `partial_success` does not
  * exist (§8.2).
@@ -27,16 +27,6 @@ export interface ScheduleResult {
   blocked: string[]
   /** Join nodes with a decided-but-unmet policy stay blocked, never waited forever: listed for diagnostics. */
   joinsPending: string[]
-}
-
-export class BudgetExceededError extends Error {
-  override readonly name = 'BudgetExceededError'
-  readonly code = 'BUDGET_EXCEEDED'
-  readonly nodeId: string
-  constructor(nodeId: string, detail: string) {
-    super(`budget exceeded at "${nodeId}": ${detail}`)
-    this.nodeId = nodeId
-  }
 }
 
 function latestState(node: NodeView | undefined): AttemptState | undefined {
@@ -79,8 +69,9 @@ export function compileGraph(definition: BlueprintDefinition): {
 
 /** Compute the next schedule view. A node is READY when every data parent
  * succeeded, every control parent resolved in its favor (conditions decide;
- * join policies 'all'/'any' evaluated over selected paths only), and it has
- * no live attempt. Skipped propagates along unselected paths. */
+ * the all-join policy evaluated over selected paths only), and it has
+ * no live attempt. Skipped propagates along unselected paths. Join nodes wait
+ * for every selected parent; there is no first-winner/any policy. */
 export function readyNodes(definition: BlueprintDefinition, snapshot: RunSnapshot): ScheduleResult {
   const { nodeById, dataDeps, controlParents } = compileGraph(definition)
   const byNode = new Map(snapshot.attempts.map(a => [a.nodeId, a]))
@@ -140,20 +131,12 @@ export function readyNodes(definition: BlueprintDefinition, snapshot: RunSnapsho
       const selected = [...controlStates, ...states.filter(s => s !== 'skipped')]
       const succeededCount = selected.filter(isTerminalSuccess).length
       const anyPending = selected.some(s => !isTerminal(s))
-      // Preserve the readable scheduler vocabulary for future join-any, but
-      // admission/dispatch still refuse it. Only all/default-all executes.
-      if (node.join === 'any') {
-        if (succeededCount >= 1) mark(node.id, 'ready')
-        else if (anyPending) {
-          mark(node.id, 'blocked')
-          result.joinsPending.push(node.id)
-        } else mark(node.id, 'skipped')
+      if (selected.length > 0 && succeededCount === selected.length) mark(node.id, 'ready')
+      else if (anyPending) {
+        mark(node.id, 'blocked')
+        result.joinsPending.push(node.id)
       } else {
-        if (selected.length > 0 && succeededCount === selected.length) mark(node.id, 'ready')
-        else if (anyPending) {
-          mark(node.id, 'blocked')
-          result.joinsPending.push(node.id)
-        } else mark(node.id, 'skipped') // selected failures are settled by the driver
+        mark(node.id, 'skipped') // selected failures are settled by the driver
       }
       continue
     }
@@ -169,14 +152,4 @@ export function readyNodes(definition: BlueprintDefinition, snapshot: RunSnapsho
     else mark(node.id, 'blocked') // upstream failure is settled by the driver
   }
   return result
-}
-
-/** Iteration budget check (C-07): explicit bounds only. */
-export function checkBudget(nodeId: string, budget: { maxIterations: number; maxDurationMs: number }, used: { iterations: number; elapsedMs: number }): void {
-  if (used.iterations > budget.maxIterations) {
-    throw new BudgetExceededError(nodeId, `iterations ${used.iterations} > max ${budget.maxIterations}`)
-  }
-  if (used.elapsedMs > budget.maxDurationMs) {
-    throw new BudgetExceededError(nodeId, `elapsed ${used.elapsedMs}ms > max ${budget.maxDurationMs}ms`)
-  }
 }

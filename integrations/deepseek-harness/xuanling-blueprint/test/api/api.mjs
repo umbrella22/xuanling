@@ -121,8 +121,8 @@ export async function getCases(helpers) {
       expect: 'pass',
       run: () => {
         const editor = new editorMod.GraphEditor()
-        const a = editor.addNode({ kind: 'toolCall', label: 'a', x: 0, y: 0, inputs: { in: 'string' }, outputs: { out: 'string' } })
-        const b = editor.addNode({ kind: 'toolCall', label: 'b', x: 100, y: 0, inputs: { stringIn: 'string', jsonIn: 'json' }, outputs: { out: 'string' } })
+        const a = editor.addNode({ kind: 'agentTask', label: 'a', x: 0, y: 0, inputs: { in: 'string' }, outputs: { out: 'string' } })
+        const b = editor.addNode({ kind: 'agentTask', label: 'b', x: 100, y: 0, inputs: { stringIn: 'string', jsonIn: 'json' }, outputs: { out: 'string' } })
         const snapshot = () =>
           JSON.stringify({
             nodes: editor.nodes,

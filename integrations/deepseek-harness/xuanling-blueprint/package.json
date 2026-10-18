@@ -15,6 +15,7 @@
     "THIRD-PARTY-NOTICES.md",
     "README.md",
     "README-ZH.md",
+    "assets/readme/**/*.png",
     "cordis.patch.yml",
     "lib/**/*.js"
   ],

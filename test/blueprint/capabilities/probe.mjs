@@ -76,10 +76,14 @@ catch (error) { process.stderr.write(redactProbeEvidenceText(`probe: ${error.mes
 const REPORT_DIR = routing.reportDir
 const ARTIFACT_PATHS = probeArtifactPaths(REPORT_DIR)
 
-export function rawScriptUnavailable(response, sentinelExists) {
-  return sentinelExists === false && response.body?.result?.ok !== true
-    && (response.status === 404 || (response.body?.result?.ok === false
+export function publicRpcUnavailable(response) {
+  return response?.body?.result?.ok !== true
+    && (response?.status === 404 || (response?.body?.result?.ok === false
       && ['gateway/invocation-unavailable', 'gateway/definition-unavailable'].includes(response.body.result.error?.code)))
+}
+
+export function rawScriptUnavailable(response, sentinelExists) {
+  return sentinelExists === false && publicRpcUnavailable(response)
 }
 
 // Admission and durable settlement are separate RPC observations. Each poll
@@ -277,12 +281,6 @@ async function main() {
     report.environment.platform = `${process.platform}/${process.arch}`
   }
 
-  // S2m: prepare the controlled real-MCP journey fixtures (server script is
-  // already on disk in this directory; side-effect file lives in temp).
-  const sideEffectFile = join(tempRoot, 'mcp-side-effects.log')
-  writeFileSync(sideEffectFile, '')
-  report.artifacts.mcp = { sideEffectFile, serverScript: join(HERE, 'mcp-server.mjs') }
-
   // S2p: pnpm provisioning. The corepack shim bundled with Node 24 resolves
   // pnpm 12 (no packageManager pin in the published @deepseek-ai/dsh manifest)
   // but expects bin/pnpm.cjs, which pnpm 12 no longer ships — the shim aborts
@@ -325,6 +323,25 @@ async function main() {
     }
   }
 
+  // Mount the generated canvas fixtures through the profile's ordinary
+  // operator patch layer. The probe owns only this isolated config; it does
+  // not add diagnostic or direct MCP execution components.
+  if (fixtures && (!ONLY || ONLY === 'boot' || ONLY === 'add')) {
+    const profilePatch = join(profileDir, 'cordis.patch.yml')
+    const patchYaml = [
+      '- insert:',
+      '    - id: xuanling-blueprint',
+      "      name: '@xuanling-rs/xuanling-dsh-blueprint'",
+      `      config: ${JSON.stringify(fixtures.config)}`,
+      '',
+    ].join('\n')
+    const prior = existsSync(profilePatch) ? readFileSync(profilePatch, 'utf8') : ''
+    const merged = /^\s*\[\s*\]\s*$/m.test(prior)
+      ? prior.replace(/^\s*\[\s*\]\s*$/m, patchYaml.trimEnd())
+      : `${prior}${prior.endsWith('\n') || prior === '' ? '' : '\n'}${patchYaml}`
+    writeFileSync(profilePatch, merged)
+  }
+
   // S3: install the tarball into the profile (E-HOST-ADD).
   if (!ONLY || ONLY === 'add' || ONLY === 'boot') {
     const s3 = step('S3', 'E-HOST-ADD: install probe tarball into blueprint-web profile')
@@ -342,39 +359,6 @@ async function main() {
       finalize(1)
       return
     }
-  }
-
-  // S3m: register the controlled MCP server as a HOST binding (operator-owned
-  // config: the plugin never installs or launches external programs itself).
-  if (!ONLY || ONLY === 'boot' || ONLY === 'add') {
-    const s3m = step('S3m', 'register controlled real MCP server in the profile (operator patch layer)')
-    const sdkPath = join(BP_ROOT, 'node_modules', '@modelcontextprotocol', 'sdk', 'dist', 'esm', 'server', 'stdio.js')
-    const serverScript = join(HERE, 'mcp-server.mjs')
-    const profilePatch = join(profileDir, 'cordis.patch.yml')
-    const patchYaml = [
-      ...(fixtures ? ['- id: xuanling-blueprint', `  config: ${JSON.stringify(fixtures.config)}`] : []),
-      '- insert:',
-      '    - id: bp-probe-mcp',
-      "      name: '@deepseek-ai/dsh-mcp-client'",
-      '      config:',
-      '        transport: stdio',
-      '        serverName: bp_probe',
-      `        command: ${JSON.stringify(process.execPath)}`,
-      `        args: [${JSON.stringify(serverScript)}]`,
-      '        env: {}',
-      '        failOnStartupError: true',
-      '        toolCallTimeoutMs: 15000',
-      '',
-    ].join('\n')
-    // The fresh profile ships an empty patch array (`[]`); appending a second
-    // YAML document would break the parser, so merge into the existing array.
-    const prior = existsSync(profilePatch) ? readFileSync(profilePatch, 'utf8') : ''
-    const merged = /^\s*\[\s*\]\s*$/m.test(prior)
-      ? prior.replace(/^\s*\[\s*\]\s*$/m, patchYaml.trimEnd())
-      : `${prior}${prior.endsWith('\n') || prior === '' ? '' : '\n'}${patchYaml}`
-    writeFileSync(profilePatch, merged)
-    env.BP_MCP_SIDE_EFFECT_FILE = sideEffectFile
-    s3m.done({ status: 'passed' })
   }
 
   // S4: platform singleton inventory (cordis / react copies reachable by the plugin).
@@ -555,24 +539,20 @@ async function main() {
         && sha256(readFileSync(join(bpDir, 'blueprint.json'))) === beforeAgain.definition
         && sha256(readFileSync(join(bpDir, 'lib', 'agents', 'a.md'))) === beforeAgain.agent, 'no partial import or overwrite')
 
-      // W4.1 hostProbe: scoped agent execution from frozen snapshot bytes.
-      const skillDir = fixtures.skillDir
-      const probe1 = await callApi('blueprint/hostProbe', { args: { blueprintId: 'probe-skill', resourceId: 'probe', input: 'w4-host-probe' } }, 'probe-host-1')
-      report.artifacts.host_probe_1 = { status: probe1.status, body: probe1.body }
-      const v1 = probe1.body?.result?.value
-      httpOk &= assert('P4h', 'hostProbe composes a scoped agent; keyless loop fails typed at the provider boundary',
-        probe1.body?.result?.ok === true && v1?.agentCreated === true && v1?.inboxSplicedSeen === true
-        && v1?.outcome?.kind === 'provider-failed' && Array.isArray(v1?.scopedInjections) && v1.scopedInjections.length > 0,
-        stringifyProbeEvidence(probe1.body, 0)?.slice(0, 300))
-      // S1→S2: update the shared skill; the next attempt MUST read the new bytes.
-      writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: sample\ndescription: host probe\n---\nCONTENT-H2\n')
-      const probe2 = await callApi('blueprint/hostProbe', { args: { blueprintId: 'probe-skill', resourceId: 'probe', input: 'w4-host-probe-2' } }, 'probe-host-2')
-      report.artifacts.host_probe_2 = { status: probe2.status, body: probe2.body }
-      const v2 = probe2.body?.result?.value
-      const digestOf = (v) => String(v?.scopedInjections?.find(x => x.startsWith('probe@')) ?? '').split('@')[1] ?? ''
-      httpOk &= assert('P4i', 'S1→S2: the second scoped attempt reads the UPDATED skill bytes (digest differs)',
-        probe2.body?.result?.ok === true && v2?.agentCreated === true && digestOf(v2) !== '' && digestOf(v1) !== digestOf(v2),
-        `${digestOf(v1)?.slice(0, 12)} -> ${digestOf(v2)?.slice(0, 12)}`)
+      // Diagnostic probes are intentionally absent from the production wire.
+      // Their old direct execution path could bypass durable Run admission and
+      // intent-before-effect. Assert the public surface is unavailable instead
+      // of restoring an unsafe compatibility endpoint.
+      const removedHostProbe = await callApi('blueprint/hostProbe', { args: { blueprintId: 'probe-skill', resourceId: 'probe', input: 'removed' } }, 'probe-host-removed')
+      const removedMcpProbe = await callApi('blueprint/mcpProbe', { args: { serverName: 'probe', toolName: 'removed', args: {} } }, 'probe-mcp-removed')
+      report.artifacts.removed_diagnostic_probes = {
+        hostProbe: removedHostProbe,
+        mcpProbe: removedMcpProbe,
+      }
+      httpOk &= assert('P4h', 'hostProbe is unavailable on the public wire and cannot execute an unrecorded agent effect',
+        publicRpcUnavailable(removedHostProbe), stringifyProbeEvidence(removedHostProbe.body, 0)?.slice(0, 300))
+      httpOk &= assert('P4i', 'mcpProbe is unavailable on the public wire and cannot execute an unrecorded MCP effect',
+        publicRpcUnavailable(removedMcpProbe), stringifyProbeEvidence(removedMcpProbe.body, 0)?.slice(0, 300))
 
       // The authenticated raw-script diagnostic must be uncallable. A harmless
       // sentinel proves absence of body execution; this is not anonymous RCE.
@@ -602,35 +582,6 @@ async function main() {
         hostCase('HOST-SCRIPT-TIMEOUT') && hostCase('HOST-SCRIPT-INTERNAL-TIMEOUT') && hostCase('HOST-SCRIPT-FAILED') && hostCase('T16-H2'), securityReportPath)
       httpOk &= assert('P4w', 'real tools.execute cancellation drains started script, pre-abort starts nothing, temp/process/listeners are released',
         hostCase('HOST-SCRIPT-CANCEL') && hostCase('HOST-SCRIPT-PREABORT'), securityReportPath)
-      const unbound = await callApi('blueprint/mcpProbe', { args: { serverName: 'repo-readonly', toolName: 'not_bound', args: {} } }, 'probe-mcp-unbound')
-      report.artifacts.mcp_unbound = unbound
-      const unavailable = unbound.body?.result?.value
-      httpOk &= assert('P4l', 'unbound MCP binding is typed unavailable in the real profile with no dispatch',
-        unbound.body?.result?.ok === true && unavailable?.available === false && unavailable?.dispatched === false
-        && unavailable?.isError === true && String(unavailable?.detail).includes('not registered'), stringifyProbeEvidence(unbound.body, 0)?.slice(0, 240))
-
-      // W7.3 controlled real-MCP journey: one real server process, one tool,
-      // countable side effects under temp, dispatched through the host tools
-      // pipeline (policy/guard/dispatch).
-      const mcp1 = await callApi('blueprint/mcpProbe', { args: { serverName: 'bp_probe', toolName: 'record_side_effect', args: { tag: 'first' } } }, 'probe-mcp-1')
-      report.artifacts.mcp_probe_1 = { status: mcp1.status, body: mcp1.body }
-      const m1 = mcp1.body?.result?.value
-      const sideEffectLines1 = existsSync(sideEffectFile) ? readFileSync(sideEffectFile, 'utf8').split('\n').filter(Boolean).length : 0
-      httpOk &= assert('P4t', 'real MCP tool dispatches through the host pipeline and performs exactly one countable side effect',
-        m1?.available === true && m1?.dispatched === true && m1?.isError === false
-        && String(m1?.text).includes('\"count\":1') && sideEffectLines1 === 1,
-        `${stringifyProbeEvidence(m1, 0)?.slice(0, 180)} sideEffectLines=${sideEffectLines1}`)
-      const mcp2 = await callApi('blueprint/mcpProbe', { args: { serverName: 'bp_probe', toolName: 'record_side_effect', args: { tag: 'second' } } }, 'probe-mcp-2')
-      const m2 = mcp2.body?.result?.value
-      const sideEffectLines2 = readFileSync(sideEffectFile, 'utf8').split('\n').filter(Boolean).length
-      httpOk &= assert('P4u', 'second dispatch increments the controlled side effect counter (no dedup fantasy, no replay)',
-        m2?.dispatched === true && m2?.isError === false && String(m2?.text).includes('\"count\":2') && sideEffectLines2 === 2,
-        `${stringifyProbeEvidence(m2, 0)?.slice(0, 160)} sideEffectLines=${sideEffectLines2}`)
-      const mcpUnknown = await callApi('blueprint/mcpProbe', { args: { serverName: 'bp_probe', toolName: 'no_such_tool', args: {} } }, 'probe-mcp-3')
-      const m3 = mcpUnknown.body?.result?.value
-      httpOk &= assert('P4v', 'unknown MCP tool is typed unavailable at the registry (no silent execution)',
-        m3?.available === false && m3?.dispatched === false && String(m3?.detail).includes('not registered'),
-        stringifyProbeEvidence(m3, 0)?.slice(0, 180))
     } else {
       const echoRes = await fetch(`${apiBase}/api/blueprintProbe/echo`, {
         method: 'POST',

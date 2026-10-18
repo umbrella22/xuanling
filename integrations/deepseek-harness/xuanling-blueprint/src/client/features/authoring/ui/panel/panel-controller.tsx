@@ -17,13 +17,12 @@ import type { GraphEditor, CanvasPort } from '../../logic/graph/graph-editor.ts'
 import { isEditingTarget } from '../../logic/workspace/workspace-controller.ts'
 import type { BlueprintWorkspace } from '../../logic/workspace/workspace-controller.ts'
 import type { DraftStorage } from '../../logic/workspace/workspace-controller.ts'
-import type { HostLink } from '../../../../adapters/host/remote.ts'
+import type { HostLink, ModelCatalogLink } from '../../../../adapters/host/remote.ts'
+import type { ModelCatalogSnapshot } from '../../../../adapters/host/model-catalog.ts'
 import type { BlueprintLocaleKey, BlueprintLocaleProps } from '../../../../shared/i18n/locales.ts'
 import { BUILTIN_NODE_CATALOG, nodeKindTitle, searchBuiltinNodes } from '../../logic/graph/node-catalog.ts'
 import type { BuiltinNodeKind } from '../../logic/graph/node-catalog.ts'
-import { renderAttemptDiagnostics } from '../../../../shared/diagnostics/diagnostics.ts'
-import { JsonEditor } from '../../logic/inspector/json-editor.ts'
-import { NodeInspector } from '../inspector/inspector-composition.tsx'
+import { InspectorSidebar } from './inspector-sidebar.tsx'
 import { executableNodeIds, presentationGroupFrames, resourceDisplayName, resourceKindTitle, runStateTitle } from '../../presenters/canvas-presentation.ts'
 import { flowEdgeEndpoints } from '../../logic/graph/flow-geometry.ts'
 import { CanvasInteractions } from '../../logic/graph/flow-interactions.ts'
@@ -54,6 +53,7 @@ import type { usePanelWorkspaceStore } from '../../logic/workspace/panel-workspa
 import { presentWorkspace } from '../../presenters/workspace-presenter.ts'
 import { panelView } from './panel-view.tsx'
 import type { CanvasNode, FlowNode, GroupNode, RouteEdge } from '../canvas/canvas-renderers.tsx'
+import { ResourceDialog, type ResourceDialogState } from './resource-dialog.tsx'
 export { BlueprintEdge, BlueprintNode, PresentationGroup } from '../canvas/canvas-renderers.tsx'
 import { CanvasSurface, PALETTE_DRAG_TYPE } from '../canvas/canvas-surface.tsx'
 import type { PaletteDragState } from '../canvas/canvas-surface.tsx'
@@ -70,17 +70,6 @@ const resourceSourceLabel = (row: ResourceLibraryRow, t: BlueprintLocaleProps['t
   row.source === 'dsh' ? t('resource.host') : t('resource.blueprint')
 const resourceDescriptionLabel = (description: string, t: BlueprintLocaleProps['t']): string => description.trim() || t('resource.noDescription')
 const resourceCardTitle = (row: ResourceLibraryRow, t: BlueprintLocaleProps['t']): string => `${row.displayName} - ${resourceSourceLabel(row, t)}`
-const resourceConfigurationSourceLabel = (source: ReturnType<typeof resourceConfiguration>['source'], t: BlueprintLocaleProps['t']): string => {
-  if (source === 'host') return t('resource.host')
-  if (source === 'shared') return t('resource.sharedLabel')
-  if (source === 'package') return t('resource.packageLabel')
-  return t('resource.unbound')
-}
-const resourceConfigurationFormatLabel = (format: ResourceRef['format'], t: BlueprintLocaleProps['t']): string | undefined => {
-  if (format === 'agent-preset') return t('resource.format.agentPreset')
-  if (format === 'mcp-definition') return t('resource.format.mcpDefinition')
-  return undefined
-}
 const EDITABLE_KINDS = new Set<string>(BUILTIN_NODE_CATALOG.map(p => p.kind))
 function portOf(editor: GraphEditor, nodeId: string, handle: string | null | undefined, direction: 'in' | 'out'): CanvasPort | null {
   const node = editor.nodes.find(n => n.id === nodeId)
@@ -102,6 +91,8 @@ interface PanelNotice {
 export interface PanelEnvironment {
   React?: typeof React
   hostLink: HostLink | undefined
+  modelCatalog?: ModelCatalogLink | undefined
+  modelCatalogReady?: Promise<ModelCatalogLink | undefined>
   storage: DraftStorage | undefined
   openSession?: OpenExecutionChat
 }
@@ -110,12 +101,14 @@ export function WorkspacePanel({
   env,
   workspace,
   workspaceSnapshot,
-  workspaceBinding
+  workspaceBinding,
+  modelCatalog
 }: BlueprintLocaleProps & {
   env: PanelEnvironment
   workspace: BlueprintWorkspace
   workspaceSnapshot: ReturnType<BlueprintWorkspace['getSnapshot']>
   workspaceBinding: ReturnType<typeof usePanelWorkspaceStore>['binding']
+  modelCatalog: ModelCatalogSnapshot
 }): React.ReactElement {
   const workspaceView = presentWorkspace(workspaceSnapshot)
   const workspaceLease = workspaceBinding.capture(workspaceSnapshot.binding)
@@ -137,19 +130,7 @@ export function WorkspacePanel({
       () => setChatUnavailable(true)
     )
   }
-  const [resourceDialog, setResourceDialog] = React.useState<{
-    mode: 'add' | 'edit' | 'view'
-    editor: GraphEditor
-    blueprintId: string | null
-    refId?: string
-    id: string
-    kind: ResourceRef['kind']
-    title: string
-    description: string
-    source: 'dsh' | 'blueprint'
-    availability: 'available' | 'unavailable' | 'unknown'
-    json: string
-  } | null>(null)
+  const [resourceDialog, setResourceDialog] = React.useState<ResourceDialogState | null>(null)
   const [overlay, setOverlay] = React.useState<CanvasOverlay | null>(null)
   const [tooltip, setTooltip] = React.useState<TooltipContent | null>(null)
   const [spacePan, setSpacePan] = React.useState(false)
@@ -1664,224 +1645,72 @@ export function WorkspacePanel({
           </section>
         </aside>
         {sidebarToggle('library', libraryCollapsed, () => setLibraryCollapsed(value => !value))}
-        {CanvasSurface({
-          t,
-          paletteOver,
-          overlayEligible,
-          canDropPalette,
-          add,
-          setPaletteOver,
-          paletteDrag,
-          flow,
-          endPaletteDrag,
-          wheelHandler,
-          openSearch,
-          collision,
-          editable,
-          editor,
-          measurements,
-          guarded,
-          workspaceSnapshot,
-          flowReady,
-          nodes,
-          edges,
-          prefs,
-          spacePan,
-          interactions,
-          workspace,
-          setHovered,
-          setSelectedEdges,
-          setTick,
-          withinRoot,
-          commitGesture,
-          cancelGesture,
-          selectionChanged,
-          contextMenu,
-          graphPosition,
-          viewportContext,
-          preferences,
-          connectCancelled,
-          connectOrigin,
-          reconnecting,
-          connectionPorts,
-          setNotice,
-          portOf,
-          definition
-        })}
+        <CanvasSurface
+          t={t}
+          paletteOver={paletteOver}
+          overlayEligible={overlayEligible}
+          canDropPalette={canDropPalette}
+          add={add}
+          setPaletteOver={setPaletteOver}
+          paletteDrag={paletteDrag}
+          flow={flow}
+          endPaletteDrag={endPaletteDrag}
+          wheelHandler={wheelHandler}
+          openSearch={openSearch}
+          collision={collision}
+          editable={editable}
+          editor={editor}
+          measurements={measurements}
+          guarded={guarded}
+          workspaceSnapshot={workspaceSnapshot}
+          flowReady={flowReady}
+          nodes={nodes}
+          edges={edges}
+          prefs={prefs}
+          spacePan={spacePan}
+          interactions={interactions}
+          workspace={workspace}
+          setHovered={setHovered}
+          setSelectedEdges={setSelectedEdges}
+          setTick={setTick}
+          withinRoot={withinRoot}
+          commitGesture={commitGesture}
+          cancelGesture={cancelGesture}
+          selectionChanged={selectionChanged}
+          contextMenu={contextMenu}
+          graphPosition={graphPosition}
+          viewportContext={viewportContext}
+          preferences={preferences}
+          connectCancelled={connectCancelled}
+          connectOrigin={connectOrigin}
+          reconnecting={reconnecting}
+          connectionPorts={connectionPorts}
+          setNotice={setNotice}
+          portOf={portOf}
+          definition={definition}
+        />
         {sidebarToggle('inspector', inspectorCollapsed, () => setInspectorCollapsed(value => !value))}
-        <aside className={'bp-inspector'} id={`${sidebarId}-inspector`} hidden={inspectorCollapsed} aria-label={t('inspector.ariaLabel')}>
-          <h2>{t('inspector.title')}</h2>
-          {selectedNode ? (
-            <section>
-              <h3>{editorNodeDisplayTitle(selectedNode, editor.nodes.indexOf(selectedNode), t)}</h3>
-              <p className={'bp-node-id'} title={selectedNode.id}>
-                {selectedNode.id}
-              </p>
-              <p className={'bp-help'}>{nodeKindTitle(selectedNode.kind, t)}</p>
-              <fieldset className={'bp-inspector-guard'} disabled={!editable}>
-                <NodeInspector
-                  key={selectedNode.id}
-                  node={selectedNode}
-                  disabled={!editable}
-                  editor={editor}
-                  resources={definition?.resources ?? {}}
-                  resourceCatalog={workspace.resourceCatalog}
-                  t={t}
-                />
-              </fieldset>
-            </section>
-          ) : (
-            <p className={'bp-help'}>{t('inspector.selectNode')}</p>
-          )}
-          <details data-bp-section={'preflight'} data-bp-disclosure={'preflight'} data-bp-preflight={workspaceView.preflight.status}>
-            <summary data-bp-disclosure-toggle={'preflight'}>
-              <strong>{t('preflight.title')}</strong>
-              <span data-bp-summary-state={workspaceView.preflight.status}>{t(`preflight.${workspaceView.preflight.status}`)}</span>
-              {preflightWarningCount > 0 && (
-                <small
-                  data-bp-summary-warning={'warning'}
-                  data-bp-preflight-warning-count={preflightWarningCount}
-                >{`${t('preflight.warning')} · ${preflightWarningCount}`}</small>
-              )}
-            </summary>
-            {workspaceView.preflight.code && <p data-bp-preflight-code={true}>{workspaceView.preflight.code}</p>}
-            {workspaceView.preflight.documentRevision && (
-              <p data-bp-preflight-revision={workspaceView.preflight.documentRevision}>{workspaceView.preflight.documentRevision}</p>
-            )}
-            <ul>
-              {workspaceView.preflight.checks.map((check, index) => (
-                <li key={index} data-bp-check-status={check.status}>
-                  <strong>{t(`preflight.${check.status}`)}</strong>
-                  {' · '}
-                  {check.code}
-                  {[check.nodeId, check.resourceId, check.toolName].filter(value => value !== undefined).map(value => ` · ${value}`)}
-                </li>
-              ))}
-            </ul>
-          </details>
-          <details data-bp-section={'run'} data-bp-disclosure={'run'}>
-            <summary data-bp-disclosure-toggle={'run'}>
-              <strong>{t('run.title')}</strong>
-              <span data-bp-summary-state={workspaceView.run.state ?? 'none'}>
-                {workspaceView.run.state
-                  ? `${workspaceView.run.runId} · ${runStateTitle(workspaceView.run.state, t)}`
-                  : t(env.hostLink ? 'run.none' : 'status.hostUnavailable')}
-              </span>
-              {workspace.model.connectionState === 'stale' && <small>{t('run.stale')}</small>}
-              {[
-                ...new Set(
-                  (snapshot?.attempts ?? [])
-                    .filter(attempt => ['waiting_input', 'failed', 'timed_out', 'recovery_required'].includes(attempt.state))
-                    .map(attempt => attempt.state)
-                )
-              ].map(state => (
-                <small key={state} data-bp-summary-warning={state}>
-                  {runStateTitle(state, t)}
-                </small>
-              ))}
-            </summary>
-            <label className={'bp-field'}>
-              {t('run.inputJson')}
-              <JsonEditor
-                key={workspace.blueprintId}
-                data-bp-run-input={true}
-                label={t('run.inputJson')}
-                t={t}
-                value={workspaceView.inputJson}
-                onChange={text => {
-                  workspaceLease.dispatch({ type: 'set-input', inputJson: text })
-                }}
-                rows={3}
-              />
-            </label>
-            <form
-              key={workspace.blueprintId}
-              onSubmit={(e: React.FormEvent<HTMLFormElement>) => {
-                e.preventDefault()
-                const id = String(new FormData(e.currentTarget).get('runId'))
-                if (id) {
-                  workspaceLease.dispatch({ type: 'bind-run', runId: id })
-                  perform(() => workspace.inspect())
-                }
-              }}
-            >
-              <input name={'runId'} aria-label={t('run.inspectId')} disabled={workspace.busy} placeholder={t('run.existingId')} />
-              <button type={'submit'} data-bp-action={'inspect-run'} disabled={workspace.busy}>
-                {t('run.inspectReconnect')}
-              </button>
-            </form>
-            <p data-bp-run={snapshot?.state ?? 'none'}>
-              {snapshot ? `${snapshot.runId} · ${runStateTitle(snapshot.state, t)}` : t(env.hostLink ? 'run.none' : 'status.hostUnavailable')}
-            </p>
-            {snapshot && (
-              <p className={'bp-run-revision'} data-bp-run-revision={snapshot.definitionRevision}>
-                <span>{t('run.definitionRevision')}</span>
-                {' · '}
-                {snapshot.definitionRevision}
-              </p>
-            )}
-            {snapshot && !overlayEligible && <p className={'bp-overlay-notice'}>{t('run.overlayUnavailable')}</p>}
-            <p data-bp-connection={workspace.model.connectionState}>{t(workspace.model.connectionState === 'stale' ? 'run.stale' : 'run.connected')}</p>
-            {button('run.retryInspect', 'retry-inspect', () => perform(() => workspace.inspect()), !workspace.runId || workspace.busy)}
-            {chatUnavailable && (
-              <p role={'status'} data-bp-chat-unavailable={true}>
-                {t('conversation.chatUnavailable')}
-              </p>
-            )}
-            {snapshot?.source && env.openSession && (
-              <button type={'button'} data-bp-source-chat={snapshot.source.sessionId} onClick={() => openChat(snapshot.source!.sessionId)}>
-                {t('conversation.sourceChat')}
-              </button>
-            )}
-            {(env.openSession ? (snapshot?.team?.members ?? []) : []).map(member => (
-              <button
-                key={member.memberId}
-                type={'button'}
-                data-bp-open-member={member.memberId}
-                disabled={member.sessionId === undefined}
-                onClick={() => {
-                  if (member.sessionId) openChat(member.sessionId, snapshot?.team?.leadSessionId)
-                }}
-              >
-                {member.name ?? member.memberId}
-                {' · '}
-                {t('conversation.openChat')}
-              </button>
-            ))}
-            {snapshot?.attempts.some(a => a.state === 'waiting_input') && (
-              <div>
-                {button('run.approve', 'approve', () => perform(() => workspace.decide('approve')), workspace.busy)}
-                {button('run.reject', 'reject', () => perform(() => workspace.decide('reject')), workspace.busy)}
-              </div>
-            )}
-            {(snapshot?.attempts ?? []).map((a, index) => (
-              <details key={`${a.nodeId}-${index}`} data-bp-attempt={a.nodeId}>
-                <summary>{t('run.attempt', { nodeId: a.nodeId, attempt: a.attempt, state: runStateTitle(a.state, t) })}</summary>
-                {a.outputJson !== undefined && <pre data-bp-output={a.nodeId}>{a.outputJson}</pre>}
-                {a.errorCode && <p>{a.errorCode}</p>}
-                {a.state === 'failed' && <p data-bp-failure-explanation={a.attemptId ?? a.nodeId}>{t('conversation.failedHistory')}</p>}
-                {env.openSession && (
-                  <button
-                    type={'button'}
-                    data-bp-open-attempt={a.attemptId}
-                    disabled={a.attemptId === undefined || a.sessionId === undefined}
-                    onClick={() => {
-                      if (a.attemptId && a.sessionId) openChat(a.sessionId, snapshot?.source?.sessionId)
-                    }}
-                  >
-                    {t('conversation.openChat')}
-                  </button>
-                )}
-                {renderAttemptDiagnostics(a.diagnostics, t)}
-              </details>
-            ))}
-            <ol className={'bp-log'}>
-              {(snapshot?.logTail ?? []).map(log => (
-                <li key={log.seq}>{`${log.seq} · ${log.kind}`}</li>
-              ))}
-            </ol>
-          </details>
-        </aside>
+        {InspectorSidebar({
+          t,
+          id: `${sidebarId}-inspector`,
+          hidden: inspectorCollapsed,
+          workspace,
+          workspaceView,
+          workspaceLease,
+          env: { hostLink: env.hostLink, ...(env.openSession === undefined ? {} : { openSession: env.openSession }) },
+          editor,
+          selectedNode,
+          definition,
+          snapshot,
+          overlayEligible,
+          modelCatalog,
+          editable,
+          preflightWarningCount,
+          chatUnavailable,
+          perform,
+          openChat,
+          button
+        })}
       </div>,
       confirmation.current && (
         <ConfirmationDialog
@@ -1895,178 +1724,18 @@ export function WorkspacePanel({
           onConfirm={confirmation.current.accept}
         />
       ),
-      resourceDialog && (
-        <div key={'resource-dialog'} className={'bp-resource-backdrop'}>
-          <div
-            ref={resourceDialogRef}
-            role={'dialog'}
-            aria-modal={'true'}
-            aria-labelledby={'bp-resource-dialog-title'}
-            data-bp-resource-dialog={true}
-            tabIndex={-1}
-            className={'bp-resource-dialog'}
-            onKeyDown={(event: React.KeyboardEvent<HTMLDivElement>) => {
-              if (event.key === 'Escape') {
-                event.preventDefault()
-                closeResourceDialog()
-              }
-              if (event.key === 'Tab' && !event.defaultPrevented) {
-                const dialog = event.currentTarget
-                const controls = Array.from(
-                  dialog.querySelectorAll<HTMLElement>(
-                    'button:not(:disabled),input:not(:disabled):not([type=hidden]),select:not(:disabled),textarea:not(:disabled),summary,[tabindex="0"]'
-                  )
-                ).filter(element => element.getClientRects().length > 0)
-                const first = controls[0],
-                  last = controls.at(-1)
-                if (!first || !last) {
-                  event.preventDefault()
-                  dialog.focus()
-                } else if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
-                  event.preventDefault()
-                  last.focus()
-                } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === dialog)) {
-                  event.preventDefault()
-                  first.focus()
-                }
-              }
-            }}
-          >
-            <h2 id={'bp-resource-dialog-title'}>
-              {resourceDialog.mode === 'add'
-                ? t('resource.add')
-                : resourceDialog.mode === 'view'
-                  ? t('resource.view', { id: resourceDialog.id })
-                  : t('resource.edit', { id: resourceDialog.id })}
-            </h2>
-            <div className={'bp-resource-fields'}>
-              <label className={'bp-field'}>
-                {t('resource.kind')}
-                <StyledSelect
-                  React={React}
-                  aria-label={t('resource.kind')}
-                  value={resourceDialog.kind}
-                  disabled={resourceDialog.mode !== 'add' || !editable}
-                  onChange={event => {
-                    const target = (event.currentTarget ?? event.target) as HTMLSelectElement
-                    const kind = target.value as ResourceRef['kind']
-                    setResourceDialog(current => {
-                      if (!current) return current
-                      let json = current.json
-                      try {
-                        const parsed = JSON.parse(json)
-                        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) json = JSON.stringify({ ...parsed, kind }, null, 2)
-                      } catch {
-                        /* Apply retains malformed draft for the user to repair. */
-                      }
-                      return { ...current, kind, json }
-                    })
-                  }}
-                >
-                  {(['agent', 'skill', 'mcp', 'prompt', 'schema', 'script', 'subflow'] as const).map(kind => (
-                    <option key={kind} value={kind}>
-                      {resourceKindTitle(kind, t)}
-                    </option>
-                  ))}
-                </StyledSelect>
-              </label>
-              <label className={'bp-field'}>
-                {t('resource.logicalId')}
-                <input
-                  aria-label={t('resource.newId')}
-                  value={resourceDialog.id}
-                  disabled={resourceDialog.mode !== 'add' || !editable}
-                  onChange={event => {
-                    const target = (event.currentTarget ?? event.target) as HTMLInputElement
-                    setResourceDialog(current => (current ? { ...current, id: target.value } : current))
-                  }}
-                />
-              </label>
-              <label className={'bp-field'}>
-                {t('resource.displayName')}
-                <input
-                  data-bp-resource-field={'title'}
-                  aria-label={t('resource.displayName')}
-                  value={resourceDialog.title}
-                  disabled={resourceDialog.mode === 'view' || !editable}
-                  onChange={event => {
-                    const target = (event.currentTarget ?? event.target) as HTMLInputElement
-                    setResourceDialog(current => (current ? { ...current, title: target.value } : current))
-                  }}
-                />
-              </label>
-              <label className={'bp-field'}>
-                {t('resource.description')}
-                <textarea
-                  data-bp-resource-field={'description'}
-                  aria-label={t('resource.description')}
-                  value={resourceDialog.description}
-                  placeholder={t('resource.noDescription')}
-                  readOnly={!editable || resourceDialog.mode === 'view'}
-                  rows={3}
-                  onChange={event => {
-                    const target = (event.currentTarget ?? event.target) as HTMLTextAreaElement
-                    setResourceDialog(current => (current ? { ...current, description: target.value } : current))
-                  }}
-                />
-              </label>
-            </div>
-            {!resourceDialog.description.trim() && (
-              <p className={'bp-help bp-resource-description-fallback'} data-bp-resource-description-fallback={true}>
-                {t('resource.noDescription')}
-              </p>
-            )}
-            <dl data-bp-resource-detail={'identity'} className={'bp-resource-identity'}>
-              <dt>{t('resource.source')}</dt>
-              <dd data-bp-resource-source={resourceDialog.source}>{resourceDialog.source === 'dsh' ? t('resource.host') : t('resource.blueprint')}</dd>
-              <dt>{t('resource.availability')}</dt>
-              <dd data-bp-resource-availability={resourceDialog.availability}>
-                {resourceDialog.availability === 'available'
-                  ? t('resource.available')
-                  : resourceDialog.availability === 'unknown'
-                    ? t('resource.availabilityUnchecked')
-                    : t('resource.unavailable')}
-              </dd>
-            </dl>
-            {activeResourceConfiguration && (
-              <dl data-bp-resource-detail={'configuration'} className={'bp-resource-configuration'}>
-                <dt>{t('resource.configuration')}</dt>
-                <dd>{`${resourceConfigurationSourceLabel(activeResourceConfiguration.source, t)} · ${activeResourceConfiguration.identity}`}</dd>
-                {activeResourceConfiguration.path && <dt>{t('resource.path')}</dt>}
-                {activeResourceConfiguration.path && <dd>{activeResourceConfiguration.path}</dd>}
-                {activeResourceConfiguration.bindingId && <dt>{t('resource.binding')}</dt>}
-                {activeResourceConfiguration.bindingId && <dd>{activeResourceConfiguration.bindingId}</dd>}
-                {activeResourceConfiguration.format && <dt>{t('resource.format')}</dt>}
-                {activeResourceConfiguration.format && <dd>{resourceConfigurationFormatLabel(activeResourceConfiguration.format, t)}</dd>}
-              </dl>
-            )}
-            <details data-bp-resource-advanced={true} open={resourceDialog.mode !== 'view'}>
-              <summary>{t('resource.advancedJson')}</summary>
-              <label className={'bp-field'}>
-                {t('resource.newJson')}
-                <JsonEditor
-                  label={t('resource.newJson')}
-                  t={t}
-                  value={resourceDialog.json}
-                  rows={8}
-                  disabled={!editable || resourceDialog.mode === 'view'}
-                  onChange={json => setResourceDialog(current => (current ? { ...current, json } : current))}
-                />
-              </label>
-            </details>
-            <div className={'bp-resource-dialog-actions'}>
-              {resourceDialog.mode !== 'view' && (
-                <button type={'button'} data-bp-action={'resource-apply'} disabled={!editable} onClick={applyResourceDialog}>
-                  {t('interaction.apply')}
-                </button>
-              )}
-              <button type={'button'} data-bp-action={'resource-cancel'} onClick={closeResourceDialog}>
-                {t('interaction.close')}
-              </button>
-            </div>
-          </div>
-        </div>
-      ),
+      resourceDialog &&
+        ResourceDialog({
+          React,
+          t,
+          resourceDialog,
+          resourceDialogRef,
+          activeResourceConfiguration,
+          editable,
+          setResourceDialog,
+          applyResourceDialog,
+          closeResourceDialog
+        }),
       overlay && (
         <InteractionOverlay
           key={`${workspace.blueprintId}-${overlay.kind}-${overlayEpoch.current}`}

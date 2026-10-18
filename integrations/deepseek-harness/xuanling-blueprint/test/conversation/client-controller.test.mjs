@@ -95,6 +95,46 @@ test('strict native reader preserves proxy receiver, exposes only inspectSession
   }
 })
 
+test('run history query stays typed and appends cursor pages without replacing the selected frozen Run', async () => {
+  const first = value()
+  first.nextCursor = 'cursor-1'
+  const calls = []
+  const controller = new ConversationController(
+    {
+      async inspectSession() {
+        return first
+      },
+      async queryRuns(args) {
+        calls.push(args)
+        return {
+          runs: [
+            {
+              runId: 'older',
+              blueprintId: 'blueprint-a',
+              state: 'failed',
+              createdAt: 0,
+              updatedAt: 0,
+              definitionRevision: 'frozen-v0',
+              attemptCount: 1,
+              archived: false
+            }
+          ]
+        }
+      }
+    },
+    'source'
+  )
+  await controller.refresh()
+  await controller.loadMoreRuns()
+  assert.deepEqual(calls, [{ sessionId: 'source', cursor: 'cursor-1', limit: 20 }])
+  assert.deepEqual(
+    controller.getSnapshot().value.runs.map(run => run.runId),
+    ['new', 'history', 'older']
+  )
+  assert.equal(controller.getSnapshot().value.nextCursor, undefined)
+  assert.equal(controller.getSnapshot().value.selected.run.runId, 'new')
+})
+
 test('race: a late old-Session response cannot replace the new Session or any of its facts', async () => {
   const { controller, calls } = controlled()
   const old = controller.refresh()

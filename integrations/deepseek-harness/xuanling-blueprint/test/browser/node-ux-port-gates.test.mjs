@@ -40,7 +40,7 @@ const unchanged = (e, b, undo, redo) => {
   assert.equal(e.canRedo, redo)
 }
 test('default port visibility matrix uses declarations, branch kinds and connected edges', () => {
-  for (const kind of ['input', 'output', 'agentTask', 'toolCall', 'scriptCall', 'join', 'subflow', 'iteration', 'unknown'])
+  for (const kind of ['input', 'output', 'agentTask', 'join', 'unknown'])
     assert.deepEqual(effectivePortVisibility({ id: 'x', kind }, []), {
       control: false,
       inputs: false,

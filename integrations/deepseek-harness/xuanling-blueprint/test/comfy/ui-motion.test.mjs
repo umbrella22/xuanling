@@ -11,7 +11,7 @@ const seat = { active: null },
 globalThis[key] = seat
 seat.react = {
   Fragment: 'fragment',
-  createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }),
+  createElement: (type, props, ...children) => (type?.name === 'CanvasSurface' ? type(props ?? {}) : { type, props: props ?? {}, children }),
   memo: fn => fn,
   useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
   useState(initial) {
@@ -53,11 +53,14 @@ export const Position={Left:'left',Right:'right'},MarkerType={ArrowClosed:'arrow
 export const ReactFlow='flow',ReactFlowProvider='provider',Background='background',Controls='controls',MiniMap='minimap',Handle='handle',NodeResizer='resizer',BaseEdge='base-edge';
 export const getSmoothStepPath=({sourceX,sourceY,targetX,targetY})=>['M '+sourceX+' '+sourceY+' C 80 20 120 40 '+targetX+' '+targetY,100,30];`)
 const client = new URL('../../src/client/', import.meta.url).href
-const panelController = `${client}features/authoring/ui/panel/panel-controller.tsx`
+const panelController = `${client}features/authoring/ui/panel/panel-controller.tsx`,
+  inspectorSidebar = `${client}features/authoring/ui/panel/inspector-sidebar.tsx`
 const hooks = registerHooks({
   resolve(spec, context, next) {
     if (
-      (context.parentURL === `${client}features/authoring/ui/panel/panel-composition.tsx` || context.parentURL === panelController) &&
+      (context.parentURL === `${client}features/authoring/ui/panel/panel-composition.tsx` ||
+        context.parentURL === panelController ||
+        context.parentURL === inspectorSidebar) &&
       spec === '../inspector/inspector-composition.tsx'
     )
       return { url: dataUrl('export function NodeInspector(){}'), shortCircuit: true }
@@ -616,8 +619,10 @@ test('C10 actual condition branch lights only succeeded durable boolean output; 
       for (let i = 0; i < 2; i++)
         assert.equal(all(edgeOf(f, i), n => n.type === 'path' && n.props.className === 'bp-directed-light').length, expected[i] === 'pulse' ? 1 : 0)
     }
-    f.workspace.editor.nodes[0].definition.kind = 'humanDecision'
-    f.workspace.editor.nodes[0].kind = 'humanDecision'
+    f.workspace.editor.transaction(() => {
+      f.workspace.editor.nodes[0].definition.kind = 'humanDecision'
+      f.workspace.editor.nodes[0].kind = 'humanDecision'
+    })
     // Semantic edit suppresses old overlay. A newly loaded imported human graph
     // with the same durable output still must not infer its chosen branch.
     assert.equal(rootOf(f).props['data-bp-motion-loops'], 'false')

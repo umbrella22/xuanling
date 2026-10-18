@@ -131,6 +131,13 @@ async function rotateAndWait(p, h) {
       draft.log.push({ seq: draft.seq + 1, at: 1, kind: 'state', detail: { padding } })
     })
   }
+  // Waiting for input is an execution state, so move an admission-only
+  // queued record through running before applying the waiting transition.
+  if ((await p.store.get(h.runId)).state === 'queued') {
+    await p.store.transition(h.runId, draft => {
+      draft.state = 'running'
+    })
+  }
   await p.store.transition(h.runId, draft => {
     draft.state = 'waiting_input'
     if (draft.teamStage.state !== 'recovery_required') draft.teamStage.state = 'waiting_input'

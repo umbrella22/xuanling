@@ -2778,7 +2778,7 @@ test('actual original probe adapts with unique anchors, preserves Host assertion
   const f = synthetic(t),
     original = readFileSync(join(HERE, 'probe.mjs'), 'utf8'),
     adapted = adaptProbe(original)
-  for (const id of ['P4q', 'P4r', 'P4s', 'P4h', 'P4i', 'P4k', 'P4t', 'P6z']) assert.ok(adapted.includes(`'${id}'`))
+  for (const id of ['P4q', 'P4r', 'P4s', 'P4h', 'P4i', 'P4k', 'P4j-raw', 'P6z']) assert.ok(adapted.includes(`'${id}'`))
   for (const budget of ['timeout: 180_000', 'page.setDefaultTimeout(15000)', 'timeout: 60_000'])
     assert.equal(adapted.includes(budget), original.includes(budget))
   assert.ok(adapted.includes('comfy-interactions-ui.mjs'))

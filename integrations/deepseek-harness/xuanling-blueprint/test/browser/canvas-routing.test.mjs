@@ -167,7 +167,7 @@ test('browser rejects false/missing/duplicate required assertions, stale identit
     ['failed', { assertions: requiredCanvasAssertions('browser').map(id => ({ id, passed: id !== 'P4j-raw' })) }],
     ['duplicate', { assertions: [...requiredCanvasAssertions('browser'), 'P6g'].map(id => ({ id, passed: true })) }],
     [
-      'missing live Agent',
+      'missing public diagnostic-surface removal evidence',
       {
         assertions: requiredCanvasAssertions('browser')
           .filter(id => id !== 'P4h')

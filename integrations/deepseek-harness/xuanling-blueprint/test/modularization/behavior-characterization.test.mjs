@@ -348,6 +348,18 @@ const cases = [
       return edit(source, [{ start: argument.start, end: argument.end, text: source.slice(snapshot.init.start, snapshot.init.end) }])
     },
     failure: /TARGET: accepted revision A must not freeze later external lib B[\s\S]*expected: 'PACKAGE-A'[\s\S]*actual: 'PACKAGE-B'/
+  },
+  {
+    id: 'run-read-facade-query',
+    file: 'test/conversation/host-api.test.mjs',
+    title: 'W2.1 RunQuery boundary exposes cursor pagination, filters and typed malformed-cursor failure',
+    source: () => 'src/service/run-read-service.ts',
+    mutate(source) {
+      const original = 'await this.context.query.page(args)'
+      assert.equal(source.split(original).length, 2, 'RunReadService must own the query projection')
+      return source.replace(original, '{ runs: [] }')
+    },
+    failure: /runs|nextCursor|pagination/
   }
 ]
 

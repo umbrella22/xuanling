@@ -16,6 +16,7 @@ import {
   isolatedProbeEnv,
   probeBrowserEnv,
   waitForTerminal,
+  publicRpcUnavailable,
   rawScriptUnavailable,
   terminalCancelEvidence
 } from '../../../../../test/blueprint/capabilities/probe.mjs'
@@ -30,7 +31,7 @@ function temp(t) {
   return root
 }
 
-const fixtureAssertions = ['P4h', 'P4i', 'P4f', 'P4j-raw', 'P4j', 'P4k', 'P4l', 'P4w'].map(id => ({ id, passed: true }))
+const fixtureAssertions = ['P4h', 'P4i', 'P4f', 'P4j-raw', 'P4j', 'P4k', 'P4w'].map(id => ({ id, passed: true }))
 
 async function hostHarness(t, simulate, { explicit = true } = {}) {
   const root = temp(t)
@@ -165,6 +166,13 @@ test('raw diagnostic oracle requires actual endpoint unavailability and no side 
   assert.equal(rawScriptUnavailable({ status: 200, body: { result: { ok: false, error: { code: 'SCRIPT_FAILED' } } } }, false), false)
   assert.equal(rawScriptUnavailable({ status: 200, body: { result: { ok: true } } }, false), false)
   assert.equal(rawScriptUnavailable({ status: 404 }, true), false)
+})
+
+test('removed diagnostic RPCs require an unavailable public endpoint', () => {
+  assert.equal(publicRpcUnavailable({ status: 404 }), true)
+  assert.equal(publicRpcUnavailable({ status: 200, body: { result: { ok: false, error: { code: 'gateway/invocation-unavailable' } } } }), true)
+  assert.equal(publicRpcUnavailable({ status: 200, body: { result: { ok: false, error: { code: 'blueprint/run-not-found' } } } }), false)
+  assert.equal(publicRpcUnavailable({ status: 200, body: { result: { ok: true, value: { available: false } } } }), false)
 })
 
 test('bounded inspectRun poll observes queued/running/terminal separately from admission', async () => {

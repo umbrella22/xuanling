@@ -5,6 +5,10 @@ import {
   runAdmissionCodec,
   inspectSessionArgsCodec,
   inspectSessionCodec,
+  runQueryArgsCodec,
+  runQueryCodec,
+  runLifecycleActionArgsCodec,
+  runLifecycleActionCodec,
   runSnapshotCodec,
   startTeamStageArgsCodec,
   cancelTeamStageArgsCodec,
@@ -30,13 +34,14 @@ const resourceCatalogEntry = () =>
     provenance: z.enum(['builtin', 'custom', 'unknown'])
   })
 const resultSymbols: Record<string, string> = {
-  hostProbe: 'HostProbeEvidence',
-  mcpProbe: 'McpProbeEvidence',
   exportDefinition: 'ExportValue',
   importDefinition: 'ImportValue',
   loadDefinition: 'DefinitionDocument',
   createDefinition: 'DefinitionDocument',
   saveDefinition: 'DefinitionDocument',
+  queryRuns: 'RunQueryValue',
+  archiveRun: 'RunLifecycleActionValue',
+  restoreRun: 'RunLifecycleActionValue',
   startTeamStage: 'TeamStageActionView',
   cancelTeamStage: 'TeamStageActionView',
   acceptTeamStageOutput: 'TeamStageActionView'
@@ -113,6 +118,9 @@ export const BLUEPRINT_INVOCATIONS = [
   invocation('startSessionRun', startSessionRunArgsCodec, runAdmissionCodec),
   invocation('startTeamStage', startTeamStageArgsCodec, teamStageActionCodec),
   invocation('inspectSession', inspectSessionArgsCodec, inspectSessionCodec),
+  invocation('queryRuns', runQueryArgsCodec, runQueryCodec),
+  invocation('archiveRun', runLifecycleActionArgsCodec, runLifecycleActionCodec),
+  invocation('restoreRun', runLifecycleActionArgsCodec, runLifecycleActionCodec),
   invocation('inspectRun', () => object({ runId: id() }), runSnapshotCodec),
   invocation(
     'cancelRun',
@@ -125,26 +133,6 @@ export const BLUEPRINT_INVOCATIONS = [
     'decide',
     () => object({ runId: id(), decisionId: id(), action: z.enum(['approve', 'reject']) }),
     () => object({ runId: id(), decisionId: id(), state: text(), applied: z.boolean() })
-  ),
-  invocation(
-    'hostProbe',
-    () => object({ blueprintId: id(), resourceId: id(), input: text() }),
-    () =>
-      object({
-        sessionId: text(),
-        agentCreated: z.boolean(),
-        scopedInjections: z.array(text()),
-        inboxSplicedSeen: z.boolean(),
-        outcome: z.union([
-          object({ ok: z.literal(true), kind: z.literal('succeeded'), detail: text() }),
-          object({ ok: z.literal(false), kind: z.enum(['provider-failed', 'failed', 'timeout']), detail: text() })
-        ])
-      })
-  ),
-  invocation(
-    'mcpProbe',
-    () => object({ serverName: text(), toolName: text(), args: z.record(z.string(), z.unknown()) }),
-    () => object({ available: z.boolean(), dispatched: z.boolean(), isError: z.boolean(), text: text(), detail: text().optional() })
   ),
   invocation(
     'exportDefinition',

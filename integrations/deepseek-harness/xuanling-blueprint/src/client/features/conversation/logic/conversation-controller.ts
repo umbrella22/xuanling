@@ -1,18 +1,35 @@
 /** Derived, read-only conversation state. No executor or document-editor dependency. */
-import { inspectSessionArgsCodec, inspectSessionCodec } from '../../../../conversation/contracts.ts'
-import type { InspectSessionArgs, InspectSessionValue, TeamStageProjection } from '../../../../conversation/contracts.ts'
+import {
+  inspectSessionArgsCodec,
+  inspectSessionCodec,
+  runLifecycleActionArgsCodec,
+  runLifecycleActionCodec,
+  runQueryArgsCodec,
+  runQueryCodec
+} from '../../../../conversation/contracts.ts'
+import type {
+  InspectSessionArgs,
+  InspectSessionValue,
+  RunLifecycleActionArgs,
+  RunQueryArgs,
+  RunLifecycleActionValue,
+  TeamStageProjection
+} from '../../../../conversation/contracts.ts'
 import { BlueprintRemoteError } from '../../../adapters/host/remote.ts'
 import type { RemoteNamespace } from '../../../adapters/host/remote.ts'
 
 export interface ConversationHost {
   inspectSession(args: InspectSessionArgs): Promise<unknown>
+  queryRuns?(args: RunQueryArgs): Promise<unknown>
+  archiveRun?(args: RunLifecycleActionArgs): Promise<RunLifecycleActionValue>
+  restoreRun?(args: RunLifecycleActionArgs): Promise<RunLifecycleActionValue>
 }
 
 /** Expose only the one read RPC; preserve native proxy receivers and strict wire decoding. */
 export function resolveConversationHost(ctx: { get(key: string): unknown }): ConversationHost | undefined {
   const namespace = ctx.get('remote.blueprint') as RemoteNamespace | undefined
   if (!namespace) return undefined
-  return {
+  const host: ConversationHost = {
     async inspectSession(args) {
       const request = inspectSessionArgsCodec().safeParse(args)
       if (!request.success) throw new BlueprintRemoteError('blueprint/bad-request')
@@ -26,6 +43,36 @@ export function resolveConversationHost(ctx: { get(key: string): unknown }): Con
       return result.value
     }
   }
+  if (typeof namespace.queryRuns === 'function') {
+    host.queryRuns = async args => {
+      const request = runQueryArgsCodec().safeParse(args)
+      if (!request.success) throw new BlueprintRemoteError('blueprint/bad-request')
+      const result = await namespace.queryRuns!.call(namespace, request.data)
+      if (!result || typeof result !== 'object' || Array.isArray(result) || typeof result.ok !== 'boolean') {
+        throw new BlueprintRemoteError('blueprint/dto-invalid')
+      }
+      if (!result.ok) throw new BlueprintRemoteError(typeof result.error?.code === 'string' ? result.error.code : 'blueprint/remote-failed')
+      const parsed = runQueryCodec().safeParse(result.value)
+      if (!parsed.success) throw new BlueprintRemoteError('blueprint/dto-invalid')
+      return parsed.data
+    }
+  }
+  for (const method of ['archiveRun', 'restoreRun'] as const) {
+    if (typeof namespace[method] !== 'function') continue
+    host[method] = async args => {
+      const request = runLifecycleActionArgsCodec().safeParse(args)
+      if (!request.success) throw new BlueprintRemoteError('blueprint/bad-request')
+      const result = await namespace[method]!.call(namespace, request.data)
+      if (!result || typeof result !== 'object' || Array.isArray(result) || typeof result.ok !== 'boolean') {
+        throw new BlueprintRemoteError('blueprint/dto-invalid')
+      }
+      if (!result.ok) throw new BlueprintRemoteError(typeof result.error?.code === 'string' ? result.error.code : 'blueprint/remote-failed')
+      const parsed = runLifecycleActionCodec().safeParse(result.value)
+      if (!parsed.success) throw new BlueprintRemoteError('blueprint/dto-invalid')
+      return parsed.data
+    }
+  }
+  return host
 }
 
 export interface ConversationSnapshot {
@@ -77,6 +124,7 @@ export class ConversationController {
   private epoch = 0
   private connected = true
   private pending: number | null = null
+  private loadingMore = false
 
   constructor(
     private readonly host: ConversationHost | undefined,
@@ -86,6 +134,8 @@ export class ConversationController {
   }
 
   readonly getSnapshot = (): ConversationSnapshot => this.snapshot
+  readonly hasRunQuery = (): boolean => this.host?.queryRuns !== undefined
+  readonly hasRunLifecycle = (): boolean => this.host?.archiveRun !== undefined
   readonly subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener)
     return () => {
@@ -135,6 +185,64 @@ export class ConversationController {
       this.publish({ value: null, connection: 'loading', selectedAttemptId: null, errorCode: null })
     }
     await this.refresh()
+  }
+
+  async loadMoreRuns(): Promise<void> {
+    const value = this.snapshot.value
+    const queryRuns = this.host?.queryRuns
+    if (!this.connected || this.loadingMore || !queryRuns || value?.status !== 'bound' || value.nextCursor === undefined) return
+    const epoch = ++this.epoch
+    this.loadingMore = true
+    const sessionId = this.snapshot.sessionId
+    try {
+      const raw = await queryRuns({ sessionId, cursor: value.nextCursor, limit: 20 })
+      if (epoch !== this.epoch || !this.connected) return
+      const parsed = runQueryCodec().safeParse(raw)
+      if (!parsed.success) throw new BlueprintRemoteError('blueprint/dto-invalid')
+      const merged = new Map(value.runs.map(run => [run.runId, run]))
+      for (const run of parsed.data.runs) merged.set(run.runId, run)
+      const runs = [...merged.values()].sort((a, b) => b.createdAt - a.createdAt || b.runId.localeCompare(a.runId))
+      const nextValue =
+        parsed.data.nextCursor === undefined
+          ? (() => {
+              const { nextCursor: _previousCursor, ...withoutCursor } = value
+              return { ...withoutCursor, runs }
+            })()
+          : { ...value, runs, nextCursor: parsed.data.nextCursor }
+      this.publish({
+        value: nextValue,
+        connection: 'connected',
+        errorCode: null
+      })
+    } catch (error) {
+      if (epoch !== this.epoch || !this.connected) return
+      this.publish({
+        connection: this.snapshot.value?.status === 'bound' ? 'stale' : 'unavailable',
+        errorCode: error instanceof BlueprintRemoteError ? error.code : 'blueprint/remote-failed'
+      })
+    } finally {
+      this.loadingMore = false
+    }
+  }
+
+  async archiveSelectedRun(): Promise<void> {
+    const value = this.snapshot.value
+    const archiveRun = this.host?.archiveRun
+    if (!this.connected || !archiveRun || value?.status !== 'bound') return
+    const epoch = ++this.epoch
+    const sessionId = this.snapshot.sessionId
+    try {
+      await archiveRun({ runId: value.selected.run.runId })
+      if (epoch !== this.epoch || !this.connected) return
+      this.choices.delete(sessionId)
+      await this.refresh()
+    } catch (error) {
+      if (epoch !== this.epoch || !this.connected) return
+      this.publish({
+        connection: this.snapshot.value?.status === 'bound' ? 'stale' : 'unavailable',
+        errorCode: error instanceof BlueprintRemoteError ? error.code : 'blueprint/remote-failed'
+      })
+    }
   }
 
   selectAttempt(attemptId: string): void {

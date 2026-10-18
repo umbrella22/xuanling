@@ -22,7 +22,11 @@ const seat = { active: null }
 const seatKey = Symbol.for('xuanling.blueprint.test.foreground-navigation')
 globalThis[seatKey] = seat
 seat.react = {
-  createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.length ? children : [props?.children] }),
+  // The controlled seat evaluates CanvasSurface because it is a pure
+  // composition component with no hooks of its own. Other function
+  // components remain opaque so FlowApiBridge is mounted explicitly below.
+  createElement: (type, props, ...children) =>
+    type?.name === 'CanvasSurface' ? type(props ?? {}) : { type, props: props ?? {}, children: children.length ? children : [props?.children] },
   memo: component => component,
   useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
   useState(initial) {

@@ -17,7 +17,6 @@ import { openBlueprintDomain, RunStore } from '../../src/persistence/index.ts'
 import { reconcile, reconcileOnStart } from '../../src/orchestration/recovery.ts'
 import { decodeDefinition, validateDefinition } from '../../src/definition/index.ts'
 import { RuntimeSnapshots } from '../../src/resources/runtime-snapshots.ts'
-import { TYPERT } from '../../src/typert.host.ts'
 
 const completed = { kind: 'completed' }
 const deferred = () => Promise.withResolvers()
@@ -507,8 +506,6 @@ for (const mode of ['aborted', 'unknown']) {
       call.idleWithoutCloser()
     }
     const evidence = await result
-    const codec = TYPERT.invocations.find(i => i.method === 'hostProbe').result.create()
-    assert.deepEqual(codec.parse(evidence), evidence)
     assert.equal(evidence.outcome.ok, false)
     assert.equal(evidence.outcome.kind, 'failed')
     assert.match(evidence.outcome.detail, mode === 'aborted' ? /cancelled/ : /recovery_required/)

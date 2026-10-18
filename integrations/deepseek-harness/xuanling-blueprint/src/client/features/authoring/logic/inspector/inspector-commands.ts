@@ -34,8 +34,6 @@ const optionKeys = [
   'outputSchemaRef',
   'join',
   'branches',
-  'budget',
-  'subflowRef',
   'condition',
   'toolAllowlist',
   'modelSelection'
@@ -79,7 +77,6 @@ function validOption(key: (typeof optionKeys)[number], value: unknown): boolean 
       return stringList(value)
     case 'agentRef':
     case 'outputSchemaRef':
-    case 'subflowRef':
       return typeof value === 'string' && value.length > 0
     case 'condition':
       return (
@@ -88,14 +85,7 @@ function validOption(key: (typeof optionKeys)[number], value: unknown): boolean 
         ['inputPort', 'trueBranch', 'falseBranch'].every(key => typeof value[key] === 'string' && value[key] !== '')
       )
     case 'join':
-      return value === 'all' || value === 'any'
-    case 'budget':
-      return (
-        object(value) &&
-        Object.keys(value).every(key => key === 'maxIterations' || key === 'maxDurationMs') &&
-        Number.isInteger(value.maxIterations) &&
-        Number.isInteger(value.maxDurationMs)
-      )
+      return value === 'all'
     case 'modelSelection':
       return (
         object(value) &&

@@ -126,7 +126,7 @@ export class BlueprintWorkspace {
     this.checkEpoch++
     if (this.checkBinding) this.checkBinding.status = 'stale'
   }
-  private checkCurrent(binding: WorkspaceRunBinding, semantics = definitionSemantics(this.editor.exportDefinition())): boolean {
+  private checkCurrent(binding: WorkspaceRunBinding, semantics = this.editorSemantics): boolean {
     return (
       binding.epoch === this.checkEpoch &&
       binding.generation === this.generation &&
@@ -406,21 +406,21 @@ export class BlueprintWorkspace {
       view !== null &&
       view.runId === this.runId &&
       view.definitionRevision === this.document.semanticRevision &&
-      definitionSemantics(this.editor.exportDefinition()) === this.baselineSemantics
+      this.editorSemantics === this.baselineSemantics
     )
   }
   get dirty(): boolean {
-    return this.blueprintId !== null && JSON.stringify(this.editor.exportDefinition()) !== this.baselineJson
+    return this.blueprintId !== null && this.editorJson !== this.baselineJson
   }
   /** Leaving an empty canvas is intentional even when names/resources changed.
    * Save/draft dirty still includes presentation; navigation protects semantic
    * edits to nonempty graphs. Unsaved new drafts have no saved semantic baseline.
    */
   get needsNavigationConfirmation(): boolean {
-    return this.blueprintId !== null && this.editor.nodes.length > 0 && definitionSemantics(this.editor.exportDefinition()) !== this.baselineSemantics
+    return this.blueprintId !== null && this.editor.nodes.length > 0 && this.editorSemantics !== this.baselineSemantics
   }
   get definition(): BlueprintDefinition | null {
-    return this.blueprintId ? this.editor.exportDefinition() : null
+    return this.blueprintId ? (this.definitionSnapshot as BlueprintDefinition | null) : null
   }
   private install(definition: BlueprintDefinition): void {
     this.unsubscribeEditor?.()

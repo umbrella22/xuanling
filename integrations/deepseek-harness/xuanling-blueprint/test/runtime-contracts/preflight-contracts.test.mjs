@@ -25,9 +25,11 @@ async function expectBlocked(h, value, message) {
 }
 
 for (const kind of ['toolCall', 'scriptCall']) {
-  test(`C-01 startRun: ${kind} readable vocabulary is blocked before admission`, async t => {
-    const h = await harness(t)
-    await expectBlocked(h, definition([{ id: 'unsupported', kind }], {}), `C-01: unsupported ${kind} is currently admitted; readable is not executable`)
+  test(`C-01 definition hard break: ${kind} is rejected before admission`, () => {
+    assert.throws(
+      () => definition([{ id: 'unsupported', kind }], {}),
+      error => error.code === 'DEFINITION_INVALID' && error.issues.some(issue => issue.pointer === '/graph/nodes/0/kind')
+    )
   })
 }
 

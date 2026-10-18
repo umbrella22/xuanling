@@ -45,6 +45,38 @@ function joinDefinition() {
   return value
 }
 
+function aggregateJoinDefinition() {
+  const value = {
+    schemaVersion: 1,
+    id: 'deterministic-flow-aggregate',
+    name: 'Aggregate join output',
+    resources: {},
+    graph: {
+      nodes: [
+        { id: 'static', kind: 'input', outputs: { review: 'string' } },
+        { id: 'security', kind: 'input', outputs: { review: 'string' } },
+        { id: 'tests', kind: 'input', outputs: { review: 'string' } },
+        { id: 'architecture', kind: 'input', outputs: { review: 'string' } },
+        {
+          id: 'parallel-reviews',
+          kind: 'join',
+          join: 'all',
+          inputs: { static: 'string', security: 'string', tests: 'string', architecture: 'string' },
+          outputs: { reviews: 'array' }
+        }
+      ],
+      edges: [
+        { kind: 'data', from: 'static.review', to: 'parallel-reviews.static' },
+        { kind: 'data', from: 'security.review', to: 'parallel-reviews.security' },
+        { kind: 'data', from: 'tests.review', to: 'parallel-reviews.tests' },
+        { kind: 'data', from: 'architecture.review', to: 'parallel-reviews.architecture' }
+      ]
+    }
+  }
+  validateDefinition(decodeDefinition(json(value)))
+  return value
+}
+
 async function serviceFixture(t, definition) {
   const root = mkdtempSync(join(tmpdir(), 'bp-selected-output-'))
   const packageRoot = join(root, 'package')
@@ -101,6 +133,36 @@ async function seedSelectedParentWithoutOutput(h, definition) {
   return runId
 }
 
+async function seedAggregateParents(h, definition) {
+  const definitionJson = json(definition)
+  const inputJson = '{}'
+  const payloadFingerprint = createHash('sha256').update(`${definitionJson}\0${inputJson}`).digest('hex')
+  const { runId } = await h.handle.store.createRun(
+    {
+      scope: 'run',
+      requestId: randomUUID(),
+      payloadFingerprint
+    },
+    'seed-semantic',
+    definitionJson,
+    inputJson
+  )
+  for (const [nodeId, value] of [
+    ['static', 'STATIC_REVIEW'],
+    ['security', 'SECURITY_REVIEW'],
+    ['tests', 'TEST_REVIEW'],
+    ['architecture', 'ARCHITECTURE_REVIEW']
+  ]) {
+    const intent = await h.handle.store.recordIntent(runId, { nodeId, kind: 'input' })
+    await h.handle.store.recordResult(runId, intent.attemptId, {
+      ok: true,
+      outcome: { outputs: { review: value } },
+      evidence: 'fixture-aggregate-parent-result'
+    })
+  }
+  return runId
+}
+
 function assertControlledParents(record) {
   const left = record.attempts.find(attempt => attempt.nodeId === 'left')
   assert.ok(left, 'CONTROL: the selected parent is durably present')
@@ -150,4 +212,20 @@ test('C-06 selected output missing: real driver persists a failed merge Attempt 
   assert.match(projected.errorCode, staticBindingError, 'C-06 MISSING_OUTPUT_PROJECTION_UNTYPED: failed alone is not the input/binding/output error code')
   assert.equal(projected.errorCode, merge.result.outcome.kind, 'C-06 inspectRun errorCode must project the durable failure, not invent another diagnosis')
   assert.equal(projected.outputJson, undefined, 'C-06 rejected binding must not project a successful output')
+})
+
+test('C-03 aggregate join: a named array output collects all selected input ports in declaration order', async t => {
+  const definition = aggregateJoinDefinition()
+  const h = await serviceFixture(t, definition)
+  const runId = await seedAggregateParents(h, definition)
+
+  await h.service.driveRun(h.handle, runId, definition)
+  const record = await h.handle.store.get(runId)
+  assert.equal(record.state, 'succeeded', 'C-03 aggregate join must settle the saved review graph')
+  const merge = record.attempts.find(attempt => attempt.nodeId === 'parallel-reviews')
+  assert.ok(merge, 'C-03 aggregate join must persist its Attempt')
+  assert.equal(merge.state, 'succeeded')
+  assert.deepEqual(merge.result?.outcome?.outputs, {
+    reviews: ['STATIC_REVIEW', 'SECURITY_REVIEW', 'TEST_REVIEW', 'ARCHITECTURE_REVIEW']
+  })
 })

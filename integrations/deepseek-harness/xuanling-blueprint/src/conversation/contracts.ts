@@ -149,7 +149,7 @@ export const frozenGraphCodec = () =>
     nodes: z.array(
       z.strictObject({
         id: id(),
-        kind: z.enum(['input', 'output', 'agentTask', 'toolCall', 'scriptCall', 'condition', 'join', 'humanDecision', 'subflow', 'iteration']),
+        kind: z.enum(['input', 'output', 'agentTask', 'condition', 'join', 'humanDecision']),
         inputs: z.record(z.string(), z.string()).optional(),
         outputs: z.record(z.string(), z.string()).optional(),
         branches: z.array(z.string()).optional()
@@ -188,6 +188,41 @@ export const startSessionRunArgsCodec = () =>
 export type StartSessionRunArgs = z.infer<ReturnType<typeof startSessionRunArgsCodec>>
 export const runAdmissionCodec = () => z.strictObject({ runId: id(), semanticRevision: z.string(), state: z.string(), replayed: z.boolean() })
 export type RunAdmissionView = z.infer<ReturnType<typeof runAdmissionCodec>>
+const RUN_HISTORY_STATES = ['queued', 'running', 'waiting_input', 'cancelling', 'recovery_required', 'succeeded', 'failed', 'cancelled', 'timed_out'] as const
+const runHistoryStateCodec = () => z.enum(RUN_HISTORY_STATES)
+export const runQueryArgsCodec = () =>
+  z
+    .strictObject({
+      sessionId: id().optional(),
+      blueprintId: id().optional(),
+      state: runHistoryStateCodec().optional(),
+      cursor: id().optional(),
+      limit: z.number().int().min(1).max(100).optional(),
+      includeArchived: z.boolean().optional()
+    })
+    .superRefine((value, ctx) => {
+      if (value.sessionId === undefined && value.blueprintId === undefined) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [], message: 'sessionId or blueprintId is required' })
+      }
+    })
+export type RunQueryArgs = z.infer<ReturnType<typeof runQueryArgsCodec>>
+const runHistorySummaryCodec = () =>
+  z.strictObject({
+    runId: id(),
+    blueprintId: id().optional(),
+    state: runHistoryStateCodec(),
+    createdAt: z.number(),
+    updatedAt: z.number(),
+    definitionRevision: id(),
+    attemptCount: z.number().int().nonnegative(),
+    archived: z.boolean()
+  })
+export const runQueryCodec = () => z.strictObject({ runs: z.array(runHistorySummaryCodec()), nextCursor: id().optional() })
+export type RunQueryValue = z.infer<ReturnType<typeof runQueryCodec>>
+export const runLifecycleActionArgsCodec = () => z.strictObject({ runId: id() })
+export type RunLifecycleActionArgs = z.infer<ReturnType<typeof runLifecycleActionArgsCodec>>
+export const runLifecycleActionCodec = () => z.strictObject({ runId: id(), archived: z.boolean() })
+export type RunLifecycleActionValue = z.infer<ReturnType<typeof runLifecycleActionCodec>>
 export const inspectSessionArgsCodec = () => z.strictObject({ sessionId: id(), runId: id().optional() })
 export type InspectSessionArgs = z.infer<ReturnType<typeof inspectSessionArgsCodec>>
 export const inspectSessionCodec = () =>
@@ -197,6 +232,7 @@ export const inspectSessionCodec = () =>
       status: z.literal('bound'),
       sessionId: id(),
       runs: z.array(z.strictObject({ runId: id(), blueprintId: id().optional(), state: z.string(), createdAt: z.number(), definitionRevision: z.string() })),
+      nextCursor: id().optional(),
       selected: z.strictObject({
         run: runSnapshotCodec(),
         source: runSourceCodec().optional(),

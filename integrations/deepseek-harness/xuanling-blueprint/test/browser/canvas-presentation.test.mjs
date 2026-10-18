@@ -13,7 +13,7 @@ const key = Symbol.for('blueprint.test.presentation'),
   seat = { active: null }
 globalThis[key] = seat
 seat.react = {
-  createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }),
+  createElement: (type, props, ...children) => (type?.name === 'CanvasSurface' ? type(props ?? {}) : { type, props: props ?? {}, children }),
   memo: fn => fn,
   useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
   useState(initial) {
@@ -67,7 +67,8 @@ const hooks = registerHooks({
       return { url: flow, shortCircuit: true }
     if (
       (context.parentURL === `${client}features/authoring/ui/panel/panel-composition.tsx` ||
-        context.parentURL === `${client}features/authoring/ui/panel/panel-controller.tsx`) &&
+        context.parentURL === `${client}features/authoring/ui/panel/panel-controller.tsx` ||
+        context.parentURL === `${client}features/authoring/ui/panel/inspector-sidebar.tsx`) &&
       spec === '../inspector/inspector-composition.tsx'
     )
       return { url: inspector, shortCircuit: true }

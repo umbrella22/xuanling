@@ -11,7 +11,7 @@ const t = (key, params = {}) => {
 }
 const elements = tree => (Array.isArray(tree) ? tree.flatMap(elements) : !React.isValidElement(tree) ? [] : [tree, ...elements(tree.props.children)])
 const fields = ['agentRef', 'skillRefs', 'toolsetRefs', 'outputSchemaRef', 'model-mode']
-const kinds = ['input', 'output', 'agentTask', 'toolCall', 'scriptCall', 'condition', 'join', 'humanDecision', 'subflow', 'iteration', 'unknown']
+const kinds = ['input', 'output', 'agentTask', 'condition', 'join', 'humanDecision', 'unknown']
 function inspectorFixture(kind, team = false) {
   const resources = {
     Agent: { kind: 'agent', source: { kind: 'host', id: 'literal-agent' } },
@@ -58,7 +58,7 @@ function inspectorFixture(kind, team = false) {
   return { editor, session, render, legacy }
 }
 for (const kind of kinds)
-  test(`W2.2 real Inspector ${kind} capability and legacy/history preservation`, () => {
+  test(`W2.2 real Inspector ${kind} capability and history preservation`, () => {
     const f = inspectorFixture(kind),
       before = f.editor.exportDefinition(),
       tree = f.render(),
@@ -66,13 +66,7 @@ for (const kind of kinds)
         .filter(e => fields.includes(e.props['data-bp-field']))
         .map(e => e.props['data-bp-field'])
     if (kind === 'agentTask') for (const field of fields) assert.ok(visible.includes(field), field)
-    else {
-      assert.deepEqual(visible, [])
-      const legacy = elements(tree).find(e => e.props['data-bp-legacy-bindings'])
-      assert.ok(legacy)
-      const pre = elements(legacy).find(e => e.type === 'pre')
-      assert.deepEqual(JSON.parse(pre.props.children), f.legacy)
-    }
+    else assert.deepEqual(visible, [])
     assert.deepEqual(f.editor.exportDefinition(), before, 'render never clears old execution fields')
     const edit = elements(tree).find(e => e.props['data-bp-action'] === 'add-input-port')
     assert.ok(edit, 'actual port callback exists')
@@ -106,7 +100,8 @@ const key = Symbol.for('blueprint.test.capabilities'),
   seat = { active: null }
 globalThis[key] = seat
 seat.react = {
-  createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.length ? children : [props?.children] }),
+  createElement: (type, props, ...children) =>
+    type?.name === 'CanvasSurface' ? type(props ?? {}) : { type, props: props ?? {}, children: children.length ? children : [props?.children] },
   memo: fn => fn,
   useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
   useState(initial) {

@@ -28,7 +28,7 @@ export class ClipboardError extends Error {
 
 const idPattern = /^[a-zA-Z][a-zA-Z0-9_-]*$/
 const pathPattern = /^(?!\/)[A-Za-z0-9._\-/]+[A-Za-z0-9._-]$/
-const kinds = ['input', 'output', 'agentTask', 'toolCall', 'scriptCall', 'condition', 'join', 'humanDecision', 'subflow', 'iteration']
+const kinds = ['input', 'output', 'agentTask', 'condition', 'join', 'humanDecision']
 const colors = ['default', 'blue', 'green', 'amber', 'red', 'purple']
 function fail(pointer: string): never {
   throw new ClipboardError(pointer)
@@ -149,9 +149,7 @@ export function validatePresentation(
 
 export function referencedResourceIds(nodes: GraphNode[]): Set<string> {
   return new Set(
-    nodes.flatMap(n =>
-      [n.agentRef, n.outputSchemaRef, n.subflowRef, ...(n.skillRefs ?? []), ...(n.toolsetRefs ?? [])].filter((id): id is string => id !== undefined)
-    )
+    nodes.flatMap(n => [n.agentRef, n.outputSchemaRef, ...(n.skillRefs ?? []), ...(n.toolsetRefs ?? [])].filter((id): id is string => id !== undefined))
   )
 }
 
@@ -161,7 +159,6 @@ export function validateResourceReferences(nodes: GraphNode[], resources: Record
     const refs: Array<[string | undefined, ResourceRef['kind']]> = [
       [node.agentRef, 'agent'],
       [node.outputSchemaRef, 'schema'],
-      [node.subflowRef, 'subflow'],
       ...(node.skillRefs ?? []).map(id => [id, 'skill'] as [string, 'skill']),
       ...(node.toolsetRefs ?? []).map(id => [id, 'mcp'] as [string, 'mcp'])
     ]
@@ -217,8 +214,6 @@ function checkNode(raw: unknown, at: string): GraphNode {
       'outputSchemaRef',
       'join',
       'branches',
-      'budget',
-      'subflowRef',
       'modelSelection'
     ],
     ['id', 'kind'],
@@ -242,20 +237,10 @@ function checkNode(raw: unknown, at: string): GraphNode {
         string(type, `${at}/${key}/${port}`)
       }
     }
-  for (const key of ['agentRef', 'outputSchemaRef', 'subflowRef']) if (Object.hasOwn(n, key)) string(n[key], `${at}/${key}`, true)
+  for (const key of ['agentRef', 'outputSchemaRef']) if (Object.hasOwn(n, key)) string(n[key], `${at}/${key}`, true)
   for (const key of ['skillRefs', 'toolsetRefs', 'branches', 'toolAllowlist'])
     if (Object.hasOwn(n, key)) array(n[key], `${at}/${key}`).forEach((v, i) => string(v, `${at}/${key}/${i}`, key !== 'toolAllowlist'))
-  if (Object.hasOwn(n, 'join') && n.join !== 'all' && n.join !== 'any') fail(`${at}/join`)
-  if (Object.hasOwn(n, 'budget')) {
-    const b = shape(n.budget, ['maxIterations', 'maxDurationMs'], ['maxIterations', 'maxDurationMs'], `${at}/budget`)
-    for (const [key, max] of [
-      ['maxIterations', 1000],
-      ['maxDurationMs', 600000]
-    ] as const) {
-      finite(b[key], `${at}/budget/${key}`, true)
-      if (!Number.isInteger(b[key]) || b[key] > max) fail(`${at}/budget/${key}`)
-    }
-  }
+  if (Object.hasOwn(n, 'join') && n.join !== 'all') fail(`${at}/join`)
   if (Object.hasOwn(n, 'condition')) {
     const c = shape(n.condition, ['inputPort', 'trueBranch', 'falseBranch'], ['inputPort', 'trueBranch', 'falseBranch'], `${at}/condition`)
     string(c.inputPort, `${at}/condition/inputPort`)

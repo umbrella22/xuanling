@@ -176,9 +176,15 @@ test('X01/J01: current export only, every JSON field uses the shared editor', ()
   const panel = readFileSync(new URL('../../src/client/features/authoring/ui/panel/panel-controller.tsx', import.meta.url), 'utf8')
   const inspector = readFileSync(new URL('../../src/client/features/authoring/ui/inspector/inspector-view.tsx', import.meta.url), 'utf8')
   const inspectorEntry = readFileSync(new URL('../../src/client/features/authoring/ui/inspector/inspector-composition.tsx', import.meta.url), 'utf8')
+  const inspectorSidebar = readFileSync(new URL('../../src/client/features/authoring/ui/panel/inspector-sidebar.tsx', import.meta.url), 'utf8')
+  const resourceDialog = readFileSync(new URL('../../src/client/features/authoring/ui/panel/resource-dialog.tsx', import.meta.url), 'utf8')
   assert.equal(panel.includes("moreAction('export-legacy'"), false, 'old format action must be removed')
   assert.ok(inspectorEntry.includes("from './inspector-view.tsx'") && inspectorEntry.includes('return inspectorView('), 'Inspector uses its extracted view')
-  assert.ok(panel.includes('JsonEditor') && inspector.includes('JsonEditor'), 'all JSON field surfaces adopt the editor')
+  assert.ok(panel.includes('InspectorSidebar') && panel.includes('ResourceDialog'), 'Panel composes extracted JSON field surfaces')
+  assert.ok(
+    [inspector, inspectorSidebar, resourceDialog].every(source => source.includes('JsonEditor')),
+    'all JSON field surfaces adopt the editor'
+  )
 })
 
 test('L03: save/delete ordering uses revision CAS and deletion blocks admission and export', async t => {

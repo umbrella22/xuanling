@@ -56,12 +56,20 @@ export function validateNodeInputs(node: GraphNode, input: unknown, omitted: Set
 }
 export function structuralOutputs(node: GraphNode, input: unknown, omitted: Set<string>): Record<string, unknown> {
   const outputs: Record<string, unknown> = {}
+  // A join may expose one explicitly named array output for the selected
+  // input ports. This is the structural form used by fan-in workflows such as
+  // the Rust review example: the input ports retain their individual types,
+  // while the join publishes a deterministic declaration-ordered collection.
+  const aggregate = Object.entries(node.inputs ?? {})
+    .filter(([port]) => !omitted.has(port) && hasInputPort(input, port))
+    .map(([port]) => (input as Record<string, unknown>)[port])
   for (const [port, type] of Object.entries(node.outputs ?? {})) {
     if (node.kind === 'join' && omitted.has(port)) continue
-    if (node.kind === 'join' && !hasInputPort(input, port)) throw new NodeValueError('output-missing')
+    if (node.kind === 'join' && !hasInputPort(input, port) && type !== 'array') throw new NodeValueError('output-missing')
     // Keep input/output pass-through: a matching named field wins; otherwise
-    // the initial/bound JSON value is the output. Join only copies bound ports.
-    const value = hasInputPort(input, port) ? input[port] : input
+    // the initial/bound JSON value is the output. An array join output is the
+    // only intentional fan-in exception and collects selected input values.
+    const value = hasInputPort(input, port) ? input[port] : type === 'array' && node.kind === 'join' ? aggregate : input
     if (!matchesWireType(value, type)) throw new NodeValueError('output-invalid')
     Object.defineProperty(outputs, port, { value, enumerable: true, writable: true, configurable: true })
   }

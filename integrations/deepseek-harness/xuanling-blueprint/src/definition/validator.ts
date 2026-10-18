@@ -224,14 +224,6 @@ export function validateDefinition(definition: BlueprintDefinition): void {
     if (node.kind === 'condition' && (node.branches === undefined || node.branches.length === 0)) {
       issues.push({ code: 'invalid-value', message: 'condition node requires branches', pointer: `${pointer}/branches` })
     }
-    if (node.kind === 'iteration') {
-      if (node.budget === undefined) {
-        issues.push({ code: 'invalid-value', message: 'iteration node requires budget (bounded iteration)', pointer: `${pointer}/budget` })
-      }
-    }
-    if (node.kind === 'subflow') {
-      has(node.subflowRef, 'subflowRef')
-    }
   }
 
   // Edges: endpoints exist; data edges connect declared ports with matching
@@ -289,7 +281,7 @@ export function validateDefinition(definition: BlueprintDefinition): void {
     }
   }
 
-  // Data graph must be acyclic (unbounded loops are iteration nodes' job).
+  // Data graph must be acyclic.
   for (const cycle of collectDataCycles(definition.graph.nodes, dataEdges)) {
     issues.push({ code: 'cycle', message: `data edge cycle: ${cycle.join(' -> ')}`, pointer: '/graph/edges' })
   }

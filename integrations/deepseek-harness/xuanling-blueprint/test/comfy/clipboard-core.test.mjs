@@ -190,8 +190,8 @@ test('C04 only directly referenced exact resource declarations are copied, never
   assert.equal(conflict.canUndo, false)
 })
 
-test('C04 identical package path across blueprints is rejected for every package reference role', () => {
-  for (const refs of [{ agentRef: 'agent' }, { skillRefs: ['packageSkill'] }, { outputSchemaRef: 'schema' }, { subflowRef: 'subflow' }]) {
+test('C04 identical package path across blueprints is rejected for every supported package reference role', () => {
+  for (const refs of [{ agentRef: 'agent' }, { skillRefs: ['packageSkill'] }, { outputSchemaRef: 'schema' }]) {
     const d = resourceDefinition(refs)
     const source = GraphEditor.fromDefinition(d)
     const f = source.createClipboard(['n'])
@@ -233,22 +233,44 @@ test('C04 dangling/wrong-kind ref is invalid before clipboard emission', () => {
   )
 })
 
-test('C04 unfinished agentTask/subflow/iteration and legacy condition remain copyable declarations', () => {
+test('C04 supported node declarations remain copyable while removed node vocabulary fails closed', () => {
   const d = {
     schemaVersion: 1,
     id: 'unfinished',
     name: 'Draft',
     resources: {},
-    graph: { nodes: ['agentTask', 'condition', 'subflow', 'iteration'].map((kind, i) => ({ id: `n${i}`, kind })), edges: [] }
+    graph: {
+      nodes: [
+        { id: 'n0', kind: 'agentTask' },
+        {
+          id: 'n1',
+          kind: 'condition',
+          inputs: { input: 'boolean' },
+          branches: ['true-path', 'false-path'],
+          condition: { inputPort: 'input', trueBranch: 'true-path', falseBranch: 'false-path' }
+        },
+        { id: 'n2', kind: 'join', join: 'all' },
+        { id: 'n3', kind: 'humanDecision' }
+      ],
+      edges: []
+    }
   }
   const editor = GraphEditor.fromDefinition(d)
   const f = editor.createClipboard(d.graph.nodes.map(n => n.id))
   assert.deepEqual(f.nodes, d.graph.nodes)
   const result = editor.pasteClipboard(f, { x: 20, y: 30 })
   assert.equal(result.ok, true)
-  for (const id of result.nodeIds) assert.deepEqual(Object.keys(editor.exportDefinition().graph.nodes.find(n => n.id === id)).sort(), ['id', 'kind'])
+  for (const [index, id] of result.nodeIds.entries())
+    assert.deepEqual(Object.keys(editor.exportDefinition().graph.nodes.find(n => n.id === id)).sort(), Object.keys(d.graph.nodes[index]).sort())
   assert.equal(editor.undo(), true)
   assert.deepEqual(editor.exportDefinition().graph, d.graph)
+  for (const kind of ['toolCall', 'scriptCall', 'subflow', 'iteration']) {
+    const legacy = { ...f, nodes: [{ id: 'legacy', kind }] }
+    assert.throws(
+      () => decodeClipboard(legacy),
+      error => error.code === 'clipboard-invalid' && error.pointer === '/nodes/0/kind'
+    )
+  }
 })
 
 test('C04 data cycle is rejected by production fragment decoder before paste', () => {

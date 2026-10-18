@@ -29,6 +29,7 @@ import {
 } from '../teamstage/artifact-contract.ts'
 import {
   TERMINAL_RUN_STATES,
+  RUN_RECORD_SCHEMA_VERSION,
   TEAM_STAGE_SCHEMA_VERSION,
   teamStageBindingSchema,
   teamOutputAcceptanceSchema,
@@ -38,6 +39,7 @@ import {
   teamCaptureArtifactRefSchema,
   teamMemberReservationSchema,
   type AttemptRecord,
+  type RunLifecycleRecord,
   type RunRecord,
   type RunState,
   type TeamMemberSnapshot,
@@ -49,6 +51,7 @@ import {
   type TeamCaptureArtifactRef
 } from './records.ts'
 import { CommandAdmission, CommandConflictError, DurabilityFailureError, newRunId, type AdmissionRequest, type AdmissionResult } from './command-admission.ts'
+import { IllegalTransitionError, transitionRun } from '../orchestration/state.ts'
 
 const LOG_CAP = 200
 const ACTIVE_TEAM_ATTEMPT_STATES = new Set(['preparing', 'ready', 'running'])
@@ -136,6 +139,17 @@ export class RunNotFoundError extends Error {
   }
 }
 
+export class RunLifecycleConflictError extends Error {
+  override readonly name = 'RunLifecycleConflictError'
+  readonly code = 'RUN_LIFECYCLE_CONFLICT'
+  constructor(
+    readonly runId: string,
+    detail: string
+  ) {
+    super(`run lifecycle conflict for ${runId}: ${detail}`)
+  }
+}
+
 export class TerminalStateError extends Error {
   override readonly name = 'TerminalStateError'
   readonly code = 'TERMINAL_STATE_IMMUTABLE'
@@ -147,6 +161,7 @@ export class TerminalStateError extends Error {
 export class RunStore {
   private readonly runs: KvTableLike<string, RunRecord>
   private readonly commands: KvTableLike<string, CommandRecord>
+  private readonly lifecycle: KvTableLike<string, RunLifecycleRecord>
   readonly admission: CommandAdmission
   private readonly queues = new Map<string, Promise<unknown>>()
 
@@ -163,6 +178,7 @@ export class RunStore {
   constructor(domain: DomainLike) {
     this.runs = domain.table('runs') as KvTableLike<string, RunRecord>
     this.commands = domain.table('commands') as KvTableLike<string, CommandRecord>
+    this.lifecycle = domain.table('run_lifecycle') as KvTableLike<string, RunLifecycleRecord>
     this.admission = new CommandAdmission(this.commands)
   }
 
@@ -231,6 +247,7 @@ export class RunStore {
     const runId = newRunId()
     const now = Date.now()
     const record: RunRecord = {
+      schemaVersion: RUN_RECORD_SCHEMA_VERSION,
       ...metadata,
       runId,
       definitionRevision,
@@ -265,6 +282,30 @@ export class RunStore {
     } catch (cause) {
       throw new DurabilityFailureError('run read', cause)
     }
+  }
+
+  /** Read the derived history lifecycle without touching the canonical Run. */
+  async isArchived(runId: string): Promise<boolean> {
+    try {
+      return (await this.lifecycle.get(runId))?.archived === true
+    } catch (cause) {
+      throw new DurabilityFailureError('run lifecycle read', cause)
+    }
+  }
+
+  /** Explicit, reversible history action. It never changes RunRecord facts. */
+  async setArchived(runId: string, archived: boolean): Promise<{ runId: string; archived: boolean }> {
+    return await this.serial(runId, async () => {
+      const record = await this.get(runId)
+      if (!TERMINAL_RUN_STATES.includes(record.state)) throw new RunLifecycleConflictError(runId, 'run is not terminal')
+      const next: RunLifecycleRecord = { runId, archived, updatedAt: Date.now() }
+      try {
+        await this.lifecycle.put(runId, next)
+      } catch (cause) {
+        throw new DurabilityFailureError('run lifecycle write', cause)
+      }
+      return { runId, archived }
+    })
   }
 
   /** Bind the canonical stage fact before any Team task effect. This is a
@@ -991,6 +1032,7 @@ export class RunStore {
         const draft = structuredClone(value)
         const seqBefore = draft.seq
         reducer(draft)
+        if (draft.state !== value.state) transitionRun(value.state, draft.state)
         // Reconciliation also writes through this atomic record boundary. Keep
         // available diagnostics honest without inventing an execution result
         // or rewriting legacy Attempts that never captured these facts.
@@ -1024,7 +1066,8 @@ export class RunStore {
         cause instanceof TeamTaskConflictError ||
         cause instanceof TeamOutputRejectedError ||
         cause instanceof TeamEffectReplayError ||
-        cause instanceof TeamArtifactError
+        cause instanceof TeamArtifactError ||
+        cause instanceof IllegalTransitionError
       )
         throw cause
       if (cause instanceof Error && String(cause.message).includes('has no record')) {

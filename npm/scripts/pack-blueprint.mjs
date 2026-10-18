@@ -16,15 +16,18 @@ assert.equal(manifest.name, "@xuanling-rs/xuanling-dsh-blueprint");
 for (const script of ["preinstall", "install", "postinstall", "prepublish", "prepare", "prepack", "postpack"])
   assert.equal(manifest.scripts?.[script], undefined, `release forbids lifecycle script ${script}`);
 const metadata = ["LICENSE", "THIRD-PARTY-NOTICES.md", "README.md", "README-ZH.md", "cordis.patch.yml"];
-assert.deepEqual(manifest.files, [...metadata, "lib/**/*.js"]);
+const assetPattern = "assets/readme/**/*.png";
+assert.deepEqual(manifest.files, [...metadata.slice(0, 4), assetPattern, metadata[4], "lib/**/*.js"]);
+const assets = (await readdir(path.join(root, "assets", "readme"), { withFileTypes: true }))
+  .map((file) => { assert.ok(file.isFile() && file.name.endsWith(".png")); return `assets/readme/${file.name}`; }).sort();
 const libraries = (await readdir(path.join(root, "lib"), { withFileTypes: true }))
   .map((file) => { assert.ok(file.isFile() && file.name.endsWith(".js")); return `lib/${file.name}`; }).sort();
 assert.ok(libraries.length > 0, "build the Blueprint plugin before packing");
-const files = [...metadata, ...libraries, "package.json"].sort();
+const files = [...metadata, ...assets, ...libraries, "package.json"].sort();
 await mkdir(output, { recursive: true });
 const staging = await mkdtemp(path.join(os.tmpdir(), "xuanling-blueprint-release-"));
 try {
-  for (const file of [...metadata, ...libraries]) {
+  for (const file of [...metadata, ...assets, ...libraries]) {
     await mkdir(path.dirname(path.join(staging, file)), { recursive: true });
     await cp(path.join(root, file), path.join(staging, file), { dereference: false });
   }

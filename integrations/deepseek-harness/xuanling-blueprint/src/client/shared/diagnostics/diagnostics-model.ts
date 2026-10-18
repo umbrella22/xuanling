@@ -3,6 +3,28 @@ import { attemptDiagnosticsCodec } from '../../../host/runtime-diagnostics.ts'
 import type { AttemptDiagnostics } from '../../../host/runtime-diagnostics.ts'
 import type { BlueprintLocaleProps } from '../i18n/locales.ts'
 
+export type PreflightActionKey =
+  | 'diagnostics.action.input'
+  | 'diagnostics.action.resource'
+  | 'diagnostics.action.model'
+  | 'diagnostics.action.tools'
+  | 'diagnostics.action.schema'
+  | 'diagnostics.action.retry'
+  | 'diagnostics.action.inspect'
+
+/** Convert stable Host check codes into a short next-action instruction. The
+ * original code and object IDs remain visible beside this derived copy. */
+export function preflightActionKey(code: string): PreflightActionKey {
+  if (['input-missing', 'input-invalid', 'condition-input-invalid'].includes(code)) return 'diagnostics.action.input'
+  if (code.includes('resource') || code === 'host-agent-unavailable' || code === 'host-skill-unavailable') return 'diagnostics.action.resource'
+  if (code.includes('model-route')) return 'diagnostics.action.model'
+  if (code.includes('tool') || code.includes('agent-factory') || code.includes('executor') || code.includes('teamstage')) return 'diagnostics.action.tools'
+  if (code.includes('schema') || code.includes('output-port')) return 'diagnostics.action.schema'
+  if (code.includes('unverified') || code.includes('approval')) return 'diagnostics.action.inspect'
+  if (code.endsWith('ready') || code === 'definition-ready') return 'diagnostics.action.inspect'
+  return 'diagnostics.action.retry'
+}
+
 export function projectAttemptDiagnostics(value?: unknown): AttemptDiagnostics {
   const parsed = attemptDiagnosticsCodec().safeParse(value)
   return parsed.success ? parsed.data : { status: 'unavailable' }

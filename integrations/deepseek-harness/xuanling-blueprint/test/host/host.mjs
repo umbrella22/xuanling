@@ -3,7 +3,7 @@
 // --expect=blueprint), which packs this package, installs it into a fresh
 // profile, boots the real web app, and asserts: gateway ping, typed
 // capability-unavailable, scoped agent execution from frozen snapshot bytes
-// (P4h) and the S1→S2 real skill-update evidence (P4i). Missing build or a
+// (P4h/P4i) public diagnostic-probe removal evidence. Missing build or a
 // failed probe exits non-zero — never a skip.
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs'
@@ -45,8 +45,8 @@ export async function getCases(helpers) {
         throw new Error(`probe failed or plan-id mismatch (${report.plan_id}): ${failed.join(', ')}`)
       }
       const assertions = Object.fromEntries((report.assertions ?? []).map(a => [a.id, a.passed === true]))
-      // Host-execution specific evidence (P4h/P4i live in the probe report).
-      return ['P4h', 'P4i', 'P4f', 'P4j-raw', 'P4j', 'P4k', 'P4l', 'P4w'].every(id => assertions[id] === true)
+      // Host-surface evidence (P4h/P4i live in the probe report).
+      return ['P4h', 'P4i', 'P4f', 'P4j-raw', 'P4j', 'P4k', 'P4w'].every(id => assertions[id] === true)
         ? { ok: true, detail: `${report.assertions.length} probe assertions passed; isolated report: ${reportPath}` }
         : { ok: false, detail: 'probe passed but host-execution assertions are missing' }
     }

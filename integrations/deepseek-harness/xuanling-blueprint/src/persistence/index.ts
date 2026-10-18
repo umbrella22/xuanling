@@ -2,11 +2,13 @@
 export { openBlueprintDomain, type BlueprintDomainSpec, type DomainLike, type KvTableLike, type OpenedDomain } from './domain.ts'
 export {
   recordsSchema,
+  runLifecycleSchema,
   TERMINAL_RUN_STATES,
   TEAM_STAGE_STATES,
   TEAM_ACCEPTANCE_CODES,
   TEAM_STAGE_SCHEMA_VERSION,
   TEAM_OUTPUT_ACCEPTANCE_SCHEMA_VERSION,
+  RUN_RECORD_SCHEMA_VERSION,
   TEAM_EFFECT_STATES,
   teamStageRecordSchema,
   teamStageBindingSchema,
@@ -16,6 +18,7 @@ export {
   type AttemptRecord,
   type CommandRecord,
   type RunRecord,
+  type RunLifecycleRecord,
   type RunState,
   type TransitionEvent,
   type TeamStageRecord,
@@ -27,10 +30,20 @@ export {
   ATTEMPT_STATES,
   RUN_STATES
 } from './records.ts'
-export { CoordinatorAlreadyActiveError, WriterLease, touchLease, type LeaseOptions, type LeasePayload } from './lease.ts'
+export {
+  CoordinatorAlreadyActiveError,
+  CoordinatorLeaseInvalidError,
+  CoordinatorLeaseLostError,
+  WriterLease,
+  touchLease,
+  type LeaseOptions,
+  type LeasePayload
+} from './lease.ts'
+export { RunQuery, RunQueryError, runBelongsToSession, runHistorySummary, type RunHistorySummary, type RunQueryArgs, type RunQueryPage } from './run-query.ts'
 export { CommandAdmission, CommandConflictError, DurabilityFailureError, newRunId, type AdmissionRequest, type AdmissionResult } from './command-admission.ts'
 export {
   RunNotFoundError,
+  RunLifecycleConflictError,
   RunStore,
   TerminalStateError,
   TeamStageConflictError,

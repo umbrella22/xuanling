@@ -121,6 +121,34 @@ test('U11 GREEN old schemaVersion 1 remains strict and reversible', () => {
   assert.equal(editor.undo(), true)
   assert.deepEqual(editor.exportDefinition().presentation.nodes, raw.presentation.nodes)
 })
+
+test('U12 hard break: non-executable node vocabulary and fields fail closed at definition decode', () => {
+  const removed = [
+    ['toolCall', { id: 'removed', kind: 'toolCall' }],
+    ['scriptCall', { id: 'removed', kind: 'scriptCall' }],
+    ['subflow', { id: 'removed', kind: 'subflow' }],
+    ['iteration', { id: 'removed', kind: 'iteration' }],
+    ['join-any', { id: 'removed', kind: 'join', join: 'any' }]
+  ]
+  for (const [label, node] of removed) {
+    const raw = definition()
+    raw.graph.nodes = [node]
+    const result = decoded(raw)
+    assert.equal(result.value, undefined, `${label} must not remain readable after the vocabulary hard break`)
+    assert.ok(
+      result.issues.some(issue => issue.pointer?.startsWith('/graph/nodes/0')),
+      `${label} failure must locate the node`
+    )
+  }
+  for (const field of ['budget', 'subflowRef']) {
+    const raw = definition()
+    raw.graph.nodes[0][field] = field === 'budget' ? { maxIterations: 1, maxDurationMs: 1000 } : 'child'
+    const result = decoded(raw)
+    assert.equal(result.value, undefined, `${field} must not remain a definition field`)
+    assert.ok(result.issues.some(issue => issue.code === 'unknown-field' && issue.pointer === `/graph/nodes/0/${field}`))
+  }
+})
+
 test('U11 GREEN malformed ports, unknown behavior fields and dangling references still reject', () => {
   for (const edit of [
     d => {

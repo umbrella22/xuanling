@@ -193,3 +193,20 @@ test('model-only publications do not export the editor graph', () => {
   assert.equal(value.getSnapshot().editor, editor)
   assert.equal(value.getSnapshot().definition, definition)
 })
+
+test('published definition and dirty getters reuse the captured editor generation', () => {
+  const { value } = workspace()
+  value.newDraft('getter snapshot')
+  let exports = 0
+  const original = value.editor.exportDefinition.bind(value.editor)
+  value.editor.exportDefinition = () => {
+    exports++
+    return original()
+  }
+  const before = value.getSnapshot()
+  void value.definition
+  void value.dirty
+  void value.needsNavigationConfirmation
+  assert.equal(exports, 0, 'W4.4 SNAPSHOT_GETTER_EXPORT_RED: render-facing getters re-export the live graph')
+  assert.equal(value.getSnapshot().definition, before.definition)
+})

@@ -275,8 +275,8 @@ export async function getCases(helpers) {
         graph: {
           nodes: [
             { id: 'input', kind: 'input', outputs: { request: 'string' } },
-            { id: 'branchA', kind: 'toolCall', inputs: { x: 'string' }, outputs: { y: 'string' } },
-            { id: 'branchB', kind: 'toolCall', inputs: { x: 'string' }, outputs: { y: 'string' } },
+            { id: 'branchA', kind: 'input', inputs: { x: 'string' }, outputs: { y: 'string' } },
+            { id: 'branchB', kind: 'input', inputs: { x: 'string' }, outputs: { y: 'string' } },
             { id: 'merge', kind: 'join', join: 'all', inputs: { a: 'string', b: 'string' }, outputs: { out: 'string' } },
             { id: 'final', kind: 'output', inputs: { value: 'string' } }
           ],
@@ -321,8 +321,8 @@ export async function getCases(helpers) {
         graph: {
           nodes: [
             { id: 'gate', kind: 'condition', branches: ['yes', 'no'] },
-            { id: 'yes-path', kind: 'toolCall', outputs: { y: 'string' } },
-            { id: 'no-path', kind: 'toolCall' },
+            { id: 'yes-path', kind: 'input', outputs: { y: 'string' } },
+            { id: 'no-path', kind: 'input' },
             { id: 'merge', kind: 'join', join: 'all', inputs: { a: 'string' } }
           ],
           edges: [
@@ -350,18 +350,12 @@ export async function getCases(helpers) {
 
   cases.push({
     id: 'RT10',
-    title: 'T07: iteration budget exceeded fails typed BUDGET_EXCEEDED',
+    title: 'T07: removed iteration budget helper is no longer exported',
     contract: 'C-07',
     expect: 'pass',
     run: async () => {
       const orchestration = await import(join(helpers_packageRoot(), 'lib', 'orchestration.js'))
-      let threw = null
-      try {
-        orchestration.checkBudget('loop', { maxIterations: 5, maxDurationMs: 1000 }, { iterations: 6, elapsedMs: 10 })
-      } catch (error) {
-        threw = error
-      }
-      return threw?.code === 'BUDGET_EXCEEDED'
+      return orchestration.checkBudget === undefined && orchestration.BudgetExceededError === undefined
     }
   })
 
@@ -375,7 +369,7 @@ export async function getCases(helpers) {
       try {
         const { opened, store } = await open(root)
         const created = await store.createRun(COMMAND, 'rev-1', 'def-1', 'input-1')
-        await store.recordIntent(created.runId, { nodeId: 'n1', kind: 'toolCall' })
+        await store.recordIntent(created.runId, { nodeId: 'n1', kind: 'agentTask' })
         // Cancel and result arrive concurrently; the single writer serializes
         // them — exactly one wins the terminal, the loser is typed-rejected.
         const results = await Promise.allSettled([
@@ -407,7 +401,7 @@ export async function getCases(helpers) {
         const queued = await store.createRun({ ...COMMAND, requestId: 'q1' }, 'rev-1', 'def-1', 'input')
         const afterQueuedCancel = await store.requestCancel(queued.runId)
         const running = await store.createRun({ ...COMMAND, requestId: 'r1' }, 'rev-1', 'def-1', 'input')
-        await store.recordIntent(running.runId, { nodeId: 'n1', kind: 'toolCall' })
+        await store.recordIntent(running.runId, { nodeId: 'n1', kind: 'agentTask' })
         const cancelling = await store.requestCancel(running.runId)
         await opened.close()
         return afterQueuedCancel.state === 'cancelled' && cancelling.state === 'cancelling'

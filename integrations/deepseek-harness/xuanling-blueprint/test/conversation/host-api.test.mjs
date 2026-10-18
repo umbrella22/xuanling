@@ -67,6 +67,85 @@ function value(result) {
 const code = expected => error => error.code === expected
 const codec = method => TYPERT.invocations.find(invocation => invocation.method === method)
 
+test('W2.1 RunQuery boundary exposes cursor pagination, filters and typed malformed-cursor failure', async t => {
+  const h = await liveHarness(t)
+  const handle = await h.service.configuredRuntime()
+  const definitionJson = JSON.stringify(definition())
+  const makeRun = async (index, sessionId, blueprintId, state = 'succeeded') => {
+    const inputJson = JSON.stringify({ index })
+    const admission = await handle.store.createRun(
+      {
+        scope: 'run',
+        requestId: `w2-query-${index}`,
+        payloadFingerprint: createHash('sha256').update(`${definitionJson}\0${inputJson}`).digest('hex')
+      },
+      'w2-query-revision',
+      definitionJson,
+      inputJson,
+      { blueprintId, source: { sessionId, kind: 'ui' } }
+    )
+    await handle.store.settleTerminal(admission.runId, state, { reason: 'w2-query-fixture' })
+    return admission.runId
+  }
+  for (let index = 0; index < 45; index++) await makeRun(index, 'w2-session-a', index % 2 === 0 ? 'w2-blueprint-a' : 'w2-blueprint-b')
+  await makeRun(100, 'w2-session-b', 'w2-blueprint-a', 'failed')
+
+  assert.equal(typeof h.service.queryRuns, 'function', 'W2.1 QUERY_BOUNDARY_MISSING: history still has no typed query entry point')
+  const before = await handle.store.get((await handle.store.listRunIds())[0])
+  const first = await h.service.queryRuns({ sessionId: 'w2-session-a', limit: 20 })
+  assert.equal(first.runs.length, 20)
+  assert.ok(first.nextCursor, 'W2.1 QUERY_CURSOR_MISSING: a bounded page must expose continuation')
+  assert.equal(
+    first.runs.every(run => run.source?.sessionId === undefined),
+    true,
+    'W2.1 QUERY_RAW_SOURCE_LEAK: summaries must omit source/session internals'
+  )
+  const second = await h.service.queryRuns({ sessionId: 'w2-session-a', limit: 20, cursor: first.nextCursor })
+  assert.equal(second.runs.length, 20)
+  assert.equal(new Set([...first.runs, ...second.runs].map(run => run.runId)).size, 40)
+  assert.ok(second.nextCursor)
+  const filtered = await h.service.queryRuns({ sessionId: 'w2-session-a', blueprintId: 'w2-blueprint-a', state: 'succeeded', limit: 100 })
+  assert.equal(filtered.runs.length, 23)
+  await assert.rejects(
+    () => h.service.queryRuns({ sessionId: 'w2-session-a', cursor: '%%%invalid%%%' }),
+    error => error.code === 'blueprint/invalid-cursor'
+  )
+  assert.deepEqual(await handle.store.get(before.runId), before, 'W2.1 QUERY_MUTATED_CANONICAL: history reads must not rewrite RunRecord')
+})
+
+test('W2.5 explicit Run archive is reversible, hides only the projection and preserves canonical facts', async t => {
+  const h = await liveHarness(t)
+  const handle = await h.service.configuredRuntime()
+  const definitionJson = JSON.stringify(definition())
+  const admission = await handle.store.createRun(
+    { scope: 'run', requestId: 'w2-archive', payloadFingerprint: 'w2-archive' },
+    'w2-archive-revision',
+    definitionJson,
+    '{}',
+    { blueprintId: 'w2-archive-blueprint', source: { sessionId: 'w2-archive-session', kind: 'ui' } }
+  )
+  await handle.store.settleTerminal(admission.runId, 'succeeded', { reason: 'w2-archive-fixture' })
+  const before = await handle.store.get(admission.runId)
+  assert.deepEqual(await h.service.archiveRun({ runId: admission.runId }), { runId: admission.runId, archived: true })
+  assert.deepEqual(await h.service.queryRuns({ sessionId: 'w2-archive-session' }), { runs: [] })
+  assert.equal((await h.service.queryRuns({ sessionId: 'w2-archive-session', includeArchived: true })).runs[0].archived, true)
+  assert.deepEqual(await handle.store.get(admission.runId), before, 'archive must not rewrite RunRecord seq/state/attempts')
+  assert.deepEqual(await h.service.restoreRun({ runId: admission.runId }), { runId: admission.runId, archived: false })
+  assert.equal((await h.service.queryRuns({ sessionId: 'w2-archive-session' })).runs[0].archived, false)
+
+  const active = await handle.store.createRun(
+    { scope: 'run', requestId: 'w2-archive-active', payloadFingerprint: 'w2-archive-active' },
+    'w2-archive-revision',
+    definitionJson,
+    '{}',
+    { blueprintId: 'w2-archive-blueprint', source: { sessionId: 'w2-archive-session', kind: 'ui' } }
+  )
+  await assert.rejects(
+    () => h.service.archiveRun({ runId: active.runId }),
+    error => error.code === 'blueprint/run-lifecycle-conflict'
+  )
+})
+
 test('host: native tools expose catalog revision, authoritative caller/turn, replay and strict source-free model parameters', async t => {
   const h = await liveHarness(t)
   const doc = await h.save(definition())

@@ -85,8 +85,6 @@ const publicArgs = {
   inspectRun: { runId: 'run' },
   cancelRun: { runId: 'run' },
   decide: { runId: 'run', decisionId: 'decision', action: 'approve' },
-  hostProbe: { blueprintId: 'sample', resourceId: 'skill', input: 'probe' },
-  mcpProbe: { serverName: 'registered', toolName: 'read', args: {} },
   exportDefinition: { blueprintId: 'sample' },
   importDefinition: { blueprintId: 'sample', archiveBase64: 'YQ==' }
 }
@@ -470,7 +468,11 @@ test('catalog IDs and strict service codecs: no prototype lookup, no untrusted l
     await assert.rejects(h.service[method]({ ...args, surprise: true }), safeError('gateway/bad-request', h.root))
   }
   assert.equal(codec('startRun').safeParse({ definitionJson: JSON.stringify(doc()), inputJson: '{}', runtimeRoot: h.runtimeRoot }).success, false)
-  assert.equal(codec('hostProbe').safeParse({ skillDir: h.rootDir, input: '' }).success, false)
+  assert.equal(
+    TYPERT.invocations.some(i => i.method === 'hostProbe' || i.method === 'mcpProbe'),
+    false,
+    'diagnostic probes are internal-only, not public wire methods'
+  )
   assert.equal(TYPERT.invocations.find(i => i.method === 'listDefinitions').parameters.length, 0)
 })
 
@@ -651,7 +653,6 @@ test('hostProbe logical configured Skill: real public Agent/session contract and
     JSON.stringify(doc({ resources: { probeSkill: { kind: 'skill', source: { kind: 'shared', rootId: 'user-skills', path: 'demo' } } } }))
   )
   const evidence = await h.service.hostProbe({ blueprintId: 'sample', resourceId: 'probeSkill', input: 'ACTUAL_PROBE_INPUT' })
-  assert.equal(resultCodec('hostProbe').safeParse(evidence).success, true)
   assert.deepEqual(evidence.outcome, { ok: true, kind: 'succeeded', detail: 'CONFIGURED_PROBE' })
   assert.equal(host.calls[0].input, 'ACTUAL_PROBE_INPUT')
   assert.equal(host.calls[0].file, 'WHOLE_SKILL_TREE')

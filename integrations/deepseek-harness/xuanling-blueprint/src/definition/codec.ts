@@ -72,7 +72,7 @@ const teamStageSchema = z
 const nodeSchema = z
   .object({
     id: z.string().regex(idPattern),
-    kind: z.enum(['input', 'output', 'agentTask', 'toolCall', 'scriptCall', 'condition', 'join', 'humanDecision', 'subflow', 'iteration']),
+    kind: z.enum(['input', 'output', 'agentTask', 'condition', 'join', 'humanDecision']),
     outputs: z.record(z.string(), z.string().min(1)).optional(),
     inputs: z.record(z.string(), z.string().min(1)).optional(),
     agentRef: z.string().regex(idPattern).optional(),
@@ -90,15 +90,8 @@ const nodeSchema = z
       .optional(),
     outputSchemaRef: z.string().regex(idPattern).optional(),
     teamStage: teamStageSchema.optional(),
-    join: z.enum(['all', 'any']).optional(),
-    branches: z.array(z.string().regex(idPattern)).optional(),
-    budget: z
-      .object({
-        maxIterations: z.number().int().positive().max(1000),
-        maxDurationMs: z.number().int().positive().max(600_000)
-      })
-      .optional(),
-    subflowRef: z.string().regex(idPattern).optional()
+    join: z.literal('all').optional(),
+    branches: z.array(z.string().regex(idPattern)).optional()
   })
   .strict()
 

@@ -138,11 +138,7 @@ test('C-07 condition/default-all Inspector props use existing editor commands, e
   assert.equal(field(joinTree, 'join').props.value, 'all')
   field(joinTree, 'join').props.onChange({ currentTarget: { value: 'all' } })
   assert.equal(editor.exportDefinition().graph.nodes[1].join, 'all')
-  assert.deepEqual(
-    parseInspectorJson(join, 'options', '{"join":"any"}'),
-    { ok: true, patch: { join: 'any' } },
-    'legacy remains readable, not execution support'
-  )
+  assert.deepEqual(parseInspectorJson(join, 'options', '{"join":"any"}'), { ok: false, issue: 'node-options-shape' })
   const agent = editor.nodes[2]
   assert.deepEqual(parseInspectorJson(agent, 'options', '{"toolAllowlist":[],"outputSchemaRef":"user-schema-ref"}'), {
     ok: true,

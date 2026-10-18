@@ -44,7 +44,7 @@ export interface ResourceRef {
   format?: 'agent-preset' | 'mcp-definition'
 }
 
-export type NodeKind = 'input' | 'output' | 'agentTask' | 'toolCall' | 'scriptCall' | 'condition' | 'join' | 'humanDecision' | 'subflow' | 'iteration'
+export type NodeKind = 'input' | 'output' | 'agentTask' | 'condition' | 'join' | 'humanDecision'
 
 export interface PortType {
   /** Named wire type; structural typing applies at edge validation. */
@@ -75,16 +75,12 @@ export interface GraphNode {
   outputSchemaRef?: string
   /** One native Team task and declared members; never inferred from metadata. */
   teamStage?: TeamStageConfig
-  /** Join strategy for join nodes. */
-  join?: 'all' | 'any'
+  /** Join strategy for join nodes. The only executable policy is all. */
+  join?: 'all'
   /** Condition branches for condition nodes. */
   branches?: string[]
   /** Boolean branch behavior; absent on old definitions (not runnable). */
   condition?: { inputPort: string; trueBranch: string; falseBranch: string }
-  /** Iteration bounds. */
-  budget?: { maxIterations: number; maxDurationMs: number }
-  /** Subflow reference (subflow nodes). */
-  subflowRef?: string
 }
 
 /** Public, non-secret model route selected for one agent task. */

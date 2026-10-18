@@ -9,6 +9,11 @@ import type { PortField } from '../../logic/inspector/inspector-commands.ts'
 import type { InspectorViewModel } from '../../presenters/inspector-presenter.ts'
 import type { InspectorViewIntent } from '../../logic/inspector/inspector-command-adapter.ts'
 export type { InspectorViewIntent } from '../../logic/inspector/inspector-command-adapter.ts'
+
+function retainedOption(value: string, label: string, values: readonly string[]): React.ReactElement | null {
+  return value && !values.includes(value) ? <option value={value}>{label}</option> : null
+}
+
 export function inspectorView(model: InspectorViewModel, t: BlueprintLocaleProps['t'], onIntent: (intent: InspectorViewIntent) => void): React.ReactElement {
   const { node, capability, visibility, snapshot, disabled } = model
   const select = (
@@ -61,6 +66,95 @@ export function inspectorView(model: InspectorViewModel, t: BlueprintLocaleProps
           </label>
         ))}
       </fieldset>
+    )
+  }
+  const modelGroup = model.modelCatalog?.groups.find(group => group.id === snapshot.modelRoute.provider)
+  const selectedModel = modelGroup?.models.find(item => item.id === snapshot.modelRoute.model)
+  const providerIds = model.modelCatalog?.groups.map(group => group.id) ?? []
+  const modelIds = modelGroup?.models.map(item => item.id) ?? []
+  const reasoningEfforts = selectedModel?.reasoning?.efforts ?? []
+  const catalogReady = model.modelCatalogStatus === 'ready' && model.modelCatalog !== undefined
+  const modelRouteField = (field: 'provider' | 'model' | 'reasoningEffort') => {
+    const label = field === 'provider' ? 'inspector.modelProvider' : field === 'model' ? 'inspector.modelName' : 'inspector.reasoningEffort'
+    if (!catalogReady) {
+      return (
+        <label key={field} className={'bp-field'}>
+          {t(label)}
+          <input
+            data-bp-field={`modelSelection.${field}`}
+            value={snapshot.modelRoute[field]}
+            onChange={(event: ChangeEvent<HTMLInputElement>) => onIntent({ type: 'model-route', field, value: event.currentTarget.value })}
+          ></input>
+        </label>
+      )
+    }
+    if (field === 'provider') {
+      return (
+        <label key={field} className={'bp-field'}>
+          {t(label)}
+          <StyledSelect
+            React={React}
+            disabled={disabled}
+            data-bp-field={`modelSelection.${field}`}
+            aria-label={t(label)}
+            value={snapshot.modelRoute.provider}
+            onChange={(event: ChangeEvent<HTMLSelectElement>) => onIntent({ type: 'model-route', field, value: event.currentTarget.value })}
+          >
+            <option value={''}>{t('inspector.selectModelProvider')}</option>
+            {retainedOption(snapshot.modelRoute.provider, `${snapshot.modelRoute.provider} · ${t('inspector.modelUnavailable')}`, providerIds)}
+            {model.modelCatalog!.groups.map(group => (
+              <option key={group.id} value={group.id}>
+                {group.name}
+              </option>
+            ))}
+          </StyledSelect>
+        </label>
+      )
+    }
+    if (field === 'model') {
+      return (
+        <label key={field} className={'bp-field'}>
+          {t(label)}
+          <StyledSelect
+            React={React}
+            disabled={disabled || modelGroup === undefined}
+            data-bp-field={`modelSelection.${field}`}
+            aria-label={t(label)}
+            value={snapshot.modelRoute.model}
+            onChange={(event: ChangeEvent<HTMLSelectElement>) => onIntent({ type: 'model-route', field, value: event.currentTarget.value })}
+          >
+            <option value={''}>{t('inspector.selectModel')}</option>
+            {retainedOption(snapshot.modelRoute.model, `${snapshot.modelRoute.model} · ${t('inspector.modelUnavailable')}`, modelIds)}
+            {modelGroup?.models.map(item => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </StyledSelect>
+        </label>
+      )
+    }
+    const effortIds = reasoningEfforts.map(effort => effort.id)
+    return (
+      <label key={field} className={'bp-field'}>
+        {t(label)}
+        <StyledSelect
+          React={React}
+          disabled={disabled || selectedModel === undefined}
+          data-bp-field={`modelSelection.${field}`}
+          aria-label={t(label)}
+          value={snapshot.modelRoute.reasoningEffort}
+          onChange={(event: ChangeEvent<HTMLSelectElement>) => onIntent({ type: 'model-route', field, value: event.currentTarget.value })}
+        >
+          <option value={''}>{t('inspector.reasoningDefault')}</option>
+          {retainedOption(snapshot.modelRoute.reasoningEffort, `${snapshot.modelRoute.reasoningEffort} · ${t('inspector.modelUnavailable')}`, effortIds)}
+          {reasoningEfforts.map(effort => (
+            <option key={effort.id} value={effort.id}>
+              {effort.name}
+            </option>
+          ))}
+        </StyledSelect>
+      </label>
     )
   }
   const portEditor = (field: PortField) => {
@@ -163,11 +257,6 @@ export function inspectorView(model: InspectorViewModel, t: BlueprintLocaleProps
             onChange={() => onIntent({ type: 'join-all' })}
           >
             <option value={'all'}>{t('inspector.joinAll')}</option>
-            {model.joinValue === 'any' && (
-              <option value={'any'} disabled={true}>
-                {t('inspector.joinAnyUnavailable')}
-              </option>
-            )}
           </StyledSelect>
         </label>
       )}
@@ -190,16 +279,14 @@ export function inspectorView(model: InspectorViewModel, t: BlueprintLocaleProps
           </label>
           {snapshot.modelRoute.explicit && (
             <div className={'bp-model-fields'}>
-              {(['provider', 'model', 'reasoningEffort'] as const).map(field => (
-                <label key={field} className={'bp-field'}>
-                  {t(field === 'provider' ? 'inspector.modelProvider' : field === 'model' ? 'inspector.modelName' : 'inspector.reasoningEffort')}
-                  <input
-                    data-bp-field={`modelSelection.${field}`}
-                    value={snapshot.modelRoute[field]}
-                    onChange={(event: ChangeEvent<HTMLInputElement>) => onIntent({ type: 'model-route', field, value: event.currentTarget.value })}
-                  ></input>
-                </label>
-              ))}
+              {modelRouteField('provider')}
+              {modelRouteField('model')}
+              {modelRouteField('reasoningEffort')}
+              {!catalogReady && (
+                <p role={'status'} data-bp-model-catalog-status={model.modelCatalogStatus}>
+                  {t('inspector.modelCatalogUnavailable')}
+                </p>
+              )}
               <button type={'button'} data-bp-action={'apply-model-route'} onClick={() => onIntent({ type: 'apply-model' })}>
                 {t('inspector.applyNodeOptions')}
               </button>
@@ -211,13 +298,6 @@ export function inspectorView(model: InspectorViewModel, t: BlueprintLocaleProps
       {capability.agentBindings && references('toolsetRefs', 'inspector.toolsetBindings')}
       {capability.agentBindings && select('outputSchemaRef', 'inspector.outputSchemaBinding', 'inspector.selectOutputSchema')}
       {capability.agentBindings && <p className={'bp-muted'}>{t('resource.availabilityUnchecked')}</p>}
-      {!capability.agentBindings && model.legacyBindingsText !== null && (
-        <details data-bp-legacy-bindings={true}>
-          <summary>{t('inspector.legacyBindings')}</summary>
-          <p>{t('inspector.legacyBindingsUnused')}</p>
-          <pre>{model.legacyBindingsText}</pre>
-        </details>
-      )}
       <fieldset data-bp-port-visibility={true}>
         <legend>{t('port.visibility')}</legend>
         <p>{t('port.visibilityHelp')}</p>

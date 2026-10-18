@@ -35,6 +35,8 @@ export function ConversationBlueprintView({ controller, sessionId, t, inspectCal
   const snapshot = React.useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
   const chatRequest = React.useSyncExternalStore(chatNavigation?.subscribe ?? noChatSubscription, chatNavigation?.getSnapshot ?? noChatRequest, noChatRequest)
   const [chatUnavailable, setChatUnavailable] = React.useState(false)
+  const [loadingMoreRuns, setLoadingMoreRuns] = React.useState(false)
+  const [archiveConfirmRunId, setArchiveConfirmRunId] = React.useState<string | null>(null)
   React.useEffect(() => {
     if (chatRequest?.sessionId === sessionId && openView && chatNavigation?.consume(sessionId, chatRequest.requestId)) openView('chat', '')
   }, [chatRequest, chatNavigation, sessionId, openView])
@@ -309,6 +311,36 @@ export function ConversationBlueprintView({ controller, sessionId, t, inspectCal
       <p className={'bp-conversation-status'} role={'status'}>
         {t(status)}
       </p>
+      {bound && bound.nextCursor && controller.hasRunQuery() ? (
+        <button
+          type={'button'}
+          className={'bp-conversation-load-more'}
+          disabled={loadingMoreRuns}
+          onClick={() => {
+            setLoadingMoreRuns(true)
+            void controller.loadMoreRuns().finally(() => setLoadingMoreRuns(false))
+          }}
+        >
+          {t(loadingMoreRuns ? 'conversation.loadingMoreRuns' : 'conversation.loadMoreRuns')}
+        </button>
+      ) : null}
+      {bound && controller.hasRunLifecycle() ? (
+        <button
+          type={'button'}
+          className={'bp-conversation-load-more'}
+          onClick={() => {
+            const runId = bound.selected.run.runId
+            if (archiveConfirmRunId !== runId) {
+              setArchiveConfirmRunId(runId)
+              return
+            }
+            setArchiveConfirmRunId(null)
+            void controller.archiveSelectedRun()
+          }}
+        >
+          {archiveConfirmRunId === bound.selected.run.runId ? t('conversation.archiveConfirm') : t('conversation.archiveRun')}
+        </button>
+      ) : null}
       {chatUnavailable && (
         <p role={'status'} data-bp-chat-unavailable={true}>
           {t('conversation.chatUnavailable')}

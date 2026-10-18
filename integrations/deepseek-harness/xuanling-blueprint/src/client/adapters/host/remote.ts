@@ -1,7 +1,16 @@
 /** Browser wire adapter. IDs are opaque identities, never filesystem locators. */
 import { BLUEPRINT_INVOCATIONS } from '../../../typert-descriptors.ts'
+import type { ModelCatalog } from '@deepseek-ai/dsh-api-session-controller/types'
 import type { PreflightRunValue } from '../../../host/preflight.ts'
-import type { AcceptTeamStageOutputArgs, CancelTeamStageArgs, StartTeamStageArgs, TeamStageActionView } from '../../../conversation/contracts.ts'
+import type {
+  AcceptTeamStageOutputArgs,
+  CancelTeamStageArgs,
+  RunLifecycleActionValue,
+  RunQueryArgs,
+  RunQueryValue,
+  StartTeamStageArgs,
+  TeamStageActionView
+} from '../../../conversation/contracts.ts'
 export type { PreflightRunValue, PreflightCheck } from '../../../host/preflight.ts'
 import type { RunSnapshotView } from '../../features/authoring/logic/run/client-model.ts'
 
@@ -29,6 +38,15 @@ export interface HostResourceCatalogEntry {
 export interface ResourceCatalogValue {
   resources: HostResourceCatalogEntry[]
 }
+/** DSH's Host-generation model directory, exposed through the existing Session Remote. */
+export interface ModelCatalogLink {
+  modelCatalog(): Promise<{
+    ok: boolean
+    value?: ModelCatalog
+    error?: { code: string; message?: string }
+  }>
+}
+export type ModelCatalogStatus = 'unavailable' | 'loading' | 'ready'
 export interface RunAdmission {
   runId: string
   semanticRevision: string
@@ -73,6 +91,9 @@ export interface HostLink {
   preflightRun(blueprintId: string, expectedRevision: string, inputJson: string): Promise<PreflightRunValue>
   startRun(blueprintId: string, expectedRevision: string, inputJson: string, requestId: string): Promise<RunAdmission>
   inspectRun(runId: string): Promise<RunSnapshotView>
+  queryRuns(args: RunQueryArgs): Promise<RunQueryValue>
+  archiveRun(runId: string): Promise<RunLifecycleActionValue>
+  restoreRun(runId: string): Promise<RunLifecycleActionValue>
   cancelRun(runId: string): Promise<{ runId: string; state: string }>
   decide(runId: string, decisionId: string, action: 'approve' | 'reject'): Promise<{ runId: string; decisionId: string; state: string; applied: boolean }>
   startTeamStage(args: StartTeamStageArgs): Promise<TeamStageActionView>
@@ -98,6 +119,9 @@ export function resolveBlueprintHost(context: { get?: (key: string) => unknown }
       method === 'createDefinition' ||
       method === 'preflightRun' ||
       method === 'inspectRun' ||
+      method === 'queryRuns' ||
+      method === 'archiveRun' ||
+      method === 'restoreRun' ||
       method === 'exportDefinition' ||
       method === 'importDefinition' ||
       method === 'listResources' ||
@@ -125,6 +149,9 @@ export function resolveBlueprintHost(context: { get?: (key: string) => unknown }
     preflightRun: (blueprintId, expectedRevision, inputJson) => invoke('preflightRun', { blueprintId, expectedRevision, inputJson }),
     startRun: (blueprintId, expectedRevision, inputJson, requestId) => invoke('startRun', { blueprintId, expectedRevision, inputJson, requestId }),
     inspectRun: runId => invoke('inspectRun', { runId }),
+    queryRuns: args => invoke('queryRuns', args),
+    archiveRun: runId => invoke('archiveRun', { runId }),
+    restoreRun: runId => invoke('restoreRun', { runId }),
     cancelRun: runId => invoke('cancelRun', { runId }),
     decide: (runId, decisionId, action) => invoke('decide', { runId, decisionId, action }),
     startTeamStage: args => invoke('startTeamStage', args),

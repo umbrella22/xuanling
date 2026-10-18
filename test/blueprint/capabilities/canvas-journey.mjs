@@ -148,7 +148,13 @@ async function save(page) {
 }
 async function waitRun(page, state) {
   await preparePublicDisclosure(page, 'run')
-  await page.locator(`[data-bp-run="${state}"]`).waitFor({ state: 'visible' })
+  try {
+    await page.locator(`[data-bp-run="${state}"]`).waitFor({ state: 'visible' })
+  } catch (error) {
+    const observed = await page.locator('[data-bp-run]').evaluateAll(elements => elements.map(element => ({ state: element.getAttribute('data-bp-run'), text: element.textContent })))
+    const notice = await page.locator('[data-bp-status="message"]').textContent().catch(() => '')
+    throw new Error(`${error.message}; observedRun=${JSON.stringify(observed)}; notice=${JSON.stringify(notice)}`)
+  }
 }
 function runIdFrom(text) {
   const id = text?.split(' · ')[0]
@@ -679,13 +685,19 @@ export async function runCanvasJourney(page, assert, api) {
   await waitRun(page, 'waiting_input')
   const beforeCancel = await currentRun(page, api)
   await action(page, 'cancel-run').click()
+  // The UI action dispatches the RPC asynchronously. Wait for the durable
+  // terminal projection before taking the explicit inspect snapshot, so the
+  // assertion observes cancellation settlement rather than a legitimate
+  // read that raced the request in flight.
   await waitRun(page, 'cancelled')
+  const afterCancelRpc = value(await api('inspectRun', { runId: beforeCancel.runId }), 'inspect cancelled run after cancel RPC')
   const cancelled = await currentRun(page, api)
   assert(
     'B-CANCEL',
     'real Cancel settles a waiting run and inspector reads the durable cancelled aggregate',
-    beforeCancel.runId !== approved.runId && cancelled.runId === beforeCancel.runId && cancelled.state === 'cancelled' && cancelled.seq > beforeCancel.seq,
-    JSON.stringify(cancelled)
+    beforeCancel.runId !== approved.runId && afterCancelRpc.runId === beforeCancel.runId && afterCancelRpc.state === 'cancelled'
+      && cancelled.runId === beforeCancel.runId && cancelled.state === 'cancelled' && cancelled.seq > beforeCancel.seq,
+    JSON.stringify({ afterCancelRpc, cancelled })
   )
   await page.context().setOffline(true)
   try {

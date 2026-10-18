@@ -19,7 +19,7 @@ const definition = {
         agentRef: 'local',
         inputs: {},
         outputs: { original: 'string' },
-        budget: { maxIterations: 2, maxDurationMs: 1000 }
+        modelSelection: { provider: 'fixture-provider', model: 'initial-model' }
       },
       { id: 'other', kind: 'agentTask' as const, agentRef: 'local', inputs: {}, outputs: {} }
     ],
@@ -98,7 +98,7 @@ Object.assign(window, {
       render()
     },
     concurrent() {
-      editor.updateNode('task', { budget: { maxIterations: 7, maxDurationMs: 2000 } })
+      editor.updateNode('task', { modelSelection: { provider: 'fixture-provider', model: 'concurrent-model' } })
     },
     undo() {
       editor.undo()

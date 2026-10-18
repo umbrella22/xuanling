@@ -1,86 +1,64 @@
 # XuanLing MCP for ZCode
 
-English | [Simplified Chinese](README-ZH.md)
+English | [简体中文](README-ZH.md)
 
-The released `xuanling-mcp` 0.6.1 plugin is a self-contained ZCode integration.
-It carries the verified Node.js launcher and native packages for macOS ARM64,
-Linux x64 glibc, and Windows x64. It does not require a global npm installation
-and does not download an executable during installation.
+XuanLing MCP is a local, self-contained tool server that gives ZCode's coding agent typed filesystem, process, project, memory and session tools. The same call returns the same structured result on macOS, Linux and Windows, and all data stays on your machine. Current release: 0.6.1.
 
-## Installation
+## Why use it
 
-Add `umbrella22/xuanling-zcode-marketplace` as a GitHub marketplace source in
-ZCode, then install `xuanling-mcp` through ZCode's plugin manager. The runtime
-requires Node.js 18.17 or newer on `PATH`.
+- **Same result on every OS.** One typed call returns one structured answer; no grep/findstr/Select-String translation.
+- **Bounded, resumable output.** Omitting the output budget returns at most 65,536 bytes with a cursor or resume token instead of a silent truncation; request the complete result explicitly when you need it.
+- **Edits with real preconditions.** Whole-file writes and exact edits can require the SHA-256 of the content you read, so a file changed by someone else produces a conflict instead of an overwrite.
+- **Consistent, atomic multi-file edits.** Ordered batches preflight every file and hash before the first write; risky edits can be recorded as reversible change sets.
+- **Memory that asks before it remembers.** Search and read work immediately; changes become proposals that only an explicit review turns into canonical records. Storage is local SQLite full-text search, with no embedding model download and no network access.
+- **Direct processes, no shell.** Programs run with explicit argv, so quoting and metacharacters never change meaning between platforms.
 
-## Runtime Paths
+Who it's for: ZCode users and teams working in cross-platform repositories, agent-heavy editing sessions, or projects where a small amount of durable, reviewable memory is useful. If you want XuanLing to replace ZCode's native file tools instead of sitting beside them, use the [replacement variant](../xuanling-mcp-replace/README.md).
 
-`.mcp.json` is the only launch contract. The plugin manifest references that
-file, which starts the profile-local Node.js launcher through
-`${ZCODE_PLUGIN_ROOT}` and passes `${ZCODE_PROJECT_DIR}` as the filesystem
-capability root. The launcher selects the current platform package and verifies
-its SHA-256 before executing it.
+## Install from the ZCode marketplace
 
-## Included Components
+1. Add `umbrella22/xuanling-zcode-marketplace` as a GitHub marketplace source in ZCode.
+2. Install and enable the `xuanling-mcp` plugin (version 0.6.1) from ZCode's plugin manager.
+3. Make sure Node.js 18.17 or newer is available on `PATH`.
 
-| Path | Purpose |
-| --- | --- |
-| `.zcode-plugin/plugin.json` | Plugin metadata and `.mcp.json` component reference |
-| `.mcp.json` | Sole MCP launch configuration |
-| `mcp-result-adapter.mjs` | ZCode model-facing result projection |
-| `bin/node_modules` | Release-generated launcher and three native package aliases |
-| `LICENSE` | MIT license |
-| `skills/xuanling-mcp-tools/SKILL.md` | Tool usage, Memory proposal/review, output, and process guidance |
+The plugin is self-contained: it ships matching macOS ARM64, Linux x64 (glibc 2.35 or newer) and Windows x64 runtimes. There is no global npm installation and no binary download during installation.
 
-The launcher selects the current platform package, validates its metadata and
-SHA-256, and starts the native MCP server. Unsupported OS, CPU, or libc
-combinations fail before execution. The default catalog exposes all tool
-profiles. Memory uses `~/.xuanling/memory.db` unless the launch contract is
-restated with an explicit `--memory-db`.
+Validated on ZCode 3.10.2, where its tools appear as `mcp__plugin_xuanling-mcp_xuanling__<tool>`. Install and enable only one XuanLing variant at a time.
 
-ZCode appends `structuredContent` to the model-facing tool result. The result
-adapter removes only the text block that is an exact JSON representation of
-that same value, preserving human-readable and non-text blocks. The structured
-value itself remains available to ZCode validation and structured consumers.
+## Two variants: choose one
 
-The adapter accepts only JSON object frames from the child. Malformed output or
-an unresolved `tools/call` at clean child exit returns a nonzero status without
-forwarding the invalid frame. Host termination is forwarded and force-terminated
-after a 500 ms grace when the child does not exit.
+| Plugin | What it does | Choose it when |
+| --- | --- | --- |
+| `xuanling-mcp` (additive, default — this document) | Adds XuanLing tools next to ZCode's native tools. | You want native Read/Edit and their UI, and call XuanLing for cross-platform results, bounded output, hash-protected edits, processes or memory. |
+| [`xuanling-mcp-replace`](../xuanling-mcp-replace/README.md) (opt-in) | Blocks ZCode's native Read/Write/Edit/ApplyPatch/MultiEdit and requires SHA-256 preconditions on XuanLing mutations. | You want every file mutation to go through one enforced contract and are willing to give up native file-tool conveniences. |
 
-## Agent Workflow
+Installing the replacement variant requires disabling or uninstalling this one first; disabling the replacement restores ZCode's native file tools.
 
-The bundled Skill prefers ZCode's native Read/Edit path for routine small work
-and uses XuanLing for exact cross-platform search, explicit budgets, complete
-pagination, hash/CAS overwrite, and atomic same-file multi-hunk patches.
-Compound suffixes such as `d.ts` and `d.mts` are passed directly. Repeated
-short validations with identical argv use `deterministic: true`; long jobs stay
-on ZCode's background/job surface.
+## What's included and how it works
 
-Under the generic MCP v3 contract, omitted `output` is bounded at 65,536 bytes,
-complete output is explicit, numbered reads use absolute source lines, and
-`known_sha256` avoids replaying unchanged text or bytes. The Skill keeps
-`include_diff: true` until a native ZCode diff projection for XuanLing is
-independently proven; SHA protects integrity and concurrency but does not prove
-edit semantics. Exact project scripts outrank ecosystem conventions, `check`
-never becomes `build`, and minimal-environment spawn failures provide a
-non-secret `inherit_env: true` remediation.
+The plugin bundles one local MCP server with the complete XuanLing catalog of 43 typed tools: filesystem inspection, search and mutation; direct-argv processes and pipelines; project detection and script execution; proposal-reviewed memory; sessions; and process-output artifacts. It also bundles a Skill that teaches the agent when to keep using ZCode's native tools and when to reach for XuanLing.
 
-Memory uses a single-write L1/L2 split. Project-local facts that must appear in
-every session stay in host file memory; cross-project shared facts use XuanLing
-pending candidates. An explicit L1 pointer triggers one scoped
-`memory_search` at task start or a topic switch. Search returns full active
-records rather than a lightweight manifest, and review always requires an
-explicit user decision for the concrete proposal.
+A typical session:
 
-## Security Boundary
+1. Find and read with bounded output, then keep the returned SHA-256.
+2. Write or edit with that hash as the precondition, and review the returned diff.
+3. If a formatter or another writer touched the file, read or hash it again before the next mutation.
+4. Let project tools run the repository's own check/test/build scripts; long-running work stays on ZCode's background jobs.
 
-`--workspace-root` constrains paths opened by XuanLing filesystem tools. It is
-not a process sandbox. ZCode remains responsible for tool approval, and child
-process isolation requires an OS sandbox or container when hostile execution
-is possible. The packaged adapter projects results only and does not rewrite
-tool-call arguments, so the v3 request guidance is advisory where ZCode exposes
-no request-policy hook. XuanLing 0.6.1 is not publisher-signed; npm provenance, the
-source-bound native hashes, and the GitHub-attested marketplace archive reduce
-distribution risk. They do not guarantee that every security product will
-classify a new binary the same way.
+Memory follows a proposal-first flow: project-local facts that every session needs stay in ZCode's own file memory, while facts shared across projects are proposed to XuanLing and only become canonical after an explicit review. The default database is `~/.xuanling/memory.db`; recall is local and lexical.
+
+## Safety, trust and host limits
+
+- XuanLing filesystem tools are limited to the current project directory. This is a path capability, not a process sandbox: processes you launch can still reach other paths, and ZCode remains responsible for tool approval and OS-level isolation.
+- This additive variant installs no host-side interception policy. SHA-256 preconditions are opt-in, and the server does not rewrite your tool arguments; request the protection you want explicitly.
+- Memory is stored locally; the plugin needs no API key, account or external service.
+- Release artifacts come from the immutable XuanLing release pipeline: the launcher selects the matching platform package and verifies its SHA-256 before execution. XuanLing 0.6.1 is not signed with a platform publisher certificate; npm provenance, source-bound hashes and the attested marketplace archive reduce distribution risk instead.
+- ZCode 3.10.2 is the validated host for the tool names and limits described here. Newer ZCode versions may change host tool naming or presentation; confirm against the current tool catalog.
+
+## Links
+
+- [XuanLing ZCode marketplace](https://github.com/umbrella22/xuanling-zcode-marketplace)
+- [XuanLing source repository](https://github.com/umbrella22/xuanling)
+- [XuanLing MCP server documentation](https://github.com/umbrella22/xuanling/blob/main/npm/packages/xuanling-mcp/README.md)
+- [Replacement variant for ZCode](../xuanling-mcp-replace/README.md)
+- [MIT License](LICENSE)

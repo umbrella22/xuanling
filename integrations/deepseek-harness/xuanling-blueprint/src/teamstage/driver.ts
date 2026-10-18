@@ -89,7 +89,7 @@ export class TeamStageDriver {
       })
       void stopped.catch(() => {})
       const pending: PendingMember[] = []
-      let nativePending = false
+      let creationListenerError: TeamDriverError | undefined
       let removeCreation: (() => void) | undefined
       try {
         // All native request exceptions are unknown by default: append may have
@@ -121,56 +121,67 @@ export class TeamStageDriver {
           pending.push({ reservation })
         }
         removeCreation = this.ctx.on('agent/created', async ({ agent, signal: creationSignal }) => {
-          const roster = adapter.listMembers(lead)
-          const row = roster.find(row => row.id === agent.id && pending.some(entry => entry.reservation.nativeName === row.name))
-          if (row === undefined) return
-          const entry = pending.find(entry => entry.reservation.nativeName === row.name)!
-          signal.throwIfAborted()
-          creationSignal?.throwIfAborted()
-          const registry = this.ctx.get('agents')
-          if (registry?.get(SessionId(agent.id)) !== agent) throw new TeamDriverError('teamstage-member-identity-unavailable')
-          const membership = lead.service.tryMembership?.(agent) ?? lead.service.membership(agent)
-          if (
-            membership.root !== lead.agent ||
-            membership.role !== 'teammate' ||
-            membership.id !== lead.teamId ||
-            membership.name !== entry.reservation.nativeName ||
-            !['provisioning', 'running', 'inactive'].includes(row.status as string) ||
-            entry.agent !== undefined
-          ) {
-            throw new TeamDriverError('teamstage-member-identity-unavailable')
-          }
-          if (TEAM_MEMBER_TOOLS.some(name => !agent.ctx.tools.get(name, agent))) throw new TeamDriverError('teamstage-tools-unavailable')
-          entry.agent = agent
-          const activity = this.observations.bind(record.runId, attemptId, entry.reservation.memberId, agent.id)
-          entry.scope = installTeamMemberScope(agent, {
-            schema: prepared.outputSchema!,
-            effectiveToolNames: args.effectiveToolNames,
-            observerContext: this.ctx,
-            taskId,
-            nativeNames: pending.map(member => member.reservation.nativeName),
-            primary: entry === pending[0],
-            signal,
-            store: this.store,
-            runId: record.runId,
-            stageId: node.id,
-            teamId: lead.teamId,
-            attemptId,
-            memberId: entry.reservation.memberId,
-            nativeName: entry.reservation.nativeName,
-            ...(activity === undefined ? {} : { activity }),
-            onUnknown: () => {
-              stageControl.abort(new TeamDriverError('teamstage-team-effect-unknown'))
+          try {
+            const roster = adapter.listMembers(lead)
+            const row = roster.find(row => row.id === agent.id && pending.some(entry => entry.reservation.nativeName === row.name))
+            if (row === undefined) return
+            const entry = pending.find(entry => entry.reservation.nativeName === row.name)!
+            signal.throwIfAborted()
+            creationSignal?.throwIfAborted()
+            const registry = this.ctx.get('agents')
+            if (registry?.get(SessionId(agent.id)) !== agent) throw new TeamDriverError('teamstage-member-identity-unavailable')
+            const membership = lead.service.tryMembership?.(agent) ?? lead.service.membership(agent)
+            if (
+              membership.root !== lead.agent ||
+              membership.role !== 'teammate' ||
+              membership.id !== lead.teamId ||
+              membership.name !== entry.reservation.nativeName ||
+              !['provisioning', 'running', 'inactive'].includes(row.status as string) ||
+              entry.agent !== undefined
+            ) {
+              throw new TeamDriverError('teamstage-member-identity-unavailable')
             }
-          })
-          // This RMW is independent of the native creation operation; never wait
-          // for spawn completion or a turn in the awaited creation listener.
-          await this.store.bindTeamMemberReservation(record.runId, {
-            attemptId,
-            effectId: entry.reservation.effectId,
-            memberId: entry.reservation.memberId,
-            sessionId: agent.id
-          })
+            if (TEAM_MEMBER_TOOLS.some(name => !agent.ctx.tools.get(name, agent))) throw new TeamDriverError('teamstage-tools-unavailable')
+            entry.agent = agent
+            const activity = this.observations.bind(record.runId, attemptId, entry.reservation.memberId, agent.id)
+            entry.scope = installTeamMemberScope(agent, {
+              schema: prepared.outputSchema!,
+              effectiveToolNames: args.effectiveToolNames,
+              observerContext: this.ctx,
+              taskId,
+              nativeNames: pending.map(member => member.reservation.nativeName),
+              primary: entry === pending[0],
+              signal,
+              store: this.store,
+              runId: record.runId,
+              stageId: node.id,
+              teamId: lead.teamId,
+              attemptId,
+              memberId: entry.reservation.memberId,
+              nativeName: entry.reservation.nativeName,
+              ...(activity === undefined ? {} : { activity }),
+              onUnknown: () => {
+                stageControl.abort(new TeamDriverError('teamstage-team-effect-unknown'))
+              }
+            })
+            // This RMW is independent of the native creation operation; never wait
+            // for spawn completion or a turn in the awaited creation listener.
+            await this.store.bindTeamMemberReservation(record.runId, {
+              attemptId,
+              effectId: entry.reservation.effectId,
+              memberId: entry.reservation.memberId,
+              sessionId: agent.id
+            })
+          } catch (error) {
+            creationListenerError = error instanceof TeamDriverError ? error : new TeamDriverError('teamstage-member-identity-unavailable')
+            stageControl.abort(creationListenerError)
+            // The DSH registry awaits serial `agent/created` listeners before
+            // publishing the child to the caller. Preserve that fail-closed
+            // veto for a child that matched this stage's pending roster. The
+            // listener is still removed in the outer finally, so a late
+            // failure cannot poison an unrelated future creation.
+            throw creationListenerError
+          }
         })
         const order = [...pending.slice(1), pending[0]!]
         for (const entry of order) {
@@ -195,7 +206,6 @@ export class TeamStageDriver {
             ),
             `[Input]\n${typeof args.input === 'string' ? args.input : JSON.stringify(args.input)}`
           ].join('\n\n')
-          nativePending = true
           const view = await runner.dispatch({
             ...base,
             effectId: entry.reservation.effectId,
@@ -216,6 +226,7 @@ export class TeamStageDriver {
                 stopped
               ]),
             result: value => {
+              if (creationListenerError !== undefined) throw creationListenerError
               const row = parseSpawnedMember(value)
               if (!entry.agent || !entry.scope || row.id !== entry.agent.id || row.name !== entry.reservation.nativeName)
                 throw new TeamDriverError('teamstage-member-identity-unavailable')
@@ -223,7 +234,6 @@ export class TeamStageDriver {
             },
             unknown: () => true
           })
-          nativePending = false
           await this.store.upsertTeamMember(record.runId, {
             memberId: entry.reservation.memberId,
             name: entry.reservation.nativeName,
@@ -297,8 +307,10 @@ export class TeamStageDriver {
         // after either a known failure or accepted settlement.
         stageControl.abort(new TeamDriverError('teamstage-not-dispatching'))
         this.observations.end(record.runId, attemptId)
-        // Unknown late creation remains fail-closed under this registered hook.
-        if (!nativePending) removeCreation?.()
+        // Unknown late creation remains fail-closed after the spawn effect is
+        // aborted; the listener is always removed so it cannot affect an
+        // unrelated native Agent creation.
+        removeCreation?.()
         for (const member of pending) member.scope?.dispose()
       }
     } finally {

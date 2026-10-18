@@ -109,7 +109,7 @@ export async function collectPreflight(
       if (definition.graph.edges.some(edge => edge.kind === 'data' && edge.to.startsWith(`${node.id}.`))) continue
       try {
         validateNodeInputs(node, options.input, new Set())
-        if (node.kind === 'input' || node.kind === 'output' || (node.kind === 'join' && node.join !== 'any')) structuralOutputs(node, options.input, new Set())
+        if (node.kind === 'input' || node.kind === 'output' || node.kind === 'join') structuralOutputs(node, options.input, new Set())
       } catch (error) {
         if (!(error instanceof NodeValueError)) throw error
         checks.push({ code: error.code, status: 'block', nodeId: node.id })
@@ -199,11 +199,6 @@ export async function collectPreflight(
     }
   }
   for (const node of definition.graph.nodes) {
-    if (!['input', 'output', 'agentTask', 'humanDecision', 'condition', 'join'].includes(node.kind) || (node.kind === 'join' && node.join === 'any')) {
-      checks.push({ code: 'node-executor-unavailable', status: 'block', nodeId: node.id })
-      continue
-    }
-    // Old records without behavior remain readable, not silently manual.
     if (node.kind === 'condition' && node.condition === undefined) {
       checks.push({ code: 'condition-config-unavailable', status: 'block', nodeId: node.id })
       continue

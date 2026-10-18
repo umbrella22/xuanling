@@ -1,67 +1,64 @@
-# XuanLing MCP for ZCode
+# 面向 ZCode 的 XuanLing MCP
 
 [English](README.md) | 简体中文
 
-发行版 `xuanling-mcp` 0.6.1 是自包含的 ZCode 集成。插件携带经过验证的 Node.js launcher，
-以及 macOS ARM64、Linux x64 glibc 和 Windows x64 原生 package。它不依赖全局 npm 安装，
-安装期间也不会下载可执行文件。
+XuanLing MCP 是一个本地、自包含的工具服务器，为 ZCode 的编码 Agent 提供类型化的文件系统、进程、项目、Memory 与会话工具。同一次调用在 macOS、Linux 和 Windows 上返回相同的结构化结果，数据不离开本机。当前版本：0.6.1。
 
-## 安装
+## 为什么选择它
 
-在 ZCode 中将 `umbrella22/xuanling-zcode-marketplace` 添加为 GitHub marketplace source，
-然后通过 ZCode 插件管理器安装 `xuanling-mcp`。运行时要求 `PATH` 中存在 Node.js 18.17 或
-更高版本。
+- **跨平台结果一致。** 一次类型化调用返回一份结构化结果，不需要 grep/findstr/Select-String 的方言翻译。
+- **有界输出，可续读。** 省略输出预算时最多返回 65,536 字节，并带游标或续读令牌，而不是静默截断；需要完整结果时显式请求。
+- **编辑带真实前置条件。** 整文件写入和精确编辑可以要求提供你读取内容对应的 SHA-256；文件被他人修改时返回冲突，而不是直接覆盖。
+- **一致、原子化的多文件编辑。** 有序批次会在首次写入前预检全部文件与哈希；高风险编辑可记录为可回滚的变更集。
+- **先提案后记忆。** 搜索和读取可直接使用；修改先成为提案，只有显式评审才转为规范记录。存储使用本地 SQLite 全文检索，不下载 embedding 模型，也不访问网络。
+- **直接进程，不经过 shell。** 程序以显式 argv 运行，引号和元字符在不同平台不会改变含义。
 
-## 运行路径
+适合谁：在跨平台仓库中工作的 ZCode 用户和团队、编辑操作密集的会话，或需要少量持久且可评审记忆的项目。若希望 XuanLing 取代 ZCode 原生文件工具而非与它们并存，请使用[替换版](../xuanling-mcp-replace/README-ZH.md)。
 
-`.mcp.json` 是唯一启动合同。Plugin manifest 只引用该文件；它通过
-`${ZCODE_PLUGIN_ROOT}` 启动随插件分发的 Node.js launcher，并把
-`${ZCODE_PROJECT_DIR}` 作为文件系统 capability root。Launcher 会选择当前平台 package，
-校验 SHA-256 后才执行原生 binary。
+## 从 ZCode marketplace 安装
 
-## 包含组件
+1. 在 ZCode 中将 `umbrella22/xuanling-zcode-marketplace` 添加为 GitHub marketplace source。
+2. 在 ZCode 插件管理器中安装并启用 `xuanling-mcp` 插件（版本 0.6.1）。
+3. 确认 `PATH` 中存在 Node.js 18.17 或更高版本。
 
-| 路径 | 作用 |
-| --- | --- |
-| `.zcode-plugin/plugin.json` | Plugin metadata 与 `.mcp.json` component 引用 |
-| `.mcp.json` | 唯一 MCP 启动配置 |
-| `mcp-result-adapter.mjs` | ZCode 模型侧 result projection |
-| `bin/node_modules` | 发布时生成的 launcher 与三个原生 package alias |
-| `LICENSE` | MIT License |
-| `skills/xuanling-mcp-tools/SKILL.md` | 工具用法、Memory proposal/review、输出与进程指导 |
+插件为自包含分发：内置匹配的 macOS ARM64、Linux x64（glibc 2.35 或更高）与 Windows x64 运行时。不需要全局 npm 安装，安装期间也不会下载二进制文件。
 
-Launcher 会选择当前平台 package，校验 metadata 与 SHA-256，然后启动原生 MCP Server。
-不支持的 OS、CPU 或 libc 组合会在执行前明确失败。默认 catalog 暴露全部 tool profile。
-Memory 默认使用 `~/.xuanling/memory.db`；需要隔离数据库时，可以重述 launch contract 并提供
-显式 `--memory-db`。
+已在 ZCode 3.10.2 上验证，工具以 `mcp__plugin_xuanling-mcp_xuanling__<tool>` 出现。同一时间只安装并启用一个 XuanLing 变体。
 
-ZCode 会把 `structuredContent` 追加到模型可见的工具结果。Result adapter 只移除与该值完全相同
-的 JSON 文本块，保留人类可读文本和非文本块；structured value 本身仍供 ZCode 校验及结构化消费方使用。
+## 两个变体，二选一
 
-Adapter 只接受子进程 JSON object frame。输出 malformed 或子进程正常退出时仍有未结算的 `tools/call` 会以
-非零状态结束，且不会转发无效 frame。Host 终止信号会被转发，子进程未在 500 ms grace 内退出时会被强制终止。
+| 插件 | 作用 | 适合场景 |
+| --- | --- | --- |
+| `xuanling-mcp`（additive，默认，即本文） | 在 ZCode 原生工具旁增加 XuanLing 工具。 | 想保留原生 Read/Edit 及其界面，同时在跨平台结果、有界输出、哈希保护编辑、进程或 Memory 上使用 XuanLing。 |
+| [`xuanling-mcp-replace`](../xuanling-mcp-replace/README-ZH.md)（可选，需显式启用） | 阻止 ZCode 原生 Read/Write/Edit/ApplyPatch/MultiEdit，并要求 XuanLing 修改操作携带 SHA-256 前置条件。 | 希望所有文件修改都经过同一套强制约定，并接受放弃原生文件工具的便利界面。 |
 
-## Agent 工作流
+安装替换版前需要先禁用或卸载本插件；禁用替换版会移除其拦截策略并恢复 ZCode 原生文件工具。
 
-内置 Skill 对普通小型工作优先使用 ZCode 原生 Read/Edit；精确跨平台检索、显式预算、完整分页、
-hash/CAS overwrite 与同文件多 hunk 原子 patch 使用 XuanLing。`d.ts`、`d.mts` 等复合后缀会直接
-传入。相同 argv 的短验证使用 `deterministic: true`，长任务保留在 ZCode 后台 job 能力上。
+## 包含内容与工作流
 
-在通用 MCP v3 合同中，省略 `output` 使用 65,536 byte 有界预算，完整输出必须显式请求；带行号
-读取采用绝对源码行，`known_sha256` 可以避免重复返回未变化的文本或字节。在 ZCode 原生
-XuanLing diff 投影得到独立证明前，Skill 保持 `include_diff: true`；SHA 保护完整性和并发版本，
-但不证明编辑语义。精确项目脚本优先于生态惯例，`check` 绝不映射到 `build`；最小环境启动失败
-会提供不泄露环境值的 `inherit_env: true` 修复提示。
+插件内置一个本地 MCP 服务器，提供完整的 XuanLing 工具目录，共 43 个类型化工具：文件系统检查、搜索与修改；显式 argv 进程与管道；项目探测与脚本执行；提案评审式 Memory；会话；以及进程输出 Artifact。插件还内置一份 Skill，指导 Agent 何时继续使用 ZCode 原生工具、何时改用 XuanLing。
 
-Memory 采用 L1/L2 单写。每会话必见的项目局部事实留在 Host 文件 Memory；跨项目共享事实通过
-XuanLing pending candidate 保存。显式 L1 指针只在任务开始或主题切换时触发一次 scoped
-`memory_search`。Search 返回完整 active record，而非轻量 manifest；review 始终要求用户对具体
-proposal 作出显式决定。
+典型会话：
 
-## 安全边界
+1. 用有界输出查找和读取，并保留返回的 SHA-256。
+2. 以该哈希作为前置条件写入或编辑，并检查返回的差异（diff）。
+3. 若格式化器或其他外部写入方改动过文件，先重新读取或取哈希，再执行下一次修改。
+4. 项目自带的 check/test/build 脚本交给项目工具运行；长任务留在 ZCode 的后台任务中。
 
-`--workspace-root` 约束 XuanLing 文件工具打开的路径，但不是进程 sandbox。工具审批仍由
-ZCode 负责；可能执行恶意代码时，子进程隔离需要 OS sandbox 或 container。打包的 adapter 只投影
-结果，不会重写 tool-call 参数；ZCode 未提供请求 policy hook 的部分只能明确作为 advisory。
-XuanLing 0.6.1 不带发布者证书签名；npm provenance、绑定 source commit 的 native hash 与 GitHub attested
-marketplace archive 可以降低分发风险，但不能保证所有安全软件对新 binary 给出相同判断。
+Memory 采用先提案流程：每个会话都需要的项目局部事实留在 ZCode 自身的文件 Memory 中；跨项目共享事实先提交给 XuanLing，只有显式评审后才成为规范记录。默认数据库为 `~/.xuanling/memory.db`，召回在本地以词法方式完成。
+
+## 安全边界与宿主限制
+
+- XuanLing 文件工具限定在当前项目目录内。这是路径能力，不是进程沙箱：你启动的进程仍可能访问其他路径，工具审批与 OS 级隔离仍由 ZCode 负责。
+- 该 additive 变体不安装宿主侧的拦截策略。SHA-256 前置条件需要调用方主动提供，服务器不会改写工具参数；需要保护时请显式传入。
+- Memory 存储在本地；插件不需要 API key、账号或外部服务。
+- 发布物来自不可变的 XuanLing 发布流水线：启动器选择匹配的平台原生包，并在执行前校验其 SHA-256。XuanLing 0.6.1 不带平台发布者证书签名；npm provenance、绑定源码的哈希与带证明的 marketplace 归档包可降低分发风险。
+- ZCode 3.10.2 是本文工具名与限制的验证宿主。更新的 ZCode 版本可能改变宿主工具命名或呈现方式，请以当前工具目录为准。
+
+## 链接
+
+- [XuanLing ZCode marketplace](https://github.com/umbrella22/xuanling-zcode-marketplace)
+- [XuanLing 源码仓库](https://github.com/umbrella22/xuanling)
+- [MCP 集成指南](https://github.com/umbrella22/xuanling/blob/main/npm/packages/xuanling-mcp/README-ZH.md)
+- [ZCode 替换版](../xuanling-mcp-replace/README-ZH.md)
+- [MIT License](LICENSE)

@@ -536,14 +536,9 @@ test('C-06/C-08 humanDecision waiting/restart/duplicate decision still gates def
   assert.equal((await h.service.decide(args)).applied, false)
   assert.deepEqual(await h.handle.store.get(record.runId), completed)
 })
-test('C-01/C-06 join-any remains admission-blocked without opening a new Run', async t => {
-  const h = await fixture(t, mergeGraph({ strategy: 'any' }))
-  const doc = await h.service.loadDefinition({ blueprintId: h.definition.id })
-  const args = { blueprintId: h.definition.id, expectedRevision: doc.documentRevision, inputJson: json({ value: 'USER_VALUE' }), requestId: randomUUID() }
-  const report = await h.service.preflightRun({ blueprintId: args.blueprintId, expectedRevision: args.expectedRevision, inputJson: args.inputJson })
-  assert.equal(report.canStart, false)
-  assert.ok(report.checks.some(check => check.nodeId === 'merge' && check.status === 'block' && check.code === 'node-executor-unavailable'))
-  await assert.rejects(h.service.startRun(args), error => error.code === 'blueprint/preflight-blocked')
-  assert.deepEqual(await h.handle.store.listRunIds(), [])
-  assert.deepEqual(h.agentCalls, [])
+test('C-01/C-06 join-any is rejected as a definition-invalid hard break before admission', () => {
+  assert.throws(
+    () => mergeGraph({ strategy: 'any' }),
+    error => error.code === 'DEFINITION_INVALID' && error.issues.some(issue => issue.pointer === '/graph/nodes/2/join')
+  )
 })

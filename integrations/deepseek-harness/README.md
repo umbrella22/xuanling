@@ -1,18 +1,67 @@
 # XuanLing for DeepSeek Harness
 
-English | [Simplified Chinese](README-ZH.md)
+English | [简体中文](README-ZH.md)
 
-This integration mounts `xuanling-mcp` through a bundle-owned lazy wrapper
-around DeepSeek Harness's official `@deepseek-ai/dsh-mcp-client` bridge. The
-official bridge caches the complete XuanLing catalog, while the wrapper
-initially registers only `mcp_catalog__xuanling`; exact activations then appear
-as native Harness tools named `mcp__xuanling__<tool>`. Host-specific lazy
-projection, schema projection, workflow Skills, and overwrite policy remain
-outside the Rust MCP contract.
+XuanLing for DeepSeek Harness adds XuanLing's proposal-first Memory and typed tool catalog to a DSH
+profile while DSH keeps its native tools, approval flow, and UI.
 
-## Recommended Setup
+## What this is
 
-Install the Memory and Skills bundles into DSH's shipped `web` profile:
+XuanLing is a local MCP server for coding agents: 43 typed tools over stdio, including 17 filesystem
+tools with SHA-256 preconditions, a nine-tool proposal-first Memory v2 lifecycle, process and project
+execution, artifacts, and long-running sessions.
+
+This repository packages it for DeepSeek Harness as four bundles and one optional Blueprint plugin. A
+runtime bundle mounts the XuanLing server in a DSH profile through DSH's official MCP bridge and keeps
+every native tool. The model initially sees only `mcp_catalog__xuanling` and activates exact XuanLing
+tools when a task needs them, so the initial schema stays small. Packages install from the public npm
+registry into the profile; no global package or install-time binary download is involved.
+
+Use it for memory that cannot become canonical without review, SHA-256-guarded file edits, and
+XuanLing process, project, artifact, and session tools without giving up DSH-native ones.
+
+## Which bundle do I need?
+
+| Bundle | What it adds | Choose it when |
+| --- | --- | --- |
+| `@xuanling-rs/xuanling-dsh-memory` | Complete nine-tool Memory v2 profile; keeps every DSH-native tool | You want durable memory for daily work. **Recommended default**, with the Skills bundle |
+| `@xuanling-rs/xuanling-dsh-skills` | Two workflow Skills plus the strict overwrite policy; no MCP server | You want the workflow Skills and strict overwrite policy; pair it with one runtime bundle |
+| `@xuanling-rs/xuanling-dsh-tools` | Complete 43-tool catalog, including all 17 filesystem tools; keeps native tools | You need XuanLing filesystem, process, project, artifact, or session tools |
+| `@xuanling-rs/xuanling-dsh-tools-replace` | Replaces DSH text file tools with `read`, `write`, `edit`, `file_hash`, `edit_batch`, and native `read_image` | You want XuanLing to handle the filesystem tools DSH ships |
+| `@xuanling-rs/xuanling-dsh-blueprint` | Separate plugin: visual graph editor, durable Runs, optional TeamStage | You want visual, reusable agent workflows |
+
+Install exactly one of `memory`, `tools`, and `tools-replace` per profile: all three mount a server
+named `xuanling` and are alternatives. Add `skills` next to that one runtime bundle; `blueprint` is
+independent.
+
+### Optional: Blueprint
+
+[Blueprint](xuanling-blueprint/README.md) adds a visual graph editor and durable Runs to DSH: connect
+Input, Agent task, Approval, Condition, Join, and Output nodes, bind existing DSH Agents, Skills, and
+MCP tools, and inspect the Attempts DSH recorded. A Run freezes its definition and resources and does
+not replay unknown effects; optional TeamStage runs one Agent task as a native DSH Agent Teams stage.
+
+![A four-specialist Rust review workflow on the Blueprint canvas](xuanling-blueprint/assets/readme/rust-review-blueprint.png)
+
+*A saved Rust review workflow in a DSH Web profile. The screenshot uses the Chinese UI locale.*
+
+## Requirements
+
+- DeepSeek Harness with a shipped `web` or `headless` profile. A custom profile name starts from the
+  base bundle only and has no Web or Headless application.
+- `dsh` and `pnpm` on the PATH; `dsh plugin` invokes pnpm. Every bundle declares Node.js 22.14+.
+- Access to the public npm registry. Packages install into the profile, not globally.
+- A supported native target: macOS Apple Silicon (`arm64`), Linux `x64` with glibc 2.35+, or Windows
+  `x64` MSVC. Other combinations fail with an explicit launcher error.
+- A configured model provider for Blueprint workflows with Agent tasks; Input → Output graphs run
+  without one.
+
+## Install
+
+`dsh plugin` forwards to pnpm in the selected profile and installs from the public npm registry.
+Replace `web` with the profile you use.
+
+### Memory + Skills (recommended)
 
 ```sh
 dsh plugin --profile web add \
@@ -22,174 +71,161 @@ dsh --profile web --dump-config
 dsh web
 ```
 
-The optional Blueprint editor and native TeamStage package uses the same
-pnpm-managed npm surface:
+`--dump-config` prints the composed profile so you can confirm both packages. Use
+`--profile headless` for the shipped headless profile.
+
+### Full tool catalog
+
+`XUANLING_WORKSPACE_ROOT` must be an absolute path in the environment that launches DSH. The bundle
+fails startup when it is missing and never falls back to DSH's working directory.
+
+```sh
+dsh plugin --profile web add \
+  @xuanling-rs/xuanling-dsh-tools@0.6.1 \
+  @xuanling-rs/xuanling-dsh-skills@0.6.1
+export XUANLING_WORKSPACE_ROOT=/absolute/path/to/project
+dsh web
+```
+
+### Filesystem replacement
+
+Same workspace-root requirement. This bundle disables the native `tool-fs` row; do not add
+`xuanling-dsh-tools` to the same profile.
+
+```sh
+dsh plugin --profile web add \
+  @xuanling-rs/xuanling-dsh-tools-replace@0.6.1 \
+  @xuanling-rs/xuanling-dsh-skills@0.6.1
+export XUANLING_WORKSPACE_ROOT=/absolute/path/to/project
+dsh web
+```
+
+### Blueprint (optional)
 
 ```sh
 pnpm add --save-exact @xuanling-rs/xuanling-dsh-blueprint@0.6.1
 dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.6.1
 ```
 
-Use `--profile headless` instead when extending DSH's shipped headless
-profile. A new arbitrary profile name is not a drop-in replacement: current
-DSH initializes unknown profiles with `@deepseek-ai/dsh-base` only, without a
-Web or Headless application bundle.
+TeamStage needs the native Agent Teams profile enabled separately.
 
-The Memory bundle installs the exact `@xuanling-rs/xuanling-mcp@0.6.1` launcher and native
-optional dependency inside the profile. No global npm package, `npx`, or
-install-time binary download is used.
+## Quickstart
 
-The recommended combination adds the complete nine-tool Memory v2 lifecycle,
-retains all Harness-native tools, and loads two on-demand workflow Skills. The
-Memory Skill is active in this profile; the File Skill applies only when a
-separate tools bundle makes the XuanLing fs family visible.
+1. **Restart the profile and refresh the DSH page.** A running process keeps the plugin graph it loaded
+   at startup; set `XUANLING_WORKSPACE_ROOT` first if your bundle requires it.
+2. **Use Memory.** Ask the model to use XuanLing Memory for a topic: it activates `memory_search`
+   through `mcp_catalog__xuanling`, then calls `mcp__xuanling__memory_search`. Memory writes are
+   proposals; nothing becomes canonical until `memory_review` accepts one, and the review goes
+   through DSH approval. With the full catalog bundle, activate `system_info` to smoke-test; the
+   replacement bundle exposes its six file tools directly.
+3. **Open Blueprint** (if installed): open **XuanLing Blueprint** in the DSH sidebar and follow the
+   [first workflow](xuanling-blueprint/README.md).
 
-## DSH runtime compatibility
+## Usage and configuration
 
-The published DSH bundles currently resolve their official DSH bridge and Skill
-packages from the `0.2.1-rc.2` DSH `next` capability channel. Blueprint and the
-bundles keep the public runtime floor at `>=0.2.1-alpha.5`, with prereleases
-included in compatibility checks. Keep the installed DSH capabilities aligned
-with the selected channel when combining bundles in one profile.
+### Settings
 
-## Bundles
-
-| Bundle | Behavior | Use case |
+| Setting | Default | Notes |
 | --- | --- | --- |
-| `@xuanling-rs/xuanling-dsh-memory` | Caches the complete nine-tool Memory v2 profile with DSH schema projection and activates exact tools lazily; retains every native Harness tool | Recommended daily configuration |
-| `@xuanling-rs/xuanling-dsh-skills` | Adds isolated file and Memory workflow Skills plus strict overwrite policy; mounts no MCP tools | Combine with any XuanLing tool bundle |
-| `@xuanling-rs/xuanling-dsh-tools` | Caches the complete XuanLing catalog, projects exact activations, and retains native Harness tools | Access artifact, project, filesystem, process, and advanced tools |
-| `@xuanling-rs/xuanling-dsh-tools-replace` | Opt-in same-name filesystem facade with XuanLing CAS/batch semantics and native approval, observation, image, and diff projection | Replace DSH text file tools while retaining host policy and UI integration |
+| `XUANLING_WORKSPACE_ROOT` | Required by `tools` and `tools-replace` | Absolute filesystem capability root; missing configuration fails startup |
+| Memory database | `~/.xuanling/memory.db` | Shared XuanLing default, opened on the first valid Memory call. Override with `--memory-db <PATH>` to isolate it |
+| MCP server name | `xuanling` | Fixed; renames `mcp_catalog__xuanling` and every `mcp__xuanling__*` tool |
+| Tool-call timeout | 120 seconds | Budget applied by the DSH MCP bridge |
 
-The Memory bundle deliberately exposes the complete lifecycle. Search, get,
-candidate creation/replacement/archive, review, and feedback form one contract;
-a read-only two-tool subset would hide required state transitions from the
-model.
+### Profiles
 
-The replacement bundle disables only the native `tool-fs` row, registers
-`read/write/edit/file_hash/edit_batch` through a XuanLing-backed facade, and
-re-registers the native `read_image` definition. It retains `ctx.fs`,
-read-before-edit observations, ApprovalService, and editor cards. The additive
-bundle remains the default; the two tool bundles are mutually exclusive.
-Shell, web, LSP, background job, PTY, and orchestration integrations remain
-separate host capabilities.
+Install into the profile that serves the UI you use. `web` and `headless` are the shipped profiles,
+and each keeps its own package set. Use `dsh plugin --profile <profile> list` to inspect installed
+plugins and `dsh plugin --profile <profile> remove <package>` to remove one; restart after a change.
 
-## Runtime Configuration
+### Memory, files and Skills
 
-Bundle expressions resolve these values when DSH starts:
+Memory v2 is proposal-first: `memory_search` and `memory_get` read active records, the
+`memory_candidate_*` tools propose changes, and `memory_review` accepts or rejects a proposal. Nothing
+becomes canonical until a review is accepted, and reviews go through DSH approval. The database opens
+lazily on the first valid Memory call; see the [memory bundle](xuanling-memory/README.md).
 
-| Setting | Default | Purpose |
-| --- | --- | --- |
-| MCP runtime | Profile-local `@xuanling-rs/xuanling-mcp@0.6.1` | Verified JS launcher and native optional dependency |
-| `XUANLING_WORKSPACE_ROOT` | Required for full-tools bundles; unused by Memory-only | Explicit XuanLing filesystem capability root |
-| Schema adapter | Installed `xuanling-dsh-memory/schema-adapter.mjs` | Projects discovery schemas for DSH |
-| Result adapter | Installed bundle-local `mcp-result-adapter.mjs` (memory is composed into the schema adapter) | Removes only duplicate equivalent text blocks |
-| MCP tool profile | `memory` in the recommended bundle | Server-side discovery and dispatch selection |
-| DSH tool exposure | Additive/Memory: lazy wrapper; replacement: same-name facade | Complete lazy Host cache or six replacement filesystem tools |
-| Tool-call timeout | 120 seconds | Budget applied by the Harness MCP bridge |
+The `tools` bundle adds all 17 `fs_*` tools with SHA-256 preconditions, paginated reads and searches,
+and bounded output. The replacement bundle projects `read`, `write`, `edit`, `read_image`,
+`file_hash`, and `edit_batch` with same-session observations and DSH approval. See
+[tools](xuanling-tools/README.md) and [tools-replace](xuanling-tools-replace/README.md).
 
-The server name is fixed to `xuanling`; changing it renames every model-facing
-tool. The Skills bundle has no binary, workspace, or database setting. It
-resolves Skill content and policy code from its installed package.
+`xuanling-skills` adds `xuanling-memory-workflow` (project-local facts in DSH file memory,
+cross-project facts in XuanLing), `xuanling-file-workflow` (routes between native and XuanLing file
+tools), and the strict overwrite policy that rejects `fs_write_text` overwrites without
+`expected_sha256`. See the [skills bundle](xuanling-skills/README.md).
 
-The production Memory bundle uses XuanLing's shared default database at
-`~/.xuanling/memory.db`. The stdio server opens it only on the first valid
-Memory tool call, so DSH startup, catalog discovery, and non-memory tools do
-not create or checkpoint the database. Hosts that require a separate store can
-restate the bridge row with an explicit `--memory-db` path.
+## How it works
 
-## Lazy Tool Projection
+The official `@deepseek-ai/dsh-mcp-client` bridge caches the complete XuanLing catalog while the
+bundle-owned wrapper initially registers only `mcp_catalog__xuanling`; activating an exact raw name
+exposes `mcp__xuanling__<name>` on later model requests, which keeps the initial schema small without
+changing the canonical MCP contract. Schema projection, result projection, the Skills policy, and the
+replacement facade are described in the [bundle READMEs](#links).
 
-The additive and Memory bundles drain standard MCP `tools/list` pagination into a complete Host
-cache. It does not stop at the first page and does not ask the server to mutate
-its static catalog. The model initially receives one compact
-`mcp_catalog__xuanling` schema. That bundle-owned Host control searches raw
-names and descriptions and optionally activates one exact raw name per call as
-an ordinary `mcp__xuanling__*` tool for later model requests.
+## Compatibility and limits
 
-Exact identity matching is case-sensitive and never trims or rewrites the raw
-name. Reconnect and `tools/list_changed` refresh the complete cache and
-re-project activated names that still exist.
-The activation set belongs to the live DSH plugin instance: sessions sharing
-that instance share activations, while HMR, plugin disposal, or Host restart
-clears them. MCP pagination only bounds transport; DSH lazy projection is the
-layer that reduces initial model schema cost.
+### DSH runtime channels
 
-## Schema Projection
+- The bundles are developed and tested against DSH `0.2.1-rc.2` from the `next` channel.
+- The public runtime peer floor is `@deepseek-ai/dsh-* >=0.2.1-alpha.5`, with prereleases included in
+  range checks.
+- The `0.6.1` packages currently published to npm target an earlier DSH channel. Published packages
+  can lag this repository, and a newer DSH profile can disable an incompatible plugin instead of
+  starting it. Install a version whose declared DSH range matches your profile, and keep every
+  `@deepseek-ai/dsh-*` package in one profile on the same channel.
 
-DeepSeek Harness supports a narrower JSON Schema vocabulary than the canonical
-MCP catalog. The recommended Memory bundle places `schema-adapter.mjs` between
-the official bridge and `xuanling-mcp`; the lazy wrapper captures only the
-already-projected definitions:
+### Limits
 
-1. Only `tools/list` input schemas are projected.
-2. Local `$ref` values are resolved and `$defs` are inlined.
-3. Supported nullable unions and tagged objects are expressed in DSH's model
-   vocabulary.
-4. Unsupported, circular, ambiguous, or lossy constructs fail startup.
-5. `tools/call` arguments pass through unchanged and remain subject to the
-   canonical Rust schema.
+- Install exactly one of `memory`, `tools`, and `tools-replace` per profile; `skills` is the companion
+  for any of them.
+- The bundles do not replace DSH's shell, web, LSP, background-job, PTY, or orchestration
+  capabilities; `tools-replace` disables only the native text file tools.
+- The Memory bundle exposes only the nine Memory tools; use `tools` for filesystem, process, project,
+  artifact, or session tools.
+- The MCP bridge allows 120 seconds per tool call; use DSH background jobs for longer work.
 
-The adapter does not create a second Memory protocol and never rewrites model
-arguments after tool selection.
+### Safety boundaries
 
-## Result Projection
+- XuanLing enforces pathname capabilities for filesystem tools. Processes it launches still need DSH
+  approval and an OS sandbox when hostile execution is possible.
+- Replacement mutations and Memory reviews go through DSH approval and fail closed when approval is
+  unavailable.
+- Schema projection and policy never weaken canonical MCP validation, and `system_info` does not
+  expose the environment or secrets.
 
-The MCP wire contract intentionally retains both `content` and
-`structuredContent`. DSH uses text blocks once for Native model rendering and
-keeps the structured value for Code Mode and output validation. The integration
-adapter removes only accidental duplicate text blocks that are an exact JSON
-representation of the same structured value; it never replaces the single
-complete text projection with a marker.
+## Troubleshooting
 
-The adapter accepts only JSON object frames from the child process. Malformed
-stdout, a non-object frame, or a clean exit with an unresolved request produces
-a nonzero adapter exit and no invalid frame. Host termination is forwarded to
-the child; a 500 ms grace is followed by forced termination when the child does
-not exit.
+| Symptom | What to do |
+| --- | --- |
+| New tools or the Blueprint panel do not appear | Restart the profile and refresh the DSH page; a running process keeps its old plugin graph |
+| Startup fails with `XUANLING_WORKSPACE_ROOT is required ...` | Set an absolute root in the environment that launches DSH, then restart |
+| The profile reports a conflicting XuanLing runtime | Remove the extra package with `dsh plugin --profile web remove <package>`, keep one runtime bundle, restart |
+| `mcp_catalog__xuanling` is missing | No runtime bundle is installed; `skills` alone mounts no MCP server |
+| `mcp__xuanling__fs_write_text` is rejected | The strict overwrite policy requires `expected_sha256` for existing files; read the hash first or use create mode |
+| Replacement `edit` fails with an observation error | Read the file in the same session first, then retry |
+| No `~/.xuanling/memory.db` exists | Expected; the database is created on the first valid Memory call |
+| A plugin is disabled after a DSH upgrade | DSH channel mismatch; install a version built for your profile's channel |
+| Tool calls time out | The bridge budget is 120 seconds; split the work or use DSH background jobs |
 
-## Workflow Skills
+## Links
 
-`xuanling-skills` mounts an isolated static Skill provider with two on-demand
-Skills:
-
-- `xuanling-file-workflow` applies only when XuanLing fs tools are visible. It
-  uses `mcp_catalog__xuanling` to activate an exact missing tool, prefers
-  Harness-native tools for ordinary reads and small edits, then selects
-  XuanLing for hash/CAS protection, exact compound-suffix search, explicit byte
-  budgets, complete pagination, and whole-request-preflight `fs_edit_batch` for
-  ordered multi-file edits. `fs_patch` remains the strict unified-diff
-  compatibility entry point. Repeated short validations with the same argv use
-  `deterministic: true`; long jobs use the Harness background/job surface.
-- `xuanling-memory-workflow` uses a single-write L1/L2 split: project-local,
-  every-session facts stay in host file memory; cross-project shared facts use
-  XuanLing. It activates only the next required memory operation. An explicit
-  L1 pointer triggers one scoped pull at task start or a
-  topic switch, not every turn. `memory_search` returns full active records,
-  not a lightweight manifest. New candidates remain pending, and
-  `memory_review` requires an explicit user decision for that proposal.
-
-For the generic MCP v3 contract, the file workflow treats omitted `output` as
-a bounded 65,536-byte request, uses absolute numbered reads and
-`known_sha256` conditional re-reads, and keeps `include_diff: true` until a DSH
-native XuanLing diff projection is independently verified. SHA remains a
-concurrency/integrity precondition rather than semantic edit validation.
-`project_run(check)` follows the exact project script and never substitutes a
-build; minimal process environments remain the default and failures include a
-non-secret `inherit_env: true` remediation.
-
-The strict overwrite policy rejects
-`mcp__xuanling__fs_write_text` overwrite requests without a non-empty
-`expected_sha256`. Create mode and hash-bearing overwrites continue to the MCP
-server unchanged. The policy applies to Native and Code Mode dispatch.
-
-## Security Boundary
-
-- XuanLing enforces pathname capabilities for filesystem tools; processes
-  launched by process/session/pipeline tools still require Harness approval
-  and an OS sandbox when hostile execution is possible.
-- DSH-specific schema projection and policy do not weaken canonical MCP
-  validation.
-- MCP results retain both text and structured representations. The integration
-  adapter de-duplicates repeated identical text projections at the DSH boundary
-  while preserving the structured value for Code Mode and validation.
+- Repository: [umbrella22/xuanling](https://github.com/umbrella22/xuanling) ·
+  [Issues](https://github.com/umbrella22/xuanling/issues) ·
+  [Releases](https://github.com/umbrella22/xuanling/releases)
+- XuanLing MCP server: [repository README](../../README.md) ·
+  [npm package README](../../npm/packages/xuanling-mcp/README.md)
+- Bundle READMEs: [memory](xuanling-memory/README.md) · [skills](xuanling-skills/README.md) ·
+  [tools](xuanling-tools/README.md) · [tools-replace](xuanling-tools-replace/README.md)
+- [Blueprint guide](xuanling-blueprint/README.md) ·
+  [example workflow](xuanling-blueprint/examples/code-review/blueprint.json)
+- npm: [memory](https://www.npmjs.com/package/@xuanling-rs/xuanling-dsh-memory) ·
+  [skills](https://www.npmjs.com/package/@xuanling-rs/xuanling-dsh-skills) ·
+  [tools](https://www.npmjs.com/package/@xuanling-rs/xuanling-dsh-tools) ·
+  [tools-replace](https://www.npmjs.com/package/@xuanling-rs/xuanling-dsh-tools-replace) ·
+  [blueprint](https://www.npmjs.com/package/@xuanling-rs/xuanling-dsh-blueprint)
+- [Changelog](../../CHANGELOG.md) · [License](../../LICENSE) (MIT) ·
+  [installer Skill](../../.agents/skills/xuanling-dsh-install/SKILL.md)
+- Install from a DSH conversation: paste the repository URL and let the
+  [installer Skill](../../.agents/skills/xuanling-dsh-install/SKILL.md) walk through profile, preset,
+  and confirmation; the [repository README](../../README.md) describes the flow.

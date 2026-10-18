@@ -46,13 +46,24 @@ try {
     "format:check": "vp fmt src test vite.config.ts package.json '!src/host/dsh-structured-compat.ts' --check",
     typecheck: "tsc --noEmit -p tsconfig.json",
     lint: "vp lint",
-    test: "node --experimental-transform-types --test --test-concurrency=1 \"test/**/*.test.mjs\"",
+    test: "node --experimental-transform-types --import ./scripts/test-tsx-register.mjs --test --test-concurrency=1 \"test/**/*.test.mjs\"",
     verify: "node scripts/verify.mjs",
   });
   assert.equal(manifest.distribution, "GitHub Release asset and npm registry");
   assert.equal(manifest.lifecycle_scripts, false);
   const metadata = ["LICENSE", "THIRD-PARTY-NOTICES.md", "README.md", "README-ZH.md", "cordis.patch.yml"];
-  assert.deepEqual(packageJson.files, [...metadata, "lib/**/*.js"], "Blueprint package must retain its declared npm file glob");
+  const assetPattern = "assets/readme/**/*.png";
+  assert.deepEqual(
+    packageJson.files,
+    [...metadata.slice(0, 4), assetPattern, metadata[4], "lib/**/*.js"],
+    "Blueprint package must retain its declared npm file globs",
+  );
+  const assets = (await readdir(path.join(packageRoot, "assets", "readme"), { withFileTypes: true }))
+    .map((file) => {
+      assert.ok(file.isFile() && file.name.endsWith(".png"), `unexpected Blueprint asset: ${file.name}`);
+      return `assets/readme/${file.name}`;
+    })
+    .sort();
   const libraries = (await readdir(path.join(packageRoot, "lib"), { withFileTypes: true }))
     .map((file) => {
       assert.ok(file.isFile() && file.name.endsWith(".js"), `unexpected Blueprint lib entry: ${file.name}`);
@@ -62,7 +73,7 @@ try {
   assert.ok(libraries.length > 0, "Blueprint release must contain built lib files");
   assert.deepEqual(
     manifest.files,
-    [...metadata, ...libraries, "package.json"].sort(),
+    [...metadata, ...assets, ...libraries, "package.json"].sort(),
     "Blueprint receipt must list the expanded tarball file inventory",
   );
 } finally {

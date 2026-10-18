@@ -2,15 +2,63 @@
 
 [English](README.md) | 简体中文
 
-该集成通过 bundle 自带的 lazy wrapper 包装 DeepSeek Harness 官方
-`@deepseek-ai/dsh-mcp-client` bridge 后挂载 `xuanling-mcp`。官方 bridge 缓存完整 XuanLing
-目录，wrapper 起初只注册 `mcp_catalog__xuanling`；精确激活随后会以
-`mcp__xuanling__<tool>` 命名的 Harness 原生工具出现。Host 专用 lazy projection、schema
-projection、工作流 Skill 和 overwrite policy 保持在 Rust MCP 合同之外。
+XuanLing for DeepSeek Harness 把 XuanLing 的提案优先 Memory 与类型化工具目录加入 DSH profile，
+同时保留 DSH 的原生工具、审批流程和界面。
 
-## 推荐配置
+## 这是什么
 
-将 Memory 与 Skills bundle 安装进 DSH 内置的 `web` profile：
+XuanLing 是面向编码 Agent 的本地 MCP Server：通过 stdio 暴露 43 个类型化工具，包括 17 个带
+SHA-256 前置条件的文件系统工具、一套九工具的提案优先 Memory v2 生命周期、进程与项目执行、
+Artifact，以及长时间运行的 Session。
+
+本仓库把它打包成四个 bundle 和一个可选 Blueprint 插件，供 DeepSeek Harness 使用。运行期
+bundle 通过 DSH 官方 MCP bridge 把 XuanLing Server 挂进一个 DSH profile，并保留全部原生工具。
+模型起初只看到 `mcp_catalog__xuanling`，任务需要时才激活精确的 XuanLing 工具，因此初始 schema
+很小。package 从公开 npm registry 安装进 profile，不需要全局安装，也不会在安装时下载 binary。
+
+它适合需要“审阅通过之前不会成为规范记录”的 Memory、受 SHA-256 保护的文件编辑，以及
+XuanLing 的进程、项目、Artifact 与 Session 工具，同时不想放弃 DSH 原生工具的场景。
+
+## 我该装哪个 bundle？
+
+| Bundle | 增加的能力 | 适用场景 |
+| --- | --- | --- |
+| `@xuanling-rs/xuanling-dsh-memory` | 完整九工具 Memory v2 profile；保留全部 DSH 原生工具 | 需要日常可用的持久 Memory。**推荐默认**，搭配 Skills bundle |
+| `@xuanling-rs/xuanling-dsh-skills` | 两个工作流 Skill 与严格覆盖策略；不挂载 MCP Server | 需要工作流 Skill 与严格覆盖策略；搭配一个运行期 bundle |
+| `@xuanling-rs/xuanling-dsh-tools` | 完整 43 工具目录，含全部 17 个文件系统工具；保留原生工具 | 需要 XuanLing 的文件系统、进程、项目、Artifact 或 Session 工具 |
+| `@xuanling-rs/xuanling-dsh-tools-replace` | 用 `read`、`write`、`edit`、`file_hash`、`edit_batch` 和原生 `read_image` 替换 DSH 文本文件工具 | 希望由 XuanLing 接管 DSH 自带的文件系统工具 |
+| `@xuanling-rs/xuanling-dsh-blueprint` | 独立插件：可视化图编辑器、持久 Run、可选 TeamStage | 需要可视化、可复用的 Agent 工作流 |
+
+每个 profile 只能安装 `memory`、`tools`、`tools-replace` 之一：三者都会挂载名为 `xuanling`
+的 Server，互斥。`skills` 搭配其中任意一个运行期 bundle 安装；`blueprint` 独立。
+
+### 可选：Blueprint
+
+[Blueprint](xuanling-blueprint/README-ZH.md) 给 DSH 增加可视化图编辑器和持久 Run：连接 Input、
+Agent task、Approval、Condition、Join 与 Output 节点，绑定 DSH 现有 Agent、Skill 与 MCP 工具，
+并查看 DSH 记录的 Attempt。Run 会冻结定义与资源，不会重放无法确认的结果；可选的 TeamStage
+把一个 Agent task 作为原生 DSH Agent Teams 阶段执行。
+
+![蓝图画布上的 Rust 多 Agent 代码审查工作流](xuanling-blueprint/assets/readme/rust-review-blueprint.png)
+
+*DSH Web profile 中已保存的 Rust 审查工作流。截图使用中文界面。*
+
+## 环境要求
+
+- DeepSeek Harness，使用内置的 `web` 或 `headless` profile。自定义 profile 名称只从基础
+  bundle 初始化，不包含 Web 或 Headless 应用。
+- `dsh` 与 `pnpm` 在 PATH 中；`dsh plugin` 会调用 pnpm。所有 bundle 均声明 Node.js 22.14+。
+- 能访问公开 npm registry。package 安装进 profile，不做全局安装。
+- 支持的原生平台：macOS Apple Silicon（`arm64`）、glibc 2.35+ 的 Linux `x64`、
+  Windows `x64` MSVC。其他组合会以明确的 launcher 错误失败。
+- Blueprint 的 Agent task 工作流需要 DSH 中已配置模型 provider；Input → Output 图不需要模型。
+
+## 安装
+
+`dsh plugin` 会把参数转发给所选 profile 中的 pnpm，并从公开 npm registry 安装。请把 `web`
+换成你使用的 profile。
+
+### Memory + Skills（推荐）
 
 ```sh
 dsh plugin --profile web add \
@@ -20,133 +68,157 @@ dsh --profile web --dump-config
 dsh web
 ```
 
-可选 Blueprint 编辑器与原生 TeamStage package 使用同一个由 pnpm 管理的 npm 安装面：
+`--dump-config` 会打印组合后的 profile，可确认两个 package 都已存在。使用
+`--profile headless` 安装进内置 headless profile。
+
+### 完整工具目录
+
+`XUANLING_WORKSPACE_ROOT` 必须是启动 DSH 环境中的绝对路径。缺失时 bundle 启动失败，绝不会
+回退到 DSH 的工作目录。
+
+```sh
+dsh plugin --profile web add \
+  @xuanling-rs/xuanling-dsh-tools@0.6.1 \
+  @xuanling-rs/xuanling-dsh-skills@0.6.1
+export XUANLING_WORKSPACE_ROOT=/absolute/path/to/project
+dsh web
+```
+
+### 文件系统替换
+
+同样需要工作区根目录。该 bundle 会禁用原生 `tool-fs` 行；不要在同一 profile 中再加入
+`xuanling-dsh-tools`。
+
+```sh
+dsh plugin --profile web add \
+  @xuanling-rs/xuanling-dsh-tools-replace@0.6.1 \
+  @xuanling-rs/xuanling-dsh-skills@0.6.1
+export XUANLING_WORKSPACE_ROOT=/absolute/path/to/project
+dsh web
+```
+
+### Blueprint（可选）
 
 ```sh
 pnpm add --save-exact @xuanling-rs/xuanling-dsh-blueprint@0.6.1
 dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.6.1
 ```
 
-需要扩展 DSH 内置的 Headless 应用时，将 `--profile web` 改为 `--profile headless`。任意新 profile 名称并非
-等价替换：当前 DSH 对未知名称只初始化 `@deepseek-ai/dsh-base`，不会自动加入 Web 或
-Headless 应用 bundle。
+TeamStage 还需要单独启用原生 Agent Teams profile。
 
-Memory bundle 会在 profile 内安装精确版本的 `@xuanling-rs/xuanling-mcp@0.6.1` launcher 和原生 optional
-dependency；不需要全局 npm package、`npx` 或安装时下载 binary。
+## 快速开始
 
-推荐组合会增加完整的 Memory v2 九工具生命周期，保留全部 Harness 原生工具，并加载两个按需
-工作流 Skill。该 profile 会使用 Memory Skill；只有另一个 tools bundle 让 XuanLing fs 工具可见
-时，File Skill 才会应用。
+1. **重启 profile 并刷新 DSH 页面。** 正在运行的进程会保留启动时加载的插件图；若所选 bundle
+   需要，先设置 `XUANLING_WORKSPACE_ROOT`。
+2. **试用 Memory。** 让模型用 XuanLing Memory 搜索一个主题：模型会通过
+   `mcp_catalog__xuanling` 激活 `memory_search`，再调用 `mcp__xuanling__memory_search`。
+   Memory 写入都是提案，只有 `memory_review` 接受后才会成为规范记录，审阅还需经过 DSH 审批。
+   使用完整目录 bundle 时可激活 `system_info` 做快速验证；替换式 bundle 会直接暴露六个文件
+   工具。
+3. **打开 Blueprint**（若已安装）：在 DSH 侧栏打开 **玄灵蓝图**，按
+   [第一个工作流](xuanling-blueprint/README-ZH.md)操作。
 
-## DSH 运行时兼容性
+## 使用与配置
 
-当前发布的 DSH bundle 会从 DSH `next` 能力频道解析官方 bridge 和 Skill 包
-`0.2.1-rc.2`。Blueprint 和各 bundle 的公共运行时下限仍为 `>=0.2.1-alpha.5`，并参与
-预发布版本比较。在同一个 profile 组合 bundle 时，请保持已安装的 DSH 能力与所选频道一致。
+### 设置
 
-## Bundle
-
-| Bundle | 行为 | 适用场景 |
+| 设置 | 默认值 | 说明 |
 | --- | --- | --- |
-| `@xuanling-rs/xuanling-dsh-memory` | 缓存带 DSH schema projection 的完整 Memory v2 九工具 profile，并按精确名称 lazy 激活；保留全部 Harness 原生工具 | 推荐日常配置 |
-| `@xuanling-rs/xuanling-dsh-skills` | 增加隔离的文件与 Memory 工作流 Skill 以及严格 overwrite policy；不挂载 MCP 工具 | 与任意 XuanLing 工具 bundle 组合 |
-| `@xuanling-rs/xuanling-dsh-tools` | 缓存完整 XuanLing catalog，按精确名称投影，并保留 Harness 原生工具 | 使用 Artifact、Project、Filesystem、Process 与 Advanced 工具 |
-| `@xuanling-rs/xuanling-dsh-tools-replace` | 显式启用的同名文件 facade，组合 XuanLing CAS/batch 与原生审批、observation、图片和 diff 投影 | 替换 DSH 文本文件工具并保留宿主策略与 UI 集成 |
+| `XUANLING_WORKSPACE_ROOT` | `tools` 与 `tools-replace` 必填 | 绝对文件系统能力根目录；缺失时启动失败 |
+| Memory 数据库 | `~/.xuanling/memory.db` | XuanLing 共享默认值，在第一次有效 Memory 调用时打开。传入 `--memory-db <PATH>` 可隔离 |
+| MCP Server 名称 | `xuanling` | 固定值；会重命名 `mcp_catalog__xuanling` 与所有 `mcp__xuanling__*` 工具 |
+| 工具调用超时 | 120 秒 | 由 DSH MCP bridge 施加的预算 |
 
-Memory bundle 会暴露完整生命周期。Search、get、candidate create/replace/archive、review 与
-feedback 共同构成一个合同；只暴露两个只读工具会向模型隐藏必要的状态转换。
+### Profile
 
-Replacement bundle 只禁用原生 `tool-fs` 行，通过 XuanLing-backed facade 注册
-`read/write/edit/file_hash/edit_batch`，并重新注册原生 `read_image` definition。它保留 `ctx.fs`、
-read-before-edit observation、ApprovalService 和专用 UI card。Additive bundle 仍是默认选择，两个
-tools bundle 互斥。shell、web、LSP、后台任务、PTY 与编排仍是独立 Host 能力。
+安装到承载当前 DSH 界面的 profile。`web` 与 `headless` 是内置 profile，各自维护独立的
+package 集合。用 `dsh plugin --profile <profile> list` 查看已安装插件，用
+`dsh plugin --profile <profile> remove <package>` 移除；变更后重启。
 
-## 运行配置
+### Memory、文件与 Skill
 
-Bundle 表达式在 DSH 启动时解析以下设置：
+Memory v2 是提案优先的：`memory_search` 与 `memory_get` 读取 active 记录，
+`memory_candidate_*` 工具提出变更，`memory_review` 接受或拒绝提案。只有审阅被接受后才会写入
+规范记录，审阅需经过 DSH 审批。数据库在第一次有效 Memory 调用时才打开；详见
+[memory bundle](xuanling-memory/README-ZH.md)。
 
-| 设置 | 默认值 | 作用 |
-| --- | --- | --- |
-| MCP runtime | Profile 内的 `@xuanling-rs/xuanling-mcp@0.6.1` | 经过校验的 JS launcher 与原生 optional dependency |
-| `XUANLING_WORKSPACE_ROOT` | full-tools bundle 必填；Memory-only 不使用 | 显式 XuanLing 文件系统 capability root |
-| Schema adapter | 已安装的 `xuanling-dsh-memory/schema-adapter.mjs` | 为 DSH 投影 discovery schema |
-| Result adapter | 各 bundle 内置的 `mcp-result-adapter.mjs`（memory 由 schema adapter 组合） | 只删除等价的重复文本块 |
-| MCP tool profile | 推荐 bundle 固定为 `memory` | 服务端工具发现与调用分发选择 |
-| DSH tool exposure | Additive/Memory 使用 lazy wrapper；replacement 使用同名 facade | 完整 lazy Host cache 或六个 replacement 文件工具 |
-| Tool-call timeout | 120 秒 | Harness MCP bridge 的调用预算 |
+`tools` bundle 增加全部 17 个 `fs_*` 工具，支持 SHA-256 前置条件、分页读取与搜索、有界输出。
+替换式 bundle 以 `read`、`write`、`edit`、`read_image`、`file_hash`、`edit_batch` 暴露文件
+工具，带同 Session observation 与 DSH 审批。详见 [tools](xuanling-tools/README-ZH.md) 与
+[tools-replace](xuanling-tools-replace/README-ZH.md)。
 
-Server name 固定为 `xuanling`；修改它会重命名全部模型可见工具。Skills bundle 不需要 binary、
-workspace 或 database 配置，它会从已安装 package 解析 Skill 内容与 policy 代码。
+`xuanling-skills` 增加 `xuanling-memory-workflow`（项目局部事实写入 DSH 文件 Memory，跨项目
+事实写入 XuanLing）、`xuanling-file-workflow`（在原生与 XuanLing 文件工具之间路由），以及
+严格覆盖策略：缺少 `expected_sha256` 的 `fs_write_text` 覆盖会被拒绝。详见
+[skills bundle](xuanling-skills/README-ZH.md)。
 
-生产 Memory bundle 使用 XuanLing 共享默认数据库 `~/.xuanling/memory.db`。stdio server 只在
-第一次有效 Memory 工具调用时打开它，因此 DSH 启动、catalog 发现和非 Memory 工具不会创建或
-checkpoint 数据库。需要隔离存储的 Host 可以重述 bridge row，并提供显式 `--memory-db` 路径。
+## 工作方式
 
-## Lazy 工具投影
+官方 `@deepseek-ai/dsh-mcp-client` bridge 会缓存完整 XuanLing 目录，而 bundle 自带的 wrapper
+起初只注册 `mcp_catalog__xuanling`；激活精确 raw name 后，后续模型请求会看到
+`mcp__xuanling__<name>`。这样初始 schema 很小，同时不改变 canonical MCP 合同。schema
+projection、result projection、Skills 策略与替换 facade 的细节见[各 bundle README](#相关链接)。
 
-Additive 与 Memory bundle 会遍历标准 MCP `tools/list` 分页并形成完整 Host cache。它不会停在第一页，也不会
-要求服务器改变静态目录。模型起初只接收一个紧凑的 `mcp_catalog__xuanling` schema。这个 bundle
-自带的 Host 控制工具会检索 raw name 与描述，并可在每次调用中把一个精确 raw name 激活为后续
-模型请求中的常规 `mcp__xuanling__*` 工具。
+## 兼容性与限制
 
-raw name 身份匹配区分大小写，不会 trim、改写或猜测。重连与 `tools/list_changed` 会刷新完整
-cache，并重新投影仍然存在的已激活名称。激活集合属于存活 DSH 插件实例：共享该实例的会话会
-共享激活结果，HMR、插件 dispose
-或 Host 重启会清空激活集合。MCP 分页只限制 transport；真正降低模型初始 schema 成本的是 DSH
-lazy projection。
+### DSH 运行时频道
 
-## Schema Projection
+- 各 bundle 以 DSH `next` 频道的 `0.2.1-rc.2` 为开发和测试基线。
+- 公开运行时 peer 下限是 `@deepseek-ai/dsh-* >=0.2.1-alpha.5`，预发布版本也参与范围比较。
+- 当前发布到 npm 的 `0.6.1` package 面向更早的 DSH 频道。已发布的 package 可能落后于本
+  仓库，较新的 DSH profile 也可能停用不兼容插件而不是启动它。请安装声明范围与自身 profile
+  匹配的版本，并让同一 profile 中所有 `@deepseek-ai/dsh-*` package 保持在同一频道。
 
-DeepSeek Harness 支持的 JSON Schema 词汇比 canonical MCP catalog 更窄。推荐 Memory bundle
-将 `schema-adapter.mjs` 放在官方 bridge 与 `xuanling-mcp` 之间；lazy wrapper 只捕获已经完成
-schema projection 的定义：
+### 限制
 
-1. 只投影 `tools/list` 的 input schema。
-2. 解析本地 `$ref` 并内联 `$defs`。
-3. 使用 DSH 模型词汇表达受支持的 nullable union 与 tagged object。
-4. 不支持、循环、歧义或有损结构会令启动失败。
-5. `tools/call` 参数保持逐字透传，并继续由 canonical Rust schema 校验。
+- 每个 profile 只能安装 `memory`、`tools`、`tools-replace` 之一；`skills` 是它们共同的
+  搭配项。
+- 这些 bundle 不替换 DSH 的 shell、web、LSP、后台任务、PTY 或编排能力；`tools-replace`
+  只禁用原生文本文件工具。
+- Memory bundle 只暴露九个 Memory 工具；文件系统、进程、项目、Artifact 或 Session 工具请用
+  `tools`。
+- MCP bridge 的单次工具调用上限为 120 秒；更久的任务请使用 DSH 后台 job。
 
-Adapter 不创建第二份 Memory protocol，也不会在工具选择后改写模型参数。
+### 安全边界
 
-## Result Projection
+- XuanLing 对文件系统工具实施 pathname capability。它启动的进程仍需要 DSH 审批；存在恶意
+  执行风险时还需要 OS sandbox。
+- 替换式修改与 Memory 审阅都经过 DSH 审批；审批不可用时 fail closed。
+- schema projection 与策略不会削弱 canonical MCP 校验；`system_info` 不暴露环境变量或
+  secret。
 
-MCP wire 合同会有意保留 `content` 与 `structuredContent` 两种表示。DSH 使用文本块进行一次
-Native 模型渲染，同时保留 structured value 供 Code Mode 与输出校验使用。集成 adapter 只会在
-边界处删除“与同一 structured value 完全相同”的意外重复文本块；不会把唯一的完整文本投影替换
-成 marker，因此 Native 上下文保持无损。
+## 排错
 
-Adapter 只接受子进程 stdout 中的 JSON object。malformed stdout、非 object frame 或子进程正常退出时仍有
-未结算 request 都会令 adapter 以非零状态退出，且不会转发无效 frame。Host 终止信号会先转发给子进程；
-子进程在 500 ms grace 内未退出时会被强制终止。
+| 现象 | 处理方式 |
+| --- | --- |
+| 新工具或 Blueprint 面板不出现 | 重启 profile 并刷新 DSH 页面；正在运行的进程会保留旧的插件图 |
+| 启动失败并提示 `XUANLING_WORKSPACE_ROOT is required ...` | 在启动 DSH 的环境中设置绝对路径后重启 |
+| profile 报告 XuanLing runtime 冲突 | 用 `dsh plugin --profile web remove <package>` 移除多余 package，只保留一个运行期 bundle 后重启 |
+| 找不到 `mcp_catalog__xuanling` | 没有安装运行期 bundle；单独的 `skills` 不挂载 MCP Server |
+| `mcp__xuanling__fs_write_text` 被拒绝 | 严格覆盖策略要求覆盖已存在文件时提供 `expected_sha256`；先读取 hash 或改用 create mode |
+| 替换式 `edit` 报 observation 错误 | 同一 Session 内先读取该文件，再重试 |
+| 不存在 `~/.xuanling/memory.db` | 正常现象；数据库在第一次有效 Memory 调用时创建 |
+| DSH 升级后插件被停用 | DSH 频道不匹配；请安装面向该 profile 频道的版本 |
+| 工具调用超时 | bridge 预算为 120 秒；拆分任务或改用 DSH 后台 job |
 
-## 工作流 Skill
+## 相关链接
 
-`xuanling-skills` 挂载隔离的静态 Skill provider，并提供两个按需 Skill：
-
-- `xuanling-file-workflow`：可以通过 `mcp_catalog__xuanling` 激活精确缺失工具。普通读取和小编辑优先 Harness
-  原生工具；hash/CAS、复合后缀精确检索、显式 byte budget、完整分页，以及全请求预检的有序多文件
-  `fs_edit_batch` 使用 XuanLing。`fs_patch` 只保留为严格 unified diff 的兼容入口。相同 argv 的短验证
-  使用 `deterministic: true`，长任务使用 Harness 后台 job。
-- `xuanling-memory-workflow`：采用 L1/L2 单写，并且只激活下一步所需的 Memory 操作。项目局部、每会话必见的事实只写 Host 文件
-  Memory；跨项目共享事实进入 XuanLing。显式 L1 指针只在任务开始或主题切换时触发一次 scoped
-  pull，而非每轮检索。`memory_search` 返回完整 active record，不是轻量 manifest。所有新
-  candidate 保持 pending，只有用户显式指定 proposal 后才调用 `memory_review`。
-
-对于通用 MCP v3 合同，文件工作流把省略 `output` 解释为 65,536 byte 有界请求，使用绝对行号
-读取和 `known_sha256` 条件重读；在 DSH 原生 XuanLing diff 投影得到独立验证前始终保留
-`include_diff: true`。SHA 只证明并发版本和完整性，不能替代 diff 的编辑语义验证。
-`project_run(check)` 会采用项目中精确同名脚本，绝不替换成 build；进程仍默认使用最小环境，
-启动失败会给出不泄露环境值的 `inherit_env: true` 修复提示。
-
-严格 overwrite policy 会拒绝缺少非空 `expected_sha256` 的
-`mcp__xuanling__fs_write_text` overwrite 请求。Create mode 与携带 hash 的 overwrite 会原样
-进入 MCP Server。该 policy 同时作用于 Native 与 Code Mode dispatch。
-
-## 安全边界
-
-- XuanLing 对文件工具实施 pathname capability；process/session/pipeline 工具启动的进程仍需
-  Harness 审批，并在可能执行恶意代码时使用 OS sandbox。
-- DSH 专用 schema projection 和 policy 不会弱化 canonical MCP 校验。
-- MCP result 会保留 text 与 structured 两种表示。集成 adapter 会在 DSH 边界去除重复的相同文本
-  投影，同时保留 structured value 供 Code Mode 与校验使用。
+- 仓库：[umbrella22/xuanling](https://github.com/umbrella22/xuanling) ·
+  [Issues](https://github.com/umbrella22/xuanling/issues) ·
+  [Releases](https://github.com/umbrella22/xuanling/releases)
+- XuanLing MCP Server：[仓库 README](../../README-ZH.md) ·
+  [npm package README](../../npm/packages/xuanling-mcp/README-ZH.md)
+- Bundle README：[memory](xuanling-memory/README-ZH.md) ·
+  [skills](xuanling-skills/README-ZH.md) · [tools](xuanling-tools/README-ZH.md) ·
+  [tools-replace](xuanling-tools-replace/README-ZH.md)
+- [Blueprint 指南](xuanling-blueprint/README-ZH.md) ·
+  [示例工作流](xuanling-blueprint/examples/code-review/blueprint.json)
+- npm：[memory](https://www.npmjs.com/package/@xuanling-rs/xuanling-dsh-memory) ·
+  [skills](https://www.npmjs.com/package/@xuanling-rs/xuanling-dsh-skills) ·
+  [tools](https://www.npmjs.com/package/@xuanling-rs/xuanling-dsh-tools) ·
+  [tools-replace](https://www.npmjs.com/package/@xuanling-rs/xuanling-dsh-tools-replace) ·
+  [blueprint](https://www.npmjs.com/package/@xuanling-rs/xuanling-dsh-blueprint)
+- [Changelog](../../CHANGELOG.md) · [License](../../LICENSE)（MIT）·
+  [安装 Skill](../../.agents/skills/xuanling-dsh-install/SKILL.md)
+- 从 DSH 对话安装：把仓库 URL 粘进对话，按[安装 Skill](../../.agents/skills/xuanling-dsh-install/SKILL.md)
+  的提示选择 profile、preset 并确认；流程见[仓库 README](../../README-ZH.md)。

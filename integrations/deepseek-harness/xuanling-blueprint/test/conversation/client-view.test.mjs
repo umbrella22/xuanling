@@ -418,12 +418,12 @@ test('execution sync C-02: multiple Attempts require an explicit chat action, in
   assert.deepEqual(opened, ['chosen-child'])
 })
 
-test('execution sync C-02: legacy, missing-Session and non-Agent nodes never manufacture a chat target', async () => {
+test('execution sync C-02: missing-Session and non-Agent nodes never manufacture a chat target', async () => {
   const f = fixture(),
     value = data(),
     opened = []
-  value.selected.run.attempts[1].sessionId = 'must-not-open-tool-chat'
-  value.selected.graph.nodes[1].kind = 'toolCall'
+  value.selected.run.attempts[1].sessionId = 'must-not-open-structural-chat'
+  value.selected.graph.nodes[1].kind = 'condition'
   value.selected.run.attempts.push({ nodeId: 'source', attempt: 1, state: 'succeeded', sessionId: 'legacy-without-attempt-id' })
   f.props.openSession = async sessionId => {
     opened.push(sessionId)

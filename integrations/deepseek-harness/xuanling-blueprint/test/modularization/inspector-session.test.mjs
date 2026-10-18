@@ -22,17 +22,20 @@ const definition = {
   id: 'bp',
   name: 'Blueprint',
   resources: {},
-  graph: { nodes: [{ id: 'n', kind: 'agentTask', inputs: {}, outputs: {}, skillRefs: [], budget: { maxIterations: 2, maxDurationMs: 100 } }], edges: [] }
+  graph: {
+    nodes: [{ id: 'n', kind: 'agentTask', inputs: {}, outputs: {}, skillRefs: [], modelSelection: { provider: 'provider', model: 'model' } }],
+    edges: []
+  }
 }
 
 test('pure patch derivation preserves source data and ignores equivalent JSON while retaining explicit clears', () => {
   const editor = GraphEditor.fromDefinition(definition),
     node = editor.nodes[0],
     before = JSON.stringify(editor.exportDefinition())
-  assert.deepEqual(deriveInspectorPatch(node, { budget: { maxDurationMs: 100, maxIterations: 2 } }), { ok: true, changed: false, changes: {} })
+  assert.deepEqual(deriveInspectorPatch(node, { modelSelection: { provider: 'provider', model: 'model' } }), { ok: true, changed: false, changes: {} })
   const delta = inspectorOptionDelta(
-    { budget: { maxIterations: 2, maxDurationMs: 100 }, agentRef: 'old' },
-    { budget: { maxDurationMs: 100, maxIterations: 2 }, agentRef: 'new' }
+    { modelSelection: { provider: 'provider', model: 'model' }, agentRef: 'old' },
+    { modelSelection: { provider: 'provider', model: 'model' }, agentRef: 'new' }
   )
   assert.deepEqual(delta, { agentRef: 'new' })
   assert.deepEqual(deriveInspectorPatch(node, { outputSchemaRef: undefined }), { ok: true, changed: false, changes: {} })
@@ -47,12 +50,12 @@ test('session dirty JSON field delta merges newer structured changes and resourc
     off = session.subscribe(() => {})
   try {
     const edited = JSON.parse(session.getSnapshot().json.options)
-    edited.budget.maxIterations = 5
+    edited.modelSelection.model = 'new-model'
     session.setJson('options', JSON.stringify(edited))
     session.patch({ agentRef: 'newer' })
     session.applyJson('options')
     assert.equal(editor.exportDefinition().graph.nodes[0].agentRef, 'newer')
-    assert.equal(editor.exportDefinition().graph.nodes[0].budget.maxIterations, 5)
+    assert.equal(editor.exportDefinition().graph.nodes[0].modelSelection.model, 'new-model')
     session.setModelRoute('provider', ' exact provider ')
     session.setModelRoute('model', ' exact model ')
     session.setExplicitModel(true)

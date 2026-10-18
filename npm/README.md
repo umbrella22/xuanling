@@ -2,20 +2,18 @@
 
 English | [Simplified Chinese](README-ZH.md)
 
-This directory contains the npm distribution and release automation for
-XuanLing MCP 0.6.1. A complete release contains nine immutable npm items: one
-stable Node.js launcher, three native variants published under platform-specific
-prerelease versions, four DeepSeek Harness bundles, and the Blueprint/TeamStage
-plugin. The same verified core artifacts produce the ZCode marketplace archive.
+This directory contains the npm packaging and release automation for XuanLing
+MCP 0.6.1. A complete release is nine immutable npm items published from one
+verified commit: the stable Node.js launcher, three platform-specific native
+variants, four DeepSeek Harness bundles, and the optional Blueprint/TeamStage
+plugin. The same verified core artifacts also produce the ZCode marketplace
+archive.
 
-The optional [Blueprint/TeamStage plugin](../integrations/deepseek-harness/xuanling-blueprint/README.md)
-is built from the release commit, published as
-`@xuanling-rs/xuanling-dsh-blueprint`, and shipped as a GitHub Release tarball
-with `blueprint.pack.json`.
+## Release Contents
 
-## Package Set
+### Launcher and native variants
 
-| Installed alias | Published version | Platform |
+| Package | Published version | Platform |
 | --- | --- | --- |
 | `@xuanling-rs/xuanling-mcp` | `0.6.1` | Stable Node.js launcher |
 | `@xuanling-rs/xuanling-mcp-darwin-arm64` | `0.6.1-darwin-arm64` | macOS Apple Silicon |
@@ -23,11 +21,12 @@ with `blueprint.pack.json`.
 | `@xuanling-rs/xuanling-mcp-win32-x64-msvc` | `0.6.1-win32-x64-msvc` | Windows x64 MSVC |
 
 The launcher and native variants are published under the `@xuanling-rs` npm
-organization. The stable package declares unscoped installation aliases as
-optional dependencies, and npm selects the compatible
-variant through `os`, `cpu`, and `libc` metadata. Intel macOS, ARM Linux,
-glibc 2.34 and older, musl Linux, and ARM Windows are not published by this
-release.
+organization. The stable package declares the native variants as aliased
+optional dependencies, and npm selects the compatible variant through `os`,
+`cpu`, and `libc` metadata. Intel macOS, ARM Linux, glibc 2.34 or older,
+musl Linux, and ARM Windows are not part of this release.
+
+### DeepSeek Harness bundles
 
 DeepSeek Harness installs these public bundles directly into a profile:
 
@@ -37,12 +36,27 @@ DeepSeek Harness installs these public bundles directly into a profile:
 | `@xuanling-rs/xuanling-dsh-skills@0.6.1` | File and Memory workflow Skills plus strict overwrite policy |
 | `@xuanling-rs/xuanling-dsh-tools@0.6.1` | Additive full XuanLing catalog |
 | `@xuanling-rs/xuanling-dsh-tools-replace@0.6.1` | Opt-in same-name filesystem replacement facade with XuanLing CAS/batch and native host projections |
-| `@xuanling-rs/xuanling-dsh-blueprint@0.6.1` | Optional typed Blueprint editor and native TeamStage execution |
 
-The three tool bundles depend on the exact stable `@xuanling-rs/xuanling-mcp` version in the
-same DSH profile. The Skills bundle contains no MCP runtime.
+The Memory, Tools, and Tools-replace bundles depend on the exact stable
+`@xuanling-rs/xuanling-mcp` version in the same DSH profile. The Skills bundle
+contains no MCP runtime.
 
-## Installation
+### Optional Blueprint plugin
+
+The [Blueprint/TeamStage plugin](../integrations/deepseek-harness/xuanling-blueprint/README.md)
+is built from the release commit, published as
+`@xuanling-rs/xuanling-dsh-blueprint`, and also shipped as a GitHub Release
+tarball with `blueprint.pack.json`.
+
+## Release Requirements
+
+Release automation runs on Node.js 22.14 or newer with npm 11.5.1 or newer.
+The DSH and Blueprint package flows use the repository-pinned pnpm 11.28.5, and
+native builds require Rust 1.98.
+
+## Install Paths
+
+Global installation:
 
 ```sh
 npm install --global @xuanling-rs/xuanling-mcp@0.6.1
@@ -67,8 +81,9 @@ An MCP host can pin the same release through `npx`:
 }
 ```
 
-The capability contract is documented in the
-[MCP integration guide](../docs/guides/xuanling-mcp-integration.md).
+Tool profiles, filesystem boundaries, and server options are documented in the
+[launcher package README](packages/xuanling-mcp/README.md). The user-facing
+capability contract is documented in the [repository README](../README.md).
 
 Install the optional Blueprint and TeamStage plugin with the repository's
 pnpm-managed package flow:
@@ -78,8 +93,8 @@ pnpm add --save-exact @xuanling-rs/xuanling-dsh-blueprint@0.6.1
 dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.6.1
 ```
 
-Restart the selected DSH profile after installation. TeamStage still requires
-the native Agent Teams profile to be enabled explicitly.
+Restart the selected DSH profile after installation. TeamStage also requires the
+native Agent Teams profile to be enabled explicitly.
 
 ## Distribution Guarantees
 
@@ -94,14 +109,16 @@ the native Agent Teams profile to be enabled explicitly.
   The ZCode marketplace archive also receives a GitHub OIDC build-provenance
   attestation before promotion.
 - XuanLing 0.6.1 does not claim a Developer ID or Authenticode publisher
-  signature. Those signatures may be added in a later release, but their
-  absence does not change the MCP protocol or package integrity contract.
+  signature. These signatures may be added in a later release; their absence
+  does not change the MCP protocol or package integrity contract.
 - Every native package contains the XuanLing MIT license and generated
   third-party notices.
 - The launcher package includes matching English and Simplified Chinese
   READMEs.
 
 ## Local Validation
+
+### Repository checks
 
 Run all commands from the repository root:
 
@@ -133,6 +150,8 @@ node npm/scripts/smoke-mcp.mjs \
   --binary target/aarch64-apple-darwin/release/xuanling-mcp
 ```
 
+### Local tarballs
+
 The complete local tarball path is:
 
 ```sh
@@ -156,15 +175,17 @@ node npm/scripts/stage-platform.mjs \
   --commit "$(git rev-parse HEAD)"
 ```
 
-CI builds and verifies the launcher and native tarballs independently on all
-three supported platforms. Each installed launcher must pass MCP
-`initialize`, the complete 42-tool catalog across paginated `tools/list`, and
+### CI coverage
+
+CI builds the launcher tarball once and the native tarball independently for
+each of the three supported targets. Each installed launcher must pass MCP
+`initialize`, the complete 43-tool catalog across paginated `tools/list`, and
 `system_info` smoke tests.
 
 ## Publishing
 
 The root `Cargo.toml` workspace version is the canonical release version. A
-release requires:
+release requires all of the following before the tag is created:
 
 1. npm metadata, tests, Node syntax checks, and `git diff --check` to pass.
 2. Locked release binaries, third-party notices, package metadata, tarball
@@ -178,24 +199,29 @@ release requires:
 5. The release commit to be present on `origin/main`. The GitHub
    `zcode-packer` Environment must define `ZCODE_REPOSITORY` as
    `umbrella22/xuanling-zcode-marketplace` and provide `XL_PUBLISH_TOKEN` with
-   authenticated push permission to that repository. Its default branch must
-   be `main`.
+   authenticated push permission to that repository. Its default branch must be
+   `main`.
 6. A manual run of the workflow from `main` to verify npm package visibility
-   and ZCode target permission without creating a tag.
+   and ZCode target permission without creating a tag. Use the default
+   `preflight` mode for the prerequisite check, or `candidate` for a complete
+   no-publish release build.
 7. A stable tag named `xuanling-mcp-v<version>` to trigger
    [npm-publish.yml](../.github/workflows/npm-publish.yml).
 
-The publish workflow publishes three native versions, the stable launcher, the
-four DSH bundles, and Blueprint in that order. It then reconciles all nine
-registry integrities before checking out `umbrella22/xuanling-zcode-marketplace` with
-the Environment credential. The verified ZCode tree is committed and `main`
-plus `xuanling-mcp-v<version>` are pushed atomically. A matching existing tag
-is an idempotent no-op; any integrity or tree mismatch is a hard failure. Local
-`npm publish` is not part of the release path.
+### Publish order
+
+The workflow publishes three native versions, the stable launcher, the four DSH
+bundles, and Blueprint in that order, then reconciles all nine registry
+integrities. The promotion job revalidates the same release set, checks out
+`umbrella22/xuanling-zcode-marketplace` with the Environment credential,
+commits the verified ZCode tree, and pushes `main` plus
+`xuanling-mcp-v<version>` atomically. A matching existing tag is an idempotent
+no-op; any integrity or tree mismatch is a hard failure. Local `npm publish` is
+not part of the release path.
 
 ### Trusted Publishing
 
-All nine package names already exist and the release workflow uses npm Trusted
+All nine package names already exist, and the release workflow uses npm Trusted
 Publishing through the `npmjs` GitHub environment. No long-lived npm token or
 bootstrap secret is required. Configure package-level Trusted Publishing for
 each scoped package, including Blueprint, with:
@@ -208,8 +234,9 @@ Environment: npmjs
 Allowed action: npm publish
 ```
 
-Rerun a failed publish job without changing the tag, commit, or artifacts. The
-idempotent publisher skips every item whose matching integrity already exists.
+To rerun a failed publish job, keep the tag, commit, and artifacts unchanged.
+The idempotent publisher skips every item whose matching integrity already
+exists.
 
 ## Failure Recovery
 
@@ -224,10 +251,17 @@ idempotent publisher skips every item whose matching integrity already exists.
   promotion path against the same source run and artifact digest.
 - An integrity mismatch for an existing version is a hard failure; published
   versions are immutable.
-- If an installed launcher reports a missing optional dependency, reinstall
-  the pinned version. The launcher never downloads or compiles the native
-  binary itself.
+- If an installed launcher reports a missing optional dependency, reinstall the
+  pinned version. The launcher never downloads or compiles the native binary
+  itself.
 
 `publish-idempotent.mjs` targets npmjs by default. Registry emulation tests may
 pass `--registry http://127.0.0.1:4873`; the production workflow endpoint does
 not change.
+
+## Links
+
+- [Repository README](../README.md)
+- [Blueprint/TeamStage plugin README](../integrations/deepseek-harness/xuanling-blueprint/README.md)
+- [Publish workflow](../.github/workflows/npm-publish.yml)
+- [Changelog](../CHANGELOG.md)

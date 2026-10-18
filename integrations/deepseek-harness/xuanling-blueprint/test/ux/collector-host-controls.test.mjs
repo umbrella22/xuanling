@@ -549,16 +549,16 @@ test('all callable host collectors reject physical symlink escapes before creati
   for (const parse of [compact.parseCli, comfy, motion])
     for (const path of [join(alias, 'never-create'), join(dangling, 'never-create')]) assert.throws(() => parse(['--plan-id', plan, '--report-dir', path]))
 })
-test('host collector leaves all original Comfy/motion/browser/performance registries intact', async () => {
+test('host collector registry counts remain aligned with the current public probe contract', async () => {
   const comfyModule = await import('../../../../../test/blueprint/capabilities/comfy-interactions-ui.mjs')
   const motionModule = await import('../../../../../test/blueprint/capabilities/comfy-motion-ui.mjs')
   const canvas = await import('../../../../../test/blueprint/capabilities/canvas-suite.mjs')
   assert.equal(comfyModule.UI_ASSERTIONS.length, 63)
-  assert.equal(comfyModule.REQUIRED_ASSERTIONS.length, 122)
+  assert.equal(comfyModule.REQUIRED_ASSERTIONS.length, 118)
   assert.equal(motionModule.MOTION_ASSERTIONS.length, 19)
-  assert.equal(motionModule.REQUIRED_ASSERTIONS.length, 78)
-  assert.equal(canvas.requiredCanvasAssertions('browser').length, 59)
-  assert.equal(canvas.requiredCanvasAssertions('performance').length, 41)
+  assert.equal(motionModule.REQUIRED_ASSERTIONS.length, 74)
+  assert.equal(canvas.requiredCanvasAssertions('browser').length, 55)
+  assert.equal(canvas.requiredCanvasAssertions('performance').length, 37)
   assert.equal(compact.UX_CASES.length, 16)
 })
 

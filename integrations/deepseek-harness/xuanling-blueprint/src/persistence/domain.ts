@@ -6,7 +6,76 @@
  * in-memory fake.
  */
 import type {} from '@deepseek-ai/dsh-storage-domain'
-import { recordsSchema, type CommandRecord, type RunRecord } from './records.ts'
+import { existsSync, readFileSync, readdirSync, renameSync } from 'node:fs'
+import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import {
+  commandRecordSchema,
+  recordsSchema,
+  runLifecycleSchema,
+  runRecordSchema,
+  type CommandRecord,
+  type RunLifecycleRecord,
+  type RunRecord
+} from './records.ts'
+
+export class StoredRecordInvalidError extends Error {
+  readonly code = 'STORED_RECORD_INVALID'
+  constructor(
+    readonly table: string,
+    readonly key: string,
+    reason: string
+  ) {
+    super(`stored ${table} record ${key} is invalid: ${reason}`)
+  }
+}
+
+/**
+ * The JSON per-record backend intentionally treats unreadable documents as
+ * absent. Runs are canonical facts, so an unreadable run document is moved to
+ * a reversible backup before the domain opens; malformed command or lifecycle
+ * documents fail closed because silently dropping either can change replay or
+ * history semantics. SQLite has no per-record backup facet and therefore
+ * retains its backend-level fail-closed behavior.
+ */
+function quarantineJsonRecords(spec: BlueprintDomainSpec): void {
+  if (spec.backend !== 'json') return
+  const unitRoot = join(spec.path, spec.domainName ?? 'blueprint_runs')
+  const tables = [
+    ['commands', commandRecordSchema, false],
+    ['run_lifecycle', runLifecycleSchema, false],
+    ['runs', runRecordSchema, true]
+  ] as const
+  const invalidRuns: Array<{ file: string; key: string }> = []
+  for (const [table, schema, quarantine] of tables) {
+    const tableRoot = join(unitRoot, table)
+    if (!existsSync(tableRoot)) continue
+    for (const entry of readdirSync(tableRoot, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith('.json')) continue
+      const key = entry.name.slice(0, -'.json'.length)
+      const file = join(tableRoot, entry.name)
+      let parsed: unknown
+      let valid = false
+      try {
+        const document = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>
+        if (document.version === 1 && 'record' in document) valid = schema.safeParse(document.record).success
+        parsed = document
+      } catch {
+        parsed = undefined
+      }
+      if (valid) continue
+      if (!quarantine) throw new StoredRecordInvalidError(table, key, parsed === undefined ? 'malformed-json' : 'schema-invalid')
+      invalidRuns.push({ file, key })
+    }
+  }
+  for (const { file, key } of invalidRuns) {
+    try {
+      renameSync(file, `${file}.bak.${Date.now()}-${randomUUID()}`)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw new StoredRecordInvalidError('runs', key, 'quarantine-failed')
+    }
+  }
+}
 
 export interface KvTableLike<K = string, V = unknown> {
   get(key: K): Promise<V | undefined>
@@ -39,6 +108,7 @@ export interface BlueprintDomainSpec {
 /** Open the blueprint_runs domain on a real backend via a minimal cordis
  * context. Domain name must match UNIT_NAME_RE. */
 export async function openBlueprintDomain(spec: BlueprintDomainSpec): Promise<OpenedDomain> {
+  quarantineJsonRecords(spec)
   const { Context } = await import('@deepseek-ai/cordis')
   const Storage = (await import('@deepseek-ai/dsh-storage')).default
   const domainMod = await import('@deepseek-ai/dsh-storage-domain')
@@ -57,14 +127,20 @@ export async function openBlueprintDomain(spec: BlueprintDomainSpec): Promise<Op
   // deliberately narrowed through the function's public parameter type.
   const runsTable = domainMod.domainTable<string, RunRecord>(recordsSchema.runs as unknown as never)
   const commandsTable = domainMod.domainTable<string, CommandRecord>(recordsSchema.commands as unknown as never)
+  const lifecycleTable = domainMod.domainTable<string, RunLifecycleRecord>(recordsSchema.run_lifecycle as unknown as never)
   const domain = await ctx.storageDomain.open(
     domainMod.defineDomain({
       name: spec.domainName ?? 'blueprint_runs',
       version: 1,
       layout: 'per-record',
+      // The per-record JSON backend quarantines a semantically invalid
+      // document and keeps the other canonical records readable. SQLite has
+      // no backupRecord facet, so it continues to fail closed at open time.
+      invalidRecords: 'backup-and-skip',
       tables: {
         runs: runsTable,
-        commands: commandsTable
+        commands: commandsTable,
+        run_lifecycle: lifecycleTable
       }
     })
   )

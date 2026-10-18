@@ -29,6 +29,30 @@ const catalog = [
     availability: 'available'
   }
 ]
+const modelCatalog = {
+  default: { provider: 'deepseek-official', model: 'deepseek-flash' },
+  routableProviders: ['openai'],
+  groups: [
+    {
+      id: 'openai',
+      name: 'OpenAI',
+      models: [
+        {
+          id: 'gpt-6.1-sol',
+          name: 'GPT-6.1 Sol',
+          reasoning: {
+            efforts: [
+              { id: 'high', name: 'High' },
+              { id: 'xhigh', name: 'XHigh' }
+            ],
+            defaultEffort: 'high'
+          }
+        }
+      ]
+    }
+  ],
+  failures: []
+}
 const translate = key => en[key] ?? key
 function elements(tree) {
   if (Array.isArray(tree)) return tree.flatMap(elements)
@@ -118,6 +142,81 @@ test('Explicit model draft rejects blank fields and Undo synchronizes applied an
   assert.equal(f.session.getSnapshot().modelRoute.model, 'gpt-test')
 })
 
+test('W1.1 GREEN Inspector exposes the configured DSH model catalog and round-trips the selected route', t => {
+  const f = fixture(t)
+  const renderWithModelCatalog = () =>
+    renderNodeInspector(
+      {
+        node: f.editor.nodes[0],
+        editor: f.editor,
+        resources: f.editor.exportDefinition().resources,
+        resourceCatalog: catalog,
+        modelCatalog,
+        t: translate
+      },
+      f.session,
+      f.session.getSnapshot()
+    )
+  const tree = renderWithModelCatalog()
+  const mode = elements(tree).find(item => item.props['data-bp-field'] === 'model-mode')
+  assert.ok(mode, 'model mode control')
+  mode.props.onChange(change('explicit'))
+  const explicitTree = renderWithModelCatalog()
+  const provider = elements(explicitTree).find(item => item.props['data-bp-field'] === 'modelSelection.provider')
+  assert.ok(
+    elements(provider).some(item => item.type === 'option' && item.props.value === 'openai'),
+    'provider must expose catalog options'
+  )
+  provider.props.onChange(change('openai'))
+  const providerSelectedTree = renderWithModelCatalog()
+  const model = elements(providerSelectedTree).find(item => item.props['data-bp-field'] === 'modelSelection.model')
+  assert.ok(
+    elements(model).some(item => item.type === 'option' && item.props.value === 'gpt-6.1-sol'),
+    'model must expose catalog options'
+  )
+  model.props.onChange(change('gpt-6.1-sol'))
+  const modelSelectedTree = renderWithModelCatalog()
+  const reasoning = elements(modelSelectedTree).find(item => item.props['data-bp-field'] === 'modelSelection.reasoningEffort')
+  assert.ok(
+    elements(reasoning).some(item => item.type === 'option' && item.props.value === 'xhigh'),
+    'reasoning must expose catalog options'
+  )
+  reasoning.props.onChange(change('xhigh'))
+  elements(modelSelectedTree)
+    .find(item => item.props['data-bp-action'] === 'apply-model-route')
+    .props.onClick()
+  assert.deepEqual(f.editor.exportDefinition().graph.nodes[0].modelSelection, {
+    provider: 'openai',
+    model: 'gpt-6.1-sol',
+    reasoningEffort: 'xhigh'
+  })
+})
+
+test('W1.1 GREEN catalog failure keeps the saved route and exposes a bounded unavailable status', t => {
+  const definition = structuredClone(initial)
+  definition.graph.nodes[0].modelSelection = { provider: 'legacy-provider', model: 'legacy-model', reasoningEffort: 'high' }
+  const editor = GraphEditor.fromDefinition(definition)
+  const session = new InspectorSession(editor, 'task')
+  t.after(session.subscribe(() => {}))
+  const tree = renderNodeInspector(
+    {
+      node: editor.nodes[0],
+      editor,
+      resources: editor.exportDefinition().resources,
+      modelCatalogStatus: 'unavailable',
+      t: translate
+    },
+    session,
+    session.getSnapshot()
+  )
+  const provider = elements(tree).find(item => item.props['data-bp-field'] === 'modelSelection.provider')
+  assert.equal(provider.props.value, 'legacy-provider')
+  assert.equal(provider.type, 'input')
+  const status = elements(tree).find(item => item.props['data-bp-model-catalog-status'])
+  assert.equal(status.props['data-bp-model-catalog-status'], 'unavailable')
+  assert.equal(editor.exportDefinition().graph.nodes[0].modelSelection.provider, 'legacy-provider')
+})
+
 test('production panel displays Host labels without exposing generated reference keys', async t => {
   // Control only hook/Flow seats; the loaded workspace, panel and editor are real.
   const owner = { states: [], refs: [], stateCursor: 0, refCursor: 0 },
@@ -128,6 +227,9 @@ test('production panel displays Host labels without exposing generated reference
   globalThis[seatKey] = {
     react: {
       ...React,
+      createElement(type, props, ...children) {
+        return type?.name === 'CanvasSurface' ? type(props ?? {}) : React.createElement(type, props, ...children)
+      },
       useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
       useState(initial) {
         const states = active.states,

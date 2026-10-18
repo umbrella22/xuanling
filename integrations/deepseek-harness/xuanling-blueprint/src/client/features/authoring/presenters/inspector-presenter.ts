@@ -4,6 +4,8 @@ import { effectivePortVisibility, connectedPortEdges } from '../logic/graph/port
 import { graphNode } from '../logic/inspector/inspector-commands.ts'
 import type { InspectorSnapshot } from '../logic/inspector/inspector-commands.ts'
 import type { EditorNode, EditorEdge } from '../logic/graph/graph-editor.ts'
+import type { ModelCatalog } from '@deepseek-ai/dsh-api-session-controller/types'
+import type { ModelCatalogStatus } from '../../../adapters/host/remote.ts'
 export type BindingField = 'agentRef' | 'outputSchemaRef' | 'skillRefs' | 'toolsetRefs'
 export interface InspectorResourceOption {
   readonly key: string
@@ -17,20 +19,11 @@ export function projectInspector(input: {
   snapshot: InspectorSnapshot
   disabled: boolean
   choices: Record<BindingField, readonly InspectorResourceOption[]>
+  modelCatalog?: ModelCatalog | undefined
+  modelCatalogStatus?: ModelCatalogStatus | undefined
 }) {
-  const { node, snapshot, disabled } = input,
+  const { node, snapshot, disabled, modelCatalog, modelCatalogStatus } = input,
     definition = graphNode(node)
-  const legacy: Record<string, unknown> = {}
-  for (const field of ['agentRef', 'skillRefs', 'toolsetRefs', 'outputSchemaRef', 'modelSelection'] as const) {
-    const value = definition[field]
-    if (field === 'modelSelection') {
-      if (value && typeof value === 'object' && !Array.isArray(value))
-        legacy[field] = Object.fromEntries(
-          Object.entries(value).filter(([key, item]) => ['provider', 'model', 'reasoningEffort'].includes(key) && typeof item === 'string')
-        )
-    } else if (Array.isArray(value)) legacy[field] = value.filter(item => typeof item === 'string')
-    else if (typeof value === 'string') legacy[field] = value
-  }
   const notice = snapshot.notice
   const displayNotice: InspectorSnapshot['notice'] = !notice
     ? null
@@ -71,7 +64,6 @@ export function projectInspector(input: {
     selected: { agentRef: definition.agentRef ?? '', outputSchemaRef: definition.outputSchemaRef ?? '' },
     conditionFields: conditions,
     joinValue: definition.join ?? 'all',
-    legacyBindingsText: Object.keys(legacy).length ? JSON.stringify(legacy, null, 2) : null,
     visibility: effectivePortVisibility(node, [...input.edges]),
     connectedPriority: Object.fromEntries(
       (['control', 'inputs', 'outputs'] as const).map(side => [
@@ -79,7 +71,9 @@ export function projectInspector(input: {
         node.presentation?.ports?.[side] === false && connectedPortEdges(node.id, side, [...input.edges]) > 0
       ])
     ) as Record<'control' | 'inputs' | 'outputs', boolean>,
-    snapshot: displaySnapshot
+    snapshot: displaySnapshot,
+    modelCatalog,
+    modelCatalogStatus: modelCatalogStatus ?? (modelCatalog ? 'ready' : 'unavailable')
   }
 }
 export type InspectorViewModel = ReturnType<typeof projectInspector>

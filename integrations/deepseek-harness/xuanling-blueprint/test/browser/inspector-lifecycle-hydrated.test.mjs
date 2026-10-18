@@ -64,20 +64,20 @@ test('mounted Inspector preserves drafts and concurrent edits while releasing se
         agentRef: 'local',
         inputs: {},
         outputs: { authored: 'number' },
-        budget: { maxIterations: 2, maxDurationMs: 1000 }
+        modelSelection: { provider: 'fixture-provider', model: 'initial-model' }
       }
       await json.fill(JSON.stringify(options))
       await page.evaluate(() => window.inspectorLifecycle.concurrent())
-      assert.equal((await stats()).definition.graph.nodes[0].budget.maxIterations, 7)
+      assert.equal((await stats()).definition.graph.nodes[0].modelSelection.model, 'concurrent-model')
       assert.equal(await json.innerText(), JSON.stringify(options), 'uncommitted JSON is not overwritten by graph notification')
       await page.locator('[data-bp-action="apply-node-options"]').click()
       const applied = (await stats()).definition.graph.nodes[0]
       assert.deepEqual(applied.outputs, { authored: 'number' })
-      assert.deepEqual(applied.budget, { maxIterations: 7, maxDurationMs: 2000 }, 'JSON delta preserves concurrent unedited fields')
+      assert.deepEqual(applied.modelSelection, { provider: 'fixture-provider', model: 'concurrent-model' }, 'JSON delta preserves concurrent unedited fields')
       await page.evaluate(() => window.inspectorLifecycle.undo())
       const undone = (await stats()).definition.graph.nodes[0]
       assert.deepEqual(undone.outputs, { original: 'string' }, 'blur and Apply must create one graph edit')
-      assert.equal(undone.budget.maxIterations, 7)
+      assert.deepEqual(undone.modelSelection, { provider: 'fixture-provider', model: 'concurrent-model' })
       assert.equal(await page.evaluate(() => window.inspectorLifecycle.capture('resource')), true)
       await page.evaluate(() => window.inspectorLifecycle.catalog(false))
       const beforeResource = (await stats()).definition

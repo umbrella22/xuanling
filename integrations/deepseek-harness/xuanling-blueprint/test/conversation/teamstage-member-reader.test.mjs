@@ -4,7 +4,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { BlueprintService } from '../../src/index.ts'
-import { openBlueprintDomain, RunStore } from '../../src/persistence/index.ts'
+import { openBlueprintDomain, RunQuery, RunStore } from '../../src/persistence/index.ts'
+import { RunReadService } from '../../src/service/run-read-service.ts'
 import { TeamStageObservations } from '../../src/teamstage/observability.ts'
 import { focusAttemptsForSession } from '../../src/conversation/run-projection.ts'
 
@@ -53,7 +54,17 @@ async function fixture(t, backend) {
   service.checkArgs = () => {}
   service.decodeOrThrow = JSON.parse
   service.teamObservations = new TeamStageObservations()
-  service.configuredRuntime = async () => ({ store, backgroundFailures: new Map() })
+  service.runReads = handle => handle.reads
+  const backgroundFailures = new Map()
+  const query = new RunQuery(store)
+  const reads = new RunReadService({
+    store,
+    query,
+    backgroundFailures,
+    decodeDefinition: definitionJson => service.decodeOrThrow(definitionJson),
+    teamRuntime: record => service.teamObservations.snapshot(record)
+  })
+  service.configuredRuntime = async () => ({ store, query, reads, backgroundFailures })
   return { service, store, runId, attempt }
 }
 

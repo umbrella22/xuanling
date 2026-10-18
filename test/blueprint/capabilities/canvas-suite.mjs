@@ -11,7 +11,7 @@ import { fixtureEvidence, performanceDefinition } from './canvas-fixtures.mjs'
 
 // Installation/boot/gateway/real Agent/latest Skill/guard/script/MCP assertions
 // remain required alongside the new canvas assertions. UI cannot replace them.
-export const HOST_ASSERTIONS = Object.freeze(['P0', 'P1a', 'P2p', 'P2a', 'P2b', 'P3a', 'P3b', 'P5a', 'P5b', 'P4a', 'P4b', 'P4f', 'P4g', 'P4m', 'P4n', 'P4o', 'P4p', 'P4q', 'P4r', 'P4s', 'P4h', 'P4i', 'P4j-raw', 'P4j', 'P4k', 'P4w', 'P4l', 'P4t', 'P4u', 'P4v', 'P6a', 'P4c2', 'P6b', 'P6c', 'P4x'])
+export const HOST_ASSERTIONS = Object.freeze(['P0', 'P1a', 'P2p', 'P2a', 'P2b', 'P3a', 'P3b', 'P5a', 'P5b', 'P4a', 'P4b', 'P4f', 'P4g', 'P4m', 'P4n', 'P4o', 'P4p', 'P4q', 'P4r', 'P4s', 'P4h', 'P4i', 'P4j-raw', 'P4j', 'P4k', 'P4w', 'P6a', 'P4c2', 'P6b', 'P6c', 'P4x'])
 export function requiredCanvasAssertions(mode) {
   if (!['browser', 'performance'].includes(mode)) throw new Error('unknown canvas suite')
   return [...new Set([...HOST_ASSERTIONS, ...(mode === 'browser' ? BROWSER_ASSERTIONS : PERFORMANCE_ASSERTIONS)])]

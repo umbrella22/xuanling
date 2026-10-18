@@ -1,60 +1,59 @@
-# XuanLing MCP
+# XuanLing
 
-English | [Simplified Chinese](README-ZH.md)
+[简体中文](README-ZH.md) · [CHANGELOG](CHANGELOG.md) · MIT
 
-XuanLing MCP is a cross-platform, local Model Context Protocol server for
-coding agents. It exposes 42 typed tools over stdio for filesystem work,
-process execution, project discovery, durable memory, artifacts, and
-long-running sessions.
+Local-first execution and memory for coding agents.
 
-The server is designed for hosts that need deterministic schemas, structured
-failures, explicit filesystem capabilities, and memory writes that cannot
-silently become canonical state.
+XuanLing is a Rust tool runtime that runs beside your coding agent. It provides a typed MCP server,
+DeepSeek Harness bundles, and an optional visual workflow editor. Everything runs on your machine:
+the MCP server speaks stdio, the native binaries are installed from npm without compiling or
+downloading at install time, and Memory data stays in a local SQLite database.
+
+The repository ships four surfaces around the same core:
+
+| You want to | Use | Start here |
+| --- | --- | --- |
+| Give any MCP host filesystem, process, artifact and memory tools | XuanLing MCP server (43 typed tools) | [Install](#xuanling-mcp-server) · [Package README](npm/packages/xuanling-mcp/README.md) |
+| Use XuanLing from DeepSeek Harness (DSH) | Four DSH bundles with lazy tool projection | [DSH integration](integrations/deepseek-harness/README.md) |
+| Build and run visual agent workflows inside DSH | Blueprint, with durable Runs and optional TeamStage | [Blueprint README](integrations/deepseek-harness/xuanling-blueprint/README.md) |
+| Use XuanLing from ZCode | Additive or filesystem-replacement marketplace plugins | [ZCode plugins](integrations/zcode-plugin/plugins/xuanling-mcp/README.md) |
+
+![A four-specialist Rust review workflow on the Blueprint canvas](integrations/deepseek-harness/xuanling-blueprint/assets/readme/rust-review-blueprint.png)
+
+*The optional Blueprint editor inside DeepSeek Harness. The workflow runs four specialist Agent
+reviews in parallel, joins their results, and writes a synthesized report. The graph is a saved
+example, not a bundled template.*
 
 ## Highlights
 
-- **Typed filesystem operations** with strict edits, SHA-256 preconditions,
-  paginated search, resumable reads, and explicit output budgets.
-- **Proposal-first Memory v2** with immutable record versions, explicit
-  review, project/workspace scope isolation, and deterministic lexical recall.
-- **Direct process execution** using program + argv without an implicit shell,
-  with cancellation applied to the descendant process tree.
-- **Selective tool profiles** so each host can expose only the capability
-  families it needs.
-- **Native npm distribution** for macOS, Linux, and Windows with no
-  `postinstall` compilation or remote binary download.
-- **Stable MCP contracts** backed by protocol, golden, persistence, restart,
-  and cross-platform test suites.
+- **43 typed tools** for filesystem work, process execution, project discovery, artifacts,
+  long-running sessions, and proposal-first Memory v2.
+- **Filesystem safety by explicit capability.** Repeatable `--workspace-root` and `--read-root`
+  flags, SHA-256 preimage checks, typed output budgets, and resumable reads.
+- **Proposal-first memory.** Candidate writes stay pending until an explicit review accepts a
+  concrete revision. Canonical records are immutable and scoped to global, project, or workspace.
+- **Direct process execution.** Program plus argv, no implicit shell, with cancellation applied to
+  the descendant process tree.
+- **Selective tool profiles.** Each MCP host exposes only the capability families it needs; `all`
+  remains the default.
+- **Verified native distribution.** npm installs a platform launcher and matching native binary
+  with no `postinstall` compilation, no remote binary download, and SHA-256 validation at startup.
 
-## Native DSH Blueprint and TeamStage
+## XuanLing MCP server
 
-The optional [Blueprint plugin](integrations/deepseek-harness/xuanling-blueprint/README.md)
-provides a typed graph editor, durable graph execution and optional native
-Agent Teams stages. Version 0.6.1 includes an installable GitHub Release tarball
-and a digest manifest, plus the pnpm-installable
-`@xuanling-rs/xuanling-dsh-blueprint@0.6.1` package. TeamStage preserves the native composer and approval UI,
-verifies structured output and physical artifacts, and records uncertain effects
-as recovery-required. DSH runtime support follows its latest capability channel.
-The current Blueprint development and CI fixture uses DSH `0.2.1-rc.2` from that
-channel, while the public runtime peer contract remains `>=0.2.1-alpha.5` with
-prereleases included.
+The MCP server exposes the complete catalog over stdio and works with any MCP client.
 
-```sh
-pnpm add --save-exact @xuanling-rs/xuanling-dsh-blueprint@0.6.1
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.6.1
-```
+### Install
 
-## Installation
-
-The npm launcher requires Node.js 18.17 or newer and installs the matching
-native binary for the current platform.
+The launcher requires Node.js 18.17 or newer and installs the matching native package for the
+current platform.
 
 ```sh
 npm install --global @xuanling-rs/xuanling-mcp@0.6.1
 xuanling-mcp --version
 ```
 
-An MCP client can pin the same version without a global installation:
+An MCP client can pin the same version without a global install:
 
 ```json
 {
@@ -78,9 +77,8 @@ An MCP client can pin the same version without a global installation:
 }
 ```
 
-Pinning the package version keeps the discovered MCP schema stable for an
-active project. A global or project-local installation avoids the package
-resolution step when the host starts the server frequently.
+Pinning the package version keeps the discovered MCP schema stable for an active project. A global
+or project-local install also avoids the package resolution step on every server start.
 
 ### Supported platforms
 
@@ -90,109 +88,70 @@ resolution step when the host starts the server frequently.
 | Linux | `x64` | glibc 2.35 or newer |
 | Windows | `x64` | MSVC runtime |
 
-Unsupported OS, CPU, and libc combinations fail with an explicit launcher
-error. The package does not compile Rust or download executables during
-installation. The launcher validates package metadata and the native binary's
-SHA-256 before starting the server.
+Unsupported OS, CPU, and libc combinations fail with an explicit launcher error. The launcher
+validates package metadata and the native binary's SHA-256 before starting the server.
 
-### Build from source
+### Tool profiles
 
-Source builds require Rust 1.98.
-
-```sh
-cargo build --locked --release -p xuanling-mcp
-./target/release/xuanling-mcp --workspace-root /absolute/path/to/project
-```
-
-## Tool Profiles
-
-The default catalog contains all 42 tools. Repeat `--tool-profile` to combine
-smaller, stable groups:
+The default catalog exposes all 43 tools. Repeat `--tool-profile` to combine smaller groups:
 
 | Profile | Tools | Capability family |
 | --- | ---: | --- |
 | `core` | 3 | system and portable path inspection |
-| `fs` | 16 | filesystem read, search, preview, and mutation |
+| `fs` | 17 | filesystem read, search, preview, and mutation |
 | `process` | 5 | direct processes and project detection/execution |
 | `memory` | 9 | Memory v2 proposal, review, recall, and feedback |
 | `advanced` | 9 | artifacts, ChangeSets, pipelines, and sessions |
-| `all` | 42 | complete catalog; also the default when no profile is supplied |
+| `all` | 43 | complete catalog; the default when no profile is supplied |
 
-`all` takes precedence when combined with another profile. Discovery and
-dispatch use the same selection, so a hidden tool cannot be called by name.
+`all` takes precedence when combined with another profile. Discovery and dispatch use the same
+selection, so a hidden tool cannot be called by name.
 
-### Catalog transport
+### Filesystem safety
 
-`tools/list` returns the selected static catalog in pages of eight tools. Follow
-the opaque `nextCursor` until it is absent; a malformed, stale, or cross-catalog
-cursor fails with JSON-RPC `-32602` and `data.reason: "invalid_cursor"` instead
-of restarting from page one. Initialization metadata publishes
-`xuanling.tool_count` for the complete filtered catalog and
-`xuanling.catalog_sha256` as a stable digest of every model-visible definition.
+XuanLing filesystem access is unrestricted when neither capability flag is supplied. Production
+hosts should declare at least one root:
 
-The catalog does not mutate during a server process, so XuanLing deliberately
-does not advertise `tools.listChanged`. Pagination bounds MCP transport frames;
-whether the complete catalog enters model context remains a Host projection
-decision.
-
-## Filesystem Safety
-
-Filesystem access is unrestricted when neither capability flag is supplied.
-Production host configurations should declare at least one root:
-
-- `--workspace-root <PATH>` is repeatable and grants read/write/delete access
-  plus child-process working-directory admission inside the root.
-- `--read-root <PATH>` is repeatable and grants read/list/search/hash access
-  while rejecting writes, deletion, and child-process working directories.
+- `--workspace-root <PATH>` is repeatable and grants read/write/delete access plus child-process
+  working-directory admission inside the root.
+- `--read-root <PATH>` is repeatable and grants read/list/search/hash access while rejecting
+  writes, deletion, and child-process working directories.
 - Supplying only `--read-root` creates a read-only deployment.
 
-Mutating tools support explicit preimage checks. Use `expected_sha256` for
-whole-file replacement and exact edits, or
-`expected_preimage_sha256` for `fs_patch`. A conflict is reported before the
-write when the file changed after it was read.
+Mutating tools support explicit preimage checks. Use `expected_sha256` for whole-file replacement
+and exact edits, or `expected_preimage_sha256` for `fs_patch`. A conflict is reported before the
+write when the file changed after it was read. Window-capable tools accept an explicit output
+selector such as `{"mode":"bounded","max_bytes":65536}`; truncated reads and searches return a typed
+cursor or resume token instead of silently discarding the remaining result.
 
-Window-capable tools accept an explicit output selector such as
-`{"mode":"bounded","max_bytes":65536}`. Truncated reads and searches return a
-typed cursor or resume token; they do not silently discard the remaining
-result.
+The filesystem capability controls paths opened by XuanLing. It is not an OS sandbox for arbitrary
+child programs: host approval and process isolation remain responsibilities of the MCP host and its
+execution environment.
 
-The filesystem capability controls paths opened by XuanLing. It is not an OS
-sandbox for arbitrary child programs: host approval and process isolation
-remain responsibilities of the MCP host and its execution environment.
+### Memory v2
 
-## Memory v2
-
-Memory v2 separates proposals from canonical records:
+Memory separates proposals from canonical records:
 
 1. `memory_search` and `memory_get` inspect active records.
-2. `memory_candidate_create`, `memory_candidate_replace`, or
-   `memory_candidate_archive` creates a pending proposal.
-3. `memory_review` accepts or rejects a specific proposal revision. Only an
-   accepted review atomically advances the canonical record head.
-4. Immutable versions, terminal reviews, and append-only feedback retain the
-   history needed for audit and deterministic recovery.
+2. `memory_candidate_create`, `memory_candidate_replace`, or `memory_candidate_archive` creates
+   a pending proposal.
+3. `memory_review` accepts or rejects a specific proposal revision. Only an accepted review
+   atomically advances the canonical record head.
+4. Immutable versions, terminal reviews, and append-only feedback retain the history needed for
+   audit and deterministic recovery.
 
-Scopes use strict tagged values for `global`, `project`, and `workspace`.
-Ancestor search follows workspace -> project -> global only when requested;
-sibling projects are never searched.
-
-Recall uses a deterministic lexical query plan over SQLite FTS5 (`unicode61`
-and trigram), multi-channel fusion, visibility filtering, and stable reranking.
-The default release does not require or download an embedding model and does
+Scopes use strict tagged values for `global`, `project`, and `workspace`. Ancestor search follows
+workspace → project → global only when requested; sibling projects are never searched. Recall uses
+a deterministic lexical query plan over SQLite FTS5, multi-channel fusion, visibility filtering,
+and stable reranking. The default release does not require or download an embedding model and does
 not perform network access for recall.
 
-The default database is `~/.xuanling/memory.db`. Override it with
-`--memory-db <PATH>` and optionally provide `--default-namespace <VALUE>`.
-The stdio server resolves and opens that database only when the first valid
-Memory tool is called; initialize, discovery, non-memory tools, and malformed
-Memory requests do not create or migrate it. Memory initialization failure does
-not disable non-memory tools; memory calls return a structured unavailable
-error instead.
+The default database is `~/.xuanling/memory.db`; override it with `--memory-db <PATH>`. The stdio
+server opens the database only on the first valid Memory call, so startup, discovery, non-memory
+tools, and malformed Memory requests do not create or migrate it.
 
-### Maintenance
-
-Canonical data can be exported, imported into an empty database, and used to
-rebuild the derived search projection:
+Canonical data can be exported, imported into an empty database, and used to rebuild the derived
+search projection:
 
 ```sh
 xuanling-mcp --memory-db /path/to/memory.db memory export --output backup.jsonl
@@ -200,11 +159,33 @@ xuanling-mcp --memory-db /path/to/empty.db memory import --input backup.jsonl
 xuanling-mcp --memory-db /path/to/memory.db memory rebuild-index
 ```
 
-Export writes a versioned JSONL stream with counts and a SHA-256 trailer.
-Import validates the complete stream before one transactional write, and
-`rebuild-index` never changes canonical rows.
+Export writes a versioned JSONL stream with counts and a SHA-256 trailer. Import validates the
+complete stream before one transactional write, and `rebuild-index` never changes canonical rows.
 
 ## DeepSeek Harness
+
+The [DSH integration](integrations/deepseek-harness/README.md) adds XuanLing tools to DeepSeek
+Harness profiles. Four bundles cover different tradeoffs:
+
+| Bundle | What it adds | Use when |
+| --- | --- | --- |
+| `xuanling-dsh-memory` | Complete nine-tool Memory v2 lifecycle with lazy schema projection | Recommended daily configuration |
+| `xuanling-dsh-skills` | File and Memory workflow Skills plus strict overwrite policy | Combined with exactly one tool bundle |
+| `xuanling-dsh-tools` | Complete XuanLing catalog with lazy activation and native tools retained | You need artifacts, projects, filesystem, and process tools |
+| `xuanling-dsh-tools-replace` | Same-name filesystem facade backed by XuanLing CAS/batch semantics | You want XuanLing to replace DSH's native text file tools |
+
+The recommended starting point is `xuanling-dsh-memory` plus `xuanling-dsh-skills`. The optional
+[Blueprint plugin](integrations/deepseek-harness/xuanling-blueprint/README.md) adds a visual graph
+editor, durable Runs, and optional native Agent Teams stages; it is installed separately.
+
+```sh
+dsh plugin --profile web add \
+  @xuanling-rs/xuanling-dsh-memory@0.6.1 \
+  @xuanling-rs/xuanling-dsh-skills@0.6.1
+```
+
+Replace `web` with the profile you use. The shipped `headless` profile works the same way; a new
+custom profile contains only the base bundle and does not include a Web or Headless application.
 
 ### Conversational install from the repository URL
 
@@ -229,44 +210,57 @@ The manual integration guide below remains the fallback when interactive
 questions or repository access are unavailable.
 <!-- xuanling-dsh-conversational-install:end -->
 
-[`integrations/deepseek-harness`](integrations/deepseek-harness/) contains
-host-specific bundles for additive Memory tools, additive or replacement
-filesystem tools, schema projection, strict overwrite policy, and two
-on-demand workflow Skills. The integration remains outside the Rust tool
-contracts, allowing DeepSeek Harness-specific routing and policy to evolve
-without changing the MCP catalog for other hosts.
+The bundles use Host-side lazy projection: the complete MCP catalog is cached, but the model
+initially sees only `mcp_catalog__xuanling` and activates exact tool names on demand. This lowers
+initial schema cost without changing the server contract. See the
+[DSH integration guide](integrations/deepseek-harness/README.md) for bundle selection and runtime
+configuration.
 
-The shipped DSH runtime bundles use Host-side lazy projection: they cache every
-MCP catalog page but initially expose only `mcp_catalog__xuanling`. The model
-searches that compact control and activates exact raw names before ordinary
-`mcp__xuanling__*` calls. This reduces initial schema cost without treating MCP
-pagination or `list_changed` as capability selection.
+## Blueprint
 
-See the
-[DeepSeek Harness integration guide](integrations/deepseek-harness/README.md)
-for bundle selection, installation, and runtime configuration.
+[Blueprint](integrations/deepseek-harness/xuanling-blueprint/README.md) is an optional DSH plugin
+for visual workflows. Build a graph of Input, Agent task, Approval, Condition, Join (all), and
+Output nodes; bind existing DSH Agents, Skills, and MCP tools; choose a model per Agent task. A Run
+freezes the definition and package resources, records an intent before every external effect, and
+keeps unknown outcomes in `recovery_required` instead of replaying them. Workflows can be exported
+and imported as portable ZIP packages, and an optional TeamStage mode runs one Agent task as a
+native DSH Agent Teams stage.
 
-## Repository Layout
+## ZCode
+
+The [ZCode plugins](integrations/zcode-plugin/plugins/xuanling-mcp/README.md) ship the same verified
+native runtime through the `umbrella22/xuanling-zcode-marketplace` marketplace. The additive
+`xuanling-mcp` plugin keeps ZCode's native file tools; the opt-in `xuanling-mcp-replace` plugin
+replaces them with XuanLing's hash-preconditioned edit path. Install only one variant at a time.
+
+## Repository layout
 
 | Path | Purpose |
 | --- | --- |
 | `crates/xuanling-toolkit` | Cross-platform filesystem, process, project, session, and artifact implementation. |
 | `crates/xuanling-memory` | Memory v2 lifecycle, SQLite persistence, lexical retrieval, and JSONL maintenance. |
 | `crates/xuanling-mcp` | stdio MCP server, typed handlers, profiles, and protocol contracts. |
-| `integrations` | Installable host-specific adapters, policy, and Skills. |
+| `integrations/deepseek-harness` | DSH integration bundles and the optional Blueprint plugin. |
+| `integrations/zcode-plugin` | ZCode marketplace plugins. |
 | `npm` | Node launcher, native package staging, integrity checks, and release automation. |
-| `test` | Repository-only fixtures, probes, evaluation overlays, and acceptance reports. |
-| `docs` | Accepted decisions, architecture, integration contracts, and execution records. |
+| `test` | Repository-only contract fixtures, probes, and release verification assets. |
+| `.agents/skills/xuanling-dsh-install` | Model-driven DSH installer Skill used by the conversational flow. |
 
-The current documentation index is available at
-[`docs/README.md`](docs/README.md). Repository provenance and the detached
-workspace boundary are recorded in
-[`docs/repository-boundary.md`](docs/repository-boundary.md).
+Plans, acceptance evidence, and incident records are kept outside the tracked tree under `docs/`
+on the development machine; they are not part of a public checkout.
+
+## Version and compatibility
+
+The current repository release is `0.6.1`. Published npm versions and this repository revision can
+target different DSH channels: check [CHANGELOG.md](CHANGELOG.md),
+[Releases](https://github.com/umbrella22/xuanling/releases), and each integration README for the
+exact channel and peer floor of the version you install. A DSH plugin installed into a profile is
+validated against that profile's runtime; incompatible plugin versions are disabled rather than
+started.
 
 ## Development
 
-Repository development requires Rust 1.98, Node.js 22.14 or newer, and npm
-11.5.1 or newer.
+Repository development requires Rust 1.98, Node.js 22.14 or newer, and npm 11.5.1 or newer.
 
 ```sh
 cargo fmt -p xuanling-toolkit -p xuanling-memory -p xuanling-mcp -- --check
@@ -281,16 +275,11 @@ cargo test -p xuanling-mcp --test golden
 npm --prefix npm run check
 npm --prefix npm run check:docs
 npm --prefix npm test
-
-# Non-gating, single-process benchmark for the complete paginated catalog.
-cargo build --locked --release -p xuanling-mcp
-npm --prefix npm run benchmark:catalog -- --binary target/release/xuanling-mcp
 ```
 
-The complete host contract and error mapping are documented in the
-[MCP integration guide](docs/guides/xuanling-mcp-integration.md). npm package
-assembly and publishing are documented in [`npm/README.md`](npm/README.md).
+Package assembly and publishing are documented in [npm/README.md](npm/README.md); the test asset
+inventory is in [test/README.md](test/README.md).
 
 ## License
 
-Licensed under the [MIT License](LICENSE).
+MIT

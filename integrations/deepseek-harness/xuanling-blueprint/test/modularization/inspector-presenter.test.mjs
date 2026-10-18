@@ -81,7 +81,7 @@ test('adapter keeps Host objects private and resolves current resource availabil
   assert.deepEqual(editor.exportDefinition(), before)
 })
 
-test('legacy display projection retains field order while stripping extra nested route configuration', () => {
+test('structural node projection has no legacy compatibility display block', () => {
   const editor = GraphEditor.fromDefinition({
     ...definition,
     graph: {
@@ -91,11 +91,7 @@ test('legacy display projection retains field order while stripping extra nested
           kind: 'condition',
           inputs: {},
           outputs: {},
-          agentRef: 'agent',
-          skillRefs: ['skill'],
-          toolsetRefs: ['tool'],
-          outputSchemaRef: 'schema',
-          modelSelection: { model: 'M', provider: 'P', privateConfig: 'PRIVATE_ROUTE' }
+          condition: { inputPort: 'input', trueBranch: 'true-path', falseBranch: 'false-path' }
         }
       ],
       edges: []
@@ -109,7 +105,6 @@ test('legacy display projection retains field order while stripping extra nested
     disabled: false,
     choices: { agentRef: [], skillRefs: [], toolsetRefs: [], outputSchemaRef: [] }
   })
-  assert.deepEqual(Object.keys(JSON.parse(model.legacyBindingsText)), ['agentRef', 'skillRefs', 'toolsetRefs', 'outputSchemaRef', 'modelSelection'])
-  assert.equal(model.legacyBindingsText.includes('PRIVATE_ROUTE'), false)
-  assert.deepEqual(Object.keys(JSON.parse(model.legacyBindingsText).modelSelection), ['model', 'provider'])
+  assert.equal(Object.hasOwn(model, 'legacyBindingsText'), false)
+  assert.equal(JSON.stringify(model).includes('legacyBindings'), false)
 })

@@ -23,7 +23,8 @@ const panelControllerUrl = new URL('../../src/client/features/authoring/ui/panel
 const canvasSurfaceUrl = new URL('../../src/client/features/authoring/ui/canvas/canvas-surface.tsx', import.meta.url).href
 const canvasRendererUrl = new URL('../../src/client/features/authoring/ui/canvas/canvas-renderers.tsx', import.meta.url).href
 seat.react = {
-  createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.length ? children : [props?.children] }),
+  createElement: (type, props, ...children) =>
+    type?.name === 'CanvasSurface' ? type(props ?? {}) : { type, props: props ?? {}, children: children.length ? children : [props?.children] },
   memo: component => component,
   useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
   useState(initial) {

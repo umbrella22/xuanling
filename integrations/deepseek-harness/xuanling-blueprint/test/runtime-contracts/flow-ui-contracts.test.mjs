@@ -370,7 +370,7 @@ test('C-06 real driver: missing selected output has typed failure, not generic f
   )
 })
 
-// ---- C-10: readable vocabulary is NOT permission to start a new Run. ----
+// ---- C-10: removed vocabulary is a definition error, not a deferred executor. ----
 const deferredNodes = [
   ['toolCall', { id: 'future', kind: 'toolCall' }],
   ['scriptCall', { id: 'future', kind: 'scriptCall' }],
@@ -379,22 +379,12 @@ const deferredNodes = [
   ['subflow', { id: 'future', kind: 'subflow', subflowRef: 'child' }]
 ]
 for (const [label, node] of deferredNodes) {
-  test(`C-08/C-10 ${label}: old vocabulary reads but configured service prevents a new Run`, async t => {
-    const resources = label === 'subflow' ? { child: { kind: 'subflow', path: 'lib/child.json' } } : {}
-    const value = oldReadable(baseDefinition([node], [], resources))
-    const h = await serviceFixture(t, value)
-    if (label === 'subflow') writeFileSync(join(h.packageRoot, 'lib', 'child.json'), json(baseDefinition([{ id: 'inside', kind: 'input' }], [], {}, 'child')))
-    const doc = await h.service.loadDefinition({ blueprintId: value.id })
-    assert.equal(decodeDefinition(doc.definitionJson).graph.nodes[0].kind, node.kind)
-    let error
-    try {
-      await serviceStart(h)
-    } catch (caught) {
-      error = caught
-    }
-    assertBlocked(error, `C-10 UNSUPPORTED_NODE_ADMITTED: ${label} must report node-executor-unavailable BEFORE Run creation`)
-    assert.deepEqual(await h.handle.store.listRunIds(), [])
-    assert.deepEqual(h.agentCalls, [])
+  test(`C-08/C-10 ${label}: removed vocabulary is rejected as definition-invalid`, () => {
+    const raw = baseDefinition([node], [], label === 'subflow' ? { child: { kind: 'subflow', path: 'lib/child.json' } } : {})
+    assert.throws(
+      () => decodeDefinition(json(raw)),
+      error => error.code === 'DEFINITION_INVALID' && error.issues.some(issue => issue.pointer?.startsWith('/graph/nodes/0'))
+    )
   })
 }
 test('C-10 preservation: TeamStage and future execution kinds are not palette/executable declarations', () => {
@@ -679,9 +669,7 @@ test('C-07 preservation: Inspector can express join-all without advertising join
   const editor = GraphEditor.fromDefinition(joinGraph()),
     node = editor.nodes.find(n => n.id === 'merge')
   assert.deepEqual(parseInspectorJson(node, 'options', '{"join":"all"}'), { ok: true, patch: { join: 'all' } })
-  // Historical join-any remains editable/readable, but its NEW service Run is
-  // independently required to block above. This is not an execution assertion.
-  assert.deepEqual(parseInspectorJson(node, 'options', '{"join":"any"}'), { ok: true, patch: { join: 'any' } })
+  assert.deepEqual(parseInspectorJson(node, 'options', '{"join":"any"}'), { ok: false, issue: 'node-options-shape' })
 })
 
 // ---- C-07/C-08 diagnostics and locale: data/source capabilities, not browser QA. ----
@@ -767,8 +755,10 @@ test('C-07 public DTO capability: optional diagnostics exists and rejects raw fi
   }
 })
 test('C-07 diagnostics presentation capability: existing panel must consume durable diagnostics', () => {
-  const source = readFileSync(new URL('../../src/client/features/authoring/ui/panel/panel-controller.tsx', import.meta.url), 'utf8')
-  assert.equal(/\bdiagnostics\b/.test(source), true, 'C-07 DIAGNOSTICS_NOT_RENDERED: existing Attempt presentation only displays outputJson/errorCode')
+  const panel = readFileSync(new URL('../../src/client/features/authoring/ui/panel/panel-controller.tsx', import.meta.url), 'utf8')
+  const inspector = readFileSync(new URL('../../src/client/features/authoring/ui/panel/inspector-sidebar.tsx', import.meta.url), 'utf8')
+  assert.match(panel, /InspectorSidebar/, 'C-07 DIAGNOSTICS_NOT_WIRED: Panel no longer delegates its run surface to the extracted InspectorSidebar')
+  assert.match(inspector, /renderAttemptDiagnostics/, 'C-07 DIAGNOSTICS_NOT_RENDERED: extracted Attempt presentation only displays outputJson/errorCode')
   // This explicit source capability is intentionally NOT a rendering/browser
   // green. W3 collector must inspect real zh/en UI, reload and raw sentinels.
 })

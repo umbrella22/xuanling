@@ -5,10 +5,12 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type { ConvViewProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { ISessions, SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
+import type {} from '@deepseek-ai/dsh-api-session-controller/remote'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import TYPERT_REMOTE from '../typert.remote.ts'
 import { createBlueprintPanel } from './features/authoring/ui/panel/panel-composition.tsx'
 import { resolveBlueprintHost } from './adapters/host/remote.ts'
+import type { ModelCatalogLink } from './adapters/host/remote.ts'
 import { installCanvasStyles } from './shared/styles/styles.ts'
 import { BLUEPRINT_LOCALE, en, zh } from './shared/i18n/locales.ts'
 import { ConversationController, resolveConversationHost } from './features/conversation/logic/conversation-controller.ts'
@@ -110,11 +112,24 @@ function applyConversation(ctx: Context, navigation: NativeChatNavigation): void
 function applyPanel(ctx: Context, navigation: NativeChatNavigation): void {
   const slots = ctx.get('slots') as SlotsRuntime
   const hostLink = resolveBlueprintHost(ctx)
+  // Session is a sibling Remote namespace owned by DSH's session controller.
+  // Resolve it in a child fiber so hosts without the optional session client can
+  // still mount the Blueprint panel. The Web profile supplies the native
+  // `remote.session.modelCatalog()` implementation through this dependency.
+  const modelCatalogReady =
+    typeof ctx.inject === 'function'
+      ? new Promise<ModelCatalogLink | undefined>(resolve => {
+          ctx.inject(['remote.session'], scope => {
+            resolve(scope.get('remote.session') as ModelCatalogLink)
+          })
+        })
+      : Promise.resolve(undefined)
   const t = ctx.locale.bind(BLUEPRINT_LOCALE)
   installCanvasStyles()
 
   const Panel = createBlueprintPanel({
     hostLink,
+    modelCatalogReady,
     openSession: navigation.openSession,
     storage: typeof localStorage === 'undefined' ? undefined : localStorage
   })

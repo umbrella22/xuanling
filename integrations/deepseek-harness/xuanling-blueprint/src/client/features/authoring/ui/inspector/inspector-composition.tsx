@@ -1,6 +1,8 @@
 /** Client-only editing drafts. The Host remains the authority on Save. */
 import { useMemo, useSyncExternalStore, useRef, useEffect } from 'react'
 import type { ResourceRef } from '../../../../../definition/types.ts'
+import type { ModelCatalog } from '@deepseek-ai/dsh-api-session-controller/types'
+import type { ModelCatalogStatus } from '../../../../adapters/host/remote.ts'
 import type { HostResourceCatalogEntry } from '../../../../adapters/host/remote.ts'
 import type { EditorNode, GraphEditor } from '../../logic/graph/graph-editor.ts'
 import type { BlueprintLocaleProps } from '../../../../shared/i18n/locales.ts'
@@ -11,6 +13,8 @@ export interface NodeInspectorProps {
   editor: GraphEditor
   resources: Record<string, ResourceRef>
   resourceCatalog?: readonly HostResourceCatalogEntry[]
+  modelCatalog?: ModelCatalog | undefined
+  modelCatalogStatus?: ModelCatalogStatus | undefined
   t: BlueprintLocaleProps['t']
 }
 
@@ -49,7 +53,7 @@ function resourceChoices(
   return choices
 }
 export function NodeInspector(props: NodeInspectorProps) {
-  const { node, editor, resources, resourceCatalog, t, disabled = false } = props
+  const { node, editor, resources, resourceCatalog, modelCatalog, modelCatalogStatus, t, disabled = false } = props
   const session = useMemo(() => new InspectorSession(editor, node.id), [editor, node.id])
   const owner = useRef({ session, props, active: true })
   owner.current = { session, props, active: true }
@@ -60,11 +64,25 @@ export function NodeInspector(props: NodeInspectorProps) {
     }
   }, [session])
   const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot)
-  return renderNodeInspector({ node, editor, resources, ...(resourceCatalog ? { resourceCatalog } : {}), t, disabled }, session, snapshot, {
-    isCurrent: () => owner.current.active && owner.current.session === session,
-    isDisabled: () => owner.current.props.disabled ?? false,
-    currentProps: () => owner.current.props
-  })
+  return renderNodeInspector(
+    {
+      node,
+      editor,
+      resources,
+      ...(resourceCatalog ? { resourceCatalog } : {}),
+      ...(modelCatalog ? { modelCatalog } : {}),
+      ...(modelCatalogStatus ? { modelCatalogStatus } : {}),
+      t,
+      disabled
+    },
+    session,
+    snapshot,
+    {
+      isCurrent: () => owner.current.active && owner.current.session === session,
+      isDisabled: () => owner.current.props.disabled ?? false,
+      currentProps: () => owner.current.props
+    }
+  )
 }
 
 import { projectInspector } from '../../presenters/inspector-presenter.ts'
@@ -102,7 +120,15 @@ export function renderNodeInspector(props: NodeInspectorProps, session: Inspecto
       })
     ])
   ) as Record<BindingField, InspectorResourceOption[]>
-  const model = projectInspector({ node, edges: props.editor.edges, snapshot, disabled: props.disabled ?? false, choices })
+  const model = projectInspector({
+    node,
+    edges: props.editor.edges,
+    snapshot,
+    disabled: props.disabled ?? false,
+    choices,
+    modelCatalog: props.modelCatalog,
+    modelCatalogStatus: props.modelCatalogStatus
+  })
   const onIntent = (intent: InspectorViewIntent) =>
     dispatchInspectorIntent(
       {

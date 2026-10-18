@@ -311,16 +311,21 @@ function roleBoundaries(graph) {
       )
     }
     walk(module.ast, (node, parents) => {
-      if (parents.some(parent => parent.type.startsWith('TS') && !['TSAsExpression', 'TSNonNullExpression', 'TSSatisfiesExpression'].includes(parent.type))) return
+      if (parents.some(parent => parent.type.startsWith('TS') && !['TSAsExpression', 'TSNonNullExpression', 'TSSatisfiesExpression'].includes(parent.type)))
+        return
       const parent = parents.at(-1)
       const isPropertyName =
         parent &&
         ((parent.type === 'MemberExpression' && parent.property === node && !parent.computed) ||
           (parent.type === 'Property' && parent.key === node && !parent.computed && !parent.shorthand))
       if (node.type === 'Identifier' && !isPropertyName && forbiddenGlobals.has(node.name))
-        throw new BoundaryOracleError('VIEW_DIRECT_EFFECT', 'Props-only view references a browser, Host or graph owner', [graph.location(module, node, node.name)])
+        throw new BoundaryOracleError('VIEW_DIRECT_EFFECT', 'Props-only view references a browser, Host or graph owner', [
+          graph.location(module, node, node.name)
+        ])
       if (node.type === 'MemberExpression' && !node.computed && forbiddenCalls.has(name(node.property)))
-        throw new BoundaryOracleError('VIEW_DIRECT_EFFECT', 'Props-only view invokes a graph, Host or storage mutation', [graph.location(module, node, name(node.property))])
+        throw new BoundaryOracleError('VIEW_DIRECT_EFFECT', 'Props-only view invokes a graph, Host or storage mutation', [
+          graph.location(module, node, name(node.property))
+        ])
     })
     evidence.push({ path: relative(graph.root, module.path), line: 1, symbol: 'props-only view owner' })
   }
@@ -771,11 +776,9 @@ function graphEditor(graph) {
     const imports = [...editor.imports].filter(([, entry]) => entry.source === source)
     if (!imports.length) {
       if (editorSourceLines > 700) {
-        throw new BoundaryOracleError(
-          'GRAPH_ROLE_CENTRALIZED',
-          `GraphEditor still centralizes ${role} responsibilities`,
-          [graph.location(editor, classDeclaration, `GraphEditor ${role} role`)]
-        )
+        throw new BoundaryOracleError('GRAPH_ROLE_CENTRALIZED', `GraphEditor still centralizes ${role} responsibilities`, [
+          graph.location(editor, classDeclaration, `GraphEditor ${role} role`)
+        ])
       }
       throw new BoundaryOracleError('GRAPH_ROLE_WIRING_MISSING', `GraphEditor has no ${role} role module import`, evidence)
     }
@@ -795,12 +798,9 @@ function graphEditor(graph) {
     }
     resolvedRoles.push({ role, module: imported, imports })
   }
-  requireFact(
-    editorSourceLines <= 700,
-    'GRAPH_ROLE_CENTRALIZED',
-    `GraphEditor remains a ${editorSourceLines}-line mixed responsibility owner`,
-    [graph.location(editor, classDeclaration, `GraphEditor lines=${editorSourceLines}`)]
-  )
+  requireFact(editorSourceLines <= 700, 'GRAPH_ROLE_CENTRALIZED', `GraphEditor remains a ${editorSourceLines}-line mixed responsibility owner`, [
+    graph.location(editor, classDeclaration, `GraphEditor lines=${editorSourceLines}`)
+  ])
   const runtimeImports = resolvedRoles.filter(({ imports }) => imports.some(([, entry]) => !entry.typeOnly))
   requireFact(runtimeImports.length >= 5, 'GRAPH_ROLE_WIRING_MISSING', 'GraphEditor must delegate runtime roles through canonical modules')
   return evidence
@@ -852,6 +852,86 @@ function documents(graph) {
       graph.location(service, tails.find(node => name(node.key) === 'libraryTail') ?? methods.get('constructor'), 'dispose → libraryTail')
     ])
   }
+  // The public façade keeps its RPC names, while definition CRUD/resource
+  // authoring and package portability now live in dedicated use-case owners.
+  // Resolve both collaborators from the actual constructor and trace every
+  // façade entry to the retained instance; source movement alone cannot satisfy
+  // this boundary.
+  const definitionUseCases = graph.load(resolve(graph.root, 'src/service/definition-use-cases.ts'))
+  const definitionClass = graph.exported(definitionUseCases, 'BlueprintDefinitionUseCases').declaration
+  requireFact(definitionClass.type === 'ClassDeclaration', 'DOCUMENT_WIRING_INCOMPLETE', 'Expected implemented BlueprintDefinitionUseCases class')
+  const portabilityUseCases = graph.load(resolve(graph.root, 'src/service/portability-use-cases.ts'))
+  const portabilityClass = graph.exported(portabilityUseCases, 'BlueprintPortabilityUseCases').declaration
+  requireFact(portabilityClass.type === 'ClassDeclaration', 'DOCUMENT_WIRING_INCOMPLETE', 'Expected implemented BlueprintPortabilityUseCases class')
+  const definitionBinding = [...service.imports].find(
+    ([, entry]) => entry.source === './service/definition-use-cases.ts' && entry.imported === 'BlueprintDefinitionUseCases'
+  )
+  const portabilityBinding = [...service.imports].find(
+    ([, entry]) => entry.source === './service/portability-use-cases.ts' && entry.imported === 'BlueprintPortabilityUseCases'
+  )
+  requireFact(definitionBinding && portabilityBinding, 'DOCUMENT_WIRING_INCOMPLETE', 'Service must import the definition and portability collaborators')
+  const definitionCreation = nodes(cl, node => node.type === 'NewExpression' && name(node.callee) === definitionBinding[0])
+  const portabilityCreation = nodes(cl, node => node.type === 'NewExpression' && name(node.callee) === portabilityBinding[0])
+  requireFact(
+    definitionCreation.length === 1 && portabilityCreation.length === 1,
+    'DOCUMENT_INSTANCE_COUNT',
+    'Service must construct one definition and one portability collaborator'
+  )
+  const collaboratorField = creation => {
+    let field
+    walk(cl, node => {
+      if (node.type === 'PropertyDefinition' && node.value === creation) field = name(node.key)
+      if (node.type === 'AssignmentExpression' && node.right === creation && member(node.left)?.startsWith('this.')) field = member(node.left).slice(5)
+    })
+    return field
+  }
+  const definitionField = collaboratorField(definitionCreation[0])
+  const portabilityField = collaboratorField(portabilityCreation[0])
+  requireFact(definitionField && portabilityField, 'DOCUMENT_INSTANCE_COUNT', 'Use-case collaborators must be retained on BlueprintService')
+  const definitionEntries = [
+    'listDefinitions',
+    'loadDefinition',
+    'saveDefinition',
+    'createDefinition',
+    'deleteDefinition',
+    'describeBlueprint',
+    'createBlueprint'
+  ]
+  const portabilityEntries = ['exportDefinition', 'importDefinition']
+  const definitionRoutes = definitionEntries.map(entry => ({ entry, path: reaches(methods, entry, edge => edge.path.startsWith(`this.${definitionField}.`)) }))
+  const portabilityRoutes = portabilityEntries.map(entry => ({
+    entry,
+    path: reaches(methods, entry, edge => edge.path.startsWith(`this.${portabilityField}.`))
+  }))
+  requireFact(
+    definitionRoutes.every(item => item.path.length) && portabilityRoutes.every(item => item.path.length),
+    'DOCUMENT_WIRING_INCOMPLETE',
+    'Definition and portability façade entries must reach their dedicated collaborators',
+    [...definitionRoutes, ...portabilityRoutes].filter(item => !item.path.length).map(item => graph.location(service, methods.get(item.entry), item.entry))
+  )
+  const definitionMethods = methodTable(definitionClass)
+  const portabilityMethods = methodTable(portabilityClass)
+  requireFact(
+    [
+      'listDefinitions',
+      'loadDefinition',
+      'saveDefinition',
+      'createDefinition',
+      'deleteDefinition',
+      'describeBlueprint',
+      'validateBlueprint',
+      'createBlueprint'
+    ].every(method => definitionMethods.has(method)) &&
+      ['exportConfigured', 'importConfigured', 'exportInternal', 'importInternal'].every(method => portabilityMethods.has(method)),
+    'DOCUMENT_WIRING_INCOMPLETE',
+    'Dedicated use-case collaborators must retain implemented authoring and portability methods'
+  )
+  requireFact(
+    calls(definitionClass.body).some(call => member(call.callee)?.startsWith('this.context.documents.')) &&
+      calls(portabilityClass.body).some(call => member(call.callee)?.startsWith('this.context.documents.')),
+    'DOCUMENT_WIRING_INCOMPLETE',
+    'Use-case collaborators must route document access through BlueprintDocumentLibrary'
+  )
   const library = graph.load(resolve(graph.root, 'src/service/document-library.ts'))
   const libraryClass = graph.exported(library, 'BlueprintDocumentLibrary').declaration
   requireFact(libraryClass.type === 'ClassDeclaration', 'DOCUMENT_WIRING_INCOMPLETE', 'Expected implemented BlueprintDocumentLibrary class')
@@ -883,7 +963,8 @@ function documents(graph) {
     'Service replaces its document collaborator'
   )
   const libraryMethods = methodTable(libraryClass)
-  const routes = entries.map(entry => ({
+  const documentEntries = ['preflightRun', 'startConfiguredRun', 'startSessionRun', 'hostProbe']
+  const routes = documentEntries.map(entry => ({
     entry,
     path: reaches(methods, entry, edge => {
       const parts = edge.path.split('.')
@@ -1158,11 +1239,9 @@ function conversation(graph) {
   const importsFor = source => [...view.imports].filter(([, item]) => item.source === source && !item.typeOnly)
   const missing = required.filter(([source]) => importsFor(source).length === 0)
   if (missing.length) {
-    throw new BoundaryOracleError(
-      'CONVERSATION_VIEW_CENTRALIZED',
-      'Conversation view still owns renderer, TeamStage, attempts or display projection roles',
-      [graph.location(view, render, `missing extracted role imports: ${missing.map(([source]) => source).join(', ')}`)]
-    )
+    throw new BoundaryOracleError('CONVERSATION_VIEW_CENTRALIZED', 'Conversation view still owns renderer, TeamStage, attempts or display projection roles', [
+      graph.location(view, render, `missing extracted role imports: ${missing.map(([source]) => source).join(', ')}`)
+    ])
   }
   const declarations = new Set(view.declarations.filter(item => item.parents.some(parent => parent.type === 'Program')).map(item => item.name))
   const inlineRoles = ['FrozenNode', 'FrozenGroup', 'FrozenEdge', 'frozenContentShape', 'renderTeamStage', 'displayState']
@@ -1198,17 +1277,36 @@ function conversation(graph) {
     graph.validateImports(module)
     for (const symbol of names) {
       const resolved = graph.exported(module, symbol)
-      if (['FrozenNode', 'FrozenGroup', 'FrozenEdge', 'frozenContentShape', 'renderTeamStage', 'renderConversationAttempts', 'displayState', 'presentConversation'].includes(symbol))
+      if (
+        [
+          'FrozenNode',
+          'FrozenGroup',
+          'FrozenEdge',
+          'frozenContentShape',
+          'renderTeamStage',
+          'renderConversationAttempts',
+          'displayState',
+          'presentConversation'
+        ].includes(symbol)
+      )
         callable(graph, resolved, symbol)
     }
   }
   const renderer = graph.importedModule(view, importsFor('./conversation-renderers.tsx')[0][1])
-  const rendererRuntime = renderer.ast.body.filter(item => item.type === 'ImportDeclaration' && item.importKind !== 'type' && item.specifiers.some(specifier => specifier.importKind !== 'type'))
+  const rendererRuntime = renderer.ast.body.filter(
+    item => item.type === 'ImportDeclaration' && item.importKind !== 'type' && item.specifiers.some(specifier => specifier.importKind !== 'type')
+  )
   requireFact(
-    !rendererRuntime.some(item => /(?:^|\/)(?:conversation-view|conversation-controller|conversation-attempts|conversation-team-stage)\.[cm]?[jt]sx?$/.test(item.source.value)),
+    !rendererRuntime.some(item =>
+      /(?:^|\/)(?:conversation-view|conversation-controller|conversation-attempts|conversation-team-stage)\.[cm]?[jt]sx?$/.test(item.source.value)
+    ),
     'CONVERSATION_RENDERER_COORDINATION_DEPENDENCY',
     'Conversation renderers cannot import the view, controller or sibling coordination view',
-    rendererRuntime.filter(item => /(?:^|\/)(?:conversation-view|conversation-controller|conversation-attempts|conversation-team-stage)\.[cm]?[jt]sx?$/.test(item.source.value)).map(item => graph.location(renderer, item, item.source.value))
+    rendererRuntime
+      .filter(item =>
+        /(?:^|\/)(?:conversation-view|conversation-controller|conversation-attempts|conversation-team-stage)\.[cm]?[jt]sx?$/.test(item.source.value)
+      )
+      .map(item => graph.location(renderer, item, item.source.value))
   )
   const attemptsModule = graph.importedModule(view, importsFor('./conversation-attempts.tsx')[0][1])
   const attemptsImport = attemptsModule.imports.get('renderTeamStage')
@@ -1228,22 +1326,36 @@ function conversation(graph) {
   graph.validateImports(teamStageModule)
   callable(graph, graph.exported(teamStageModule, 'renderTeamStage'), 'renderTeamStage')
   const presenter = graph.importedModule(view, importsFor('../presenters/conversation-presenter.ts')[0][1])
-  const presenterRuntime = presenter.ast.body.filter(item => item.type === 'ImportDeclaration' && item.importKind !== 'type' && item.specifiers.some(specifier => specifier.importKind !== 'type'))
+  const presenterRuntime = presenter.ast.body.filter(
+    item => item.type === 'ImportDeclaration' && item.importKind !== 'type' && item.specifiers.some(specifier => specifier.importKind !== 'type')
+  )
   requireFact(
     !presenterRuntime.some(item => /^(?:react(?:\/|$)|@xyflow\/|.*conversation-(?:view|controller|canvas)\.)/.test(item.source.value)),
     'CONVERSATION_PRESENTER_DEPENDENCY',
     'Conversation presenter must remain a pure snapshot/display projection',
-    presenterRuntime.filter(item => /^(?:react(?:\/|$)|@xyflow\/|.*conversation-(?:view|controller|canvas)\.)/.test(item.source.value)).map(item => graph.location(presenter, item, item.source.value))
+    presenterRuntime
+      .filter(item => /^(?:react(?:\/|$)|@xyflow\/|.*conversation-(?:view|controller|canvas)\.)/.test(item.source.value))
+      .map(item => graph.location(presenter, item, item.source.value))
   )
-  const forbiddenGlobals = nodes(presenter.ast, node => node.type === 'Identifier' && ['window', 'document', 'navigator', 'fetch', 'BlueprintWorkspace', 'ConversationController'].includes(node.name))
-  requireFact(!forbiddenGlobals.length, 'CONVERSATION_PRESENTER_EFFECT', 'Conversation presenter references browser or controller state', forbiddenGlobals.map(node => graph.location(presenter, node, node.name)))
+  const forbiddenGlobals = nodes(
+    presenter.ast,
+    node => node.type === 'Identifier' && ['window', 'document', 'navigator', 'fetch', 'BlueprintWorkspace', 'ConversationController'].includes(node.name)
+  )
+  requireFact(
+    !forbiddenGlobals.length,
+    'CONVERSATION_PRESENTER_EFFECT',
+    'Conversation presenter references browser or controller state',
+    forbiddenGlobals.map(node => graph.location(presenter, node, node.name))
+  )
   const display = graph.exported(presenter, 'displayState')
   const project = graph.exported(presenter, 'presentConversation')
   callable(graph, display, 'displayState')
   callable(graph, project, 'presentConversation')
   const returned = new Set(
     nodes(functionOf(project.declaration).body, node => node.type === 'ReturnStatement' && unwrap(node.argument)?.type === 'ObjectExpression').flatMap(node =>
-      unwrap(node.argument).properties.filter(item => item.type === 'Property').map(item => name(item.key))
+      unwrap(node.argument)
+        .properties.filter(item => item.type === 'Property')
+        .map(item => name(item.key))
     )
   )
   requireFact(
@@ -1269,23 +1381,13 @@ function conversation(graph) {
  * canonical namespace modules. */
 function locale(graph) {
   const registry = graph.load(resolve(graph.root, 'src/client/shared/i18n/locales.ts'))
-  const namespaces = [
-    './conversation.ts',
-    './commands.ts',
-    './interaction.ts',
-    './resources.ts',
-    './inspector.ts',
-    './document.ts'
-  ]
-  const runtimeImports = source =>
-    [...registry.imports].filter(([, entry]) => entry.source === source && !entry.typeOnly)
+  const namespaces = ['./conversation.ts', './commands.ts', './interaction.ts', './resources.ts', './inspector.ts', './document.ts']
+  const runtimeImports = source => [...registry.imports].filter(([, entry]) => entry.source === source && !entry.typeOnly)
   const missing = namespaces.filter(source => runtimeImports(source).length === 0)
   if (missing.length) {
-    throw new BoundaryOracleError(
-      'LOCALE_NAMESPACE_CENTRALIZED',
-      'Locale registry still owns one or more namespace dictionaries',
-      [graph.location(registry, registry.ast, `missing namespace imports: ${missing.join(', ')}`)]
-    )
+    throw new BoundaryOracleError('LOCALE_NAMESPACE_CENTRALIZED', 'Locale registry still owns one or more namespace dictionaries', [
+      graph.location(registry, registry.ast, `missing namespace imports: ${missing.join(', ')}`)
+    ])
   }
 
   const objectDeclaration = (module, symbol) => {
@@ -1311,24 +1413,18 @@ function locale(graph) {
     const en = objectDeclaration(imported, 'en')
     const zhKeys = objectKeys(zh.object)
     const enKeys = objectKeys(en.object)
-    requireFact(
-      zhKeys.size === enKeys.size && [...zhKeys].every(key => enKeys.has(key)),
-      'LOCALE_KEY_MISMATCH',
-      `Locale namespace keys differ in ${source}`,
-      [graph.location(imported, zh.object, `${source}:zh`), graph.location(imported, en.object, `${source}:en`)]
-    )
-    requireFact(zhKeys.size > 0, 'LOCALE_NAMESPACE_CONTRACT_MISSING', `Locale namespace is empty: ${source}`, [
-      graph.location(imported, zh.object, source)
+    requireFact(zhKeys.size === enKeys.size && [...zhKeys].every(key => enKeys.has(key)), 'LOCALE_KEY_MISMATCH', `Locale namespace keys differ in ${source}`, [
+      graph.location(imported, zh.object, `${source}:zh`),
+      graph.location(imported, en.object, `${source}:en`)
     ])
+    requireFact(zhKeys.size > 0, 'LOCALE_NAMESPACE_CONTRACT_MISSING', `Locale namespace is empty: ${source}`, [graph.location(imported, zh.object, source)])
     namespaceObjects.push({ source, zh: zhKeys, en: enKeys })
   }
 
   const registryZh = objectDeclaration(registry, 'zh')
   const registryEn = objectDeclaration(registry, 'en')
   const spreads = object =>
-    object.properties
-      .filter(property => property.type === 'SpreadElement' && property.argument.type === 'Identifier')
-      .map(property => property.argument.name)
+    object.properties.filter(property => property.type === 'SpreadElement' && property.argument.type === 'Identifier').map(property => property.argument.name)
   for (const [symbol, object] of [
     ['zh', registryZh.object],
     ['en', registryEn.object]
@@ -1337,12 +1433,9 @@ function locale(graph) {
     for (const source of namespaces) {
       const imported = runtimeImports(source).find(([, entry]) => entry.imported === symbol)?.[1]
       const namespaceLocal = imported && [...registry.imports].find(([, entry]) => entry === imported)?.[0]
-      requireFact(
-        namespaceLocal && spreadNames.has(namespaceLocal),
-        'LOCALE_REGISTRY_WIRING_MISSING',
-        `Locale registry ${symbol} does not spread ${source}`,
-        [graph.location(registry, object, `${symbol} namespace assembly`)]
-      )
+      requireFact(namespaceLocal && spreadNames.has(namespaceLocal), 'LOCALE_REGISTRY_WIRING_MISSING', `Locale registry ${symbol} does not spread ${source}`, [
+        graph.location(registry, object, `${symbol} namespace assembly`)
+      ])
     }
   }
   const combined = key => new Set(namespaceObjects.flatMap(namespace => [...namespace[key]]))
@@ -1383,15 +1476,12 @@ function styles(graph) {
     ['./canvas.ts', 'canvasCss'],
     ['./panel.ts', 'panelCss']
   ]
-  const runtimeImports = source =>
-    [...registry.imports].filter(([, entry]) => entry.source === source && !entry.typeOnly)
+  const runtimeImports = source => [...registry.imports].filter(([, entry]) => entry.source === source && !entry.typeOnly)
   const missing = fragments.filter(([source]) => runtimeImports(source).length === 0)
   if (missing.length) {
-    throw new BoundaryOracleError(
-      'STYLE_FRAGMENT_CENTRALIZED',
-      'Canvas style registry still owns one or more style fragments',
-      [graph.location(registry, registry.ast, `missing fragment imports: ${missing.map(([source]) => source).join(', ')}`)]
-    )
+    throw new BoundaryOracleError('STYLE_FRAGMENT_CENTRALIZED', 'Canvas style registry still owns one or more style fragments', [
+      graph.location(registry, registry.ast, `missing fragment imports: ${missing.map(([source]) => source).join(', ')}`)
+    ])
   }
   const conversation = graph.load(resolve(graph.root, 'src/client/shared/styles/conversation.ts'))
   const feature = graph.load(resolve(graph.root, 'src/client/features/conversation/ui/conversation-styles.ts'))
@@ -1399,9 +1489,12 @@ function styles(graph) {
     const resolved = graph.exported(module, symbol)
     const declaration = resolved.declaration
     const init = declaration.type === 'VariableDeclarator' ? unwrap(declaration.init) : undefined
-    requireFact(init && ['TemplateLiteral', 'Literal', 'BinaryExpression'].includes(init.type), 'STYLE_FRAGMENT_CONTRACT_MISSING', `${symbol} must be CSS text`, [
-      graph.location(module, declaration, symbol)
-    ])
+    requireFact(
+      init && ['TemplateLiteral', 'Literal', 'BinaryExpression'].includes(init.type),
+      'STYLE_FRAGMENT_CONTRACT_MISSING',
+      `${symbol} must be CSS text`,
+      [graph.location(module, declaration, symbol)]
+    )
     requireFact(readFileSync(module.path, 'utf8').trim().length > 0, 'STYLE_FRAGMENT_CONTRACT_MISSING', `Style fragment is empty: ${symbol}`)
     return resolved
   }
@@ -1476,7 +1569,8 @@ function canonicalSourceGraph(graph) {
   }
   const isLegacyCandidate = path => dirname(path) === clientRoot && path !== resolve(clientRoot, 'index.ts')
   const isTypeOnly = item =>
-    item.importKind === 'type' || item.exportKind === 'type' ||
+    item.importKind === 'type' ||
+    item.exportKind === 'type' ||
     (item.type === 'ImportDeclaration' && item.specifiers.length > 0 && item.specifiers.every(specifier => specifier.importKind === 'type'))
   const modules = new Map()
   const dependencies = new Map()
@@ -1484,7 +1578,9 @@ function canonicalSourceGraph(graph) {
     const module = graph.load(path)
     modules.set(path, module)
     const local = []
-    for (const item of module.ast.body.filter(node => ['ImportDeclaration', 'ExportNamedDeclaration', 'ExportAllDeclaration'].includes(node.type) && node.source)) {
+    for (const item of module.ast.body.filter(
+      node => ['ImportDeclaration', 'ExportNamedDeclaration', 'ExportAllDeclaration'].includes(node.type) && node.source
+    )) {
       const source = item.source.value
       if (source.startsWith('.')) {
         const candidate = resolve(dirname(path), source)
@@ -1724,7 +1820,11 @@ function panelSnapshot(graph) {
   const entry = graph.exported(panel, 'createBlueprintPanel')
   const fn = functionOf(entry.declaration)
   requireFact(fn, 'PANEL_SNAPSHOT_NOT_CONSUMED', 'Actual Panel factory must consume the external snapshot')
-  const targets = [{ module: panel, fn }]
+  // The Workspace hook is the canonical owner of the panel snapshot. Keep the
+  // panel factory itself out of this search: it also has an unrelated
+  // useSyncExternalStore for the DSH model catalog, which must not satisfy the
+  // workspace subscription oracle when the real hook is disconnected.
+  const targets = []
   for (const call of calls(fn)) {
     if (call.callee.type !== 'Identifier') continue
     const imported = panel.imports.get(call.callee.name)
@@ -1864,7 +1964,22 @@ function panelComposition(graph) {
 
 export function checkModularization({ root = DEFAULT_ROOT, boundary, slice } = {}) {
   requireFact(
-    ['resources', 'workspace', 'canvas', 'graph', 'documents', 'inspector', 'conversation', 'locale', 'styles', 'source-graph', 'roles', 'workspace-use-cases', 'panel-snapshot', 'panel-composition'].includes(boundary),
+    [
+      'resources',
+      'workspace',
+      'canvas',
+      'graph',
+      'documents',
+      'inspector',
+      'conversation',
+      'locale',
+      'styles',
+      'source-graph',
+      'roles',
+      'workspace-use-cases',
+      'panel-snapshot',
+      'panel-composition'
+    ].includes(boundary),
     'INVALID_BOUNDARY',
     'Choose resources, workspace, canvas, graph, documents, inspector, conversation, locale, styles, source-graph, roles, workspace-use-cases or panel-composition'
   )
@@ -1881,19 +1996,19 @@ export function checkModularization({ root = DEFAULT_ROOT, boundary, slice } = {
               ? 'src/index.ts'
               : boundary === 'graph'
                 ? 'src/client/features/authoring/logic/graph/graph-editor.ts'
-              : boundary === 'workspace' || boundary === 'workspace-use-cases'
-                ? 'src/client/features/authoring/logic/workspace/workspace-controller.ts'
-              : boundary === 'roles'
-                ? 'src/client/features/authoring/logic/resources/resource-library-model.ts'
-                : boundary === 'inspector'
-                  ? 'src/client/features/authoring/ui/inspector/inspector-composition.tsx'
-                : boundary === 'conversation'
-                    ? 'src/client/features/conversation/ui/conversation-view.tsx'
-                    : boundary === 'locale'
-                      ? 'src/client/shared/i18n/locales.ts'
-                      : boundary === 'styles'
-                        ? 'src/client/shared/styles/styles.ts'
-                      : 'src/client/features/authoring/ui/panel/panel-composition.tsx'
+                : boundary === 'workspace' || boundary === 'workspace-use-cases'
+                  ? 'src/client/features/authoring/logic/workspace/workspace-controller.ts'
+                  : boundary === 'roles'
+                    ? 'src/client/features/authoring/logic/resources/resource-library-model.ts'
+                    : boundary === 'inspector'
+                      ? 'src/client/features/authoring/ui/inspector/inspector-composition.tsx'
+                      : boundary === 'conversation'
+                        ? 'src/client/features/conversation/ui/conversation-view.tsx'
+                        : boundary === 'locale'
+                          ? 'src/client/shared/i18n/locales.ts'
+                          : boundary === 'styles'
+                            ? 'src/client/shared/styles/styles.ts'
+                            : 'src/client/features/authoring/ui/panel/panel-composition.tsx'
           )
         )
       )
@@ -1901,7 +2016,21 @@ export function checkModularization({ root = DEFAULT_ROOT, boundary, slice } = {
     const evidence =
       boundary === 'workspace-use-cases'
         ? workspaceUseCases(graph, slice ?? 'all')
-        : { resources, workspace, canvas, graph: graphEditor, documents, inspector, conversation, locale, styles, 'source-graph': canonicalSourceGraph, roles: roleBoundaries, 'panel-snapshot': panelSnapshot, 'panel-composition': panelComposition }[boundary](graph)
+        : {
+            resources,
+            workspace,
+            canvas,
+            graph: graphEditor,
+            documents,
+            inspector,
+            conversation,
+            locale,
+            styles,
+            'source-graph': canonicalSourceGraph,
+            roles: roleBoundaries,
+            'panel-snapshot': panelSnapshot,
+            'panel-composition': panelComposition
+          }[boundary](graph)
     return { boundary, ok: true, code: 'BOUNDARY_EXTRACTED', evidence }
   } catch (error) {
     if (!(error instanceof BoundaryOracleError)) throw error

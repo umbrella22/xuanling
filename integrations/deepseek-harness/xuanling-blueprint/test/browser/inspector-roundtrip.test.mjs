@@ -44,7 +44,7 @@ const definition = {
         inputs: { '用户.port [中文] / %': '用户 wire type / exact', ' spaced ': 'string' },
         outputs: { 'result.part': 'string' },
         branches: ['Branch_A1', 'Branch_B2'],
-        budget: { maxIterations: 17, maxDurationMs: 42000 }
+        modelSelection: { provider: 'fixture-provider', model: 'fixture-model', reasoningEffort: 'balanced' }
       }
     ],
     edges: []
@@ -86,7 +86,7 @@ function retained(actual) {
   assert.deepEqual(actual.resources, definition.resources)
   assert.deepEqual(actual.metadata, definition.metadata)
   assert.deepEqual(actual.graph.nodes[0].branches, definition.graph.nodes[0].branches)
-  assert.deepEqual(actual.graph.nodes[0].budget, definition.graph.nodes[0].budget)
+  assert.deepEqual(actual.graph.nodes[0].modelSelection, definition.graph.nodes[0].modelSelection)
   assert.equal(Object.hasOwn(actual.graph.nodes[0], 'name'), false)
   assert.equal(Object.hasOwn(actual.graph.nodes[0], 'prompt'), false)
 }
@@ -126,7 +126,7 @@ test('C-04 NodeInspector uses actual React props/hooks, legal structured fields 
   assert.equal(f.editor.canUndo, false)
 })
 
-test('C-04 Agent/output schema React select handlers patch only their field and retain imported branches/budget', t => {
+test('C-04 Agent/output schema React select handlers patch only their field and retain imported branches/model route', t => {
   const f = fixture()
   t.after(f.off)
   find(f.render(), 'data-bp-field', 'agentRef').props.onChange(event('Agent_B2'))
@@ -317,23 +317,29 @@ test('C-04 optional schema can be cleared without an empty invalid ref; equivale
   assert.deepEqual(parseInspectorJson(f.node(), 'options', JSON.stringify({ id: 'task', kind: 'output' })), { ok: false, issue: 'identity-not-option' })
 })
 
-test('C-04 imported condition/iteration/subflow options roundtrip without reconstructing or dropping fields', () => {
+test('C-04 removed node vocabulary is rejected at the Host definition boundary while subflow resources remain portable', () => {
   const imported = structuredClone(definition)
   imported.resources.Subflow_A1 = { kind: 'subflow', path: 'subflows/child.json' }
   imported.graph.nodes.push(
-    { id: 'condition', kind: 'condition', branches: ['Approved_A1', 'Rejected_B2'], outputs: { '分支.port': 'string' } },
-    { id: 'iteration', kind: 'iteration', budget: { maxIterations: 5, maxDurationMs: 54000 }, outputs: { 'loop.port': 'string' } },
+    {
+      id: 'condition',
+      kind: 'condition',
+      condition: { inputPort: 'input', trueBranch: 'Approved_A1', falseBranch: 'Rejected_B2' },
+      outputs: { '分支.port': 'string' }
+    },
+    { id: 'join', kind: 'join', join: 'all', outputs: { 'join.port': 'string' } },
     { id: 'subflow', kind: 'subflow', subflowRef: 'Subflow_A1', outputs: { 'sub.port': 'string' } }
   )
-  const editor = GraphEditor.fromDefinition(imported)
-  for (const id of ['condition', 'iteration', 'subflow']) {
-    const node = editor.nodes.find(item => item.id === id)
-    const parsed = parseInspectorJson(node, 'inputs', '{"合法.port [中文]":"user wire type"}')
-    assert.equal(parsed.ok, true)
-    assert.equal(applyInspectorPatch(editor, id, parsed.patch).ok, true)
-    const actual = hostRoundtrip(editor).graph.nodes.find(item => item.id === id)
-    assert.deepEqual(actual, { ...imported.graph.nodes.find(item => item.id === id), inputs: { '合法.port [中文]': 'user wire type' } })
-  }
+  assert.throws(
+    () => hostRoundtrip(GraphEditor.fromDefinition(imported)),
+    error => {
+      assert.equal(error.code, 'DEFINITION_INVALID')
+      assert.ok(error.issues.some(issue => issue.pointer === '/graph/nodes/3/kind' && issue.code === 'invalid-value'))
+      assert.ok(error.issues.some(issue => issue.pointer === '/graph/nodes/3/subflowRef' && issue.code === 'unknown-field'))
+      return true
+    }
+  )
+  assert.equal(imported.resources.Subflow_A1.kind, 'subflow')
 })
 
 test('C-04 declaration shape preflight is not Host validation: dangling refs still fail the Host oracle', t => {

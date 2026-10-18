@@ -36,7 +36,8 @@ const key = Symbol.for('blueprint.test.port.renderers'),
   seat = { active: null }
 globalThis[key] = seat
 seat.react = {
-  createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.length ? children : [props?.children] }),
+  createElement: (type, props, ...children) =>
+    type?.name === 'CanvasSurface' ? type(props ?? {}) : { type, props: props ?? {}, children: children.length ? children : [props?.children] },
   memo: fn => fn,
   useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
   useState(initial) {

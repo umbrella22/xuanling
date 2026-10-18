@@ -36,7 +36,7 @@ export async function getCases(helpers) {
           mkdirSync(join(root, 'runtime', 'store'), { recursive: true })
           const { opened, store } = await makeStore(join(root, 'runtime'))
           const created = await store.createRun({ scope: 's', requestId: 'r1', payloadFingerprint: 'fp' }, 'rev-1', 'def-1', 'input-1')
-          await store.recordIntent(created.runId, { nodeId: 'n1', kind: 'toolCall' })
+          await store.recordIntent(created.runId, { nodeId: 'n1', kind: 'agentTask' })
           await store.recordResult(created.runId, (await store.get(created.runId)).attempts[0].attemptId, { ok: true, outcome: {}, evidence: 'done' })
           await store.settleTerminal(created.runId, 'succeeded', {})
           await opened.close()
@@ -49,7 +49,7 @@ export async function getCases(helpers) {
           return (
             restored.resumed === false &&
             record.state === 'succeeded' &&
-            record.attempts[0]?.intent?.kind === 'toolCall' &&
+            record.attempts[0]?.intent?.kind === 'agentTask' &&
             record.attempts[0]?.result?.evidence === 'done' &&
             restored.filesRestored.length >= 1
           )

@@ -9,7 +9,7 @@ const seat = { active: null },
   key = Symbol.for('blueprint.comfy.ui')
 globalThis[key] = seat
 seat.react = {
-  createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }),
+  createElement: (type, props, ...children) => (type?.name === 'CanvasSurface' ? type(props ?? {}) : { type, props: props ?? {}, children }),
   memo: fn => fn,
   useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
   useState(initial) {

@@ -658,22 +658,13 @@ test('C-05 failure-terminal: provider failure cannot leave the Run running', asy
   assert.equal(record.state, 'failed', 'TARGET: provider failure must eventually reach a Run terminal')
 })
 
-test('C-05 unsupported-once: unavailable node is a typed failed Attempt, not 50 attempts', async t => {
-  const h = await harness(t)
-  const result = await admitAndDrain(h, argsFor(h, definition([{ id: 'unsupported', kind: 'toolCall' }])))
-  const record = await readRun(h, result.runId)
-  assert.equal(h.host.calls.length, 0)
-  assert.match(record.attempts[0].result.evidence, /unavailable/)
-  assert.equal(record.attempts.length, 1, 'TARGET: unsupported node has one durable failed dispatch, not blind retries')
-  assert.equal(record.state, 'failed')
-})
-
-test('C-05 unsupported-terminal: unhandled node leaves an observable failed Run', async t => {
-  const h = await harness(t)
-  const result = await admitAndDrain(h, argsFor(h, definition([{ id: 'unsupported', kind: 'toolCall' }])))
-  const record = await readRun(h, result.runId)
-  assert.equal(record.attempts[0].result.ok, false)
-  assert.equal(record.state, 'failed', 'TARGET: unsupported node must not strand the Run in running')
+test('C-05 definition hard break: removed node kinds fail before admission', () => {
+  for (const kind of ['toolCall', 'scriptCall', 'subflow', 'iteration']) {
+    assert.throws(
+      () => definition([{ id: 'unsupported', kind }]),
+      error => error.code === 'DEFINITION_INVALID' && error.issues.some(issue => issue.pointer === '/graph/nodes/0/kind')
+    )
+  }
 })
 
 function decisionDefinition(variant) {
