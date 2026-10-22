@@ -217,6 +217,10 @@ export class RuntimeSnapshots {
     return join(this.runtimeRoot, 'snapshots', runId, 'package.json')
   }
 
+  copyPackage(sourceSnapshotId: string, runId: string): void {
+    durableWrite(this.packagePath(runId), load(this.packagePath(sourceSnapshotId)))
+  }
+
   async freezePackage(runId: string, definition: BlueprintDefinition, rootDir?: string): Promise<void> {
     if (admitResources(definition.resources).length) throw new Error('resource admission rejected')
     const files = new Map<string, SnapshotFile>()

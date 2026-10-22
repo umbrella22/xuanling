@@ -28,7 +28,7 @@ export class ClipboardError extends Error {
 
 const idPattern = /^[a-zA-Z][a-zA-Z0-9_-]*$/
 const pathPattern = /^(?!\/)[A-Za-z0-9._\-/]+[A-Za-z0-9._-]$/
-const kinds = ['input', 'output', 'agentTask', 'condition', 'join', 'humanDecision']
+const kinds = ['input', 'output', 'agentTask', 'condition', 'join', 'humanDecision', 'blueprintCall']
 const colors = ['default', 'blue', 'green', 'amber', 'red', 'purple']
 function fail(pointer: string): never {
   throw new ClipboardError(pointer)
@@ -214,13 +214,22 @@ function checkNode(raw: unknown, at: string): GraphNode {
       'outputSchemaRef',
       'join',
       'branches',
-      'modelSelection'
+      'modelSelection',
+      'interaction',
+      'blueprintRef'
     ],
     ['id', 'kind'],
     at
   )
   string(n.id, `${at}/id`, true)
   if (!kinds.includes(n.kind as string)) fail(`${at}/kind`)
+  if (Object.hasOwn(n, 'interaction') && (n.kind !== 'agentTask' || n.interaction !== 'managed')) fail(`${at}/interaction`)
+  if (Object.hasOwn(n, 'blueprintRef')) {
+    if (n.kind !== 'blueprintCall') fail(`${at}/blueprintRef`)
+    const ref = shape(n.blueprintRef, ['blueprintId', 'documentRevision'], ['blueprintId', 'documentRevision'], `${at}/blueprintRef`)
+    string(ref.blueprintId, `${at}/blueprintRef/blueprintId`, true)
+    if (typeof ref.documentRevision !== 'string' || !/^[a-f0-9]{64}$/.test(ref.documentRevision)) fail(`${at}/blueprintRef/documentRevision`)
+  }
   if (Object.hasOwn(n, 'modelSelection')) {
     if (n.kind !== 'agentTask') fail(`${at}/modelSelection`)
     const route = shape(n.modelSelection, ['provider', 'model', 'reasoningEffort'], ['provider', 'model'], `${at}/modelSelection`)

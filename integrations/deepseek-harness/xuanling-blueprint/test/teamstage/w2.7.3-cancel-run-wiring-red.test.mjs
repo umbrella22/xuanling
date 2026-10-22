@@ -5,6 +5,10 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { BlueprintService } from '../../src/index.ts'
+import { RunExecutionService } from '../../src/service/run-execution.ts'
+import { ManagedNodeSessions } from '../../src/service/managed-node-session.ts'
+import { TeamStageObservations } from '../../src/teamstage/observability.ts'
+import { decodeDefinition } from '../../src/definition/codec.ts'
 import { openBlueprintDomain, RunStore } from '../../src/persistence/index.ts'
 
 const digest = value => createHash('sha256').update(value).digest('hex')
@@ -78,8 +82,21 @@ test('W2.7.3 red: cancelRun settles the source Team through owned drain and task
   ])
   const service = Object.create(BlueprintService.prototype)
   service.ctx = { get: key => values.get(key) }
+  service.execution = new RunExecutionService({
+    ctx: service.ctx,
+    config: {},
+    isClosing: () => false,
+    decodeDefinition,
+    cancelTeamRun: (...args) => service.cancelTeamRun(...args),
+    teamObservations: new TeamStageObservations()
+  })
   service.checkArgs = () => {}
-  service.configuredRuntime = async () => ({ store, controllers: new Map(), cancellationTails: new Map() })
+  service.configuredRuntime = async () => ({
+    store,
+    managed: new ManagedNodeSessions(service.ctx, store),
+    controllers: new Map(),
+    cancellationTails: new Map()
+  })
 
   try {
     const { runId } = await store.createRun(

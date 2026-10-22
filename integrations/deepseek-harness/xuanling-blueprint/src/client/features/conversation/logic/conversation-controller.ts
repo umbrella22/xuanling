@@ -201,11 +201,21 @@ export class ConversationController {
   }
 
   async selectRun(runId: string): Promise<void> {
-    if (this.snapshot.value?.status !== 'bound' || !this.snapshot.value.runs.some(run => run.runId === runId)) return
+    const value = this.snapshot.value
+    if (
+      value?.status !== 'bound' ||
+      !(
+        value.runs.some(run => run.runId === runId) ||
+        value.selected.ancestors?.some(run => run.runId === runId) ||
+        value.selected.run.attempts.some(attempt => attempt.childRunId === runId)
+      )
+    )
+      return
     this.choices.set(this.snapshot.sessionId, runId)
     this.epoch++
-    if (this.snapshot.value.selected.run.runId !== runId) {
-      this.publish({ value: null, connection: 'loading', selectedAttemptId: null, errorCode: null })
+    if (value.selected.run.runId !== runId) {
+      // Preserve the current graph and breadcrumbs if navigation fails.
+      this.publish({ connection: 'loading', selectedAttemptId: null, errorCode: null })
     }
     await this.refresh()
   }

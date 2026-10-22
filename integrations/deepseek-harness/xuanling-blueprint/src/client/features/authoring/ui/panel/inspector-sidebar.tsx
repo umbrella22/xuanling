@@ -11,6 +11,9 @@ import type { OpenExecutionChat } from '../../../conversation/logic/chat-navigat
 import type { BlueprintLocaleKey, BlueprintLocaleProps } from '../../../../shared/i18n/locales.ts'
 import { JsonEditor } from '../../logic/inspector/json-editor.ts'
 import { NodeInspector } from '../inspector/inspector-composition.tsx'
+import { BlueprintCallInspector } from '../inspector/blueprint-call-inspector.tsx'
+import { RunHierarchyPreview } from '../../../conversation/ui/run-hierarchy-preview.tsx'
+import type { InspectRunViewValue } from '../../../../../conversation/contracts.ts'
 import { editorNodeDisplayTitle } from '../../logic/graph/graph-editor.ts'
 import { runStateTitle } from '../../presenters/canvas-presentation.ts'
 import { nodeKindTitle } from '../../logic/graph/node-catalog.ts'
@@ -66,6 +69,27 @@ export function InspectorSidebar({
   openChat,
   button
 }: InspectorSidebarProps): React.ReactElement {
+  const [previewRunId, setPreviewRunId] = React.useState<string | null>(null)
+  const [frozenView, setFrozenView] = React.useState<InspectRunViewValue | null>(null)
+  React.useEffect(() => {
+    setPreviewRunId(null)
+  }, [workspace.blueprintId, snapshot?.runId])
+  React.useEffect(() => {
+    let current = true
+    setFrozenView(null)
+    if (snapshot?.attempts.some(attempt => attempt.state === 'waiting_input')) {
+      void env.hostLink?.inspectRunView?.({ runId: snapshot.runId }).then(
+        view => {
+          if (current && view.run.runId === snapshot.runId) setFrozenView(view)
+        },
+        () => {}
+      )
+    }
+    return () => {
+      current = false
+    }
+  }, [env.hostLink, snapshot?.runId, snapshot?.seq])
+  const currentFrozen = frozenView?.run.runId === snapshot?.runId ? frozenView : null
   const chatWithoutSource = snapshot?.source === undefined && snapshot?.attempts.some(attempt => attempt.sessionId !== undefined)
   return (
     <aside className={'bp-inspector'} id={id} hidden={hidden} aria-label={t('inspector.ariaLabel')}>
@@ -77,6 +101,9 @@ export function InspectorSidebar({
             {selectedNode.id}
           </p>
           <p className={'bp-help'}>{nodeKindTitle(selectedNode.kind, t)}</p>
+          {selectedNode.kind === 'blueprintCall' && (
+            <BlueprintCallInspector key={selectedNode.id} node={selectedNode} editor={editor} host={env.hostLink} disabled={!editable} t={t} />
+          )}
           <fieldset className={'bp-inspector-guard'} disabled={!editable}>
             <NodeInspector
               key={selectedNode.id}
@@ -225,12 +252,34 @@ export function InspectorSidebar({
           </button>
         ))}
         <RunReportSection t={t} hostLink={env.hostLink} workspace={workspace} snapshot={snapshot} perform={perform} />
-        {snapshot?.attempts.some(attempt => attempt.state === 'waiting_input') && (
+        {currentFrozen?.run.attempts.some(
+          attempt => attempt.state === 'waiting_input' && currentFrozen.graph.nodes.some(node => node.id === attempt.nodeId && node.kind === 'humanDecision')
+        ) && (
           <div>
             {button('run.approve', 'approve', () => perform(() => workspace.decide('approve')), workspace.busy)}
             {button('run.reject', 'reject', () => perform(() => workspace.decide('reject')), workspace.busy)}
           </div>
         )}
+        {currentFrozen?.run.attempts.some(
+          attempt => attempt.state === 'waiting_input' && currentFrozen.graph.nodes.some(node => node.id === attempt.nodeId && node.interaction === 'managed')
+        ) && (
+          <p className="bp-help" data-bp-managed-waiting>
+            {t('conversation.managedWaiting')}
+          </p>
+        )}
+        {snapshot && env.hostLink?.inspectRunView && (
+          <button type="button" data-bp-run-preview-open={snapshot.runId} onClick={() => setPreviewRunId(snapshot.runId)}>
+            {t('conversation.graph')}
+          </button>
+        )}
+        {env.hostLink?.inspectRunView &&
+          snapshot?.attempts
+            .filter(attempt => attempt.childRunId !== undefined)
+            .map(attempt => (
+              <button key={attempt.attemptId} type="button" data-bp-run-preview-open={attempt.childRunId} onClick={() => setPreviewRunId(attempt.childRunId!)}>
+                {attempt.nodeId} · {t('conversation.openChild')}
+              </button>
+            ))}
         {(snapshot?.attempts ?? []).map((attempt, index) => (
           <details key={`${attempt.nodeId}-${index}`} data-bp-attempt={attempt.nodeId}>
             <summary>{t('run.attempt', { nodeId: attempt.nodeId, attempt: attempt.attempt, state: runStateTitle(attempt.state, t) })}</summary>
@@ -260,6 +309,16 @@ export function InspectorSidebar({
         </ol>
       </details>
       <RevisionHistorySection t={t} hostLink={env.hostLink} workspace={workspace} editable={editable} perform={perform} />
+      {previewRunId && env.hostLink && (
+        <RunHierarchyPreview
+          key={previewRunId}
+          runId={previewRunId}
+          host={env.hostLink}
+          t={t}
+          onClose={() => setPreviewRunId(null)}
+          openChat={env.openSession ? openChat : undefined}
+        />
+      )}
     </aside>
   )
 }

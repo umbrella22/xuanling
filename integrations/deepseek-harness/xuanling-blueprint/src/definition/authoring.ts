@@ -117,8 +117,8 @@ export function authoringGuide() {
       'workflow_report'
     ],
     instructions:
-      'Create an explicit agentTask node for each agent. Files contain only declared package resources. Creation saves a graph; it does not run it. Use the returned ID/revision. Start accepts input as a JSON value, not a JSON-encoded string. Business tool permissions require declared toolsetRefs and an available Host binding. Never invent paths, model bindings, or revisions. presentation.nodes[id].ports optionally declares strict boolean control, inputs, and outputs display preferences. These preferences do not delete port declarations or change execution; omitted fields retain compatibility defaults.',
-    executableNodeKinds: ['input', 'output', 'agentTask', 'condition', 'join', 'humanDecision'],
+      'The main Agent (or Team Lead when enabled) authors the graph. Create an explicit agentTask with interaction: managed for each new Agent: ordinary replies keep it available for human input; structured_output explicitly completes it. Omitted interaction retains legacy one-shot behavior. Use blueprintCall with an existing blueprintId and exact documentRevision to call another saved graph; copy its input/output interface and never follow latest implicitly. The editor provides child selection, pinned versions, ports and preview. Preserve graph-defined aggregation; no additional Lead aggregation is required. Pass candidate.definition as an object directly, never as JSON-encoded text; only files[].text contains serialized file content. Files contain only declared package resources. Creation saves a graph; it does not run it. Use the returned ID/revision. Execution review follows DSH permissions, including Full and Auto. Start accepts input as a JSON value, not a JSON-encoded string. Business tool permissions require declared toolsetRefs and an available Host binding. Never invent paths, model bindings, or revisions. Running graphs and tools are frozen; human messages adjust the current responsibility only. presentation.nodes[id].ports optionally declares strict boolean control, inputs, and outputs display preferences. These preferences do not delete port declarations or change execution; omitted fields retain compatibility defaults.',
+    executableNodeKinds: ['input', 'output', 'agentTask', 'condition', 'join', 'humanDecision', 'blueprintCall'],
     example: {
       definition: {
         schemaVersion: 2,
@@ -127,14 +127,19 @@ export function authoringGuide() {
         resources: { worker: { kind: 'agent', path: 'lib/agents/worker.md' } },
         graph: {
           nodes: [
-            { id: 'worker', kind: 'agentTask', agentRef: 'worker', outputs: { text: 'string' } },
+            { id: 'worker', kind: 'agentTask', interaction: 'managed', agentRef: 'worker', outputs: { text: 'string' } },
             { id: 'result', kind: 'output', inputs: { text: 'string' } }
           ],
           edges: [{ kind: 'data', from: 'worker.text', to: 'result.text' }]
         },
         presentation: { nodes: { worker: { x: 0, y: 0 }, result: { x: 320, y: 0 } } }
       },
-      files: [{ path: 'lib/agents/worker.md', text: 'Complete the task described in the input. Return a concise textual answer.\n' }]
+      files: [
+        {
+          path: 'lib/agents/worker.md',
+          text: 'Complete the task described in the input. Ask for clarification in a normal reply when needed. When finished, call structured_output with {"text":"your concise result"}; an ordinary reply does not complete this managed node. Stay within the frozen responsibility and tools.\n'
+        }
+      ]
     },
     exampleInput: { task: 'Summarize the supplied text.', text: 'A short fixture.' }
   }

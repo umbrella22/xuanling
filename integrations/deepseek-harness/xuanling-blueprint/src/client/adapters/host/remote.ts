@@ -1,5 +1,7 @@
 /** Browser wire adapter. IDs are opaque identities, never filesystem locators. */
 import { BLUEPRINT_INVOCATIONS } from '../../../typert-descriptors.ts'
+import type { BlueprintReferenceArgs, BlueprintReferenceView } from '../../../conversation/blueprint-reference-contracts.ts'
+import type { NodeMessageArgs, NodeMessageReceipt, NodeSessionView } from '../../../conversation/managed-node-contracts.ts'
 import type { ModelCatalog } from '@deepseek-ai/dsh-api-session-controller/types'
 import type { PreflightRunValue } from '../../../host/preflight.ts'
 import type {
@@ -11,6 +13,7 @@ import type {
   StartTeamStageArgs,
   TeamStageActionView
 } from '../../../conversation/contracts.ts'
+import type { InspectRunViewArgs, InspectRunViewValue } from '../../../conversation/contracts.ts'
 export type { PreflightRunValue, PreflightCheck } from '../../../host/preflight.ts'
 import type { RunSnapshotView } from '../../features/authoring/logic/run/client-model.ts'
 
@@ -81,6 +84,10 @@ export class BlueprintRemoteError extends Error {
   }
 }
 export interface HostLink {
+  inspectNodeSession?(args: { sessionId: string }): Promise<NodeSessionView>
+  messageNode?(args: NodeMessageArgs): Promise<NodeMessageReceipt>
+  inspectRunView?(args: InspectRunViewArgs): Promise<InspectRunViewValue>
+  inspectBlueprintReference?(args: BlueprintReferenceArgs): Promise<BlueprintReferenceView>
   listDefinitions(): Promise<CatalogValue>
   listResources?(): Promise<ResourceCatalogValue>
   loadDefinition(blueprintId: string): Promise<DefinitionDocument>
@@ -132,11 +139,15 @@ export function resolveBlueprintHost(context: { get?: (key: string) => unknown }
       throw new BlueprintRemoteError('blueprint/dto-invalid')
     if (!result.ok) throw new BlueprintRemoteError(typeof result.error?.code === 'string' ? result.error.code : 'blueprint/remote-failed')
     if (
+      method === 'inspectBlueprintReference' ||
+      method === 'inspectNodeSession' ||
+      method === 'messageNode' ||
       method === 'deleteDefinition' ||
       method === 'createDefinition' ||
       method === 'restoreDefinitionRevision' ||
       method === 'preflightRun' ||
       method === 'inspectRun' ||
+      method === 'inspectRunView' ||
       method === 'queryRuns' ||
       method === 'archiveRun' ||
       method === 'restoreRun' ||
@@ -157,6 +168,9 @@ export function resolveBlueprintHost(context: { get?: (key: string) => unknown }
     return result.value as T
   }
   return {
+    inspectNodeSession: args => invoke('inspectNodeSession', args),
+    messageNode: args => invoke('messageNode', args),
+    inspectBlueprintReference: args => invoke('inspectBlueprintReference', args),
     listDefinitions: () => invoke('listDefinitions'),
     listResources: () => invoke('listResources'),
     exportDefinition: blueprintId => invoke('exportDefinition', { blueprintId }),
@@ -170,6 +184,7 @@ export function resolveBlueprintHost(context: { get?: (key: string) => unknown }
     preflightRun: (blueprintId, expectedRevision, inputJson) => invoke('preflightRun', { blueprintId, expectedRevision, inputJson }),
     startRun: (blueprintId, expectedRevision, inputJson, requestId) => invoke('startRun', { blueprintId, expectedRevision, inputJson, requestId }),
     inspectRun: runId => invoke('inspectRun', { runId }),
+    inspectRunView: args => invoke('inspectRunView', args),
     queryRuns: args => invoke('queryRuns', args),
     archiveRun: runId => invoke('archiveRun', { runId }),
     restoreRun: runId => invoke('restoreRun', { runId }),

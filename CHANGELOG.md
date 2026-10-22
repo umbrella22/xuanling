@@ -4,6 +4,44 @@ All notable release changes are recorded here. XuanLing uses immutable release
 tags and publishes the launcher, native packages, DeepSeek Harness bundles, and
 ZCode projection from the same source commit.
 
+## 0.8.0 - 2026-10-22
+
+### Added
+
+- Managed Blueprint Agent nodes accept human clarification in their original
+  Attempt Session. Ordinary replies leave the node open; `structured_output`
+  explicitly completes it. New editor nodes and generation examples use managed
+  interaction; existing v2 nodes without the field retain one-shot behavior.
+- `blueprintCall` invokes a saved child at an exact revision with explicit input
+  and output ports. Parent Runs track child results, cancellation and recovery.
+  The editor includes child/revision selection, generated ports, preview,
+  interface diffs, explicit pin updates, and undo/redo. Frozen runtime views
+  provide child navigation, parent breadcrumbs and original node conversations.
+- Portable Blueprint exports include the complete pinned child closure. Imports
+  validate that closure before publishing the parent and preserve same-name
+  workflows in the destination library. The migration Skill documents manual
+  managed-node and composition upgrades, compatibility and rollback.
+
+### Fixed
+
+- Conversation workflow changes and Run startup follow the calling DSH permission
+  preset: Full access skips human confirmation, Auto uses the native reviewer,
+  and ordinary review modes retain Host approval. An isolated `approval=never`
+  setting does not imply Full access.
+- Native authoring tools declare the definition parameter as an object and
+  distinguish it from serialized resource text, preventing ambiguous model
+  guidance that caused repeated validation of double-encoded definitions.
+- Blueprint child Sessions establish their one-shot identity before Agent
+  publication, preventing the native Team profile from installing an unrelated
+  Lead context and failing the node with `TEAM_NOT_MEMBER`.
+
+### Compatibility
+
+- Definition schema remains v2. Older plugins reject the new `interaction` and
+  `blueprintCall` fields; preserve a separate original copy before upgrading.
+  Runtime graphs remain frozen, graph-defined aggregation remains in place,
+  and model output budgets continue to follow DSH.
+
 ## 0.7.0 - 2026-10-22
 
 ### Breaking

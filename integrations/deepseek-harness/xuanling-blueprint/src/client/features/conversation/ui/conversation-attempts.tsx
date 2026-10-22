@@ -13,7 +13,7 @@ export interface ConversationAttemptsProps {
   bound: Extract<InspectSessionValue, { status: 'bound' }>
   snapshot: ConversationSnapshot
   memberActivities: TeamMemberActivity[]
-  controller: Pick<ConversationController, 'selectAttempt'>
+  controller: Pick<ConversationController, 'selectAttempt'> & Partial<Pick<ConversationController, 'selectRun'>>
   fit: (nodeIds: string[]) => void
   t: BlueprintLocaleProps['t']
   openSession: OpenExecutionChat | undefined
@@ -56,6 +56,20 @@ export function renderConversationAttempts({
             {t('run.attempt', { nodeId: attempt.nodeId, attempt: attempt.attempt, state: displayState(attempt.state, t) })}
             <small>{attempt.attemptId ?? t('conversation.legacyAttempt')}</small>
           </button>
+          {attempt.childRunId && (
+            <button
+              type="button"
+              data-bp-open-child={attempt.childRunId}
+              onClick={() => {
+                void controller.selectRun?.(attempt.childRunId!)
+              }}
+            >
+              {t('conversation.openChild')}
+            </button>
+          )}
+          {attempt.state === 'waiting_input' && bound.selected.graph.nodes.some(node => node.id === attempt.nodeId && node.interaction === 'managed') && (
+            <p className="bp-help">{t('conversation.managedWaiting')}</p>
+          )}
           {openSession && (
             <button
               type={'button'}

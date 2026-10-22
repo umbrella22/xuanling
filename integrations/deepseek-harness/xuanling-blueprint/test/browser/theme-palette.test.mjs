@@ -17,7 +17,7 @@ const source = readFileSync(new URL('../../src/client/shared/styles/styles.ts', 
 const sourceSha256 = createHash('sha256').update(source).digest('hex')
 const browserModule = stripTypeScriptTypes(source, { mode: 'transform' })
 const browserFragments = Object.fromEntries(
-  ['base', 'canvas', 'panel'].map(name => {
+  ['base', 'canvas', 'panel', 'composition'].map(name => {
     const fragment = readFileSync(new URL(`../../src/client/shared/styles/${name}.ts`, import.meta.url), 'utf8')
     return [name, stripTypeScriptTypes(fragment, { mode: 'transform' })]
   })
@@ -150,10 +150,7 @@ async function withFixture(palette, scheme, callback) {
         const fragmentUrls = Object.fromEntries(
           Object.entries(fragments).map(([name, text]) => [name, URL.createObjectURL(new Blob([text], { type: 'text/javascript' }))])
         )
-        const rewritten = source
-          .replace("from './base.ts'", `from ${JSON.stringify(fragmentUrls.base)}`)
-          .replace("from './canvas.ts'", `from ${JSON.stringify(fragmentUrls.canvas)}`)
-          .replace("from './panel.ts'", `from ${JSON.stringify(fragmentUrls.panel)}`)
+        const rewritten = Object.entries(fragmentUrls).reduce((text, [name, url]) => text.replace(`from './${name}.ts'`, `from ${JSON.stringify(url)}`), source)
         const url = URL.createObjectURL(new Blob([rewritten], { type: 'text/javascript' }))
         try {
           const module = await import(url)

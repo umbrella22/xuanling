@@ -1,12 +1,12 @@
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import {
-  frozenGraphCodec,
-  frozenPresentationCodec,
+  inspectRunViewCodec,
   inspectSessionCodec,
   runLifecycleActionCodec,
   runQueryCodec,
   type InspectSessionArgs,
   type InspectSessionValue,
+  type InspectRunViewValue,
   type RunLifecycleActionArgs,
   type RunLifecycleActionValue,
   type RunQueryArgs,
@@ -22,6 +22,13 @@ import { RunQueryError, runBelongsToSession, runHistorySummary } from '../persis
 import type { RunQuery } from '../persistence/run-query.ts'
 import type { RunRecord } from '../persistence/records.ts'
 import type { TeamStageRuntime } from '../host/teamstage-diagnostics.ts'
+import { projectDefinitionGraph } from '../conversation/blueprint-reference-contracts.ts'
+
+declare module '@deepseek-ai/dsh-typert-protocol' {
+  interface RemoteErrorDetailsMap {
+    'blueprint/hierarchy-unavailable': { runId: string }
+  }
+}
 
 /** Dependencies needed by read/lifecycle use cases.
  *
@@ -40,6 +47,65 @@ export interface RunReadContext {
 
 export class RunReadService {
   constructor(private readonly context: RunReadContext) {}
+
+  /** Ancestry is a durable two-sided relation, never inferred from creation order or source Session. */
+  private async ancestors(record: RunRecord): Promise<RunRecord[]> {
+    const result: RunRecord[] = []
+    const seen = new Set([record.runId])
+    let child = record
+    while (child.parent !== undefined) {
+      const parent = await this.context.store.tryGet(child.parent.runId)
+      if (
+        !parent ||
+        seen.has(parent.runId) ||
+        !parent.attempts.some(attempt => attempt.attemptId === child.parent!.attemptId && attempt.childRunId === child.runId)
+      ) {
+        throw new RemoteError('blueprint/hierarchy-unavailable', 'Run hierarchy unavailable', { runId: record.runId })
+      }
+      seen.add(parent.runId)
+      result.unshift(parent)
+      child = parent
+    }
+    return result
+  }
+
+  private async canInspect(record: RunRecord, sessionId: string): Promise<boolean> {
+    if (runBelongsToSession(record, sessionId)) return true
+    // A node Session may return to its verified ancestors, including archived history.
+    let cursor: string | undefined
+    do {
+      const page = await this.context.query.pageWithRecords({ sessionId, includeArchived: true, ...(cursor ? { cursor } : {}) })
+      for (const { record: owned } of page.records) {
+        if ((await this.ancestors(owned)).some(parent => parent.runId === record.runId)) return true
+      }
+      cursor = page.page.nextCursor
+    } while (cursor !== undefined)
+    return false
+  }
+
+  private async projectView(record: RunRecord): Promise<InspectRunViewValue> {
+    const definition = this.context.decodeDefinition(record.definitionJson)
+    return inspectRunViewCodec().parse({
+      run: projectRunSnapshot(record, this.context.teamRuntime(record)),
+      graph: projectDefinitionGraph(definition),
+      ...(definition.presentation === undefined ? {} : { presentation: definition.presentation }),
+      ancestors: (await this.ancestors(record)).map(parent => ({
+        runId: parent.runId,
+        blueprintId: parent.blueprintId,
+        definitionRevision: parent.definitionRevision,
+        documentRevision: parent.documentRevision
+      }))
+    })
+  }
+
+  async inspectRunView(runId: string, sessionId?: string): Promise<InspectRunViewValue> {
+    if (this.context.backgroundFailures.has(runId))
+      throw new RemoteError('blueprint/durability-failed', 'background settlement unavailable', { operation: 'driver-settlement' })
+    const record = await this.context.store.tryGet(runId)
+    if (!record || (sessionId !== undefined && !(await this.canInspect(record, sessionId))))
+      throw new RemoteError('blueprint/run-not-found', 'run-not-found', { runId })
+    return this.projectView(record)
+  }
 
   async inspectRun(runId: string, sessionId?: string): Promise<RunSnapshotView> {
     if (this.context.backgroundFailures.has(runId))
@@ -101,26 +167,23 @@ export class RunReadService {
     const page = queried.page
     let selected: RunRecord | undefined
     if (args.runId === undefined) {
-      selected = queried.records[0]?.record
+      let candidates = queried
+      // Descendants inherit the source Session. Choose its newest root Run;
+      // a node Session still defaults to the Run containing its own Attempt.
+      while (true) {
+        selected = candidates.records.find(({ record }) => record.parent === undefined || record.source?.sessionId !== args.sessionId)?.record
+        if (selected || candidates.page.nextCursor === undefined) break
+        candidates = await this.context.query.pageWithRecords({ sessionId: args.sessionId, limit: 20, cursor: candidates.page.nextCursor })
+      }
     } else {
       const candidate = await this.context.store.tryGet(args.runId)
-      if (candidate !== undefined && runBelongsToSession(candidate, args.sessionId)) selected = candidate
+      if (candidate !== undefined && (await this.canInspect(candidate, args.sessionId))) selected = candidate
       if (selected === undefined) throw new RemoteError('blueprint/run-not-found', 'run-not-found', { runId: args.runId })
     }
     if (!selected) return inspectSessionCodec().parse({ status: 'unbound', sessionId: args.sessionId })
     if (this.context.backgroundFailures.has(selected.runId))
       throw new RemoteError('blueprint/durability-failed', 'background settlement unavailable', { operation: 'driver-settlement' })
-    const definition = this.context.decodeDefinition(selected.definitionJson)
-    const graph = frozenGraphCodec().parse({
-      nodes: definition.graph.nodes.map(node => ({
-        id: node.id,
-        kind: node.kind,
-        ...(node.inputs === undefined ? {} : { inputs: node.inputs }),
-        ...(node.outputs === undefined ? {} : { outputs: node.outputs }),
-        ...(node.branches === undefined ? {} : { branches: node.branches })
-      })),
-      edges: definition.graph.edges
-    })
+    const view = await this.projectView(selected)
     const runs = page.runs.map(run => ({
       runId: run.runId,
       ...(run.blueprintId === undefined ? {} : { blueprintId: run.blueprintId }),
@@ -145,10 +208,8 @@ export class RunReadService {
       runs,
       ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }),
       selected: {
-        run: projectRunSnapshot(selected, this.context.teamRuntime(selected)),
+        ...view,
         ...(selected.source === undefined ? {} : { source: selected.source }),
-        graph,
-        ...(definition.presentation === undefined ? {} : { presentation: frozenPresentationCodec().parse(definition.presentation) }),
         focusAttemptIds: focusAttemptsForSession(selected, args.sessionId)
       }
     })

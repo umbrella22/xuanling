@@ -146,7 +146,10 @@ test('C-07 condition/default-all Inspector props use existing editor commands, e
   })
 })
 test('C-07 palette advertises exactly accepted kinds; zh/en never rewrite graph, input or Inspector drafts', () => {
-  assert.deepEqual(BUILTIN_NODE_CATALOG.map(item => item.kind).sort(), ['agentTask', 'condition', 'humanDecision', 'input', 'join', 'output'].sort())
+  assert.deepEqual(
+    BUILTIN_NODE_CATALOG.map(item => item.kind).sort(),
+    ['agentTask', 'blueprintCall', 'condition', 'humanDecision', 'input', 'join', 'output'].sort()
+  )
   for (const query of ['condition', '条件', 'join', '汇合']) assert.ok(searchBuiltinNodes(query).length > 0)
   for (const deferred of ['TeamStage', 'toolCall', 'scriptCall', 'subflow', 'iteration', 'join-any'])
     assert.equal(

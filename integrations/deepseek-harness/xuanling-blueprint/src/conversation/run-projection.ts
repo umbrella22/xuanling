@@ -21,6 +21,8 @@ export function projectRunSnapshot(record: RunRecord, runtime?: TeamStageRuntime
     runId: record.runId,
     state: record.state,
     definitionRevision: record.definitionRevision,
+    ...(record.documentRevision === undefined ? {} : { documentRevision: record.documentRevision }),
+    ...(record.parent === undefined ? {} : { parent: { ...record.parent } }),
     ...(record.bindingDigests === undefined ? {} : { bindingDigests: { ...record.bindingDigests } }),
     ...(record.source === undefined ? {} : { source: { ...record.source } }),
     attempts: record.attempts.map(a => {
@@ -32,6 +34,7 @@ export function projectRunSnapshot(record: RunRecord, runtime?: TeamStageRuntime
         attempt: a.attempt,
         attemptId: a.attemptId,
         ...(a.sessionId === undefined ? {} : { sessionId: a.sessionId }),
+        ...(a.childRunId === undefined ? {} : { childRunId: a.childRunId }),
         diagnostics: attemptDiagnosticsCodec().parse(a.diagnostics ?? { status: 'unavailable' }),
         ...(a.result ? { resultKind: a.result.ok ? 'succeeded' : (outcome?.kind ?? a.state) } : {}),
         ...(a.result?.ok && hasOutput

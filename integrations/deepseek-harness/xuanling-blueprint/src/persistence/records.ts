@@ -67,6 +67,20 @@ export const modelSelectionSchema = z
   .strict()
 export const bindingSelectionsSchema = z.record(z.string().min(1), modelSelectionSchema.nullable())
 
+export const frozenBlueprintSchema = z.strictObject({
+  blueprintId: z.string().min(1),
+  documentRevision: sha256,
+  semanticRevision: sha256,
+  definitionJson: z.string(),
+  snapshotId: runIdSchema,
+  bindingDigests: z.record(z.string(), sha256),
+  bindingSelections: bindingSelectionsSchema
+})
+export type FrozenBlueprint = Omit<z.infer<typeof frozenBlueprintSchema>, 'bindingSelections'> & {
+  bindingSelections: Record<string, HostModelSelection | null>
+}
+export const parentRunSchema = z.strictObject({ runId: runIdSchema, attemptId: z.string().min(1) })
+
 /** Host-generated identity, never a client-provided filename. */
 export const teamArtifactIdSchema = z.string().regex(/^ta-[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/)
 const resourceDigestsSchema = z.record(z.string().min(1), sha256)
@@ -479,6 +493,11 @@ export interface AttemptRecord {
   /** Settled outcome: written when the effect is known. */
   result?: { seq: number; at: number; ok: boolean; outcome: unknown; evidence: string }
   sessionId?: string
+  /** Reserved before creating the child aggregate; never reused by another Attempt. */
+  childRunId?: string
+  /** Message bodies remain in the native Session. Pending means delivery may
+   * have happened; recovery must never replay it automatically. */
+  messages?: Array<{ requestId: string; digest: string; messageId: string; state: 'pending' | 'accepted'; at: number }>
   diagnostics?: AttemptDiagnostics
 }
 
@@ -499,6 +518,10 @@ export interface RunRecord {
   /** The frozen definition document driving this run (same-process replay
    * and restart recovery read this, never the live file). */
   definitionJson: string
+  /** Full pinned child closure, captured before any parent or child effect. */
+  composition?: FrozenBlueprint[]
+  documentRevision?: string
+  parent?: { runId: string; attemptId: string }
   inputRef: string
   /** Admission-frozen binding facts. Legacy records omit this field. */
   bindingDigests?: Record<string, string>
@@ -547,6 +570,9 @@ export const runRecordSchema = z
     runId: runIdSchema,
     definitionRevision: z.string().min(1),
     definitionJson: z.string(),
+    composition: z.array(frozenBlueprintSchema).optional(),
+    documentRevision: sha256.optional(),
+    parent: parentRunSchema.optional(),
     inputRef: z.string(),
     bindingDigests: z.record(z.string(), sha256).optional(),
     bindingSelections: bindingSelectionsSchema.optional(),
@@ -570,6 +596,18 @@ export const runRecordSchema = z
           .optional(),
         result: z.object({ seq: z.number(), at: z.number(), ok: z.boolean(), outcome: z.unknown(), evidence: z.string() }).optional(),
         sessionId: z.string().optional(),
+        childRunId: runIdSchema.optional(),
+        messages: z
+          .array(
+            z.strictObject({
+              requestId: z.string().min(1),
+              digest: sha256,
+              messageId: z.string().min(1),
+              state: z.enum(['pending', 'accepted']),
+              at: z.number()
+            })
+          )
+          .optional(),
         diagnostics: attemptDiagnosticsCodec().optional()
       })
     ),

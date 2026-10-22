@@ -16,6 +16,7 @@ export interface RunAttemptView {
   nodeId: string
   attemptId?: string
   sessionId?: string
+  childRunId?: string | undefined
   state: string
   attempt: number
   evidence?: string
@@ -30,6 +31,8 @@ export interface RunSnapshotView {
   state: string
   seq: number
   definitionRevision: string
+  documentRevision?: string | undefined
+  parent?: { runId: string; attemptId: string } | undefined
   /** Admission-frozen binding digests (`node:<id>:<facet>` → sha256). */
   bindingDigests?: Record<string, string> | undefined
   source?: RunSource | undefined

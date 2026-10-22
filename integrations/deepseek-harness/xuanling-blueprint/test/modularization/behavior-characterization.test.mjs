@@ -318,7 +318,7 @@ const cases = [
         'admission replay lookup'
       )
       const precheck = one(
-        find(admission, node => node.type === 'VariableDeclaration' && node.declarations.some(item => item.id.name === 'rootDir')),
+        find(admission, node => node.type === 'VariableDeclaration' && node.declarations.some(item => item.id.name === 'preparedAdmission')),
         'new admission precheck'
       )
       assert.ok(precheck.start > replay.end)

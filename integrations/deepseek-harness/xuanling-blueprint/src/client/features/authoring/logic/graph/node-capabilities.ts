@@ -25,6 +25,7 @@ const capabilities: Readonly<Record<string, NodeDisplayCapabilities>> = Object.f
   condition: structural,
   join: structural,
   humanDecision: structural,
+  blueprintCall: structural,
   agentTask: agent
 })
 export function nodeDisplayCapabilities(node: { kind: string; teamStage?: unknown }): NodeDisplayCapabilities {

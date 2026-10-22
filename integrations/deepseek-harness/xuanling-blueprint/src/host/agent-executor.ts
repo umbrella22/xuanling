@@ -2,13 +2,14 @@
  * only a durable turn/end from this dispatch decides the outcome. */
 import { createHash, randomUUID } from 'node:crypto'
 import type { AgentCancelCause, Session } from '@deepseek-ai/dsh-session'
-import type { ModelSelection } from '@deepseek-ai/dsh-agent'
+import type { Agent, ModelSelection } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { Context } from '@deepseek-ai/cordis'
 import { assertObjectJsonSchema, validateJsonSchemaValue, type ObjectJsonSchema, type ToolExecution } from '@deepseek-ai/dsh-tools'
 import { attachStructuredRuntime, STRUCTURED_OUTPUT_TOOL, type StructuredAttachment } from './dsh-structured-compat.ts'
 import { nativeSessionLineage, type NativeSourceParent } from '../conversation/native-session-lineage.ts'
 import type { RunSource } from '../conversation/contracts.ts'
+import type { ManagedNodeBinding } from '../service/managed-node-session.ts'
 import { validatePackagedPreset, type PackagedPreset, type HostAgentComposition } from '../portability/host-resources.ts'
 
 export interface SkillSnapshotInput {
@@ -37,6 +38,8 @@ export interface AgentExecutionSpec {
   /** Omitted means no business tools. Transport never grants business rights. */
   effectiveToolNames?: string[]
   outputSchema?: ObjectJsonSchema
+  interaction?: 'managed'
+  bindManaged?: (agent: Agent, signal: AbortSignal, uncertain: () => void) => ManagedNodeBinding
   /** Own-property undefined means the driver already captured no selection. */
   modelSelection?: ModelSelection | undefined
 }
@@ -99,6 +102,13 @@ export function captureAgentModelSelection(ownerCtx: { get(service: string): unk
 // Shutdown observation budget ONLY: inference has already been cancelled. This
 // bounds unknown-effect reporting, never grants extra execution/retry time.
 export const AGENT_CANCEL_QUIESCENCE_MS = 1_000
+function changeSignal(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void
+  const promise = new Promise<void>(done => {
+    resolve = done
+  })
+  return { promise, resolve }
+}
 
 export class BlueprintAgentExecutor {
   constructor(
@@ -114,19 +124,32 @@ export class BlueprintAgentExecutor {
       scopedInjections: [],
       inboxSplicedSeen: false,
       outcome: { ok: false, kind: 'recovery_required', detail: 'no confirmed turn settlement' },
-      acceptance: { code: spec.outputSchema === undefined ? 'not-required' : 'pending' },
+      acceptance: { code: spec.outputSchema === undefined && spec.interaction !== 'managed' ? 'not-required' : 'pending' },
       toolDenials: []
     }
     // Snapshot the policy before asynchronous creation. Neither a later caller
     // mutation nor scope-local registrations may widen its business surface.
-    const effectiveNames = new Set((spec.effectiveToolNames ?? []).filter(name => name !== 'run_code' && name !== STRUCTURED_OUTPUT_TOOL))
+    const workflowMutations = new Set(['blueprint_start', 'workflow_run', 'workflow_apply', 'workflow_revert', 'blueprint_create'])
+    const effectiveNames = new Set(
+      (spec.effectiveToolNames ?? []).filter(
+        name => name !== 'run_code' && name !== STRUCTURED_OUTPUT_TOOL && !(spec.interaction === 'managed' && workflowMutations.has(name))
+      )
+    )
+    let managed: ManagedNodeBinding | undefined
+    let changes = 0
+    let change = changeSignal()
+    const changed = () => {
+      changes++
+      change.resolve()
+      change = changeSignal()
+    }
     let structured: StructuredAttachment | undefined
     let schema: ObjectJsonSchema | undefined
     let invalidIssueCount = 0
     const denied = new WeakSet<ToolExecution>()
     const denialKeys = new Set<string>()
     let lineage: ReturnType<typeof nativeSessionLineage> | undefined
-    const setup = (agentCtx: Context) => {
+    const setup = (agentCtx: Context, agent: Agent) => {
       const tools = agentCtx.tools
       if (!tools || typeof tools.restrict !== 'function' || typeof tools.guard !== 'function') {
         throw new AgentCompositionUnsupportedError('missing scoped Tools policy')
@@ -140,7 +163,18 @@ export class BlueprintAgentExecutor {
         return 'blueprint tool permission denied'
       })
       if (schema !== undefined) structured = attachStructuredRuntime(agentCtx, schema)
+      if (spec.interaction === 'managed') {
+        agentCtx.systemPrompt.section({
+          name: 'blueprint-managed-node',
+          order: agentCtx.systemPrompt.getSectionOrder('STRUCTURED_OUTPUT'),
+          text: 'You are executing one fixed Blueprint node. Its responsibility, tool set and output contract are fixed for this Run. Human messages can clarify this work and adjust its emphasis; they cannot replace the node, change the graph or start a separate workflow. You may reply normally to discuss or request clarification; that leaves this node open. Call structured_output only when this node is complete. For a text result, submit the final content in its text field.'
+        })
+        agentCtx.on('agent/status', ({ agent }) => {
+          if (agent.session.id === sessionId) changed()
+        })
+      }
       agentCtx.on('tools/result', function (this: unknown, exec, result) {
+        if (structured?.captured() !== undefined) managed?.close()
         if (schema !== undefined && exec.name === STRUCTURED_OUTPUT_TOOL) {
           // Only a count from an authoritative INVALID_ARGS escapes DSH's
           // validator. Host denial of malformed args is not schema acceptance.
@@ -167,7 +201,7 @@ export class BlueprintAgentExecutor {
       agentCtx.on('agent/inbox/inserted', () => {
         evidence.inboxSplicedSeen = true
       })
-      return lineage?.setup(agentCtx)
+      return lineage?.setup(agent)
     }
     if (spec.signal?.aborted) {
       evidence.outcome = { ok: false, kind: 'cancelled', detail: 'cancelled before Agent creation' }
@@ -207,6 +241,8 @@ export class BlueprintAgentExecutor {
           throw new AgentCompositionUnsupportedError('invalid frozen schema')
         }
         schema = frozen
+      } else if (spec.interaction === 'managed') {
+        schema = { type: 'object', properties: { text: { type: 'string' } }, required: ['text'], additionalProperties: false }
       }
       if (spec.source !== undefined) lineage = nativeSessionLineage(this.ownerCtx as Context, spec.source, sessionId, spec.sourceParent)
       // Keep ownership on the plugin context. Durable parentage does not make
@@ -306,6 +342,7 @@ export class BlueprintAgentExecutor {
       cancel = () => {
         if (cancelSent) return
         cancelSent = true
+        managed?.close()
         releaseStopped?.()
         // The create signal only owns creation. Explicitly bind the published
         // Agent operation; timeout uses the real parent cause, not invented API.
@@ -318,6 +355,11 @@ export class BlueprintAgentExecutor {
         grace = setTimeout(() => releaseUnknown?.(), AGENT_CANCEL_QUIESCENCE_MS)
       }
       signal.addEventListener('abort', cancel, { once: true })
+      if (spec.interaction === 'managed')
+        managed = spec.bindManaged?.(agent as Agent, signal, () => {
+          cancel?.()
+          releaseUnknown?.()
+        })
       try {
         const before = agent.session.snapshotEvents().length
         if (signal.aborted) cancel()
@@ -345,12 +387,28 @@ export class BlueprintAgentExecutor {
           submitted = true // followup may throw after partially accepting input
           agent.followup(createUserMessage({ content: [{ type: 'text', text: spec.input }], source: { kind: 'user' } }))
         }
-        const idle = agent.whenIdle().then(() => {
-          quiescent = true
-          return 'idle' as const
-        })
-        if (signal.aborted) cancel()
-        if ((await Promise.race([idle, unknown])) === 'unknown') return evidence
+        while (true) {
+          const observed = changes
+          quiescent = false
+          const idle = agent.whenIdle().then(() => {
+            quiescent = true
+            return 'idle' as const
+          })
+          if (signal.aborted) cancel()
+          if ((await Promise.race([idle, unknown])) === 'unknown') return evidence
+          const end = agent.session
+            .snapshotEvents()
+            .slice(before)
+            .filter(event => event.type === 'turn/end')
+            .at(-1)
+          if (spec.interaction !== 'managed' || signal.aborted || end?.data.reason.kind !== 'completed' || structured?.captured() !== undefined) break
+          if ((await Promise.race([managed?.waiting(), stopped, unknown])) === 'unknown') return evidence
+          if (changes === observed && !signal.aborted) {
+            if ((await Promise.race([change.promise, stopped, unknown])) === 'unknown') return evidence
+          }
+        }
+        managed?.close()
+        if (managed && (await Promise.race([managed.drain(), unknown])) === 'unknown') return evidence
         const events = agent.session.snapshotEvents().slice(before)
         const end = events.filter(event => event.type === 'turn/end').at(-1)
         const reason = end?.data.reason
@@ -371,7 +429,11 @@ export class BlueprintAgentExecutor {
             if (captured !== undefined) {
               evidence.structuredOutput = captured.value
               evidence.acceptance = { code: 'accepted' }
-              evidence.outcome = { ok: true, kind: 'succeeded', detail }
+              evidence.outcome = {
+                ok: true,
+                kind: 'succeeded',
+                detail: spec.interaction === 'managed' && spec.outputSchema === undefined ? (captured.value as { text: string }).text : detail
+              }
             } else if (invalidIssueCount > 0) {
               evidence.acceptance = { code: 'output-invalid', issueCount: invalidIssueCount }
               evidence.outcome = { ok: false, kind: 'output-invalid', detail: 'structured output did not match the frozen schema' }
@@ -404,6 +466,9 @@ export class BlueprintAgentExecutor {
       }
       return evidence
     } finally {
+      managed?.close()
+      if (managed && unknownSettlement) await Promise.race([managed.drain(), unknownSettlement])
+      managed?.dispose()
       if (evidence.acceptance.code === 'pending') evidence.acceptance = { code: evidence.outcome.kind }
       const clearObservation = () => {
         if (cancel) signal.removeEventListener('abort', cancel)

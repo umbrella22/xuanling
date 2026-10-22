@@ -86,7 +86,11 @@ export async function assertSharedRuntimeIdentity(table) {
   }
   const react = table.get('react')
   const reactDom = table.get('react-dom')
-  typedCheck(typeof react.createElement === 'function' && typeof react.useState === 'function', 'ARTIFACT_REACT_IDENTITY_MISMATCH', 'table react is not a usable React instance')
+  typedCheck(
+    typeof react.createElement === 'function' && typeof react.useState === 'function',
+    'ARTIFACT_REACT_IDENTITY_MISMATCH',
+    'table react is not a usable React instance'
+  )
   typedCheck(typeof reactDom === 'object' && reactDom !== null, 'ARTIFACT_REACT_IDENTITY_MISMATCH', 'table react-dom is missing')
   const requirePackage = requireFromBlueprint()
   const serverEntry = requirePackage.resolve('react-dom/server')
@@ -102,7 +106,10 @@ export async function assertSharedRuntimeIdentity(table) {
     const html = server.renderToStaticMarkup(react.createElement(Hooked))
     typedCheck(html === '<div>1</div>', 'ARTIFACT_REACT_IDENTITY_MISMATCH', 'identity probe rendered unexpected markup: ' + html)
   } catch (error) {
-    throw new ArtifactLoaderError('ARTIFACT_REACT_IDENTITY_MISMATCH', 'hooked render failed under the served table (classic second-React signature): ' + error.message)
+    throw new ArtifactLoaderError(
+      'ARTIFACT_REACT_IDENTITY_MISMATCH',
+      'hooked render failed under the served table (classic second-React signature): ' + error.message
+    )
   }
   const devRuntime = table.get('react/jsx-dev-runtime')
   typedCheck(typeof devRuntime.jsxDEV === 'function', 'ARTIFACT_REACT_IDENTITY_MISMATCH', 'react/jsx-dev-runtime is not served')
@@ -133,7 +140,13 @@ export function createDocumentStub(onStyleInstalled) {
 // host table offers stay fixed, so an omitted runtime fails typed at request
 // time (the W0 red row) and a folded-in second runtime drops a required
 // request and fails the floor check instead.
-export function loadClosureArtifact({ artifactPath = ARTIFACT_PATH, table, expectedId = PACKAGE_ID, applySourceMarkers = true, applySharedRuntimeFloor = true } = {}) {
+export function loadClosureArtifact({
+  artifactPath = ARTIFACT_PATH,
+  table,
+  expectedId = PACKAGE_ID,
+  applySourceMarkers = true,
+  applySharedRuntimeFloor = true
+} = {}) {
   typedCheck(table instanceof Map && table.size > 0, 'ARTIFACT_MODULE_MISSING', 'shared runtime table was not provided')
   typedCheck(typeof artifactPath === 'string', 'ARTIFACT_FILE_MISSING', 'artifact path was not provided')
   if (!existsSync(artifactPath)) throw new ArtifactLoaderError('ARTIFACT_FILE_MISSING', 'closure artifact not found: ' + artifactPath)
@@ -147,7 +160,15 @@ export function loadClosureArtifact({ artifactPath = ARTIFACT_PATH, table, expec
   const document = createDocumentStub()
   // The VM does not install browser platform globals. GraphEditor and Workspace
   // use the host's native structured clone, independently of ModuleLoader.
-  const sandbox = { console, document, crypto: webcrypto, structuredClone, __ModuleLoader__: { load: descriptor => registrations.push(descriptor) } }
+  const sandbox = {
+    console,
+    document,
+    crypto: webcrypto,
+    structuredClone,
+    setInterval,
+    clearInterval,
+    __ModuleLoader__: { load: descriptor => registrations.push(descriptor) }
+  }
   sandbox.window = sandbox
   sandbox.self = sandbox
   const context = createContext(sandbox)
@@ -156,21 +177,37 @@ export function loadClosureArtifact({ artifactPath = ARTIFACT_PATH, table, expec
   } catch (error) {
     throw new ArtifactLoaderError('ARTIFACT_REGISTRATION_INVALID', 'closure did not evaluate in the browser sandbox: ' + error.message)
   }
-  typedCheck(registrations.length === 1, 'ARTIFACT_REGISTRATION_INVALID', 'expected exactly one __ModuleLoader__.load registration, observed ' + registrations.length)
+  typedCheck(
+    registrations.length === 1,
+    'ARTIFACT_REGISTRATION_INVALID',
+    'expected exactly one __ModuleLoader__.load registration, observed ' + registrations.length
+  )
   const [descriptor] = registrations
-  typedCheck(descriptor && descriptor.id === expectedId, 'ARTIFACT_REGISTRATION_INVALID', 'registered id ' + JSON.stringify(descriptor?.id) + ' != ' + JSON.stringify(expectedId))
+  typedCheck(
+    descriptor && descriptor.id === expectedId,
+    'ARTIFACT_REGISTRATION_INVALID',
+    'registered id ' + JSON.stringify(descriptor?.id) + ' != ' + JSON.stringify(expectedId)
+  )
   typedCheck(typeof descriptor.factory === 'function', 'ARTIFACT_REGISTRATION_INVALID', 'registration carries no factory(require)')
   if (applySourceMarkers) {
     for (const marker of SOURCE_MARKERS) {
-      typedCheck(closure.includes(marker), 'ARTIFACT_SOURCE_MARKER_MISSING', 'bundle lacks source marker ' + JSON.stringify(marker) + '; artifact is stale vs the src/client generation')
+      typedCheck(
+        closure.includes(marker),
+        'ARTIFACT_SOURCE_MARKER_MISSING',
+        'bundle lacks source marker ' + JSON.stringify(marker) + '; artifact is stale vs the src/client generation'
+      )
     }
   }
   const requested = []
   const seen = new Set()
   const pluginRequire = id => {
     if (!table.has(id)) {
-      if (SHARED_RUNTIME_IDS.includes(id)) throw new ArtifactLoaderError('ARTIFACT_MODULE_MISSING', 'stub loader omitted ' + JSON.stringify(id) + ' which the factory requested')
-      throw new ArtifactLoaderError('ARTIFACT_REQUEST_OUTSIDE_SHARED_TABLE', 'factory requested ' + JSON.stringify(id) + ' outside the DSH shared module table ' + JSON.stringify(SHARED_RUNTIME_IDS))
+      if (SHARED_RUNTIME_IDS.includes(id))
+        throw new ArtifactLoaderError('ARTIFACT_MODULE_MISSING', 'stub loader omitted ' + JSON.stringify(id) + ' which the factory requested')
+      throw new ArtifactLoaderError(
+        'ARTIFACT_REQUEST_OUTSIDE_SHARED_TABLE',
+        'factory requested ' + JSON.stringify(id) + ' outside the DSH shared module table ' + JSON.stringify(SHARED_RUNTIME_IDS)
+      )
     }
     requested.push(id)
     seen.add(id)
@@ -188,9 +225,17 @@ export function loadClosureArtifact({ artifactPath = ARTIFACT_PATH, table, expec
   // Self-test closures may disable the floor to reach later red conditions.
   if (!applySharedRuntimeFloor) return finish()
   for (const required of ['react', 'react/jsx-runtime', 'react-dom']) {
-    typedCheck(seen.has(required), 'ARTIFACT_SHARED_RUNTIME_NOT_REQUESTED', 'factory never requested shared ' + JSON.stringify(required) + '; it may carry a second runtime copy')
+    typedCheck(
+      seen.has(required),
+      'ARTIFACT_SHARED_RUNTIME_NOT_REQUESTED',
+      'factory never requested shared ' + JSON.stringify(required) + '; it may carry a second runtime copy'
+    )
   }
-  typedCheck(plugin && typeof plugin.apply === 'function', 'ARTIFACT_EXPORT_CONTRACT_INVALID', 'closure exports no apply function (keys: ' + Object.keys(plugin ?? {}).join(', ') + ')')
+  typedCheck(
+    plugin && typeof plugin.apply === 'function',
+    'ARTIFACT_EXPORT_CONTRACT_INVALID',
+    'closure exports no apply function (keys: ' + Object.keys(plugin ?? {}).join(', ') + ')'
+  )
   typedCheck(Array.isArray(plugin?.inject) && plugin.inject.length > 0, 'ARTIFACT_EXPORT_CONTRACT_INVALID', 'closure exports no inject array')
   return finish()
 
@@ -235,7 +280,11 @@ export function createStubHost() {
         throw new ArtifactLoaderError('ARTIFACT_SEAT_CONTRACT_MISMATCH', 'slots.inject called with invalid seat descriptor ' + String(name))
       }
       const unregister = factory()
-      typedCheck(typeof unregister === 'function', 'ARTIFACT_SEAT_CONTRACT_MISMATCH', 'seat ' + name + ': register factory returned ' + typeof unregister + ', not a disposer')
+      typedCheck(
+        typeof unregister === 'function',
+        'ARTIFACT_SEAT_CONTRACT_MISMATCH',
+        'seat ' + name + ': register factory returned ' + typeof unregister + ', not a disposer'
+      )
       slots.seats.set(name, unregister)
       measures.events.push({ at: 'inject', seat: name })
       return () => {
@@ -249,7 +298,11 @@ export function createStubHost() {
     register(options, component) {
       const ticket = 'reg-' + ++slots.seq
       typedCheck(options && typeof options.name === 'string', 'ARTIFACT_SEAT_CONTRACT_MISMATCH', 'slots.register descriptor has no name')
-      typedCheck(typeof component === 'function' || (component && typeof component === 'object'), 'ARTIFACT_SEAT_CONTRACT_MISMATCH', 'slot ' + options.name + ': component missing')
+      typedCheck(
+        typeof component === 'function' || (component && typeof component === 'object'),
+        'ARTIFACT_SEAT_CONTRACT_MISMATCH',
+        'slot ' + options.name + ': component missing'
+      )
       slots.registrations.set(ticket, { name: options.name, id: options.id, key: options.key, order: options.order })
       measures.components.push({ name: options.name, component })
       measures.events.push({ at: 'register', seat: options.name, id: options.id, key: options.key, order: options.order })
@@ -281,21 +334,35 @@ export function createStubHost() {
       }
     }
   }
+  const sessionListeners = new Set()
   const sessions = {
     binding: () => null,
     subagentAddress: () => undefined,
-    list: { getSnapshot: () => ({ byId: {} }) }
+    list: {
+      getSnapshot: () => ({ byId: {} }),
+      subscribe: listener => {
+        sessionListeners.add(listener)
+        return () => sessionListeners.delete(listener)
+      }
+    }
   }
   const childScope = injections => {
     const scopeEffects = []
     const scope = {
-      get: key => (key === 'slots' ? slots
-        : key === 'remote.blueprint' ? {}
-        : key === 'remote' ? remoteService
-        : key === 'locale' ? locale
-        : key === 'sessions' ? sessions
-        : key === 'uiSession' ? {}
-        : undefined),
+      get: key =>
+        key === 'slots'
+          ? slots
+          : key === 'remote.blueprint'
+            ? {}
+            : key === 'remote'
+              ? remoteService
+              : key === 'locale'
+                ? locale
+                : key === 'sessions'
+                  ? sessions
+                  : key === 'uiSession'
+                    ? {}
+                    : undefined,
       effect: (callback, name) => {
         const disposer = callback()
         scopeEffects.push({ name: String(name), disposer })
@@ -348,7 +415,8 @@ export function createStubHost() {
       registrations: [...slots.registrations.values()],
       plugins: measures.plugins.map(entry => ({ inject: entry.inject, disposed: entry.disposed })),
       mounts: measures.mounts.map(entry => ({ ...entry })),
-      effects: [...measures.effects]
+      effects: [...measures.effects],
+      sessionSubscriptions: sessionListeners.size
     })
   }
 }
@@ -365,7 +433,11 @@ export async function runSlotLifecycle(plugin, { remount = true } = {}) {
     } catch (error) {
       throw new ArtifactLoaderError('ARTIFACT_DISPOSE_INVALID', label + ': apply threw: ' + error.message)
     }
-    typedCheck(typeof disposer === 'function', 'ARTIFACT_DISPOSE_INVALID', label + ': apply returned ' + typeof disposer + '; the contribution contract requires an async disposer')
+    typedCheck(
+      typeof disposer === 'function',
+      'ARTIFACT_DISPOSE_INVALID',
+      label + ': apply returned ' + typeof disposer + '; the contribution contract requires an async disposer'
+    )
     const settled = host.snapshot()
     await disposer()
     await host.hostTeardown()
@@ -374,12 +446,26 @@ export async function runSlotLifecycle(plugin, { remount = true } = {}) {
       seats: after.seats,
       registrations: after.registrations,
       undisposedPlugins: after.plugins.filter(entry => !entry.disposed).map(entry => entry.inject),
-      undisposedMounts: after.mounts.filter(entry => !entry.disposed).length
+      undisposedMounts: after.mounts.filter(entry => !entry.disposed).length,
+      sessionSubscriptions: after.sessionSubscriptions
     }
-    const leaked = residue.seats.length > 0 || residue.registrations.length > 0 || residue.undisposedPlugins.length > 0 || residue.undisposedMounts > 0
+    const leaked =
+      residue.seats.length > 0 ||
+      residue.registrations.length > 0 ||
+      residue.undisposedPlugins.length > 0 ||
+      residue.undisposedMounts > 0 ||
+      residue.sessionSubscriptions > 0
     if (leaked) throw new ArtifactLoaderError('ARTIFACT_SLOT_LIFECYCLE_LEAK', label + ': dispose left ' + JSON.stringify(residue))
     const renderedSlots = await renderRegisteredSlots(host.measures.components)
-    return { label, settled, after, renderedSlots, events: host.measures.events, injectDisposals: [...host.measures.injectDisposals], unregisters: [...host.measures.unregisters] }
+    return {
+      label,
+      settled,
+      after,
+      renderedSlots,
+      events: host.measures.events,
+      injectDisposals: [...host.measures.injectDisposals],
+      unregisters: [...host.measures.unregisters]
+    }
   }
   const first = await attempt('apply#1')
   const second = remount ? await attempt('apply#2 (remount)') : null
@@ -391,9 +477,21 @@ export function assertSeatContract(snapshot) {
   const bySeat = new Map(snapshot.registrations.map(entry => [entry.name, entry]))
   const seatNames = [...bySeat.keys()].sort()
   const expected = ['conversation.view', 'main', 'sidebar.panellist']
-  typedCheck(JSON.stringify(seatNames) === JSON.stringify(expected), 'ARTIFACT_SEAT_CONTRACT_MISMATCH', 'registered seats ' + JSON.stringify(seatNames) + ' != ' + JSON.stringify(expected))
-  typedCheck(bySeat.get('conversation.view').id === SEAT_ID, 'ARTIFACT_SEAT_CONTRACT_MISMATCH', 'conversation.view id ' + JSON.stringify(bySeat.get('conversation.view').id) + ' != ' + JSON.stringify(SEAT_ID))
-  typedCheck(bySeat.get('sidebar.panellist').id === SEAT_ID, 'ARTIFACT_SEAT_CONTRACT_MISMATCH', 'sidebar.panellist id ' + JSON.stringify(bySeat.get('sidebar.panellist').id) + ' != ' + JSON.stringify(SEAT_ID))
+  typedCheck(
+    JSON.stringify(seatNames) === JSON.stringify(expected),
+    'ARTIFACT_SEAT_CONTRACT_MISMATCH',
+    'registered seats ' + JSON.stringify(seatNames) + ' != ' + JSON.stringify(expected)
+  )
+  typedCheck(
+    bySeat.get('conversation.view').id === SEAT_ID,
+    'ARTIFACT_SEAT_CONTRACT_MISMATCH',
+    'conversation.view id ' + JSON.stringify(bySeat.get('conversation.view').id) + ' != ' + JSON.stringify(SEAT_ID)
+  )
+  typedCheck(
+    bySeat.get('sidebar.panellist').id === SEAT_ID,
+    'ARTIFACT_SEAT_CONTRACT_MISMATCH',
+    'sidebar.panellist id ' + JSON.stringify(bySeat.get('sidebar.panellist').id) + ' != ' + JSON.stringify(SEAT_ID)
+  )
   typedCheck(bySeat.get('conversation.view').order === 20, 'ARTIFACT_SEAT_CONTRACT_MISMATCH', 'conversation.view order drifted from 20')
   typedCheck(bySeat.get('sidebar.panellist').order === 91, 'ARTIFACT_SEAT_CONTRACT_MISMATCH', 'sidebar.panellist order drifted from 91')
   typedCheck(bySeat.get('main').key === SEAT_ID, 'ARTIFACT_SEAT_CONTRACT_MISMATCH', 'main seat lost its keyed page identity')
@@ -409,7 +507,11 @@ export async function loadSourceBootstrap() {
   try {
     module = await import(pathToFileURL(SOURCE_ENTRY).href)
   } catch (error) {
-    throw new ArtifactLoaderError('ARTIFACT_SOURCE_IMPORT_UNSUPPORTED', 'source bootstrap could not be imported; run this probe with node --experimental-transform-types --import ./integrations/deepseek-harness/xuanling-blueprint/scripts/test-tsx-register.mjs: ' + error.message)
+    throw new ArtifactLoaderError(
+      'ARTIFACT_SOURCE_IMPORT_UNSUPPORTED',
+      'source bootstrap could not be imported; run this probe with node --experimental-transform-types --import ./integrations/deepseek-harness/xuanling-blueprint/scripts/test-tsx-register.mjs: ' +
+        error.message
+    )
   }
   typedCheck(module && typeof module.apply === 'function', 'ARTIFACT_EXPORT_CONTRACT_INVALID', 'source bootstrap exports no apply function')
   typedCheck(Array.isArray(module.inject) && module.inject.length > 0, 'ARTIFACT_EXPORT_CONTRACT_INVALID', 'source bootstrap exports no inject array')
@@ -446,8 +548,12 @@ export async function renderRegisteredSlots(components, table = loadSharedRuntim
       return { name, rendered: true, bytes: Buffer.byteLength(html) }
     } catch (error) {
       if (error instanceof ArtifactLoaderError) throw error
-      const identityFailure = /Invalid hook call|Cannot read properties of null \(reading 'use|incompatible React versions|A React Element from an older version/.test(error.message)
-      throw new ArtifactLoaderError(identityFailure ? 'ARTIFACT_REACT_IDENTITY_MISMATCH' : 'ARTIFACT_SLOT_RENDER_INVALID', name + ': production slot render failed: ' + error.message)
+      const identityFailure =
+        /Invalid hook call|Cannot read properties of null \(reading 'use|incompatible React versions|A React Element from an older version/.test(error.message)
+      throw new ArtifactLoaderError(
+        identityFailure ? 'ARTIFACT_REACT_IDENTITY_MISMATCH' : 'ARTIFACT_SLOT_RENDER_INVALID',
+        name + ': production slot render failed: ' + error.message
+      )
     }
   })
 }

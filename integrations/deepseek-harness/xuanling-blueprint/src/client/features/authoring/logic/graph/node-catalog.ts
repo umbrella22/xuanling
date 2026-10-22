@@ -3,7 +3,7 @@ import { nodeDisplayCapabilities } from './node-capabilities.ts'
 import type { NodeKind } from '../../../../../definition/types.ts'
 import type { ViewMessageKey, ViewTranslator } from '../../../../shared/contracts/view-contract.ts'
 
-export type BuiltinNodeKind = Extract<NodeKind, 'input' | 'agentTask' | 'humanDecision' | 'output' | 'condition' | 'join'>
+export type BuiltinNodeKind = NodeKind
 export interface BuiltinNodeMetadata {
   readonly kind: BuiltinNodeKind
   readonly titleKey: Extract<ViewMessageKey, `node.${BuiltinNodeKind}.title`>
@@ -14,6 +14,12 @@ export interface BuiltinNodeMetadata {
 export const BUILTIN_NODE_CATALOG = [
   { kind: 'input', titleKey: 'node.input.title', descriptionKey: 'node.input.description', searchTerms: ['Input', '输入', '入口'] },
   { kind: 'agentTask', titleKey: 'node.agentTask.title', descriptionKey: 'node.agentTask.description', searchTerms: ['Agent task', '代理任务', '智能体任务'] },
+  {
+    kind: 'blueprintCall',
+    titleKey: 'node.blueprintCall.title',
+    descriptionKey: 'node.blueprintCall.description',
+    searchTerms: ['Call blueprint', '子蓝图', '调用蓝图', '工作流']
+  },
   {
     kind: 'humanDecision',
     titleKey: 'node.humanDecision.title',

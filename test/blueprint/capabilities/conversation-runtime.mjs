@@ -299,7 +299,8 @@ export async function prepareProfile(options, fixture, tempRoot, steps) {
       BP_LIVE_PROVIDER_PROTOCOL: options.providerProtocol
     })
     patches.push(
-      '- id: llm-pi-ai\n  config:\n    providers:\n      blueprint-live:\n        apiKeyEnv: BP_LIVE_PROVIDER_KEY\n        api: !!js process.env.BP_LIVE_PROVIDER_PROTOCOL\n        baseURL: !!js process.env.BP_LIVE_PROVIDER_BASE_URL\n        models:\n          - id: !!js process.env.BP_LIVE_PROVIDER_MODEL\n            input: [text]\n            reasoningEfforts: false\n            contextWindow: 32768\n            maxTokens: 2048'
+      '- id: llm-pi-ai\n  config:\n    providers:\n      blueprint-live:\n        apiKeyEnv: BP_LIVE_PROVIDER_KEY\n        api: !!js process.env.BP_LIVE_PROVIDER_PROTOCOL\n        baseURL: !!js process.env.BP_LIVE_PROVIDER_BASE_URL\n        models:\n          - id: !!js process.env.BP_LIVE_PROVIDER_MODEL\n            input: [text]\n            reasoningEfforts: false\n            contextWindow: 32768' +
+        (options.inheritProviderOutputLimit ? '' : '\n            maxTokens: 2048')
     )
     patches.push('- id: agent-default-model\n  config:\n    provider: blueprint-live\n    model: !!js process.env.BP_LIVE_PROVIDER_MODEL')
   } else patches.push('- id: llm-pi-ai\n  disabled: true')

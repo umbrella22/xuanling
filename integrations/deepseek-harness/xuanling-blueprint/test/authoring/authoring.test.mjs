@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
-import { ToolRuntime } from '@deepseek-ai/dsh-tools'
+import { ToolRuntime, validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
 import { BlueprintService } from '../../src/index.ts'
 import { acquireLibraryWriter, readLibraryDeletion } from '../../src/definition/library-state.ts'
 import { publishPackage } from '../../src/definition/package-create.ts'
@@ -28,6 +28,7 @@ async function fixture(t, config = {}) {
     new ToolRuntime(ctx, { mode: 'native' })
     const caller = { session: { id: 'author', header: {} }, ctx }
     ctx.provide('agents', { get: id => (id === caller.session.id ? caller : undefined) })
+    ctx.provide('permissionPresets', { current: () => 'danger-full-access' })
     await ctx.plugin(BlueprintService, { workspaceRoot: root, runtimeRoot: join(root, '.xuanling'), ...config })
     contexts.push(ctx)
     const tool = (name, args = {}, signal = new AbortController().signal) =>
@@ -104,6 +105,49 @@ test('A05: candidate diagnostics reject missing and escaping files without publi
   assert.equal(invalid.ok, false)
   assert.equal((await f.tool('blueprint_create', { ...candidate, files: [], requestId: 'bad' })).isError, true)
   assert.equal((await f.service.listDefinitions()).definitions.length, 0)
+})
+
+test('native authoring schemas require a definition object and reject double-encoded definitions before saving', async t => {
+  const f = await fixture(t)
+  const candidate = value(await f.tool('blueprint_describe')).example
+  for (const name of ['blueprint_validate', 'blueprint_create']) {
+    const parameters = f.ctx.tools.get(name).parameters
+    assert.equal(parameters.properties.definition.type, 'object', 'the model must see the actual definition value boundary')
+    const result = await f.tool(name, {
+      ...candidate,
+      definition: JSON.stringify(candidate.definition),
+      ...(name === 'blueprint_create' ? { requestId: 'encoded' } : {})
+    })
+    assert.equal(result.isError, true)
+    assert.equal(result.error.info.code, 'INVALID_ARGS')
+  }
+  assert.equal((await f.service.listDefinitions()).definitions.length, 0)
+  assert.equal(value(await f.tool('blueprint_validate', candidate)).ok, true)
+})
+
+test('workflow tools expose explicit JSON input shapes and preserve scalar text that resembles encoded JSON', async t => {
+  const f = await fixture(t)
+  const samples = [{ text: 'review' }, ['review', null, { nested: false }], '{"text":"keep as text"}', 2.5, false, null]
+  for (const name of ['blueprint_preflight', 'blueprint_start', 'workflow_run']) {
+    const inputSchema = f.ctx.tools.get(name).parameters.properties.input
+    assert.ok(
+      inputSchema.oneOf?.some(branch => branch.type === 'object'),
+      'model-facing input must explicitly describe direct object values'
+    )
+    for (const input of samples) assert.deepEqual(validateJsonSchemaValue(inputSchema, input), [])
+  }
+  const seen = []
+  t.mock.method(f.service, 'preflightRun', async args => {
+    seen.push(args.inputJson)
+    return { canStart: true }
+  })
+  for (const input of samples) {
+    assert.equal(value(await f.tool('blueprint_preflight', { blueprintId: 'json-values', expectedRevision: 'revision', input })).canStart, true)
+  }
+  assert.deepEqual(
+    seen.map(text => JSON.parse(text)),
+    samples
+  )
 })
 
 test('A05: subflow directories admit only their recursively declared resource closure', async t => {

@@ -63,34 +63,22 @@ export function nativeSessionLineage(ctx: LineageHost, source: RunSource, reserv
   const parent = admittedParent ?? captureNativeSourceParent(ctx, parentSessionId)
   const assertParent = () => assertNativeSourceParent(ctx, parent, parentSessionId)
   assertParent()
-  // alpha.2 deliberately restricts snapshotSubagentDescriptor() to
-  // continuable activations. Blueprint's sourced Agent is terminal, so stamp
-  // the public one-shot descriptor directly with the current format version.
+  // The public one-shot descriptor disables generic continuation. The factory
+  // stores setup appends before publication, as it does for native children.
   const descriptor: OneShotSubagentDescriptorData = {
     version: SUBAGENT_DESCRIPTOR_VERSION,
     mode: 'one-shot',
     provider: 'xuanling-blueprint'
   }
-  let descriptorAppended = false
   return {
     parentSessionId: parent.session.id,
-    setup(childCtx: Context): AgentSetupCommit {
-      // Native providers establish identity inside the first entered turn,
-      // after admission middleware and before the first model request. No
-      // fabricated turn or surface event is needed for navigation metadata.
-      childCtx.on('agent/pre-step', async ({ agent, signal }, next) => {
-        const decision = await next()
-        if (decision.kind !== 'enter' || descriptorAppended) return decision
-        signal.throwIfAborted()
-        if (agent.session.id !== reservedId || agent.session.header.parentSession !== parentSessionId) {
-          throw new NativeSessionLineageError()
-        }
-        agent.session.append('subagent/descriptor', descriptor)
-        descriptorAppended = true
-        await flushNativeSession(childCtx, agent.session)
-        signal.throwIfAborted()
-        return decision
-      })
+    setup(child: Agent): AgentSetupCommit {
+      if (child.session.id !== reservedId || child.session.header.origin !== 'subagent' || child.session.header.parentSession !== parentSessionId) {
+        throw new NativeSessionLineageError()
+      }
+      // Agent-created observers, including Team tool installation, must see a
+      // non-Team child immediately; a later first-turn descriptor is too late.
+      child.session.append('subagent/descriptor', descriptor)
       return { commit: assertParent }
     },
     async establishCatalog(child: Session, signal: AbortSignal): Promise<void> {

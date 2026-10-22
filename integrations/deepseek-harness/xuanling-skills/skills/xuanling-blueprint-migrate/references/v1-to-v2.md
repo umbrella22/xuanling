@@ -22,7 +22,7 @@ extension data and `presentation` is display data.
 
 | Source construct | Target contract and migration decision |
 | --- | --- |
-| `input`, `output`, `agentTask`, `condition`, `join`, `humanDecision` | The six executable kinds. Their presence alone does not prove port, resource or runtime compatibility. |
+| `input`, `output`, `agentTask`, `condition`, `join`, `humanDecision` | These six legacy kinds retain execution support. Current builds also support `blueprintCall` as described in the [composition guide](managed-composition.md). Their presence alone does not prove port, resource or runtime compatibility. |
 | `toolCall`, `scriptCall` | No executable equivalent. Keep the intended inputs, outputs, side effects and failure policy in the change proposal. An `agentTask` with a declared Host tool binding is a possible redesign, but it changes who decides whether/how to call a tool; obtain a behavior decision. |
 | Executable node `subflow`, `iteration`, node `subflowRef` | Not supported. Do not flatten nested control flow, unroll loops, or delete references automatically. Stop that part of the migration until an explicit supported design is chosen. |
 | `join: "any"` | Not supported. `join: "all"` waits for the selected inputs and is not equivalent to first-completer behavior. |

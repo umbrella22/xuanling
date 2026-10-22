@@ -18,6 +18,9 @@ import { ExportDependencyMissingError, PortabilityConflictError, SensitiveExport
 import type { PortabilityManifest } from './manifest.ts'
 import { hostExportKey, validatePackagedMcp, validatePackagedPreset, type HostExportResources } from './host-resources.ts'
 import { admitSnapshotPaths } from '../security/resource-admission.ts'
+import type { DefinitionPackage } from '../definition/persist.ts'
+import type { BlueprintReference } from '../definition/types.ts'
+import { exportComposition } from './composition-export.ts'
 
 export interface SharedRootBinding {
   rootId: string
@@ -33,6 +36,8 @@ export interface ExportOptions {
   /** Server-side provenance and frozen safe custom artifacts, resolved only
    * for this explicit export. Absence never authorizes omitting a Host ref. */
   hostResources?: HostExportResources
+  /** Exact workspace revision resolver. Bundled references take precedence. */
+  loadReference?: (reference: BlueprintReference) => DefinitionPackage
 }
 
 export interface ExportResult {
@@ -72,6 +77,13 @@ function sha256(data: Buffer | string): string {
 
 /** Export one blueprint root into a portable archive. */
 export function exportBlueprint(rootDir: string, options: ExportOptions): ExportResult {
+  const definition = decodeDefinition(readFileSync(join(rootDir, 'blueprint.json'), 'utf8'))
+  return definition.graph.nodes.some(node => node.kind === 'blueprintCall')
+    ? exportComposition(rootDir, options, exportSingleBlueprint)
+    : exportSingleBlueprint(rootDir, options)
+}
+
+function exportSingleBlueprint(rootDir: string, options: ExportOptions): ExportResult {
   const root = resolve(rootDir)
   const text = readFileSync(join(root, 'blueprint.json'), 'utf8')
   const definition = decodeDefinition(text)

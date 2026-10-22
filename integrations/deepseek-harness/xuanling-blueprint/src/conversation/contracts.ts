@@ -125,6 +125,8 @@ export const runSnapshotCodec = () =>
     runId: runIdCodec(),
     state: z.string(),
     definitionRevision: z.string(),
+    documentRevision: z.string().optional(),
+    parent: z.strictObject({ runId: runIdCodec(), attemptId: id() }).optional(),
     bindingDigests: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)).optional(),
     source: runSourceCodec().optional(),
     seq: z.number(),
@@ -135,6 +137,7 @@ export const runSnapshotCodec = () =>
         attempt: z.number(),
         attemptId: z.string().optional(),
         sessionId: id().optional(),
+        childRunId: runIdCodec().optional(),
         resultKind: z.string().optional(),
         outputJson: z.string().optional(),
         errorCode: z.string().optional(),
@@ -152,7 +155,9 @@ export const frozenGraphCodec = () =>
     nodes: z.array(
       z.strictObject({
         id: id(),
-        kind: z.enum(['input', 'output', 'agentTask', 'condition', 'join', 'humanDecision']),
+        kind: z.enum(['input', 'output', 'agentTask', 'condition', 'join', 'humanDecision', 'blueprintCall']),
+        blueprintRef: z.strictObject({ blueprintId: id(), documentRevision: z.string() }).optional(),
+        interaction: z.literal('managed').optional(),
         inputs: z.record(z.string(), z.string()).optional(),
         outputs: z.record(z.string(), z.string()).optional(),
         branches: z.array(z.string()).optional()
@@ -289,6 +294,23 @@ export const runReportCodec = () =>
 export type RunReportValue = z.infer<ReturnType<typeof runReportCodec>>
 export const inspectSessionArgsCodec = () => z.strictObject({ sessionId: id(), runId: runIdCodec().optional() })
 export type InspectSessionArgs = z.infer<ReturnType<typeof inspectSessionArgsCodec>>
+export const runAncestorCodec = () =>
+  z.strictObject({
+    runId: runIdCodec(),
+    blueprintId: id().optional(),
+    definitionRevision: z.string(),
+    documentRevision: z.string().optional()
+  })
+export const inspectRunViewArgsCodec = () => z.strictObject({ runId: runIdCodec(), sessionId: id().optional() })
+export const inspectRunViewCodec = () =>
+  z.strictObject({
+    run: runSnapshotCodec(),
+    graph: frozenGraphCodec(),
+    presentation: frozenPresentationCodec().optional(),
+    ancestors: z.array(runAncestorCodec())
+  })
+export type InspectRunViewArgs = z.infer<ReturnType<typeof inspectRunViewArgsCodec>>
+export type InspectRunViewValue = z.infer<ReturnType<typeof inspectRunViewCodec>>
 export const inspectSessionCodec = () =>
   z.discriminatedUnion('status', [
     z.strictObject({ status: z.literal('unbound'), sessionId: id() }),
@@ -305,6 +327,7 @@ export const inspectSessionCodec = () =>
         graph: frozenGraphCodec(),
         presentation: frozenPresentationCodec().optional(),
         focusAttemptIds: z.array(id()),
+        ancestors: z.array(runAncestorCodec()).optional(),
         team: teamStageProjectionCodec().optional()
       })
     })

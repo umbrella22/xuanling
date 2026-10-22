@@ -18,6 +18,7 @@ import {
   type RunSource
 } from './contracts.ts'
 import { WORKFLOW_HOST_APPROVAL } from '../service/apply-service.ts'
+import { workflowReviewMode } from './permission-policy.ts'
 
 export interface ConversationToolService {
   listDefinitions(): Promise<{ definitions: Array<{ blueprintId: string; name: string; documentRevision: string | null; semanticRevision: string | null }> }>
@@ -101,6 +102,19 @@ export function callerSource(ctx: Context, exec: ToolRunContext): RunSource {
 }
 
 const toolStartArgs = z.strictObject({ blueprintId: z.string().min(1), expectedRevision: z.string().min(1), input: z.json() })
+const workflowInputParameter = {
+  required: true,
+  description:
+    'The actual workflow input JSON value. Pass objects and arrays directly; do not JSON-encode them into strings. Use a string only when the workflow expects scalar text.',
+  oneOf: [
+    { type: 'object', additionalProperties: true },
+    { type: 'array', items: { type: 'json' } },
+    { type: 'string' },
+    { type: 'number' },
+    { type: 'boolean' },
+    { type: 'null' }
+  ]
+} as const
 const toolInspectArgs = z.strictObject({ runId: runIdCodec().optional() })
 function strictToolArgs<T>(codec: z.ZodType<T>, args: unknown): T {
   const parsed = codec.safeParse(args)
@@ -195,38 +209,56 @@ export function installConversationTools(
         // this hook; the body consumes the registry token once.
         const grants = new Set<ToolRunContext['token']>()
         removers.push(() => grants.clear())
-        const mutatesWorkflow = (name: string) => name === 'workflow_apply' || name === 'workflow_revert'
+        const requiresReview = (name: string) => ['workflow_apply', 'workflow_revert', 'blueprint_start', 'workflow_run'].includes(name)
         const consumeApproval = (exec: ToolRunContext) => {
           if (!exec || !grants.delete(exec.token)) throw new HarnessError('Workflow requires Host approval', 'blueprint/approval-required')
           exec.signal.throwIfAborted()
         }
         removers.push(
           scoped.on('tools/pre-execute', async (exec, next) => {
-            if (!mutatesWorkflow(exec.name)) return next()
-            const approval = scoped.get('approval' as never) as unknown as
-              | {
-                  request(args: { agent: Agent; toolName: string; callId: ToolRunContext['callId']; reason: string; signal: AbortSignal }): Promise<string>
-                }
-              | undefined
-            if (approval === undefined || exec.agent === undefined || exec.signal.aborted)
-              return { kind: 'deny' as const, reason: 'Workflow Host approval unavailable' }
-            let outcome: string
-            try {
-              outcome = await approval.request({
-                agent: exec.agent,
-                toolName: exec.name,
-                callId: exec.callId,
-                reason: 'Changing a canonical workflow requires approval.',
-                signal: exec.signal
-              })
-            } catch {
-              return { kind: 'deny' as const, reason: 'Workflow Host approval unavailable' }
+            if (!requiresReview(exec.name)) return next()
+            if (exec.agent === undefined)
+              return { kind: 'deny' as const, reason: 'session-unavailable', info: { name: 'WorkflowCallerUnavailable', code: 'session-unavailable' } }
+            if (exec.signal.aborted) return { kind: 'cancel' as const }
+            const mode = workflowReviewMode(scoped, exec.agent.session)
+            if (mode === 'full' || mode === 'auto') {
+              // Only an exact Host Agent can obtain authority from its preset.
+              // Auto's prepended reviewer remains in the native call chain.
+              try {
+                liveCaller(ctx, exec.agent.session.id, exec.agent)
+              } catch {
+                return { kind: 'deny' as const, reason: 'session-unavailable', info: { name: 'WorkflowCallerUnavailable', code: 'session-unavailable' } }
+              }
+            } else {
+              const approval = scoped.get('approval' as never) as unknown as
+                | {
+                    request(args: { agent: Agent; toolName: string; callId: ToolRunContext['callId']; reason: string; signal: AbortSignal }): Promise<string>
+                  }
+                | undefined
+              if (approval === undefined) return { kind: 'deny' as const, reason: 'Workflow Host approval unavailable' }
+              let outcome: string
+              try {
+                outcome = await approval.request({
+                  agent: exec.agent,
+                  toolName: exec.name,
+                  callId: exec.callId,
+                  reason:
+                    exec.name === 'workflow_apply' || exec.name === 'workflow_revert'
+                      ? 'Changing a canonical workflow requires approval.'
+                      : 'Starting the saved workflow requires approval.',
+                  signal: exec.signal
+                })
+              } catch {
+                return { kind: 'deny' as const, reason: 'Workflow Host approval unavailable' }
+              }
+              if (outcome !== 'allowed-once' || exec.signal.aborted) return { kind: 'deny' as const, reason: 'Workflow Host approval was not granted' }
             }
-            if (outcome !== 'allowed-once' || exec.signal.aborted) return { kind: 'deny' as const, reason: 'Workflow Host approval was not granted' }
+            const decision = await next()
+            if (decision.kind !== 'allow' || exec.signal.aborted) return decision
             grants.add(exec.token)
-            return { kind: 'allow' as const }
+            return decision
           }),
-          scoped.tools.guard(exec => (mutatesWorkflow(exec.name) && !grants.has(exec.token) ? 'Workflow requires Host approval' : undefined)),
+          scoped.tools.guard(exec => (requiresReview(exec.name) && !grants.has(exec.token) ? 'Workflow requires Host approval' : undefined)),
           scoped.on('tools/result', exec => {
             grants.delete(exec.token)
           })
@@ -246,7 +278,13 @@ export function installConversationTools(
         }
         const jsonOutput = { schema: { type: 'json' as const }, render: renderJson }
         const candidateParameters = {
-          definition: { type: 'json' as const, required: true as const },
+          definition: {
+            type: 'object' as const,
+            additionalProperties: true as const,
+            required: true as const,
+            description:
+              'The blueprint definition object from blueprint_describe: schemaVersion, id, name, resources and graph. Pass the object directly; do not JSON-encode it into a string.'
+          },
           files: {
             type: 'array' as const,
             required: true as const,
@@ -326,7 +364,7 @@ export function installConversationTools(
               parameters: {
                 blueprintId: { type: 'string', required: true },
                 expectedRevision: { type: 'string', required: true },
-                input: { type: 'json', required: true }
+                input: workflowInputParameter
               },
               output: jsonOutput,
               execute: args =>
@@ -396,7 +434,7 @@ export function installConversationTools(
               parameters: {
                 blueprintId: { type: 'string', required: true },
                 expectedRevision: { type: 'string', required: true },
-                input: { type: 'json', required: true }
+                input: workflowInputParameter
               },
               output: {
                 schema: {
@@ -413,6 +451,7 @@ export function installConversationTools(
               },
               execute: (args, exec) =>
                 toolResult(async () => {
+                  consumeApproval(exec)
                   exec.signal.throwIfAborted()
                   const parsed = strictToolArgs(toolStartArgs, args)
                   return runAdmissionCodec().parse(
@@ -606,11 +645,12 @@ export function installConversationTools(
               parameters: {
                 blueprintId: { type: 'string', required: true },
                 expectedRevision: { type: 'string', required: true },
-                input: { type: 'json', required: true }
+                input: workflowInputParameter
               },
               output: jsonOutput,
               execute: (args, exec) =>
                 toolResult(async () => {
+                  consumeApproval(exec)
                   exec.signal.throwIfAborted()
                   const parsed = strictToolArgs(toolStartArgs, args)
                   return runAdmissionCodec().parse(

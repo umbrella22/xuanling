@@ -398,16 +398,19 @@ test('C-02 stale and invalid drafts keep the host baseline and use stable notice
   }
 })
 
-test('C-03 builtin catalog exposes exactly six kinds and searches Chinese, English and stable kind IDs', () => {
+test('C-03 builtin catalog exposes exactly seven kinds and searches Chinese, English and stable kind IDs', () => {
   assert.deepEqual(
     BUILTIN_NODE_CATALOG.map(node => node.kind),
-    ['input', 'agentTask', 'humanDecision', 'condition', 'join', 'output']
+    ['input', 'agentTask', 'blueprintCall', 'humanDecision', 'condition', 'join', 'output']
   )
   for (const [query, kind] of [
     [' 输入 ', 'input'],
     ['智能体', 'agentTask'],
     ['AGENTTASK', 'agentTask'],
     ['Agent task', 'agentTask'],
+    ['子蓝图', 'blueprintCall'],
+    ['Call blueprint', 'blueprintCall'],
+    ['BLUEPRINTCALL', 'blueprintCall'],
     ['审批', 'humanDecision'],
     ['humanDecision', 'humanDecision'],
     ['output', 'output'],
@@ -422,7 +425,7 @@ test('C-03 builtin catalog exposes exactly six kinds and searches Chinese, Engli
       [kind]
     )
   }
-  assert.equal(searchBuiltinNodes('').length, 6)
+  assert.equal(searchBuiltinNodes('').length, 7)
   assert.deepEqual(searchBuiltinNodes('TeamStage'), [])
   assert.equal(builtinNodeMetadata('subflow'), undefined)
   assert.deepEqual(resourceAvailabilityNotice, { key: 'resource.availabilityUnchecked' })

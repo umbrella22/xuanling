@@ -46,7 +46,12 @@ export interface ResourceRef {
   format?: 'agent-preset' | 'mcp-definition'
 }
 
-export type NodeKind = 'input' | 'output' | 'agentTask' | 'condition' | 'join' | 'humanDecision'
+export type NodeKind = 'input' | 'output' | 'agentTask' | 'condition' | 'join' | 'humanDecision' | 'blueprintCall'
+
+export interface BlueprintReference {
+  blueprintId: string
+  documentRevision: string
+}
 
 export interface PortType {
   /** Named wire type; structural typing applies at edge validation. */
@@ -67,7 +72,10 @@ export interface GraphNode {
   outputs?: Record<string, string>
   /** Declared input ports: port name → wire type. */
   inputs?: Record<string, string>
+  blueprintRef?: BlueprintReference
   agentRef?: string
+  /** Explicit completion and human messages within this Run-owned Attempt. */
+  interaction?: 'managed'
   skillRefs?: string[]
   toolsetRefs?: string[]
   /** Optional narrowing of the declared Host binding union. */

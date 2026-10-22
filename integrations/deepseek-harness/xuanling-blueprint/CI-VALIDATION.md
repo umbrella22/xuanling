@@ -72,6 +72,53 @@ DSH `next` capability channel for reproducible builds. Reports record the actual
 installed version; a newer version passing the compatibility gate does not count
 as a full behavior-validation receipt.
 
+## Managed conversations and child composition
+
+The managed-workflow fixtures exercise public DSH AgentLoop, Session, Subagent,
+approval and SlotCore services. Only deterministic model output is scripted.
+Production TSX runs in Edge for child selection, pin changes, interface conflicts,
+connections, undo/redo, save/reload, frozen hierarchy navigation and managed input.
+
+```sh
+node --experimental-transform-types --import ./scripts/test-tsx-register.mjs --test --test-concurrency=1 'test/managed-workflows/*.test.mjs'
+```
+
+The real journey collector runs from the repository root after a plugin build:
+
+```sh
+node test/blueprint/capabilities/managed-composition-live.mjs --key-config /absolute/authorized-provider.yml --provider GLM --report-dir /absolute/fresh-receipts --phase web
+node test/blueprint/capabilities/managed-composition-live.mjs --key-config /absolute/authorized-provider.yml --provider GLM --report-dir /absolute/fresh-team-receipts --team --phase all
+```
+
+The explicitly selected YAML entry supplies `key`, `model`, `base_url` and `type`
+(`responses` or `anthropic`). Credentials enter only a fresh, restricted profile
+and are removed with that test directory. Reports contain model route identity,
+public calls, safe observations and screenshots; raw keys, auth URLs and provider
+bodies are excluded. The collector boots the current **linked build**, so its
+results do not establish tarball installation or published-package acceptance.
+The model output limit follows the Host provider defaults; this collector does
+not add the 2048-token cap used by the older conversation fixture. The journey
+uses a single text input and checks both the model's argument digest and the
+persisted input value. It does not establish arbitrary JSON argument fidelity
+for the selected model. A model that double-encodes an object must retain that
+failed receipt; converting the returned string into an object is not validation.
+
+`--phase provider` checks the real route. `web` adds native Agent generation,
+actual canvas composition, managed conversation navigation, focus/completion,
+Full, ordinary approval and native Auto reviewer. `all` also checks descendant
+cancellation and three real process-crash/restart iterations. `--team` enables the
+installed native Team profile; it does not replace Blueprint execution with a
+synthetic Team or change the reviewer. Each phase records its actual scope and
+before/after source and artifact fingerprints. A failed or unavailable provider
+cannot count as a successful workflow journey.
+
+After SIGKILL, the collector observes the existing writer lease and the old
+process's exit. It retries `runtime-open` failures only while that dead owner's
+heartbeat remains within the production 30-second takeover window, using the
+existing polling deadline. It records lease reacquisition, then asserts parent
+and child recovery, frozen graphs, closed input and no model replay. It does not
+age, remove or replace the lease to accelerate recovery.
+
 ## Reports and unavailable environments
 
 Every suite invocation records case results, consecutive clean count, timing,

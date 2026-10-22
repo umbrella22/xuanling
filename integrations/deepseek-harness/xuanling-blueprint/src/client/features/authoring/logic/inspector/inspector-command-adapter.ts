@@ -4,6 +4,7 @@ import type { PortField, JsonField, ResourceChoice } from './inspector-commands.
 import type { BindingField } from '../../presenters/inspector-presenter.ts'
 import type { InspectorSession } from './inspector-session.ts'
 export type InspectorViewIntent =
+  | { type: 'interaction'; managed: boolean }
   | { type: 'bind-resource'; field: BindingField; key: string; checked?: boolean }
   | { type: 'port-row'; field: PortField; id: number; property: 'name' | 'type'; value: string }
   | { type: 'remove-port'; field: PortField; id: number }
@@ -32,6 +33,8 @@ export function isInspectorViewIntent(value: unknown): value is InspectorViewInt
   const port = () => item.field === 'inputs' || item.field === 'outputs'
   const json = () => port() || item.field === 'options'
   switch (item.type) {
+    case 'interaction':
+      return typeof item.managed === 'boolean'
     case 'bind-resource':
       return (
         oneOf(item.field, ['agentRef', 'outputSchemaRef', 'skillRefs', 'toolsetRefs']) &&
@@ -82,7 +85,10 @@ export function dispatchInspectorIntent(context: InspectorCommandContext, value:
   if (!current) return { ok: false, reason: 'missing-node' }
   if ((intent.type === 'port-row' || intent.type === 'remove-port') && !session.getSnapshot().rows[intent.field].some(row => row.id === intent.id))
     return { ok: false, reason: 'invalid-intent' }
-  if (intent.type === 'bind-resource') {
+  if (intent.type === 'interaction') {
+    if (current.kind !== 'agentTask' || current.definition?.teamStage !== undefined) return { ok: false, reason: 'invalid-intent' }
+    session.patch({ interaction: intent.managed ? 'managed' : undefined })
+  } else if (intent.type === 'bind-resource') {
     const choice = context.resourceChoices(intent.field).find(choice => choice.key === intent.key)
     if (choice) {
       const value = graphNode(current)[intent.field]

@@ -142,7 +142,13 @@ const teamAction = (state = 'active', code = 'accepted') => ({
 })
 
 async function provideConversationServices(client) {
-  const binding = { sessionId: 'native-session', session: {} }
+  const snapshot = { id: 'native-session', removed: false, subagent: null, active: false }
+  const listeners = new Set()
+  const subscribe = listener => {
+    listeners.add(listener)
+    return () => listeners.delete(listener)
+  }
+  const binding = { sessionId: 'native-session', session: { getSnapshot: () => snapshot, subscribe } }
   const bindings = new Map([[binding.sessionId, binding]])
   const addresses = new Map()
   const projectionReads = []
@@ -163,6 +169,7 @@ async function provideConversationServices(client) {
     }
     get list() {
       return {
+        subscribe,
         getSnapshot: () => ({ ids: ['native-session'], byId: { 'native-session': { id: 'native-session' } }, phase: 'ready', projectionsBySession: {} })
       }
     }
@@ -733,6 +740,9 @@ test('C-08 host and remote select one unchanged strict descriptor/codec source',
   assert.equal(TYPERT_REMOTE.descriptors, BLUEPRINT_INVOCATIONS, 'client cannot fork the descriptor array')
   assert.deepEqual(Object.keys(TYPERT_REMOTE).sort(), ['descriptors', 'package'], 'client contribution has no host implementation')
   const methods = [
+    'inspectBlueprintReference',
+    'messageNode',
+    'inspectNodeSession',
     'ping',
     'listDefinitions',
     'listResources',
@@ -747,6 +757,7 @@ test('C-08 host and remote select one unchanged strict descriptor/codec source',
     'startSessionRun',
     'startTeamStage',
     'inspectSession',
+    'inspectRunView',
     'queryRuns',
     'archiveRun',
     'restoreRun',

@@ -2,7 +2,7 @@
 
 English | [简体中文](README-ZH.md)
 
-XuanLing MCP Replacement turns XuanLing into the single file backend for ZCode's coding agent. It deliberately blocks ZCode's native file tools and requires a current SHA-256 precondition for every existing-file mutation, so file changes are explicit, reviewable and protected against concurrent edits. Current release: 0.7.0.
+XuanLing MCP Replacement turns XuanLing into the single file backend for ZCode's coding agent. It deliberately blocks ZCode's native file tools and requires a current SHA-256 precondition for every existing-file mutation, so file changes are explicit, reviewable and protected against concurrent edits. Current release: 0.8.0.
 
 ## Why use it
 
@@ -18,7 +18,7 @@ Who it's for: teams and repositories where file integrity matters more than nati
 
 1. Add `umbrella22/xuanling-zcode-marketplace` as a GitHub marketplace source in ZCode.
 2. Disable or uninstall the additive `xuanling-mcp` plugin; only one XuanLing variant may be enabled at a time.
-3. Install and enable the `xuanling-mcp-replace` plugin (version 0.7.0).
+3. Install and enable the `xuanling-mcp-replace` plugin (version 0.8.0).
 4. Make sure Node.js 18.17 or newer is available on `PATH`.
 
 The plugin is self-contained: it ships matching macOS ARM64, Linux x64 (glibc 2.35 or newer) and Windows x64 runtimes. It does not require a global npm installation, and installation does not download a binary.
@@ -53,7 +53,7 @@ Memory, process, project and session tools work as in the additive variant. Memo
 - The interception policy denies execution before it happens, but it cannot hide native tool names from ZCode's tool list.
 - A native ZCode diff card is not guaranteed; MCP diff data remains available through `include_diff=true`. Because native Read is blocked, ZCode's native image rendering is unavailable in replacement mode.
 - XuanLing filesystem tools are limited to the current project directory. This is a path capability, not a process sandbox: processes you launch can still reach other paths, and ZCode remains responsible for tool approval and OS-level isolation.
-- Release artifacts come from the immutable XuanLing release pipeline: the launcher selects the matching platform package and verifies its SHA-256 before execution. XuanLing 0.7.0 is not signed with a platform publisher certificate; npm provenance, source-bound hashes and the attested marketplace archive reduce distribution risk instead.
+- Release artifacts come from the immutable XuanLing release pipeline: the launcher selects the matching platform package and verifies its SHA-256 before execution. XuanLing 0.8.0 is not signed with a platform publisher certificate; npm provenance, source-bound hashes and the attested marketplace archive reduce distribution risk instead.
 - ZCode 3.10.2 is the validated host for the tool names and limits described here. Newer ZCode versions may change host tool naming or presentation; confirm against the current tool catalog.
 
 ## Links

@@ -5,6 +5,10 @@ import { mkdtemp, mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { BlueprintService } from '../../src/index.ts'
+import { RunExecutionService } from '../../src/service/run-execution.ts'
+import { ManagedNodeSessions } from '../../src/service/managed-node-session.ts'
+import { TeamStageObservations } from '../../src/teamstage/observability.ts'
+import { decodeDefinition } from '../../src/definition/codec.ts'
 import { openBlueprintDomain, RunStore } from '../../src/persistence/index.ts'
 import { reconcileOnStart } from '../../src/orchestration/recovery.ts'
 import { TeamStageDriver } from '../../src/teamstage/driver.ts'
@@ -96,11 +100,20 @@ for (const backend of ['directory']) {
     ])
     const service = Object.create(BlueprintService.prototype)
     service.ctx = { get: key => values.get(key) }
+    service.execution = new RunExecutionService({
+      ctx: service.ctx,
+      config: {},
+      isClosing: () => false,
+      decodeDefinition,
+      cancelTeamRun: (...args) => service.cancelTeamRun(...args),
+      teamObservations: new TeamStageObservations()
+    })
     service.config = {}
     service.closing = false
     service.checkArgs = () => {}
     const handle = {
       store,
+      managed: new ManagedNodeSessions(service.ctx, store),
       root,
       controllers: new Map(),
       cancellationTails: new Map(),

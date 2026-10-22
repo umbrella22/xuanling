@@ -53,6 +53,8 @@ export function projectInspector(input: {
   }))
   return {
     node: { id: node.id, kind: node.kind },
+    interaction: definition.interaction ?? 'legacy',
+    canSetInteraction: node.kind === 'agentTask' && definition.teamStage === undefined,
     disabled,
     capability: nodeDisplayCapabilities(definition),
     choices: Object.fromEntries(

@@ -17,6 +17,7 @@ import { ConversationController, resolveConversationHost } from './features/conv
 import { ConversationBlueprintView } from './features/conversation/ui/conversation-view.tsx'
 import type { ConversationViewInjected } from './features/conversation/ui/conversation-view.tsx'
 import { NativeChatNavigation } from './features/conversation/logic/chat-navigation.ts'
+import { observeManagedComposers } from './features/conversation/logic/managed-composer-registry.ts'
 
 interface SlotsRuntime {
   inject(key: string, register: () => () => void): () => void
@@ -77,6 +78,14 @@ function applyConversation(ctx: Context, navigation: NativeChatNavigation): void
   // survives tab unmount, without retaining or creating a Host Session.
   const controllers = new WeakMap<SessionBinding, ConversationController>()
   const sessions = ctx.get('sessions') as unknown as ISessions
+  const managedHost = resolveBlueprintHost(ctx)
+  if (sessions.list && managedHost?.inspectNodeSession && managedHost.messageNode) {
+    const { inspectNodeSession, messageNode } = managedHost
+    ctx.effect(
+      () => slots.inject('conversation.composer', () => observeManagedComposers(sessions, slots, { inspectNodeSession, messageNode })),
+      'xuanling-blueprint: managed composer'
+    )
+  }
   ctx.effect(
     () =>
       slots.inject('conversation.view', () =>

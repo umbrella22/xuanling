@@ -309,6 +309,23 @@ export function ConversationBlueprintView({ controller, sessionId, t, inspectCal
           )}
         </div>
       </header>
+      {bound && (bound.selected.ancestors?.length ?? 0) > 0 && (
+        <nav className="bp-flow-breadcrumb" aria-label={t('conversation.breadcrumb')}>
+          {bound.selected.ancestors!.map(parent => (
+            <button
+              key={parent.runId}
+              type="button"
+              data-bp-breadcrumb={parent.runId}
+              onClick={() => {
+                void controller.selectRun(parent.runId)
+              }}
+            >
+              {parent.blueprintId ?? parent.runId}
+            </button>
+          ))}
+          <span aria-current="page">{bound.selected.run.runId}</span>
+        </nav>
+      )}
       <p className={'bp-conversation-status'} role={'status'}>
         {t(status)}
       </p>
@@ -406,6 +423,7 @@ export function ConversationBlueprintView({ controller, sessionId, t, inspectCal
                 if (ids.length === 1) {
                   controller.selectAttempt(ids[0]!)
                   const attempt = bound.selected.run.attempts.find(value => value.attemptId === ids[0])
+                  if (attempt?.childRunId) void controller.selectRun(attempt.childRunId)
                   if ((node as ConversationDisplayNode).data.node.kind === 'agentTask' && attempt?.sessionId !== undefined) openChat(attempt.sessionId)
                 }
               }}

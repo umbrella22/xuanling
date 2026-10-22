@@ -9,6 +9,7 @@ import {
   PackageBoundaryError,
   DocumentRevisionConflictError,
   loadDefinitionPackage,
+  readRevision,
   readPackageFiles,
   restorePackageFiles,
   saveDefinitionDocument,
@@ -120,6 +121,15 @@ export class BlueprintDocumentLibrary {
 
   loadConfigured(blueprintId: string, root: string): DefinitionDocument {
     return this.loadConfiguredPackage(blueprintId, root).document
+  }
+
+  loadRevisionPackage(blueprintId: string, root: string, revision: string): DefinitionPackage {
+    this.assertDefinitionActive(blueprintId)
+    const entry = readRevision(root, revision)
+    if (entry?.document.blueprintId !== blueprintId || entry.packageFiles === undefined) throw new Error('pinned package unavailable')
+    const definition = this.options.decodeDefinition(entry.document.definitionJson)
+    this.options.checkResources(definition)
+    return { document: entry.document, files: new Map(Object.entries(entry.packageFiles).map(([path, file]) => [path, Buffer.from(file.base64, 'base64')])) }
   }
 
   readPackageFiles(root: string, definition: BlueprintDefinition): Map<string, Buffer> {

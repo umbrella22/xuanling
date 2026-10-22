@@ -23,7 +23,7 @@ test('W2.7 locale and style boundaries resolve canonical namespace owners', () =
   const locale = checkModularization({ root: plugin, boundary: 'locale' })
   assert.equal(locale.ok, true, JSON.stringify(locale))
   assert.equal(locale.code, 'BOUNDARY_EXTRACTED', JSON.stringify(locale))
-  for (const namespace of ['conversation', 'commands', 'interaction', 'resources', 'inspector', 'document'])
+  for (const namespace of ['conversation', 'commands', 'interaction', 'resources', 'inspector', 'document', 'composition'])
     assert.ok(
       locale.evidence.some(entry => entry.path.endsWith(`/${namespace}.ts`) || entry.path === `./${namespace}.ts`),
       namespace
@@ -73,7 +73,7 @@ test('style fragment mutations report centralized and conversation wiring failur
 
 test('locale runtime dictionaries retain exact key parity after namespace assembly', async () => {
   const { zh, en } = await import('../../src/client/shared/i18n/locales.ts')
-  assert.equal(Object.keys(zh).length, 570)
+  assert.equal(Object.keys(zh).length, 612)
   assert.deepEqual(Object.keys(zh).sort(), Object.keys(en).sort())
   for (const key of Object.keys(zh)) assert.equal(typeof zh[key], 'string', key)
   for (const key of Object.keys(en)) assert.equal(typeof en[key], 'string', key)

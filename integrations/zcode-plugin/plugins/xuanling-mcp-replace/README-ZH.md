@@ -2,7 +2,7 @@
 
 [English](README.md) | 简体中文
 
-XuanLing MCP 替换插件让 XuanLing 成为 ZCode 编码 Agent 唯一的文件后端。它主动阻止 ZCode 原生的文件工具，并要求针对既有文件的每次修改都携带当前 SHA-256 前置条件，使文件变更显式、可评审，并能抵御并发编辑。当前版本：0.7.0。
+XuanLing MCP 替换插件让 XuanLing 成为 ZCode 编码 Agent 唯一的文件后端。它主动阻止 ZCode 原生的文件工具，并要求针对既有文件的每次修改都携带当前 SHA-256 前置条件，使文件变更显式、可评审，并能抵御并发编辑。当前版本：0.8.0。
 
 ## 为什么选择它
 
@@ -18,7 +18,7 @@ XuanLing MCP 替换插件让 XuanLing 成为 ZCode 编码 Agent 唯一的文件�
 
 1. 在 ZCode 中将 `umbrella22/xuanling-zcode-marketplace` 添加为 GitHub marketplace source。
 2. 禁用或卸载 additive 的 `xuanling-mcp` 插件；同一时间只允许启用一个 XuanLing 变体。
-3. 安装并启用 `xuanling-mcp-replace` 插件（版本 0.7.0）。
+3. 安装并启用 `xuanling-mcp-replace` 插件（版本 0.8.0）。
 4. 确认 `PATH` 中存在 Node.js 18.17 或更高版本。
 
 插件为自包含分发：内置匹配的 macOS ARM64、Linux x64（glibc 2.35 或更高）与 Windows x64 运行时。不依赖全局 npm 安装，安装期间也不会下载二进制文件。
@@ -53,7 +53,7 @@ Memory、进程、项目与会话工具与 additive 变体一致。Memory 采用
 - 拦截策略会在原生工具执行前拒绝它们，但无法从 ZCode 的工具列表中隐藏这些名称。
 - 不保证出现 ZCode 原生差异卡片；MCP 返回的差异数据仍可通过 `include_diff=true` 获取。由于原生 Read 被阻止，替换模式也不提供 ZCode 原生图片渲染。
 - XuanLing 文件工具限定在当前项目目录内。这是路径能力，不是进程沙箱：你启动的进程仍可能访问其他路径，工具审批与 OS 级隔离仍由 ZCode 负责。
-- 发布物来自不可变的 XuanLing 发布流水线：启动器选择匹配的平台原生包，并在执行前校验其 SHA-256。XuanLing 0.7.0 不带平台发布者证书签名；npm provenance、绑定源码的哈希与带证明的 marketplace 归档包可降低分发风险。
+- 发布物来自不可变的 XuanLing 发布流水线：启动器选择匹配的平台原生包，并在执行前校验其 SHA-256。XuanLing 0.8.0 不带平台发布者证书签名；npm provenance、绑定源码的哈希与带证明的 marketplace 归档包可降低分发风险。
 - ZCode 3.10.2 是本文工具名与限制的验证宿主。更新的 ZCode 版本可能改变宿主工具命名或呈现方式，请以当前工具目录为准。
 
 ## 链接

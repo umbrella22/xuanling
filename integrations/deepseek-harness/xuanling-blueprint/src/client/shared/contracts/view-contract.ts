@@ -22,6 +22,8 @@ export interface ViewMessageParams {
   'node.input.description': undefined
   'node.agentTask.title': undefined
   'node.agentTask.description': undefined
+  'node.blueprintCall.title': undefined
+  'node.blueprintCall.description': undefined
   'node.humanDecision.title': undefined
   'node.humanDecision.description': undefined
   'node.output.title': undefined

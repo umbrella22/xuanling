@@ -8,6 +8,7 @@ import { zh as resourcesZh, en as resourcesEn } from './resources.ts'
 import { zh as inspectorZh, en as inspectorEn } from './inspector.ts'
 import { zh as documentZh, en as documentEn } from './document.ts'
 import { zh as historyZh, en as historyEn } from './history.ts'
+import { zh as compositionZh, en as compositionEn } from './composition.ts'
 
 export const BLUEPRINT_LOCALE = 'xuanlingBlueprint'
 
@@ -21,6 +22,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export type BlueprintLocaleProps = PropsLocale<typeof BLUEPRINT_LOCALE>
 
 export const zh = {
+  ...compositionZh,
   ...conversationZh,
   ...commandsZh,
   ...interactionZh,
@@ -34,6 +36,7 @@ export type BlueprintLocaleKey = keyof typeof zh
 
 /** Missing/extra English keys are compile errors, including every foundation descriptor. */
 export const en = {
+  ...compositionEn,
   ...conversationEn,
   ...commandsEn,
   ...interactionEn,

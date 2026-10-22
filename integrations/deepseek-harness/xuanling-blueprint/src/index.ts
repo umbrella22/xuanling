@@ -1,3 +1,4 @@
+import { loadPackagedReference } from './portability/packaged-reference.ts'
 /** Host-owned document/catalog and durable runtime entry. Public DTOs contain
  * logical IDs only; machine roots are resolved exclusively from configuration.
  * Explicit local-root helpers remain an in-process compatibility seam.
@@ -7,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import type { AuthoringCandidate } from './definition/authoring.ts'
 import { projectRunSnapshot } from './conversation/run-projection.ts'
+import type { InspectRunViewArgs, InspectRunViewValue } from './conversation/contracts.ts'
 import type { RunReport } from './conversation/run-report.ts'
 import { installConversationTools, liveCaller, assertRootCaller } from './conversation/host-tools.ts'
 import { captureNativeSourceParent, assertNativeSourceParent, type NativeSourceParent } from './conversation/native-session-lineage.ts'
@@ -50,14 +52,16 @@ export type {
 import { RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { ModelSelection as HostModelSelection } from '@deepseek-ai/dsh-agent'
 import { AgentCompositionUnsupportedError, BlueprintAgentExecutor, captureAgentModelSelection, type AgentExecutionEvidence } from './host/agent-executor.ts'
+import { resolveEffectiveToolNames, type ToolBindings, type PreflightRunArgs, type PreflightRunValue, type PreflightCheck } from './host/preflight.ts'
+import { collectCompositionPreflight } from './service/composition-preflight.ts'
+import { blueprintInterface, BlueprintCompositionError } from './definition/composition.ts'
 import {
-  collectPreflight,
-  resolveEffectiveToolNames,
-  type ToolBindings,
-  type PreflightRunArgs,
-  type PreflightRunValue,
-  type PreflightCheck
-} from './host/preflight.ts'
+  blueprintReferenceViewCodec,
+  projectDefinitionGraph,
+  type BlueprintReferenceArgs,
+  type BlueprintReferenceView
+} from './conversation/blueprint-reference-contracts.ts'
+import { freezeBlueprintClosure, type AdmissionPackage } from './service/composition-admission.ts'
 import type { HostResourceCatalogValue } from './host/resource-catalog.ts'
 import { RuntimeSnapshots, createHostResourceProvider } from './resources/runtime-snapshots.ts'
 import { type RunRecord } from './persistence/records.ts'
@@ -89,6 +93,9 @@ import { BlueprintDefinitionUseCases } from './service/definition-use-cases.ts'
 import { ApplyService, WORKFLOW_HOST_APPROVAL, type WorkflowApplyResult, type WorkflowCandidate } from './service/apply-service.ts'
 import { BlueprintPortabilityUseCases } from './service/portability-use-cases.ts'
 import { RunExecutionService } from './service/run-execution.ts'
+import { ManagedNodeSessions } from './service/managed-node-session.ts'
+import { ManagedNodeError } from './persistence/managed-node-error.ts'
+import type { NodeMessageArgs, NodeMessageReceipt, NodeSessionView } from './conversation/managed-node-contracts.ts'
 import { toolsetBindingDigest } from './service/binding-facts.ts'
 import { reconcile, reconcileOnStart, RecoveryStaleError } from './orchestration/index.ts'
 import { IllegalTransitionError } from './orchestration/state.ts'
@@ -111,7 +118,7 @@ export * from './teamstage/index.ts'
 
 /** Build metadata surfaced through `ping` for install diagnostics. */
 export const PLUGIN_NAME = '@xuanling-rs/xuanling-dsh-blueprint'
-export const PLUGIN_VERSION = '0.7.0'
+export const PLUGIN_VERSION = '0.8.0'
 const DEFAULT_MAX_QUEUED_TOOL_RUNS = 8
 
 export interface PingValue {
@@ -312,6 +319,7 @@ export interface RuntimeHandle {
   controllers: Map<string, Map<string, AbortController>>
   cancellationTails: Map<string, Promise<RunRecord>>
   backgroundFailures: Map<string, Error>
+  managed: ManagedNodeSessions
 }
 
 export interface NodeSettlement {
@@ -850,6 +858,57 @@ export class BlueprintService extends TypertRemoteService {
     return await this.definitions.loadDefinition(args)
   }
 
+  async inspectBlueprintReference(args: BlueprintReferenceArgs): Promise<BlueprintReferenceView> {
+    this.checkArgs('inspectBlueprintReference', args)
+    await this.ensureWorkspace()
+    try {
+      if (args.ownerBlueprintId && args.documentRevision) {
+        const ownerRoot = this.blueprintRoot(args.ownerBlueprintId)
+        if (existsSync(join(ownerRoot, 'blueprint.json'))) {
+          const owner = this.documents.loadConfiguredPackage(args.ownerBlueprintId, ownerRoot)
+          const embedded = loadPackagedReference(owner, { blueprintId: args.blueprintId, documentRevision: args.documentRevision })
+          if (embedded) {
+            const definition = this.decodeOrThrow(embedded.document.definitionJson)
+            return blueprintReferenceViewCodec().parse({
+              blueprintId: args.blueprintId,
+              name: definition.name,
+              documentRevision: args.documentRevision,
+              currentRevision: args.documentRevision,
+              revisions: [{ documentRevision: args.documentRevision, createdAt: 0 }],
+              ...blueprintInterface(definition),
+              graph: projectDefinitionGraph(definition),
+              ...(definition.presentation === undefined ? {} : { presentation: definition.presentation })
+            })
+          }
+        }
+      }
+      const root = this.blueprintRoot(args.blueprintId)
+      const current = this.documents.loadConfigured(args.blueprintId, root)
+      const documentRevision = args.documentRevision ?? current.documentRevision
+      const snapshot = this.documents.loadRevisionPackage(args.blueprintId, root, documentRevision)
+      const definition = this.decodeOrThrow(snapshot.document.definitionJson)
+      const history = await this.applyService.revisions(args.blueprintId)
+      return blueprintReferenceViewCodec().parse({
+        blueprintId: args.blueprintId,
+        name: definition.name,
+        documentRevision,
+        currentRevision: current.documentRevision,
+        revisions: history.revisions.map(entry => ({ documentRevision: entry.revision, createdAt: entry.createdAt })).sort((a, b) => b.createdAt - a.createdAt),
+        ...blueprintInterface(definition),
+        graph: projectDefinitionGraph(definition),
+        ...(definition.presentation === undefined ? {} : { presentation: definition.presentation })
+      })
+    } catch (error) {
+      throw new RemoteError(
+        error instanceof BlueprintCompositionError && error.code === 'blueprint-interface-ambiguous'
+          ? 'blueprint/interface-ambiguous'
+          : 'blueprint/reference-unavailable',
+        'Blueprint reference unavailable',
+        { blueprintId: args.blueprintId }
+      )
+    }
+  }
+
   /** First save: request identity makes an uncertain response retryable after restart. */
   async createDefinition(args: CreateDefinitionArgs): Promise<DefinitionDocument> {
     await this.ensureWorkspace()
@@ -1105,6 +1164,7 @@ export class BlueprintService extends TypertRemoteService {
       const query = new RunQuery(store)
       const backgroundFailures = new Map<string, Error>()
       const handle: RuntimeHandle = {
+        managed: new ManagedNodeSessions(this.ctx, store),
         opened,
         store,
         query,
@@ -1326,12 +1386,18 @@ export class BlueprintService extends TypertRemoteService {
         throw this.revisionConflict(args.blueprintId, args.expectedRevision, snapshot.document.documentRevision)
       const input = this.parseInput(args.inputJson)
       this.configuredRuntimeRoot()
-      return await collectPreflight(this.ctx, snapshot, this.decodeOrThrow(snapshot.document.definitionJson), {
-        input,
-        ...(this.config.toolBindings === undefined ? {} : { toolBindings: this.config.toolBindings }),
-        skillRoots: this.preflightSkillRoots(),
-        ...(this.config.teamProviders === undefined ? {} : { teamProviders: this.config.teamProviders })
-      })
+      const { report } = await collectCompositionPreflight(
+        this.ctx,
+        snapshot,
+        ref => this.documents.loadRevisionPackage(ref.blueprintId, this.blueprintRoot(ref.blueprintId), ref.documentRevision),
+        {
+          input,
+          ...(this.config.toolBindings === undefined ? {} : { toolBindings: this.config.toolBindings }),
+          skillRoots: this.preflightSkillRoots(),
+          ...(this.config.teamProviders === undefined ? {} : { teamProviders: this.config.teamProviders })
+        }
+      )
+      return report
     })
   }
 
@@ -1524,22 +1590,27 @@ export class BlueprintService extends TypertRemoteService {
             async () => {
               // Called under admissionTail, ONLY after a matching command replay
               // has returned. A changed Host/shared Skill cannot reinterpret it.
-              const report = await collectPreflight(this.ctx, snapshot, this.decodeOrThrow(document.definitionJson), {
-                input: this.parseInput(args.inputJson),
-                ...(this.config.toolBindings === undefined ? {} : { toolBindings: this.config.toolBindings }),
-                skillRoots: this.preflightSkillRoots(),
-                ...(this.config.teamProviders === undefined ? {} : { teamProviders: this.config.teamProviders })
-              })
+              const { report, closure } = await collectCompositionPreflight(
+                this.ctx,
+                snapshot,
+                ref => this.documents.loadRevisionPackage(ref.blueprintId, this.blueprintRoot(ref.blueprintId), ref.documentRevision),
+                {
+                  input: this.parseInput(args.inputJson),
+                  ...(this.config.toolBindings === undefined ? {} : { toolBindings: this.config.toolBindings }),
+                  skillRoots: this.preflightSkillRoots(),
+                  ...(this.config.teamProviders === undefined ? {} : { teamProviders: this.config.teamProviders })
+                }
+              )
               if (!report.canStart) throw new RemoteError('blueprint/preflight-blocked', 'new Run blocked by preflight', { checks: report.checks })
               try {
                 staging = mkdtempSync(join(tmpdir(), 'bp-admission-bytes-'))
                 this.materializePackage(snapshot, staging)
-                return staging
+                return { rootDir: staging, children: [...closure.values()] }
               } catch (error) {
                 throw this.documentFailure(args.blueprintId, 'admission-stage', error)
               }
             },
-            { blueprintId: args.blueprintId, ...(source === undefined ? {} : { source }) },
+            { blueprintId: args.blueprintId, documentRevision: document.documentRevision, ...(source === undefined ? {} : { source }) },
             sourceParent
           )
         } finally {
@@ -1553,8 +1624,8 @@ export class BlueprintService extends TypertRemoteService {
   private async admitRun(
     args: InternalStartRunArgs,
     savedSemanticRevision?: string,
-    beforeNewAdmission?: () => Promise<string | undefined>,
-    metadata: { blueprintId?: string; source?: RunSource } = {},
+    beforeNewAdmission?: () => Promise<string | AdmissionPackage | undefined>,
+    metadata: { blueprintId?: string; documentRevision?: string; source?: RunSource } = {},
     sourceParent?: NativeSourceParent
   ): Promise<{ runId: string; semanticRevision: string; state: string; replayed: boolean }> {
     const definition = this.decodeOrThrow(args.definitionJson)
@@ -1583,9 +1654,18 @@ export class BlueprintService extends TypertRemoteService {
       if (replay) return { runId: replay.runId, semanticRevision: replay.definitionRevision, state: replay.state, replayed: true }
       if (metadata.source?.kind === 'tool' && handle.jobs.size >= (this.config.maxQueuedToolRuns ?? DEFAULT_MAX_QUEUED_TOOL_RUNS))
         throw new RemoteError('blueprint/preflight-blocked', 'new Run blocked by preflight', { checks: [{ code: 'active-run-limit', status: 'block' }] })
-      const rootDir = beforeNewAdmission ? await beforeNewAdmission() : args.rootDir
+      const preparedAdmission = beforeNewAdmission ? await beforeNewAdmission() : args.rootDir
+      const rootDir = typeof preparedAdmission === 'object' ? preparedAdmission.rootDir : preparedAdmission
+      if (definition.graph.nodes.some(node => node.kind === 'blueprintCall') && typeof preparedAdmission !== 'object')
+        throw new RemoteError('blueprint/preflight-blocked', 'pinned closure required', {
+          checks: [{ code: 'blueprint-revision-unavailable', status: 'block' }]
+        })
       if (sourceParent !== undefined && metadata.source !== undefined) assertNativeSourceParent(this.ctx, sourceParent, metadata.source.sessionId)
-      for (const node of definition.graph.nodes.filter(node => node.teamStage !== undefined)) {
+      const admissionDefinitions = [
+        definition,
+        ...(typeof preparedAdmission === 'object' ? preparedAdmission.children.map(child => this.decodeOrThrow(child.document.definitionJson)) : [])
+      ]
+      for (const node of admissionDefinitions.flatMap(value => value.graph.nodes).filter(node => node.teamStage !== undefined)) {
         try {
           admitTeamDriver(this.ctx, node, sourceParent?.agent, this.config.teamProviders)
         } catch (error) {
@@ -1602,6 +1682,17 @@ export class BlueprintService extends TypertRemoteService {
       if (!created.replayed) {
         try {
           await handle.snapshots.freezePackage(created.runId, definition, rootDir)
+          if (typeof preparedAdmission === 'object' && preparedAdmission.children.length) {
+            const composition = await freezeBlueprintClosure(
+              handle,
+              preparedAdmission.children,
+              (snapshot, root) => this.materializePackage(snapshot, root),
+              (runtime, snapshotId, child) => this.captureBindingDigests(runtime, snapshotId, child)
+            )
+            await handle.store.transition(created.runId, draft => {
+              draft.composition = composition
+            })
+          }
           const bindingSnapshot = await this.captureBindingDigests(handle, created.runId, definition)
           await handle.store.setBindingDigests(created.runId, bindingSnapshot.digests, bindingSnapshot.modelSelections)
         } catch {
@@ -1729,6 +1820,20 @@ export class BlueprintService extends TypertRemoteService {
     return await this.withSessionWorkspace(args?.sessionId, () => this.inspectSessionInScope(args))
   }
 
+  async inspectRunView(args: InspectRunViewArgs): Promise<InspectRunViewValue> {
+    return this.withSessionWorkspace(typeof args?.sessionId === 'string' ? args.sessionId : undefined, async () => {
+      this.checkArgs('inspectRunView', args)
+      try {
+        const handle = await this.configuredRuntime()
+        return await this.runReads(handle).inspectRunView(args.runId, args.sessionId)
+      } catch (error) {
+        if (error instanceof DurabilityFailureError)
+          throw new RemoteError('blueprint/durability-failed', 'Run storage unavailable', { operation: 'inspectRunView' })
+        throw error
+      }
+    })
+  }
+
   private async inspectSessionInScope(args: InspectSessionArgs): Promise<InspectSessionValue> {
     try {
       this.checkArgs('inspectSession', args)
@@ -1742,6 +1847,33 @@ export class BlueprintService extends TypertRemoteService {
   }
 
   // wire method (descriptor in ./typert.host.ts): cancelRun
+  async inspectNodeSession(args: { sessionId: string }): Promise<NodeSessionView> {
+    this.checkArgs('inspectNodeSession', args)
+    return this.withSessionWorkspace(args.sessionId, async () => {
+      const handle = await this.configuredRuntime()
+      const view = await handle.reads.inspectSession(args)
+      if (view.status !== 'bound') return { status: 'unmanaged' }
+      const record = await handle.store.get(view.selected.run.runId)
+      const attempt = record.attempts.find(item => item.sessionId === args.sessionId)
+      return attempt === undefined ? { status: 'unmanaged' } : handle.managed.view(record, attempt)
+    })
+  }
+
+  async messageNode(args: NodeMessageArgs): Promise<NodeMessageReceipt> {
+    this.checkArgs('messageNode', args)
+    return this.withSessionWorkspace(args.sessionId, async () => {
+      if (this.closing) throw new RemoteError('blueprint/node-not-active', 'node-not-active', {})
+      try {
+        const handle = await this.configuredRuntime()
+        return await handle.managed.message(args)
+      } catch (error) {
+        if (error instanceof ManagedNodeError) throw new RemoteError(`blueprint/${error.code}`, error.code, {})
+        if (error instanceof RunNotFoundError) throw new RemoteError('blueprint/run-not-found', 'run-not-found', { runId: args.runId })
+        throw new RemoteError('blueprint/durability-failed', 'Node message storage unavailable', { operation: 'messageNode' })
+      }
+    })
+  }
+
   async cancelRun(args: CancelRunArgs & { runtimeRoot?: string }): Promise<{ runId: string; state: string }> {
     try {
       if (args.runtimeRoot === undefined) this.checkArgs('cancelRun', args)
@@ -1750,10 +1882,16 @@ export class BlueprintService extends TypertRemoteService {
       if (record === undefined) {
         throw new RemoteError('blueprint/run-not-found', `run ${args.runId} not found`, { runId: args.runId })
       }
+      this.execution.closeTree(handle, args.runId)
+      if (record.attempts.some(attempt => attempt.childRunId !== undefined)) {
+        const after = await this.execution.cancelTree(handle, args.runId)
+        return { runId: after.runId, state: after.state }
+      }
       const afterRequest = await handle.store.requestCancel(args.runId)
       for (const controller of handle.controllers.get(args.runId)?.values() ?? []) controller.abort()
       const after = afterRequest.teamStage === undefined ? afterRequest : await this.cancelTeamRun(handle, afterRequest)
-      if (after.teamStage === undefined && after.state === 'cancelling' && !handle.controllers.has(args.runId)) this.execution.scheduleRun(handle, args.runId)
+      if (after.teamStage === undefined && after.state === 'cancelling' && !handle.controllers.has(args.runId))
+        this.execution.scheduleRun(handle, args.runId, undefined, after.parent !== undefined)
       return { runId: after.runId, state: after.state }
     } catch (error) {
       if (error instanceof DurabilityFailureError) throw new RemoteError('blueprint/durability-failed', 'Run storage unavailable', { operation: 'cancelRun' })
@@ -1803,6 +1941,22 @@ export class BlueprintService extends TypertRemoteService {
         throw new RemoteError('blueprint/run-lifecycle-conflict', 'Run is not waiting for recovery', { runId: args.runId, detail: 'not-recovery-required' })
       }
       if (teamStageBlocksRecovery(record.teamStage?.state)) throw this.teamStageNeedsCleanup(args.runId)
+      for (const attempt of record.attempts) {
+        if (!attempt.childRunId) continue
+        const child = await handle.store.tryGet(attempt.childRunId)
+        const settled =
+          child === undefined
+            ? args.resolution !== 'succeeded'
+            : child.parent?.runId === record.runId &&
+              child.parent.attemptId === attempt.attemptId &&
+              ['succeeded', 'failed', 'cancelled', 'timed_out'].includes(child.state) &&
+              (args.resolution !== 'succeeded' || child.state === 'succeeded')
+        if (!settled)
+          throw new RemoteError('blueprint/run-lifecycle-conflict', 'Child Run requires reconciliation', {
+            runId: args.runId,
+            detail: 'child-recovery-required'
+          })
+      }
       try {
         const after = await reconcile(handle.store, record, args.resolution, note, {
           expectedSeq: args.expectedSeq,
@@ -1854,7 +2008,8 @@ export class BlueprintService extends TypertRemoteService {
         throw new RemoteError('blueprint/decision-invalid', 'decision has no matching branch', { detail: 'branch-invalid' })
       try {
         const decision = await handle.store.decide(args.runId, args.decisionId, args.action, branch)
-        if (decision.applied && decision.record.state === 'running') this.execution.scheduleRun(handle, args.runId)
+        if (decision.applied && decision.record.state === 'running')
+          this.execution.scheduleRun(handle, args.runId, undefined, decision.record.parent !== undefined)
         return { runId: args.runId, decisionId: args.decisionId, state: decision.record.state, applied: decision.applied }
       } catch (error) {
         if (error instanceof DecisionConflictError)

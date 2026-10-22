@@ -89,6 +89,13 @@ export async function reconcileOnStart(store: RunStore): Promise<ReconciliationR
       if (recovered !== undefined) report.recoveryRequired.push(recovered)
       continue
     }
+    if (run.parent !== undefined && !RUN_TERMINAL.has(run.state) && run.state !== 'recovery_required') {
+      // The parent supervisor was lost. Even an undispatched or business-waiting
+      // child must not enter the root queue or resume independently on restart.
+      await store.settleTerminal(runId, 'recovery_required', { reason: 'child-supervisor-unavailable', parentRunId: run.parent.runId })
+      report.recoveryRequired.push({ runId, attemptId: run.parent.attemptId, nodeId: 'child', intentKind: 'child-supervision' })
+      continue
+    }
     if (['succeeded', 'failed', 'cancelled', 'timed_out', 'recovery_required', 'waiting_input'].includes(run.state)) {
       report.untouched.push(runId)
       continue

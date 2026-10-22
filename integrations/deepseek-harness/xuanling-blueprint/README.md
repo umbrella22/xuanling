@@ -54,17 +54,17 @@ light/dark theme settings.*
 Install the published package into the same profile that serves your DSH Web UI:
 
 ```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.7.0
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.8.0
 ```
 
 Restart that profile and refresh the DSH page. Replace `web` with the profile you use. A new custom
 profile contains only the base bundle and does not include the Web application.
 
-Release `0.7.0` targets the DSH `next` capability channel, with development and harness dependencies
+Release `0.8.0` targets the DSH `next` capability channel, with development and harness dependencies
 pinned to `0.2.1-rc.2` and a public runtime peer floor of `>=0.2.1-alpha.5`. Keep DSH packages within
 one profile on the same channel. See [Development](#development) for a linked checkout build.
 
-**Compatibility break.** Release `0.7.0` uses definition schema v2. Definitions saved by the
+**Compatibility break since 0.7.0.** Release `0.8.0` uses definition schema v2. Definitions saved by the
 published `0.6.1` package (schema v1, including the removed `toolCall`, `scriptCall`, `subflow` and
 `iteration` nodes) are rejected with `blueprint/definition-invalid` and cannot be opened or run.
 Use the [Blueprint migration Skill](../xuanling-skills/skills/xuanling-blueprint-migrate/SKILL.md)
@@ -90,7 +90,11 @@ cannot attribute (an unregistered cwd, or a profile without the Workspace regist
 the Host default workspace. The sidebar editor, which is not tied to a session, still uses the Host
 default workspace. An explicit `workspaceRoot` pins every call to that root.
 
-Conversation `workflow_apply` and `workflow_revert` require Host approval. Apply requires the
+Conversation `workflow_apply`, `workflow_revert`, `blueprint_start` and `workflow_run` follow
+the calling Session's DSH permission preset. Full access skips human confirmation; Auto uses
+DSH's native reviewer; other presets require Host approval. The `never` approval policy alone
+does not grant Full access. Explicit canvas Save/Run actions retain their user authorization,
+and graph `humanDecision` nodes still require their declared business decision. Apply requires the
 `expectedRevision` returned by the last read. Origin labels and JSON parameters cannot grant
 approval. Revision history includes package bytes; reverting restores those bytes and removes
 subsequent package files. Old history without a captured closure returns
@@ -278,6 +282,58 @@ Automatic retries within one call follow that Attempt's final result. Once a nod
 record stays failed even if the main chat continues the task. The failure explanation offers
 **Return to main chat** to view that later work. Sidebar Runs without a source chat do not show this
 action.
+
+## Compose and run child blueprints
+
+Save the child blueprint first. Its **Input** node output ports define the call's
+inputs, and its **Output** node input ports define the call's outputs. Port names
+must be unique across the child's boundary nodes.
+
+1. Add a **Call blueprint** (`blueprintCall`) node to the parent canvas.
+2. In the Inspector, choose a saved child and its **Pinned revision**, then
+   click **Apply revision and ports**. Connect the generated ports to the parent.
+3. **Preview child blueprint** opens a read-only graph. **Back to parent blueprint**
+   returns to the parent without changing it. Save the parent to persist the pin
+   and connections; undo/redo treats the pin and port changes as one edit.
+4. To adopt a later child version, select that revision explicitly. The Inspector
+   shows its interface changes. Incompatible connections remain until an explicit
+   disconnection confirmation; the update and disconnections can be undone together.
+
+Each Run freezes the exact child versions, resources and bindings before dispatch.
+Editing the saved child does not affect an admitted Run. Nested calls retain
+their own inputs and outputs, and the parent waits for the child result. Cancellation
+closes message input and stops the descendant Runs. A process interruption with an
+uncertain effect enters `recovery_required` without automatically replaying the work.
+
+In the conversation Blueprint view, **Open child flow** follows the actual child
+Run; the breadcrumb returns to its parent. The sidebar's Run Inspector opens the
+same frozen hierarchy. Agent nodes open their original Attempt Session. Runtime
+graphs remain read-only throughout this navigation.
+
+Export includes the complete pinned child closure under
+`lib/blueprint-dependencies/<documentRevision>/`. Import verifies the closure before
+publishing the parent package. Bundled children do not overwrite same-name entries
+in the destination library. Export can materialize Shared/Host resources and repin
+the exported copies; source definitions remain unchanged.
+
+## Human input to a running node
+
+New palette Agent nodes and generated examples use `interaction: "managed"`.
+An ordinary reply leaves the node open for human clarification. `structured_output`
+explicitly completes the node and hands its validated output back to the graph.
+Existing v2 definitions that omit `interaction` retain one-shot behavior; the
+Inspector's **Node conversation** setting enables managed behavior explicitly.
+
+Open the current node's chat and use **Talk to the current node** to queue a message
+for its next turn or **Steer now**. Messages can adjust the current responsibility's
+focus. They cannot change the frozen node kind, graph, resources, tool bindings or
+output contract. The managed input closes when the Attempt finishes, is cancelled,
+or requires recovery; its history remains readable. Uncertain message delivery
+retains the draft and retries the same request identity.
+
+The main Agent prepares and starts the graph. With the native Team profile enabled,
+the Lead uses the same entry path. Child calls do not create an extra mandatory
+Lead summary: aggregation remains in the nodes declared by the graph.
 
 ## Approval and TeamStage
 

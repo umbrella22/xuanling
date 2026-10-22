@@ -333,7 +333,7 @@ test('host native navigation: cancelled never-settling public catalog flush is b
   assert.equal(h.storage.read(h.parent.id).events.filter(event => event.type === 'subagent/catalog').length, 1)
 })
 
-test('host native navigation: header, catalog and initial-turn descriptor are flushed before the first model and descriptor is one-shot', async t => {
+test('host native navigation: header, catalog and setup descriptor are flushed before the first model and descriptor is one-shot', async t => {
   const h = await navigationHarness(t, {
     onModel: async call => {
       const child = h.storage.read(call.session.id)
@@ -341,7 +341,9 @@ test('host native navigation: header, catalog and initial-turn descriptor are fl
       assert.equal(child.header.parentSession, h.parent.id)
       assert.equal(parent.events.filter(event => event.type === 'subagent/catalog')[0].data.childId, call.session.id)
       const index = child.events.findIndex(event => event.type === 'subagent/descriptor')
-      assert.ok(index > child.events.findIndex(event => event.type === 'turn/start'))
+      assert.ok(index >= 0, 'the setup descriptor is already persisted before the first model request')
+      const live = call.session.snapshotEvents()
+      assert.ok(live.findIndex(event => event.type === 'subagent/descriptor') < live.findIndex(event => event.type === 'turn/start'))
       assert.equal(child.events[index].surfaceOp, undefined)
       assert.deepEqual(child.events[index].data, { version: SUBAGENT_DESCRIPTOR_VERSION, mode: 'one-shot', provider: 'xuanling-blueprint' })
       assert.deepEqual(
@@ -416,16 +418,14 @@ test('host native navigation: native page and sidebar catalog survive file reope
   assert.equal(h.modelCalls(), 1)
 })
 
-for (const boundary of ['child-header', 'parent-catalog', 'child-descriptor']) {
+// Descriptor append failure now belongs to the factory publication checkpoint;
+// native-team-context covers that boundary with the real JSONL factory handle.
+for (const boundary of ['child-identity', 'parent-catalog']) {
   test(`host native navigation: ${boundary} flush failure never dispatches model and raw fault does not escape`, async t => {
     const h = await navigationHarness(t)
     let failed = false
     h.storage.controls.beforeFlush = session => {
-      const descriptor = session.snapshotEvents().some(event => event.type === 'subagent/descriptor')
-      if (
-        !failed &&
-        (boundary === 'parent-catalog' ? session === h.parent.session : session !== h.parent.session && descriptor === (boundary === 'child-descriptor'))
-      ) {
+      if (!failed && (boundary === 'parent-catalog' ? session === h.parent.session : session !== h.parent.session)) {
         failed = true
         throw new Error('NATIVE_FLUSH_SECRET_SENTINEL /private/native-storage')
       }
@@ -440,11 +440,10 @@ for (const boundary of ['child-header', 'parent-catalog', 'child-descriptor']) {
     assert.equal(saved.state, 'failed')
     assert.equal(saved.attempts[0].sessionId, h.host.calls[0].session.id)
     assert.equal(saved.source.sessionId, h.parent.id)
-    if (boundary !== 'child-descriptor')
-      assert.equal(
-        h.host.calls[0].session.snapshotEvents().some(event => event.type === 'turn/start'),
-        false
-      )
+    assert.equal(
+      h.host.calls[0].session.snapshotEvents().some(event => event.type === 'turn/start'),
+      false
+    )
     const view = await h.service.inspectSession({ sessionId: h.parent.id })
     assert.equal(JSON.stringify(view).includes('NATIVE_FLUSH_SECRET_SENTINEL'), false)
     assert.equal(JSON.stringify(view).includes('/private/native-storage'), false)
@@ -452,7 +451,7 @@ for (const boundary of ['child-header', 'parent-catalog', 'child-descriptor']) {
   })
 }
 
-test('host native navigation: cancel before first descriptor retains a discovered child with typed diagnostic and no fabricated turn', async t => {
+test('host native navigation: cancel before first model retains a readable one-shot child without fabricated model activity', async t => {
   const entered = Promise.withResolvers(),
     release = Promise.withResolvers()
   const h = await navigationHarness(t, {
@@ -471,29 +470,29 @@ test('host native navigation: cancel before first descriptor retains a discovere
   assert.equal(h.modelCalls(), 0)
   assert.equal(
     child.snapshotEvents().some(event => event.type === 'subagent/descriptor'),
-    false
+    true
   )
   assert.equal(child.snapshotEvents().filter(event => event.type === 'turn/start').length, 1, 'only the real followup started a turn')
-  const pageError = await h.page(h.address(child), child).catch(error => error)
-  assert.equal(pageError.code, 'subagent/catalog-diagnostic')
+  const page = await h.page(h.address(child), child)
+  assert.equal(page.records.filter(record => record.type === 'event' && record.event.type === 'subagent/descriptor').length, 1)
+  assert.equal(page.records.filter(record => record.type === 'event' && record.event.type === 'assistant/message').length, 0)
   release.resolve()
   await drain(h)
   assert.equal(h.modelCalls(), 0)
   assert.equal((await records(h))[0].state, 'cancelled')
 })
 
-test('host native navigation: hanging first-turn descriptor flush yields recovery when quiescence is unknown and never dispatches late model', async t => {
+test('host native navigation: hanging first-turn admission yields recovery when quiescence is unknown and never dispatches late model', async t => {
   const entered = Promise.withResolvers(),
     release = Promise.withResolvers()
-  const h = await navigationHarness(t)
-  h.storage.controls.beforeFlush = async session => {
-    if (session !== h.parent.session && session.snapshotEvents().some(event => event.type === 'subagent/descriptor')) {
-      const call = h.host.calls[0]
+  const h = await navigationHarness(t, {
+    beforeModel: async call => {
       call.agent.cancel = () => {}
       entered.resolve()
       await release.promise
+      call.options.signal.throwIfAborted()
     }
-  }
+  })
   const doc = await h.save(definition())
   const start = await h.service.startSessionRun({ ...runArgs(doc), sessionId: h.parent.id })
   await entered.promise
@@ -510,7 +509,7 @@ test('host native navigation: hanging first-turn descriptor flush yields recover
   }
   await drain(h)
   assert.equal(h.modelCalls(), 0)
-  assert.equal(h.runtimeFaults.length, 1, 'late descriptor flush hits the aborted signal, before model dispatch')
+  assert.equal(h.runtimeFaults.length, 1, 'late admission hits the aborted signal before model dispatch')
 })
 
 test('host native navigation: hanging public flush and disposal respect the existing 20s deadline plus quiescence budget', async t => {

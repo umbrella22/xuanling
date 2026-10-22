@@ -873,7 +873,11 @@ function documents(graph) {
     ([, entry]) => entry.source === './service/portability-use-cases.ts' && entry.imported === 'BlueprintPortabilityUseCases'
   )
   const applyBinding = [...service.imports].find(([, entry]) => entry.source === './service/apply-service.ts' && entry.imported === 'ApplyService')
-  requireFact(definitionBinding && applyBinding && portabilityBinding, 'DOCUMENT_WIRING_INCOMPLETE', 'Service must import the definition, apply and portability collaborators')
+  requireFact(
+    definitionBinding && applyBinding && portabilityBinding,
+    'DOCUMENT_WIRING_INCOMPLETE',
+    'Service must import the definition, apply and portability collaborators'
+  )
   const definitionCreation = nodes(cl, node => node.type === 'NewExpression' && name(node.callee) === definitionBinding[0])
   const applyCreation = nodes(cl, node => node.type === 'NewExpression' && name(node.callee) === applyBinding[0])
   const portabilityCreation = nodes(cl, node => node.type === 'NewExpression' && name(node.callee) === portabilityBinding[0])
@@ -894,14 +898,7 @@ function documents(graph) {
   const applyField = collaboratorField(applyCreation[0])
   const portabilityField = collaboratorField(portabilityCreation[0])
   requireFact(definitionField && applyField && portabilityField, 'DOCUMENT_INSTANCE_COUNT', 'Use-case collaborators must be retained on BlueprintService')
-  const definitionEntries = [
-    'listDefinitions',
-    'loadDefinition',
-    'createDefinition',
-    'deleteDefinition',
-    'describeBlueprint',
-    'createBlueprint'
-  ]
+  const definitionEntries = ['listDefinitions', 'loadDefinition', 'createDefinition', 'deleteDefinition', 'describeBlueprint', 'createBlueprint']
   const portabilityEntries = ['exportDefinition', 'importDefinition']
   const definitionRoutes = definitionEntries.map(entry => ({ entry, path: reaches(methods, entry, edge => edge.path.startsWith(`this.${definitionField}.`)) }))
   const portabilityRoutes = portabilityEntries.map(entry => ({
@@ -918,7 +915,9 @@ function documents(graph) {
     definitionRoutes.every(item => item.path.length) && applyRoutes.every(item => item.path.length) && portabilityRoutes.every(item => item.path.length),
     'DOCUMENT_WIRING_INCOMPLETE',
     'Definition, apply and portability façade entries must reach their dedicated collaborators',
-    [...definitionRoutes, ...applyRoutes, ...portabilityRoutes].filter(item => !item.path.length).map(item => graph.location(service, methods.get(item.entry), item.entry))
+    [...definitionRoutes, ...applyRoutes, ...portabilityRoutes]
+      .filter(item => !item.path.length)
+      .map(item => graph.location(service, methods.get(item.entry), item.entry))
   )
   const definitionMethods = methodTable(definitionClass)
   const applyMethods = methodTable(applyClass)
@@ -938,7 +937,11 @@ function documents(graph) {
     'DOCUMENT_WIRING_INCOMPLETE',
     'Dedicated use-case collaborators must retain implemented authoring and portability methods'
   )
-  requireFact(applyMethods.has('apply') && applyMethods.has('propose') && applyMethods.has('validate'), 'DOCUMENT_WIRING_INCOMPLETE', 'ApplyService must retain candidate validation, diff and CAS methods')
+  requireFact(
+    applyMethods.has('apply') && applyMethods.has('propose') && applyMethods.has('validate'),
+    'DOCUMENT_WIRING_INCOMPLETE',
+    'ApplyService must retain candidate validation, diff and CAS methods'
+  )
   requireFact(
     calls(definitionClass.body).some(call => member(call.callee)?.startsWith('this.context.documents.')) &&
       calls(portabilityClass.body).some(call => member(call.callee)?.startsWith('this.context.documents.')),
@@ -1395,7 +1398,16 @@ function conversation(graph) {
  * canonical namespace modules. */
 function locale(graph) {
   const registry = graph.load(resolve(graph.root, 'src/client/shared/i18n/locales.ts'))
-  const namespaces = ['./conversation.ts', './commands.ts', './interaction.ts', './resources.ts', './inspector.ts', './document.ts', './history.ts']
+  const namespaces = [
+    './conversation.ts',
+    './commands.ts',
+    './interaction.ts',
+    './resources.ts',
+    './inspector.ts',
+    './document.ts',
+    './history.ts',
+    './composition.ts'
+  ]
   const runtimeImports = source => [...registry.imports].filter(([, entry]) => entry.source === source && !entry.typeOnly)
   const missing = namespaces.filter(source => runtimeImports(source).length === 0)
   if (missing.length) {

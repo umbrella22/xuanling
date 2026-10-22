@@ -13,6 +13,8 @@ import { resolveHostExportResources } from '../portability/host-resources.ts'
 import { resolveResource, type SkillRoot } from '../resources/resolver.ts'
 import { snapshotDirectory } from '../resources/index.ts'
 import type { BlueprintDefinition } from '../definition/types.ts'
+import { resolveBlueprintClosure } from '../definition/composition.ts'
+import { packagedReferenceLoader } from '../portability/packaged-reference.ts'
 
 export interface PortabilityUseCaseContext {
   readonly ctx: Context
@@ -55,19 +57,27 @@ export class BlueprintPortabilityUseCases {
     const root = this.context.blueprintRoot(args.blueprintId)
     return await this.context.documents.withDocument(root, async () => {
       const snapshot = this.context.documents.loadConfiguredPackage(args.blueprintId, root)
-      const { document, files } = snapshot
+      const { document } = snapshot
       const definition = this.context.decodeOrThrow(document.definitionJson)
       let staging: string | undefined
       try {
         staging = mkdtempSync(join(tmpdir(), 'bp-export-bytes-'))
         const packageRoot = join(staging, 'package')
         this.context.materializePackage(snapshot, packageRoot)
-        const definitions = [definition]
-        for (const ref of Object.values(definition.resources)) {
-          if (ref.kind === 'subflow' && ref.path) {
-            const bytes = files.get(`${ref.path}/blueprint.json`)
-            if (!bytes) throw new Error('subflow unavailable')
-            definitions.push(this.context.decodeOrThrow(bytes.toString('utf8')))
+        const loadReference = packagedReferenceLoader(snapshot, ref =>
+          this.context.documents.loadRevisionPackage(ref.blueprintId, this.context.blueprintRoot(ref.blueprintId), ref.documentRevision)
+        )
+        const closure = resolveBlueprintClosure(definition, loadReference)
+        const definitions: BlueprintDefinition[] = []
+        for (const pkg of [snapshot, ...closure.values()]) {
+          const current = this.context.decodeOrThrow(pkg.document.definitionJson)
+          definitions.push(current)
+          for (const ref of Object.values(current.resources)) {
+            if (ref.kind === 'subflow' && ref.path) {
+              const bytes = pkg.files.get(`${ref.path}/blueprint.json`)
+              if (!bytes) throw new Error('subflow unavailable')
+              definitions.push(this.context.decodeOrThrow(bytes.toString('utf8')))
+            }
           }
         }
         const roots = new Map<string, SkillRoot>()
@@ -92,7 +102,7 @@ export class BlueprintPortabilityUseCases {
           }
         }
         const hostResources = await resolveHostExportResources(this.context.ctx, definitions, process.cwd())
-        const result = exportBlueprint(packageRoot, { roots: [...roots.values()], hostResources })
+        const result = exportBlueprint(packageRoot, { roots: [...roots.values()], hostResources, loadReference })
         return {
           blueprintId: args.blueprintId,
           closureDigest: result.manifest.closureDigest,
@@ -181,13 +191,20 @@ export class BlueprintPortabilityUseCases {
     }
     try {
       const definition = this.context.decodeOrThrow(readFileSync(join(args.rootDir, 'blueprint.json'), 'utf8'))
-      const definitions = [definition]
+      const snapshot = loadDefinitionPackage(args.rootDir)
+      const loadReference = packagedReferenceLoader(snapshot, ref =>
+        this.context.documents.loadRevisionPackage(ref.blueprintId, this.context.blueprintRoot(ref.blueprintId), ref.documentRevision)
+      )
+      const definitions = [
+        definition,
+        ...[...resolveBlueprintClosure(definition, loadReference).values()].map(pkg => this.context.decodeOrThrow(pkg.document.definitionJson))
+      ]
       for (const ref of Object.values(definition.resources)) {
         const path = ref.path ?? (ref.source?.kind === 'package' ? ref.source.path : undefined)
         if (ref.kind === 'subflow' && path) definitions.push(this.context.decodeOrThrow(readFileSync(join(args.rootDir, path, 'blueprint.json'), 'utf8')))
       }
       const hostResources = await resolveHostExportResources(this.context.ctx, definitions, process.cwd())
-      const result = exportBlueprint(args.rootDir, { roots, hostResources })
+      const result = exportBlueprint(args.rootDir, { roots, hostResources, loadReference })
       const archiveSha256 = createHash('sha256').update(result.archive).digest('hex')
       let archivePath: string | null = null
       if (args.outPath !== undefined) {

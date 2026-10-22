@@ -127,6 +127,22 @@ export function validateDefinition(definition: BlueprintDefinition): void {
   let teamStageSeen = false
   for (const [index, node] of definition.graph.nodes.entries()) {
     const pointer = `/graph/nodes/${index}`
+    if ((node.kind === 'blueprintCall') !== (node.blueprintRef !== undefined)) {
+      issues.push({
+        code: 'invalid-value',
+        message: 'blueprintCall requires a fixed blueprintRef; other nodes cannot carry it',
+        pointer: `${pointer}/blueprintRef`
+      })
+    }
+    if (node.kind === 'blueprintCall') {
+      for (const field of ['agentRef', 'skillRefs', 'toolsetRefs', 'outputSchemaRef', 'join', 'branches', 'condition'] as const) {
+        if (node[field] !== undefined)
+          issues.push({ code: 'invalid-value', message: 'blueprintCall uses only its declared interface and fixed reference', pointer: `${pointer}/${field}` })
+      }
+    }
+    if (node.interaction !== undefined && (node.kind !== 'agentTask' || node.teamStage !== undefined)) {
+      issues.push({ code: 'invalid-value', message: 'managed interaction requires an ordinary agentTask', pointer: `${pointer}/interaction` })
+    }
     if (node.modelSelection !== undefined && node.kind !== 'agentTask') {
       issues.push({ code: 'invalid-value', message: 'modelSelection belongs to agentTask only', pointer: `${pointer}/modelSelection` })
     }

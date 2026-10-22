@@ -36,7 +36,9 @@ const optionKeys = [
   'branches',
   'condition',
   'toolAllowlist',
-  'modelSelection'
+  'modelSelection',
+  'interaction',
+  'blueprintRef'
 ] as const satisfies readonly OptionKey[]
 export function object(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -67,6 +69,17 @@ export function nodeOptions(node: EditorNode): GraphNode {
 }
 function validOption(key: (typeof optionKeys)[number], value: unknown): boolean {
   switch (key) {
+    case 'interaction':
+      return value === 'managed'
+    case 'blueprintRef':
+      return (
+        object(value) &&
+        Object.keys(value).length === 2 &&
+        typeof value.blueprintId === 'string' &&
+        value.blueprintId.length > 0 &&
+        typeof value.documentRevision === 'string' &&
+        /^[a-f0-9]{64}$/.test(value.documentRevision)
+      )
     case 'inputs':
     case 'outputs':
       return ports(value)

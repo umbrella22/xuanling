@@ -1,4 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis'
+import { ChildRunExecution, childOutputs } from './child-run-execution.ts'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { createHash, randomUUID } from 'node:crypto'
 import { captureNativeSourceParent, assertNativeSourceParent, type NativeSourceParent } from '../conversation/native-session-lineage.ts'
@@ -60,15 +61,29 @@ interface NodeSettlement {
  * only place that drives structural nodes, Agent effects and TeamStage effects.
  */
 export class RunExecutionService {
-  constructor(private readonly context: RunExecutionContext) {}
+  private readonly children: ChildRunExecution
+  constructor(private readonly context: RunExecutionContext) {
+    this.children = new ChildRunExecution({
+      isClosing: context.isClosing,
+      schedule: (handle, runId, sourceParent) => this.scheduleRun(handle, runId, sourceParent, true),
+      cancelTeam: (handle, record) => context.cancelTeamRun(handle, record)
+    })
+  }
 
-  scheduleRun(handle: RuntimeHandle, runId: string, sourceParent?: NativeSourceParent): void {
+  closeTree(handle: RuntimeHandle, runId: string): void {
+    this.children.closeTree(handle, runId)
+  }
+  cancelTree(handle: RuntimeHandle, runId: string): Promise<RunRecord> {
+    return this.children.cancelTree(handle, runId)
+  }
+
+  scheduleRun(handle: RuntimeHandle, runId: string, sourceParent?: NativeSourceParent, child = false): void {
     if (this.context.isClosing()) return
     if (handle.jobs.has(runId)) {
       handle.rerun.add(runId)
       return
     }
-    const job = handle.driverTail
+    const job = (child ? Promise.resolve() : handle.driverTail)
       .then(async () => {
         const run = await handle.store.get(runId)
         const definition = this.context.decodeDefinition(run.definitionJson)
@@ -88,10 +103,10 @@ export class RunExecutionService {
       handle.backgroundFailures.set(runId, new Error('durable background settlement failed'))
     })
     handle.jobs.set(runId, observed)
-    handle.driverTail = observed
+    if (!child) handle.driverTail = observed
     void observed.then(() => {
       if (handle.jobs.get(runId) === observed) handle.jobs.delete(runId)
-      if (handle.rerun.delete(runId)) this.scheduleRun(handle, runId, sourceParent)
+      if (handle.rerun.delete(runId)) this.scheduleRun(handle, runId, sourceParent, child)
     })
   }
 
@@ -374,6 +389,19 @@ export class RunExecutionService {
       }
       if (bindingError !== undefined) throw bindingError
       validateNodeInputs(node, input, omitted)
+      if (node.kind === 'blueprintCall') {
+        const child = await this.children.execute(handle, record, node, intent.attemptId, input, controller.signal, sourceParent)
+        if (child === undefined || child.state === 'recovery_required') return { terminal: 'recovery_required', detail: { reason: 'child-effect-unknown' } }
+        const outputs = child.state === 'succeeded' ? childOutputs(child, node) : {}
+        const kind = child.state === 'timed_out' ? 'timeout' : child.state
+        await handle.store.recordResult(runId, intent.attemptId, {
+          ok: child.state === 'succeeded',
+          outcome: { kind, outputs, childRunId: child.runId },
+          evidence: `child-${child.state}`,
+          ...settledDiagnostics(kind)
+        })
+        return
+      }
       if (node.kind === 'condition') {
         const config = node.condition!
         const predicate = (input as Record<string, unknown>)[config.inputPort] as boolean
@@ -450,6 +478,12 @@ export class RunExecutionService {
           attemptId: intent.attemptId,
           nodeId,
           sessionId: executionSessionId!,
+          ...(node.interaction === undefined
+            ? {}
+            : {
+                interaction: node.interaction,
+                bindManaged: (agent, signal, uncertain) => handle.managed.bind(runId, intent!.attemptId, agent, signal, uncertain)
+              }),
           agentMd: prepared.agentMd,
           ...(prepared.agentPreset === undefined ? {} : { agentPreset: prepared.agentPreset }),
           ...(prepared.agentComposition === undefined ? {} : { agentComposition: prepared.agentComposition }),
@@ -501,7 +535,7 @@ export class RunExecutionService {
         })
         return
       }
-      // decodeDefinition admits only the six executable node kinds above. If
+      // decodeDefinition admits only the executable node kinds above. If
       // an in-process caller bypasses that boundary, fail closed instead of
       // persisting a compatibility result for a node with no executor.
       throw new Error('node-executor-unavailable')

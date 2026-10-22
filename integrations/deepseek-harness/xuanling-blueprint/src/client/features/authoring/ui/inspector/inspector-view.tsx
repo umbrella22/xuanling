@@ -261,6 +261,21 @@ export function inspectorView(model: InspectorViewModel, t: BlueprintLocaleProps
         </label>
       )}
       {capability.agentBindings && select('agentRef', 'inspector.agentBinding', 'inspector.selectAgent')}
+      {model.canSetInteraction && (
+        <label className="bp-field">
+          {t('inspector.interaction')}
+          <StyledSelect
+            data-bp-field="interaction"
+            aria-label={t('inspector.interaction')}
+            value={model.interaction}
+            disabled={disabled}
+            onChange={event => onIntent({ type: 'interaction', managed: event.currentTarget.value === 'managed' })}
+          >
+            <option value="managed">{t('inspector.interactionManaged')}</option>
+            <option value="legacy">{t('inspector.interactionLegacy')}</option>
+          </StyledSelect>
+        </label>
+      )}
       {capability.modelRoute && (
         <fieldset className={'bp-model-route'} data-bp-model-route={true}>
           <legend>{t('inspector.modelRoute')}</legend>
@@ -316,8 +331,8 @@ export function inspectorView(model: InspectorViewModel, t: BlueprintLocaleProps
           </label>
         ))}
       </fieldset>
-      {portEditor('inputs')}
-      {portEditor('outputs')}
+      {node.kind !== 'blueprintCall' && portEditor('inputs')}
+      {node.kind !== 'blueprintCall' && portEditor('outputs')}
       <details key={'advanced'}>
         <summary data-bp-inspector-advanced={true}>{t('inspector.advanced')}</summary>
         {(['inputs', 'outputs', 'options'] as const).map(field => (

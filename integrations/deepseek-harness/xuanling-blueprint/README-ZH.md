@@ -46,17 +46,17 @@ DSH 负责模型、原生会话和工具权限；蓝图负责画布、保存的�
 把已发布包安装到提供 DSH Web 界面的同一个 profile：
 
 ```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.7.0
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.8.0
 ```
 
 重启该 profile 并刷新 DSH 页面。把 `web` 换成实际使用的 profile；新建的自定义 profile 只包含
 基础 bundle，不会自动包含 Web 应用。
 
-`0.7.0` 面向 DSH `next` 能力频道，开发与测试依赖固定为 `0.2.1-rc.2`，公开运行时 peer 下限
+`0.8.0` 面向 DSH `next` 能力频道，开发与测试依赖固定为 `0.2.1-rc.2`，公开运行时 peer 下限
 为 `>=0.2.1-alpha.5`。同一 profile 内的 DSH 包应保持在同一频道。checkout 链接构建见
 [开发](#开发)。
 
-**不兼容变更。** `0.7.0` 使用定义 schema v2。已发布的 `0.6.1` 保存的定义（schema v1，包括已移除的
+**自 0.7.0 起的不兼容变更。** `0.8.0` 使用定义 schema v2。已发布的 `0.6.1` 保存的定义（schema v1，包括已移除的
 `toolCall`、`scriptCall`、`subflow`、`iteration` 节点）会被拒绝并返回 `blueprint/definition-invalid`，
 无法打开或运行。请使用[蓝图迁移 Skill](../xuanling-skills/skills/xuanling-blueprint-migrate/SKILL.md)
 准备并校验独立副本，或继续用 `0.6.1` 运行原工作流。迁移需要手动执行；安装新版不会改写定义或 Run 历史。
@@ -74,7 +74,10 @@ cwd 不会成为定义目录。这里包括定义操作，以及对话创建的 
 Host 无法归属的调用（未注册 cwd，或没有 Workspace registry 的 profile）回退到 Host 默认工作区；
 侧栏编辑器不绑定会话，也仍使用 Host 默认工作区。显式配置 `workspaceRoot` 时，所有调用都固定到该根。
 
-对话 `workflow_apply`、`workflow_revert` 必须经 Host 审批；apply 必须携带上次读取的
+对话 `workflow_apply`、`workflow_revert`、`blueprint_start`、`workflow_run` 跟随调用会话的 DSH
+权限模式：完全访问免人工确认；Auto 经过 DSH 原生审核器；其他模式经 Host 审批。不能仅凭
+`never` 审批策略判断完全访问。画布显式保存和运行保留用户操作授权；图中的 `humanDecision`
+仍按声明要求业务决策。apply 必须携带上次读取的
 `expectedRevision`。origin 标签和 JSON 参数都不能授予审批。新 revision history 包含包内文件
 bytes；回滚会恢复这些内容并删除后加的包内文件。没有资源快照的旧 history 返回
 `revision-package-unavailable`。资源恢复中断后，读取先重放持久提交；恢复受阻返回
@@ -229,6 +232,43 @@ result；Host 无法确认的结果会进入 `recovery_required`（需要恢复�
 同一次调用内的自动重试会跟随该 Attempt 的最终结果。节点已经失败后，即使主聊天继续处理任务，
 旧失败记录仍会保留。失败说明中的 **返回主聊天** 可查看后续处理；从侧栏独立启动、没有来源聊天
 的 Run 不显示该入口。
+
+## 组合并运行子蓝图
+
+先保存子蓝图。子图 **输入** 节点的输出端口构成调用输入，**输出** 节点的输入端口构成调用
+输出；同一方向的边界端口名称不能重复。
+
+1. 在父图画布添加 **调用蓝图**（`blueprintCall`）节点。
+2. 在检查器选择已保存的子蓝图和 **固定版本**，点击 **应用版本与端口**，再连接生成的端口。
+3. **预览子蓝图** 打开只读图，**返回父蓝图** 保留父图编辑状态。保存父图后，版本和连线一起
+   持久化；版本与端口变更作为一次编辑支持撤销、重做。
+4. 子图发布新版本后，手动选择要采用的版本。检查器展示接口变化；不兼容连线保留到明确确认
+   断开。更新版本和断开连线可以一起撤销。
+
+Run 启动前冻结完整子图闭包、资源和绑定。随后编辑已保存的子图不会改变当前运行。多层调用
+保留各自输入输出，父节点等待子流程结果；取消父流程会先关闭消息准入，再停止后代 Run。
+进程中断且效果无法确认时进入 `recovery_required`，不会自动重放。
+
+对话蓝图视图中的 **打开子流程** 跳转到真实子 Run，面包屑返回父流程；侧栏运行检查器也可
+查看同一冻结层级。Agent 节点打开原来的 Attempt Session，运行图始终只读。
+
+导出把固定版本的完整子图闭包放入 `lib/blueprint-dependencies/<documentRevision>/`。导入先
+校验闭包，再发布父包；不会覆盖目标库中的同名子蓝图。导出物化 Shared/Host 资源时会重算
+导出副本的版本和引用，原定义保持不变。
+
+## 与运行中的节点交流
+
+节点库新增的 Agent 节点及对话生成示例默认使用 `interaction: "managed"`。普通回复保留节点，
+允许人类继续补充；节点调用 `structured_output` 显式完成后，蓝图才接收校验后的输出并继续。
+旧 v2 定义未声明 `interaction` 时保持一次执行语义，可在检查器的 **节点对话** 中明确启用新行为。
+
+打开当前节点原会话，在 **与当前节点交流** 中选择 **排入下一轮** 或 **立即调整方向**。
+消息可补充信息、调整当前职责的侧重点，不能改变已冻结的节点类型、图结构、资源、工具绑定或
+输出合同。节点完成、取消或需要恢复后，输入关闭，对话历史仍可查看；未确认送达的消息保留
+草稿，并用同一请求身份重试。
+
+主 Agent 负责准备和启动蓝图；启用原生 Team profile 时，Lead 使用相同入口。子流程调用不
+增加强制 Lead 汇总，结果仍由图中声明的汇总节点处理。
 
 ## 审批与 TeamStage
 

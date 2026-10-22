@@ -72,10 +72,15 @@ const teamStageSchema = z
 const nodeSchema = z
   .object({
     id: z.string().regex(idPattern),
-    kind: z.enum(['input', 'output', 'agentTask', 'condition', 'join', 'humanDecision']),
+    kind: z.enum(['input', 'output', 'agentTask', 'condition', 'join', 'humanDecision', 'blueprintCall']),
+    blueprintRef: z
+      .object({ blueprintId: z.string().regex(idPattern), documentRevision: z.string().regex(/^[a-f0-9]{64}$/) })
+      .strict()
+      .optional(),
     outputs: z.record(z.string(), z.string().min(1)).optional(),
     inputs: z.record(z.string(), z.string().min(1)).optional(),
     agentRef: z.string().regex(idPattern).optional(),
+    interaction: z.literal('managed').optional(),
     skillRefs: z.array(z.string().regex(idPattern)).optional(),
     toolsetRefs: z.array(z.string().regex(idPattern)).optional(),
     toolAllowlist: z.array(z.string().min(1)).optional(),

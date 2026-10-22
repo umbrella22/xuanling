@@ -40,6 +40,9 @@ import {
   teamCaptureArtifactRefSchema,
   teamMemberReservationSchema,
   bindingSelectionsSchema,
+  parentRunSchema,
+  runIdSchema,
+  frozenBlueprintSchema,
   type AttemptRecord,
   type RunLifecycleRecord,
   type RunRecord,
@@ -54,6 +57,7 @@ import {
 } from './records.ts'
 import { CommandAdmission, CommandConflictError, DurabilityFailureError, newRunId, type AdmissionRequest, type AdmissionResult } from './command-admission.ts'
 import { IllegalTransitionError, RecoveryStaleError, transitionRun } from '../orchestration/state.ts'
+import { ManagedNodeError } from './managed-node-error.ts'
 
 const LOG_CAP = 200
 const ACTIVE_TEAM_ATTEMPT_STATES = new Set(['preparing', 'ready', 'running'])
@@ -166,6 +170,21 @@ export class RunStore {
   private readonly lifecycle: KvTableLike<string, RunLifecycleRecord>
   readonly admission: CommandAdmission
   private readonly queues = new Map<string, Promise<unknown>>()
+  private readonly observers = new Map<string, Set<() => void>>()
+
+  observe(runId: string, listener: () => void): () => void {
+    const listeners = this.observers.get(runId) ?? new Set<() => void>()
+    listeners.add(listener)
+    this.observers.set(runId, listeners)
+    return () => {
+      listeners.delete(listener)
+      if (!listeners.size) this.observers.delete(runId)
+    }
+  }
+
+  private publish(runId: string): void {
+    for (const listener of this.observers.get(runId) ?? []) listener()
+  }
   private serial<T>(key: string, task: () => Promise<T>): Promise<T> {
     const result = (this.queues.get(key) ?? Promise.resolve()).then(task)
     const tail = result.catch(() => {})
@@ -231,6 +250,10 @@ export class RunStore {
     definitionJson: string,
     inputRef: string,
     metadata: {
+      parent?: NonNullable<RunRecord['parent']>
+      composition?: NonNullable<RunRecord['composition']>
+      documentRevision?: string
+      reservedRunId?: string
       blueprintId?: string
       source?: RunSource
       bindingDigests?: Record<string, string>
@@ -239,12 +262,23 @@ export class RunStore {
   ): Promise<{ runId: string; replayed: boolean }> {
     const frozen = z
       .strictObject({
+        parent: parentRunSchema.optional(),
+        composition: z.array(frozenBlueprintSchema).optional(),
+        documentRevision: z
+          .string()
+          .regex(/^[a-f0-9]{64}$/)
+          .optional(),
+        reservedRunId: runIdSchema.optional(),
         blueprintId: z.string().min(1).optional(),
         source: runSourceCodec().optional(),
         bindingDigests: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)).optional(),
         bindingSelections: bindingSelectionsSchema.optional()
       })
       .parse(metadata) as {
+      parent?: NonNullable<RunRecord['parent']>
+      composition?: NonNullable<RunRecord['composition']>
+      documentRevision?: string
+      reservedRunId?: string
       blueprintId?: string
       source?: RunSource
       bindingDigests?: Record<string, string>
@@ -252,6 +286,10 @@ export class RunStore {
     }
     return await this.serial('admission', () =>
       this.createRunSerial(request, definitionRevision, definitionJson, inputRef, {
+        ...(frozen.parent === undefined ? {} : { parent: frozen.parent }),
+        ...(frozen.composition === undefined ? {} : { composition: frozen.composition }),
+        ...(frozen.documentRevision === undefined ? {} : { documentRevision: frozen.documentRevision }),
+        ...(frozen.reservedRunId === undefined ? {} : { reservedRunId: frozen.reservedRunId }),
         ...(frozen.blueprintId === undefined ? {} : { blueprintId: frozen.blueprintId }),
         ...(frozen.source === undefined ? {} : { source: frozen.source }),
         ...(frozen.bindingDigests === undefined ? {} : { bindingDigests: frozen.bindingDigests }),
@@ -266,6 +304,10 @@ export class RunStore {
     definitionJson: string,
     inputRef: string,
     metadata: {
+      parent?: NonNullable<RunRecord['parent']>
+      composition?: NonNullable<RunRecord['composition']>
+      documentRevision?: string
+      reservedRunId?: string
       blueprintId?: string
       source?: RunSource
       bindingDigests?: Record<string, string>
@@ -285,11 +327,20 @@ export class RunStore {
         }
       }
     }
-    const runId = newRunId()
+    const { reservedRunId, ...facts } = metadata
+    const runId = reservedRunId ?? newRunId()
+    if (reservedRunId !== undefined) {
+      try {
+        if (await this.runs.get(runId)) throw new AttemptSettledError()
+      } catch (error) {
+        if (error instanceof AttemptSettledError) throw error
+        throw new DurabilityFailureError('child reservation read', error)
+      }
+    }
     const now = Date.now()
     const record: RunRecord = {
       schemaVersion: RUN_RECORD_SCHEMA_VERSION,
-      ...metadata,
+      ...facts,
       runId,
       definitionRevision,
       definitionJson,
@@ -1141,7 +1192,8 @@ export class RunStore {
         cause instanceof TeamEffectReplayError ||
         cause instanceof TeamArtifactError ||
         cause instanceof IllegalTransitionError ||
-        cause instanceof RecoveryStaleError
+        cause instanceof RecoveryStaleError ||
+        cause instanceof ManagedNodeError
       )
         throw cause
       if (cause instanceof Error && String(cause.message).includes('has no record')) {
@@ -1150,6 +1202,7 @@ export class RunStore {
       throw new DurabilityFailureError(`run transition ${runId}`, cause)
     }
     if (next === undefined) throw new RunNotFoundError(runId)
+    this.publish(runId)
     return next
   }
 

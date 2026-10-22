@@ -3,7 +3,7 @@
 [English](README.md) | 简体中文
 
 **XuanLing Memory v2 在 DeepSeek Harness 上的推荐 bundle：在 DSH 原生工具之外
-增加九个 proposal-first 记忆工具。** Package：`@xuanling-rs/xuanling-dsh-memory@0.7.0`。
+增加九个 proposal-first 记忆工具。** Package：`@xuanling-rs/xuanling-dsh-memory@0.8.0`。
 
 ## 这是什么
 
@@ -35,12 +35,12 @@ pending，直到 review 激活或拒绝；server 不会声称这次评审由真�
 ## 安装
 
 ```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-memory@0.7.0
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-memory@0.8.0
 ```
 
 内置 headless profile 使用 `--profile headless`。自定义的新 profile 名称只会从
 base bundle 起步，本身不是可运行的 Web 或 Headless 应用。该命令会把
-`@xuanling-rs/xuanling-mcp@0.7.0` 装进该 profile；不需要全局 npm package 或
+`@xuanling-rs/xuanling-mcp@0.8.0` 装进该 profile；不需要全局 npm package 或
 `npx`。
 
 ## 快速开始
@@ -87,7 +87,7 @@ base bundle 起步，本身不是可运行的 Web 或 Headless 应用。该命�
   不会跨重启保留。
 - **候选提案一直未生效。** 它在等待评审；只有用户显式决定后才调用
   `memory_review`。
-- **启动失败。** 检查 Node.js 22.14+、平台支持，并重装精确的 `0.7.0` 版本；
+- **启动失败。** 检查 Node.js 22.14+、平台支持，并重装精确的 `0.8.0` 版本；
   移除其他 XuanLing runtime bundle。
 
 ## 链接

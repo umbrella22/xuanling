@@ -1,11 +1,15 @@
 /** Shared, browser-safe strict invocation codecs; host and client select the same descriptors. */
 import { z } from 'zod'
+import { blueprintReferenceArgsCodec, blueprintReferenceViewCodec } from './conversation/blueprint-reference-contracts.ts'
+import { nodeMessageArgsCodec, nodeMessageReceiptCodec, nodeSessionArgsCodec, nodeSessionCodec } from './conversation/managed-node-contracts.ts'
 import {
   startSessionRunArgsCodec,
   runIdCodec,
   runAdmissionCodec,
   inspectSessionArgsCodec,
   inspectSessionCodec,
+  inspectRunViewArgsCodec,
+  inspectRunViewCodec,
   runQueryArgsCodec,
   runQueryCodec,
   runLifecycleActionArgsCodec,
@@ -77,6 +81,9 @@ const invocation = (method: string, args: (() => z.ZodType) | undefined, result:
 })
 
 export const BLUEPRINT_INVOCATIONS = [
+  invocation('inspectBlueprintReference', blueprintReferenceArgsCodec, blueprintReferenceViewCodec),
+  invocation('messageNode', nodeMessageArgsCodec, nodeMessageReceiptCodec),
+  invocation('inspectNodeSession', nodeSessionArgsCodec, nodeSessionCodec),
   invocation('ping', undefined, () => object({ status: z.literal('ok'), service: text(), version: text() })),
   invocation('listDefinitions', undefined, () =>
     object({ definitions: z.array(object({ blueprintId: id(), name: text(), documentRevision: text().nullable(), semanticRevision: text().nullable() })) })
@@ -124,6 +131,7 @@ export const BLUEPRINT_INVOCATIONS = [
   invocation('startSessionRun', startSessionRunArgsCodec, runAdmissionCodec),
   invocation('startTeamStage', startTeamStageArgsCodec, teamStageActionCodec),
   invocation('inspectSession', inspectSessionArgsCodec, inspectSessionCodec),
+  invocation('inspectRunView', inspectRunViewArgsCodec, inspectRunViewCodec),
   invocation('queryRuns', runQueryArgsCodec, runQueryCodec),
   invocation('archiveRun', runLifecycleActionArgsCodec, runLifecycleActionCodec),
   invocation('restoreRun', runLifecycleActionArgsCodec, runLifecycleActionCodec),

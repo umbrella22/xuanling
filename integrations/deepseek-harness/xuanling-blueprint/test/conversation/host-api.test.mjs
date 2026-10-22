@@ -15,6 +15,9 @@ import { inspectSessionCodec, frozenPresentationCodec } from '../../src/conversa
 
 async function liveHarness(t, options = {}) {
   const h = await harness(t, { ...options, factory: false })
+  // These lineage/idempotency cases run with explicit Host Full access.
+  // Native preset and approval behavior is covered by permission-policy.
+  h.ctx.provide('permissionPresets', { current: () => 'danger-full-access' })
   const registryFiber = await h.ctx.plugin(AgentRegistry)
   // Public real AgentRegistry owns caller identities; only the model/factory
   // boundary is scripted using the existing public create fixture.

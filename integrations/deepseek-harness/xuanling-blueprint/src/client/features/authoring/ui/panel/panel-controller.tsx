@@ -483,7 +483,9 @@ export function WorkspacePanel({
           .filter(ref => ref !== undefined)
           .map(id => resourceDisplayName(id, definition?.resources[id], workspace.resourceCatalog, definition?.presentation?.resources))
           .join(' · ')
-      : ''
+      : n.definition?.blueprintRef
+        ? `${workspace.catalog.find(item => item.blueprintId === n.definition!.blueprintRef!.blueprintId)?.name ?? t('composition.title')} · ${n.definition.blueprintRef.documentRevision.slice(0, 12)}`
+        : ''
     const label = editorNodeDisplayTitle(n, index, t)
     const gesture = interactions.gesture
     const dragPosition =
@@ -495,7 +497,7 @@ export function WorkspacePanel({
     const visibility = effectivePortVisibility(n, editor.edges)
     const shape = {
       title: `${nodeKindTitle(n.kind, t)} ${label}`,
-      summary: capability.agentBindings ? summary || t('node.noResourceBinding') : '',
+      summary: capability.agentBindings ? summary || t('node.noResourceBinding') : summary,
       state: state === 'idle' ? t('node.notRunning') : runStateTitle(state, t),
       inputs: n.inputs,
       outputs: n.outputs,
@@ -529,7 +531,7 @@ export function WorkspacePanel({
         inputs: n.inputs,
         outputs: n.outputs,
         graphEdges: editor.edges,
-        summary: capability.agentBindings ? summary || t('node.noResourceBinding') : '',
+        summary: capability.agentBindings ? summary || t('node.noResourceBinding') : summary,
         runtime,
         state: state === 'idle' ? t('node.notRunning') : state === 'unknown' ? t('node.unknownState') : runStateTitle(state, t),
         branches: n.definition?.branches ?? [],
@@ -828,7 +830,11 @@ export function WorkspacePanel({
           }
         : kind === 'join'
           ? { id, kind, join: 'all' }
-          : undefined
+          : kind === 'agentTask'
+            ? { id, kind, interaction: 'managed', inputs: { input: 'string' }, outputs: { result: 'string' } }
+            : kind === 'blueprintCall'
+              ? { id, kind, inputs: {}, outputs: {} }
+              : undefined
     let n!: ReturnType<GraphEditor['addNode']>
     editor.transaction(() => {
       n = editor.addNode({

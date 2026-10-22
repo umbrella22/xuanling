@@ -14,6 +14,7 @@ import { ImportConflictError, PortabilityConflictError } from './errors.ts'
 import { readZip } from './zip.ts'
 import type { PortabilityManifest } from './manifest.ts'
 import { validatePackagedPreset, validatePackagedMcp } from './host-resources.ts'
+import { readPackagedDefinition, validatePackagedClosure } from './packaged-reference.ts'
 
 export interface ImportResult {
   targetDir: string
@@ -84,6 +85,7 @@ export function importBlueprint(archive: Buffer, targetDir: string, options: { a
   if (definition.id !== manifest.blueprintId) {
     throw new PortabilityConflictError(`blueprint id "${definition.id}" does not match manifest "${manifest.blueprintId}"`)
   }
+  validatePackagedClosure(readPackagedDefinition(new Map(entries.filter(entry => entry.name !== 'portability.json').map(entry => [entry.name, entry.data]))))
 
   const target = resolve(targetDir)
   if (existsSync(target) && options.allowExisting !== true) throw new ImportConflictError(target)

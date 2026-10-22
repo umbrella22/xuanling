@@ -1,6 +1,6 @@
 ---
 name: xuanling-blueprint-migrate
-description: Assist with upgrading saved XuanLing Blueprint workflow packages to the installed DSH Blueprint schema, including legacy v1 definitions and moves from profile storage to workspace storage. Use for Blueprint definition migration, not plugin installation or Run-history migration.
+description: Assist with upgrading saved XuanLing Blueprint packages to the installed DSH schema, including legacy v1, managed node conversations, pinned child-blueprint composition, and moves to workspace storage. Use for definition migration, not plugin installation or Run-history migration.
 ---
 
 # XuanLing Blueprint Migration
@@ -17,6 +17,11 @@ The stable package-relative entrypoint is
 definition fails with `blueprint/definition-invalid`. For another target
 schema, obtain its actual contract before editing; this guide does not define
 future migrations.
+
+For enabling node conversations or composing child Blueprints, read
+[managed nodes and composition](references/managed-composition.md). These are
+additions within schema v2: absence of `interaction` preserves one-shot
+execution. Do not mark every v2 file as needing migration.
 
 ## Locate the source and the actual target
 
