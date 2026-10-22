@@ -67,9 +67,9 @@ test('execution codec rejects inconsistent abort classification and raw payload 
 async function fixture(t, backend) {
   const root = await mkdtemp(join(tmpdir(), `bp-observability-${backend}-`))
   const runtime = join(root, 'runtime')
-  await mkdir(join(runtime, 'store'), { recursive: true })
-  const path = backend === 'json' ? join(runtime, 'store') : join(runtime, 'store/runs.sqlite')
-  let opened = await openBlueprintDomain({ backend, path }),
+  await mkdir(runtime, { recursive: true })
+  const path = runtime
+  let opened = await openBlueprintDomain({ path }),
     store = new RunStore(opened.domain)
   t.after(async () => {
     await opened?.close()
@@ -90,7 +90,7 @@ async function fixture(t, backend) {
     },
     async reopen() {
       await opened.close()
-      opened = await openBlueprintDomain({ backend, path })
+      opened = await openBlueprintDomain({ path })
       store = new RunStore(opened.domain)
     },
     async restore() {
@@ -99,13 +99,13 @@ async function fixture(t, backend) {
       const backup = createBackup(runtime),
         restored = join(root, 'restored')
       restoreBackup(backup.archive, restored)
-      opened = await openBlueprintDomain({ backend, path: backend === 'json' ? join(restored, 'store') : join(restored, 'store/runs.sqlite') })
+      opened = await openBlueprintDomain({ path: restored })
       store = new RunStore(opened.domain)
     }
   }
 }
 
-for (const backend of ['json', 'sqlite']) {
+for (const backend of ['directory']) {
   test(`${backend}: execution is additive, immutable, idempotent and survives recovery/reopen/backup`, async t => {
     const h = await fixture(t, backend)
     const legacy = await h.store.get(h.runId)

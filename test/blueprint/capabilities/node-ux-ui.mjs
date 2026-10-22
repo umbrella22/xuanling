@@ -160,7 +160,7 @@ export async function runCollector(options) {
   mkdirSync(dirname(options.reportDir), { recursive: true })
   mkdirSync(options.reportDir, { mode: 0o700 })
   const receipt = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     planId: 'dsh-blueprint-node-ux-v1',
     phase: options.phase,
     startedAt: new Date().toISOString(),

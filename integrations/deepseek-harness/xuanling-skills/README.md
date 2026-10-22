@@ -2,9 +2,9 @@
 
 English | [Simplified Chinese](README-ZH.md)
 
-**Two on-demand XuanLing workflow Skills and the strict XuanLing overwrite
+**Three on-demand XuanLing workflow Skills and the strict XuanLing overwrite
 policy for DeepSeek Harness.** Registers no MCP server and ships no binary.
-Package `@xuanling-rs/xuanling-dsh-skills@0.6.1`.
+Package `@xuanling-rs/xuanling-dsh-skills@0.7.0`.
 
 ## What it is
 
@@ -16,6 +16,9 @@ Adds workflow guidance and host guardrails to a DSH profile:
 - `xuanling-file-workflow` routes file work between native Harness tools and
   the XuanLing filesystem family: SHA-256/CAS guards, strict patches, atomic
   `fs_edit_batch`, bounded output, pagination, and deterministic validation.
+- `xuanling-blueprint-migrate` guides an inspected upgrade of saved Blueprint
+  packages: backup, semantic review, complete resources, validation and
+  destination bindings. It preserves the original and Run history.
 - A host policy denies an existing-file overwrite without `expected_sha256`
   and asks for one-time DSH approval before a XuanLing Memory review.
 
@@ -43,11 +46,11 @@ Install it together with the runtime bundle you selected:
 
 ```sh
 dsh plugin --profile web add \
-  @xuanling-rs/xuanling-dsh-memory@0.6.1 \
-  @xuanling-rs/xuanling-dsh-skills@0.6.1
+  @xuanling-rs/xuanling-dsh-memory@0.7.0 \
+  @xuanling-rs/xuanling-dsh-skills@0.7.0
 ```
 
-Replace `xuanling-dsh-memory` with `xuanling-dsh-tools@0.6.1` for the full
+Replace `xuanling-dsh-memory` with `xuanling-dsh-tools@0.7.0` for the full
 catalog. Use `--profile headless` for the headless profile; a custom new
 profile name starts from the base bundle only. No global package is needed.
 
@@ -60,14 +63,45 @@ profile name starts from the base bundle only. No global package is needed.
    dsh --profile web --dump-config
    ```
 
-2. Ask the model to load `xuanling-memory-workflow` (Memory bundle) or
-   `xuanling-file-workflow` (full tools bundle). Both are on demand and are
-   not injected into every request.
+2. Ask the model to load `xuanling-memory-workflow` (Memory bundle),
+   `xuanling-file-workflow` (full tools bundle), or `xuanling-blueprint-migrate`
+   (Blueprint upgrades; see below). Skills are on demand and are not injected
+   into every request.
 
 3. Test a guardrail: with the full tools bundle, overwrite a file through
    `mcp__xuanling__fs_write_text` without `expected_sha256`. It should be
    rejected before dispatch with
    `[XUANLING_FS_OVERWRITE_REQUIRES_SHA256]`.
+
+## Upgrade Blueprint definitions
+
+The [Blueprint migration Skill](skills/xuanling-blueprint-migrate/SKILL.md)
+is included in `0.7.0`; the earlier `0.6.1` package does not include it. Install
+the skills bundle into the profile that runs the target Blueprint version,
+then restart the profile:
+
+```sh
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-skills@0.7.0
+```
+
+Ask the DSH Agent:
+
+```text
+Load xuanling-blueprint-migrate and upgrade the Rust review Blueprint at
+<source package path> to this profile's current Blueprint schema. Save an
+independent copy in <destination workspace>, preserve the original and Run
+history, and validate its resources and representative input. Show the diff,
+binding gaps and rollback path. Do not start a Run yet.
+```
+
+The Skill uses the target Blueprint plugin's authoring/validation tools and
+available file tools; the skills bundle itself adds neither. It covers v1-to-v2
+and legacy profile storage, without adding automatic migration to the runtime.
+Unsupported execution semantics require a reviewed redesign; changing the
+version number alone is not a general migration. A saved copy and successful
+preflight are reported separately from live execution. In another agent that
+supports filesystem Skills, install the complete `xuanling-blueprint-migrate/`
+directory, including `references/`, and invoke `$xuanling-blueprint-migrate`.
 
 ## Configuration
 
@@ -98,7 +132,7 @@ profile name starts from the base bundle only. No global package is needed.
 ## Troubleshooting
 
 - **Skills do not appear.** Restart, confirm the `xuanling-skills` provider
-  in `--dump-config`, and reinstall the exact `0.6.1` version.
+  in `--dump-config`, and reinstall the exact `0.7.0` version.
 - **The overwrite guard does not fire.** Check the exact public name; the
   replacement bundle exposes `write` instead, so the guard does not apply
   there.

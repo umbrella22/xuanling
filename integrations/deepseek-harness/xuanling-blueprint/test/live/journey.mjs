@@ -116,7 +116,7 @@ export function withFixtureProviderReadiness(source, protocol, { negativeOnly = 
   return `await import(${JSON.stringify(`@earendil-works/pi-ai/api/${protocol}`)})\n${source}`
 }
 
-export function profilePatch({ blueprintRoot, runtimeRoot, observerModule, toolIds = [], liveConfig, fixtureProviderIdleTimeoutMs }) {
+export function profilePatch({ workspaceRoot, runtimeRoot, observerModule, toolIds = [], liveConfig, fixtureProviderIdleTimeoutMs }) {
   const provider = liveConfig?.provider === undefined ? 'blueprint-live' : validateBuiltinConfiguration(liveConfig, VerificationNotRunError).provider
   const disabled = new Set([
     'llm-deepseek',
@@ -146,7 +146,7 @@ export function profilePatch({ blueprintRoot, runtimeRoot, observerModule, toolI
       : `- id: llm-pi-ai\n  config:\n    providers:\n      blueprint-live:\n        apiKeyEnv: BP_LIVE_PROVIDER_KEY\n        api: !!js process.env.BP_LIVE_PROVIDER_PROTOCOL\n        baseURL: !!js process.env.BP_LIVE_PROVIDER_BASE_URL\n        streamIdleTimeoutMs: ${fixtureProviderIdleTimeoutMs ?? 30000}\n        models:\n          - id: !!js process.env.BP_LIVE_PROVIDER_MODEL\n            input: [text]\n            reasoningEfforts: false\n            contextWindow: 32768\n            maxTokens: 256`,
     ...(fixtureProviderIdleTimeoutMs === undefined ? [] : ['- id: llm-retry\n  disabled: true']),
     `- id: agent-default-model\n  config:\n    provider: ${provider}\n    model: !!js process.env.BP_LIVE_PROVIDER_MODEL`,
-    `- id: xuanling-blueprint\n  config: ${JSON.stringify({ blueprints: { 'live-journey': blueprintRoot }, runtimeRoot, skillRoots: [] })}`,
+    `- id: xuanling-blueprint\n  config: ${JSON.stringify({ workspaceRoot, runtimeRoot, skillRoots: [] })}`,
     `- insert:\n    - id: blueprint-live-observer\n      name: ${JSON.stringify(observerModule)}\n      config: {}`,
     ''
   ].join('\n')
@@ -156,7 +156,7 @@ export function createBlueprint(root) {
   mkdirSync(join(root, 'lib', 'agents'), { recursive: true })
   writeFileSync(join(root, 'lib', 'agents', 'echo.md'), 'Reply ONLY with the exact nonce supplied in the input JSON, without commentary. Do not use tools.\n')
   const definition = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'live-journey',
     name: 'C11 live nonce journey',
     resources: { echo: { kind: 'agent', path: 'lib/agents/echo.md' } },
@@ -365,9 +365,10 @@ export async function runIsolatedJourney(helpers, config, { negativeOnly = false
       cwd = join(temp, 'cwd'),
       profile = `bp-live-${randomUUID()}`
     const dir = join(home, 'dsh', 'profiles', profile),
-      bp = join(temp, 'blueprint'),
-      runtime = join(temp, 'runtime')
-    for (const path of [dir, cwd, join(home, 'tmp'), join(dir, 'node_modules', '@xuanling-rs'), runtime]) mkdirSync(path, { recursive: true })
+      workspace = join(temp, 'workspace'),
+      bp = join(workspace, '.xuanling', 'workflows', 'live-journey'),
+      runtime = join(workspace, '.xuanling')
+    for (const path of [dir, cwd, join(home, 'tmp'), join(dir, 'node_modules', '@xuanling-rs'), runtime, workspace]) mkdirSync(path, { recursive: true })
     createBlueprint(bp)
     // Public profile manifest + existing built bundle; no npm install/pack/build,
     // no user profile read and no mutation of either checkout's dependencies.
@@ -398,7 +399,7 @@ export async function runIsolatedJourney(helpers, config, { negativeOnly = false
     observerFile = join(temp, 'observer-facts.json')
     writeFileSync(
       join(dir, 'cordis.patch.yml'),
-      profilePatch({ blueprintRoot: bp, runtimeRoot: runtime, observerModule: observer, toolIds, liveConfig: config, fixtureProviderIdleTimeoutMs }),
+      profilePatch({ workspaceRoot: workspace, runtimeRoot: runtime, observerModule: observer, toolIds, liveConfig: config, fixtureProviderIdleTimeoutMs }),
       { mode: 0o600 }
     )
     stage = 'profile_prepared'

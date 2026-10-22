@@ -9,16 +9,16 @@ import { RunReadService } from '../../src/service/run-read-service.ts'
 import { TeamStageObservations } from '../../src/teamstage/observability.ts'
 import { focusAttemptsForSession } from '../../src/conversation/run-projection.ts'
 
-async function fixture(t, backend) {
+async function fixture(t, _backend) {
   const root = await mkdtemp(join(tmpdir(), 'teamstage-member-reader-'))
-  const opened = await openBlueprintDomain({ backend, path: backend === 'json' ? join(root, 'store') : join(root, 'runs.sqlite') })
+  const opened = await openBlueprintDomain({ path: join(root, 'store') })
   t.after(async () => {
     await opened.close()
     await rm(root, { recursive: true, force: true })
   })
   const store = new RunStore(opened.domain)
   const definition = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'member-reader',
     name: 'Member reader',
     resources: {},
@@ -68,7 +68,7 @@ async function fixture(t, backend) {
   return { service, store, runId, attempt }
 }
 
-for (const backend of ['json', 'sqlite']) {
+for (const backend of ['directory']) {
   test(`W3 C-07/C-09 ${backend}: native member reads its canonical Run and original stage Attempt without changing facts`, async t => {
     const h = await fixture(t, backend),
       before = await h.store.get(h.runId)

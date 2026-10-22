@@ -28,8 +28,8 @@ export function installFixturePolicies(ctx, mode) {
 export async function prepare({ root, mode }) {
   ensure(['keyless', 'live'].includes(mode), 'FIXTURE_MODE_INVALID')
   ensure(isAbsolute(root) && resolve(root) === root, 'FIXTURE_ROOT_INVALID'); assertPhysicalPath(root)
-  const dir = join(root, 'conversation-blueprint')
-  mkdirSync(dir, { mode: 0o700 }) // exclusive: never overwrite another scene
+  const dir = join(root, '.xuanling', 'workflows', BLUEPRINT_ID)
+  mkdirSync(dir, { recursive: true, mode: 0o700 }) // exclusive: never overwrite another scene
   const graph = mode === 'keyless' ? {
     nodes: [{ id: 'input', kind: 'input' }, { id: 'review', kind: 'humanDecision' },
       { id: 'approved', kind: 'output' }, { id: 'rejected', kind: 'output' }],
@@ -48,11 +48,11 @@ export async function prepare({ root, mode }) {
       required: ['nonce'], properties: { nonce: { type: 'string' } } }), { mode: 0o600 })
     Object.assign(resources, { worker: { kind: 'agent', path: 'agents/worker.md' }, answer: { kind: 'schema', path: 'schema/answer.json' } })
   }
-  writeFileSync(join(dir, 'blueprint.json'), JSON.stringify({ schemaVersion: 1, id: BLUEPRINT_ID,
+  writeFileSync(join(dir, 'blueprint.json'), JSON.stringify({ schemaVersion: 2, id: BLUEPRINT_ID,
     name: 'Isolated native conversation fixture', resources, graph }), { mode: 0o600 })
   const operator = join(root, 'conversation-fixture-policy.mjs')
   writeFileSync(operator, `export const inject=['agents','tools'];\nconst installFixturePolicies=${installFixturePolicies.toString()};\nexport function apply(ctx){installFixturePolicies(ctx,${JSON.stringify(mode)})}\n`, { flag: 'wx', mode: 0o600 })
-  return { blueprints: { [BLUEPRINT_ID]: dir }, operatorModules: [operator] }
+  return { workspaceRoot: root, runtimeRoot: join(root, '.xuanling'), operatorModules: [operator] }
 }
 export async function waitForFixture(read, predicate, code, { now = Date.now, pause = ms => new Promise(done => setTimeout(done, ms)) } = {}) {
   const deadline = now() + 30000
@@ -133,7 +133,7 @@ export async function openSession({ page, sessionId, gateway }) {
 export async function arrange({ page, gateway, root, mode }) {
   ensure(['keyless', 'live'].includes(mode), 'FIXTURE_MODE_INVALID')
   assertPhysicalPath(root)
-  const cwd = join(root, 'cwd'), definitionPath = join(root, 'conversation-blueprint/blueprint.json')
+  const cwd = join(root, 'cwd'), definitionPath = join(root, '.xuanling', 'workflows', BLUEPRINT_ID, 'blueprint.json')
   // DSH's public startup seam owns the default ungrouped Workspace. Prepare it
   // before creating ordinary Sessions so the native sidebar can account for
   // those Sessions during its first navigation.

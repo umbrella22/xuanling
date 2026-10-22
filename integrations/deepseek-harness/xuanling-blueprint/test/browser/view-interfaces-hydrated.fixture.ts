@@ -21,7 +21,7 @@ const workspace = new BlueprintWorkspace({
       documentRevision: `doc-${id}`,
       semanticRevision: `sem-${id}`,
       layoutRevision: 'layout',
-      definitionJson: JSON.stringify({ schemaVersion: 1, id, name: id, resources: {}, graph: { nodes: [], edges: [] } })
+      definitionJson: JSON.stringify({ schemaVersion: 2, id, name: id, resources: {}, graph: { nodes: [], edges: [] } })
     }
   }
 })

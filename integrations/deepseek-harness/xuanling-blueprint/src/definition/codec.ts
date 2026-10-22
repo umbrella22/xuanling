@@ -205,7 +205,16 @@ function zodIssuesToValidationIssues(error: { issues: readonly ZodIssueLike[] })
       }
       continue
     }
-    issues.push({ code: 'invalid-value', message: issue.message, pointer: pointerOf(issue.path ?? []) })
+    const path = issue.path ?? []
+    const pointer = pointerOf(path)
+    // zod's enum diagnostic is intentionally normalized to the public
+    // contract code. This lets callers distinguish an unknown executable
+    // node kind from an ordinary malformed value without parsing messages.
+    if (path.at(-1) === 'kind' && path.at(-3) === 'nodes' && issue.code === 'invalid_value') {
+      issues.push({ code: 'unsupported-step-kind', message: issue.message, pointer })
+    } else {
+      issues.push({ code: 'invalid-value', message: issue.message, pointer })
+    }
   }
   return issues
 }
@@ -214,6 +223,21 @@ function zodIssuesToValidationIssues(error: { issues: readonly ZodIssueLike[] })
  * in ./validator.ts; this layer rejects malformed shapes and unknown fields. */
 export function decodeDefinition(text: string): BlueprintDefinition {
   const raw = decodeWithPointers(text)
+  if (raw !== null && typeof raw === 'object' && !Array.isArray(raw)) {
+    const rawVersion = (raw as Record<string, unknown>).schemaVersion
+    // A missing field is a malformed shape and should retain the ordinary
+    // missing/invalid-field diagnostic. The version-specific issue is only
+    // for an explicitly supplied, unsupported version (including v1).
+    if (Object.hasOwn(raw, 'schemaVersion') && rawVersion !== SCHEMA_VERSION) {
+      throw new DefinitionInvalidError([
+        {
+          code: 'definition-unsupported-version',
+          message: `unsupported schemaVersion ${String(rawVersion)}; this build understands ${SCHEMA_VERSION} only (fail closed)`,
+          pointer: '/schemaVersion'
+        }
+      ])
+    }
+  }
   const parsed = definitionSchema.safeParse(raw)
   if (!parsed.success) {
     throw new DefinitionInvalidError(zodIssuesToValidationIssues(parsed.error))
@@ -222,7 +246,7 @@ export function decodeDefinition(text: string): BlueprintDefinition {
   if (candidate.schemaVersion !== SCHEMA_VERSION) {
     throw new DefinitionInvalidError([
       {
-        code: 'schema-version',
+        code: 'definition-unsupported-version',
         message: `unsupported schemaVersion ${candidate.schemaVersion}; this build understands ${SCHEMA_VERSION} only (fail closed)`,
         pointer: '/schemaVersion'
       }

@@ -25,8 +25,8 @@ export function documentRevisions(
     createHash('sha256')
       .update(`${namespace}\0${canonicalJson(value)}`)
       .digest('hex')
-  const semanticRevision = hash('xuanling-blueprint-document-semantic-v1', { definition: semanticProjection(definition), files })
-  const layoutRevision = hash('xuanling-blueprint-document-layout-v1', definition.presentation ?? null)
-  const documentRevision = hash('xuanling-blueprint-document-v1', { definition, semanticRevision })
+  const semanticRevision = hash('xuanling-blueprint-document-semantic-v2', { definition: semanticProjection(definition), files })
+  const layoutRevision = hash('xuanling-blueprint-document-layout-v2', definition.presentation ?? null)
+  const documentRevision = hash('xuanling-blueprint-document-v2', { definition, semanticRevision })
   return { documentRevision, semanticRevision, layoutRevision }
 }

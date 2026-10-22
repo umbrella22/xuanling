@@ -5,7 +5,7 @@
 **显式启用的 DeepSeek Harness 文件系统 replacement：用 XuanLing 的 SHA-256 守卫
 文件操作支撑 DSH 原生 `read`/`write`/`edit` 接口，同时保留宿主审批、
 observation、图片与 diff 行为。** Package：
-`@xuanling-rs/xuanling-dsh-tools-replace@0.6.1`。
+`@xuanling-rs/xuanling-dsh-tools-replace@0.7.0`。
 
 ## 这是什么
 
@@ -49,7 +49,7 @@ observation、图片与 diff 行为。** Package：
 ```sh
 export XUANLING_WORKSPACE_ROOT=/absolute/path/to/project
 dsh plugin --profile web remove @xuanling-rs/xuanling-dsh-memory @xuanling-rs/xuanling-dsh-tools
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-tools-replace@0.6.1
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-tools-replace@0.7.0
 dsh --profile web --dump-config
 ```
 
@@ -97,7 +97,7 @@ dump 中应看到原生 `tool-fs` row 被禁用，以及一个 `xuanling-tools-r
 - **启动因 workspace root 失败。** 在 DSH 进程的环境中 export 已确认的绝对
   路径；非绝对路径会报 `[XUANLING_FACADE_INVALID_ROOT]`。
 - **启动提示缺少 XuanLing definition。** runtime 不完整或版本不匹配；重装精确的
-  `0.6.1` 版本后重启。
+  `0.7.0` 版本后重启。
 - **`[XUANLING_FACADE_NOT_OBSERVED]`。** 在同一 session 内先读取文件；整文件
   write 也可以先取 `file_hash`。
 - **`file_hash` 成功但 `edit` 被拒绝。** 正常，先读取文件；编辑有歧义时让

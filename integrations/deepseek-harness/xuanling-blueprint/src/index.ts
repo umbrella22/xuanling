@@ -4,8 +4,10 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import { fileURLToPath } from 'node:url'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import type { AuthoringCandidate } from './definition/authoring.ts'
 import { projectRunSnapshot } from './conversation/run-projection.ts'
+import type { RunReport } from './conversation/run-report.ts'
 import { installConversationTools, liveCaller, assertRootCaller } from './conversation/host-tools.ts'
 import { captureNativeSourceParent, assertNativeSourceParent, type NativeSourceParent } from './conversation/native-session-lineage.ts'
 import {
@@ -14,6 +16,8 @@ import {
   type RunLifecycleActionArgs,
   type RunLifecycleActionValue,
   teamStageActionCodec,
+  runAdmissionCodec,
+  type RunAdmissionView,
   type RunSource,
   type RunSnapshotView,
   type StartSessionRunArgs,
@@ -24,6 +28,7 @@ import {
   type AcceptTeamStageOutputArgs,
   type TeamStageActionView
 } from './conversation/contracts.ts'
+import { teamStageBlocksRecovery } from './host/teamstage-recovery.ts'
 export type {
   RunSource,
   RunSnapshotView,
@@ -43,12 +48,27 @@ export type {
   RunQueryValue
 } from './conversation/contracts.ts'
 import { RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import { AgentCompositionUnsupportedError, BlueprintAgentExecutor, type AgentExecutionEvidence } from './host/agent-executor.ts'
-import { collectPreflight, type ToolBindings, type PreflightRunArgs, type PreflightRunValue, type PreflightCheck } from './host/preflight.ts'
+import type { ModelSelection as HostModelSelection } from '@deepseek-ai/dsh-agent'
+import { AgentCompositionUnsupportedError, BlueprintAgentExecutor, captureAgentModelSelection, type AgentExecutionEvidence } from './host/agent-executor.ts'
+import {
+  collectPreflight,
+  resolveEffectiveToolNames,
+  type ToolBindings,
+  type PreflightRunArgs,
+  type PreflightRunValue,
+  type PreflightCheck
+} from './host/preflight.ts'
 import type { HostResourceCatalogValue } from './host/resource-catalog.ts'
 import { RuntimeSnapshots, createHostResourceProvider } from './resources/runtime-snapshots.ts'
 import { type RunRecord } from './persistence/records.ts'
-import { DecisionConflictError, RunNotFoundError, TeamOutputRejectedError, TeamStageConflictError, TeamTaskConflictError } from './persistence/run-store.ts'
+import {
+  DecisionConflictError,
+  RunNotFoundError,
+  TeamOutputRejectedError,
+  TeamStageConflictError,
+  TeamTaskConflictError,
+  TerminalStateError
+} from './persistence/run-store.ts'
 import { snapshotDirectory } from './resources/index.ts'
 import { resolveResource, type SkillRoot } from './resources/resolver.ts'
 import {
@@ -61,16 +81,20 @@ import {
 import { TYPERT } from './typert.host.ts'
 import { admitResources } from './security/resource-admission.ts'
 import { decodeDefinition, validateDefinition } from './definition/index.ts'
+import { isLogicalWorkflowId } from './definition/library.ts'
 import { openBlueprintDomain, RunQuery, RunStore, WriterLease, DurabilityFailureError } from './persistence/index.ts'
 import { RunReadService } from './service/run-read-service.ts'
 import { BlueprintDocumentLibrary } from './service/document-library.ts'
 import { BlueprintDefinitionUseCases } from './service/definition-use-cases.ts'
+import { ApplyService, WORKFLOW_HOST_APPROVAL, type WorkflowApplyResult, type WorkflowCandidate } from './service/apply-service.ts'
 import { BlueprintPortabilityUseCases } from './service/portability-use-cases.ts'
 import { RunExecutionService } from './service/run-execution.ts'
-import { reconcileOnStart } from './orchestration/index.ts'
+import { toolsetBindingDigest } from './service/binding-facts.ts'
+import { reconcile, reconcileOnStart, RecoveryStaleError } from './orchestration/index.ts'
+import { IllegalTransitionError } from './orchestration/state.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, readFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { TeamNativeAdapter, TeamCapabilityUnavailableError, TeamIdentityUnavailableError, type LeadHandle } from './teamstage/native-adapter.ts'
 import { createBoundTeamTask } from './teamstage/task-binding.ts'
@@ -79,6 +103,7 @@ import { acceptTeamOutput } from './teamstage/acceptance.ts'
 import { TeamStageObservations } from './teamstage/observability.ts'
 import { admitTeamDriver, TeamDriverError, type TeamProviders } from './teamstage/driver-admission.ts'
 import { resolveFrozenTeamStageAdmission } from './teamstage/public-boundary.ts'
+import { aggregateBindingDigests, buildBindingFacts } from './service/binding-facts.ts'
 
 // Explicit frozen TeamStage nodes use the optional native boundary. These
 // exports do not mount DSH's Team profile; ordinary Run routing is independent.
@@ -86,7 +111,8 @@ export * from './teamstage/index.ts'
 
 /** Build metadata surfaced through `ping` for install diagnostics. */
 export const PLUGIN_NAME = '@xuanling-rs/xuanling-dsh-blueprint'
-export const PLUGIN_VERSION = '0.6.1'
+export const PLUGIN_VERSION = '0.7.0'
+const DEFAULT_MAX_QUEUED_TOOL_RUNS = 8
 
 export interface PingValue {
   status: 'ok'
@@ -112,12 +138,21 @@ interface InternalStartRunArgs {
   requestId?: string
 }
 export interface BlueprintConfig {
-  blueprints?: Record<string, string>
-  /** Host-managed definitions; defaults to runtimeRoot/definitions, or the profile data directory. */
-  libraryRoot?: string
+  /**
+   * Canonical workspace root. Definitions are stored below
+   * `<workspaceRoot>/.xuanling/workflows/<blueprintId>/blueprint.json`.
+   */
+  workspaceRoot?: string
   runtimeRoot?: string
   /** Maximum ordinary graph nodes in flight within one Run; defaults to 4. */
   maxConcurrentNodes?: number
+  /**
+   * Maximum Runs already running or queued in one runtime when an agent tool
+   * call asks to start another; defaults to 8. Runs execute one at a time per
+   * runtime, so without a bound a looping agent grows the queue indefinitely.
+   * Runs started from the UI are not limited.
+   */
+  maxQueuedToolRuns?: number
   skillRoots?: SkillRoot[]
   toolBindings?: ToolBindings
   /** Native subagent registry routes, separate from the LLM provider. */
@@ -143,10 +178,36 @@ export interface SaveDefinitionArgs {
 
 export interface InspectRunArgs {
   runId: string
+  /** Optional caller session used by conversation tools to enforce ownership. */
+  sessionId?: string
 }
+
+/** Workspace root of the conversation that issued the current call, when the
+ * Host can attribute it. Explicit `workspaceRoot` config still wins. */
+const CALLER_WORKSPACE = new AsyncLocalStorage<string>()
 
 export interface CancelRunArgs {
   runId: string
+}
+
+/** Human resolution of a `recovery_required` Run. Never replays work. */
+export interface ResolveRecoveryArgs {
+  runId: string
+  /** Scopes a conversation-created Run to the caller's registered Workspace;
+   * the canvas omits it and keeps the Host default Workspace. */
+  sessionId?: string
+  resolution: 'failed' | 'succeeded' | 'cancelled'
+  /** What the operator checked; stored in the audit log, bounded. */
+  note: string
+  /** The `seq` of the snapshot the operator reviewed. */
+  expectedSeq: number
+}
+
+export interface ResolveRecoveryValue {
+  runId: string
+  state: string
+  seq: number
+  applied: boolean
 }
 
 export interface DecideArgs {
@@ -193,6 +254,9 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'blueprint/library-busy': { readonly operation: string }
     'blueprint/definition-not-found': { readonly blueprintId: string }
     'blueprint/revision-conflict': { readonly blueprintId: string; readonly expectedRevision: string | null; readonly actualRevision: string | null }
+    'blueprint/revision-not-found': { readonly blueprintId: string; readonly revision: string }
+    'blueprint/revision-unavailable': { readonly blueprintId: string; readonly revision: string }
+    'blueprint/definition-commit-pending': { readonly operation: string }
     'blueprint/definition-write-failed': { readonly blueprintId: string; readonly operation: string; readonly reason: string }
     'blueprint/session-unavailable': { readonly sessionId: string }
     'blueprint/nested-run-unavailable': { readonly sessionId: string }
@@ -325,10 +389,13 @@ export class BlueprintService extends TypertRemoteService {
    * coordinate across processes; the lease enforces one writer here). */
   private readonly runtimes = new Map<string, RuntimeHandle>()
   private readonly opening = new Map<string, Promise<RuntimeHandle>>()
+  /** Handles whose writer lease was lost and that are settling before close. */
+  private readonly retiring = new Set<Promise<void>>()
   private closing = false
   private readonly documents: BlueprintDocumentLibrary
   private readonly definitions: BlueprintDefinitionUseCases
   private readonly portability: BlueprintPortabilityUseCases
+  private readonly applyService: ApplyService
   private readonly teamObservations = new TeamStageObservations()
   private readonly execution: RunExecutionService
 
@@ -338,7 +405,7 @@ export class BlueprintService extends TypertRemoteService {
   ) {
     super(ctx, 'blueprint', { namespace: 'blueprint' })
     this.documents = new BlueprintDocumentLibrary({
-      managedRoot: () => this.managedLibraryRoot(),
+      managedRoot: () => this.workspaceWorkflowRoot(),
       decodeDefinition: definitionJson => this.decodeOrThrow(definitionJson),
       checkResources: definition => this.checkResources(definition),
       documentFailure: (blueprintId, operation, error) => this.documentFailure(blueprintId, operation, error)
@@ -347,7 +414,7 @@ export class BlueprintService extends TypertRemoteService {
       ctx: this.ctx,
       config,
       documents: this.documents,
-      managedLibraryRoot: () => this.managedLibraryRoot(),
+      workspaceWorkflowRoot: () => this.workspaceWorkflowRoot(),
       configuredRuntimeRoot: () => this.configuredRuntimeRoot(),
       blueprintRoot: blueprintId => this.blueprintRoot(blueprintId),
       decodeOrThrow: definitionJson => this.decodeOrThrow(definitionJson),
@@ -355,6 +422,12 @@ export class BlueprintService extends TypertRemoteService {
       checkArgs: (method, args) => this.checkArgs(method, args),
       revisionConflict: (blueprintId, expectedRevision, actualRevision) => this.revisionConflict(blueprintId, expectedRevision, actualRevision),
       documentFailure: (blueprintId, operation, error) => this.documentFailure(blueprintId, operation, error)
+    })
+    this.applyService = new ApplyService({
+      documents: this.documents,
+      blueprintRoot: workflowId => this.blueprintRoot(workflowId),
+      decode: definitionJson => this.decodeOrThrow(definitionJson),
+      listDefinitions: () => this.definitions.listDefinitions()
     })
     this.portability = new BlueprintPortabilityUseCases({
       ctx: this.ctx,
@@ -382,6 +455,8 @@ export class BlueprintService extends TypertRemoteService {
     })
     if (config.maxConcurrentNodes !== undefined && (!Number.isSafeInteger(config.maxConcurrentNodes) || config.maxConcurrentNodes < 1))
       throw new TypeError('maxConcurrentNodes must be a positive safe integer')
+    if (config.maxQueuedToolRuns !== undefined && (!Number.isSafeInteger(config.maxQueuedToolRuns) || config.maxQueuedToolRuns < 1))
+      throw new TypeError('maxQueuedToolRuns must be a positive safe integer')
     installConversationTools(this.ctx, this, (args, source) =>
       this.startConfiguredRun(
         {
@@ -408,6 +483,7 @@ export class BlueprintService extends TypertRemoteService {
           handle.lease.release()
         }
         this.runtimes.clear()
+        await Promise.allSettled(this.retiring)
       },
       'blueprint: close runtime stores'
     )
@@ -575,25 +651,117 @@ export class BlueprintService extends TypertRemoteService {
 
   private blueprintRoot(blueprintId: string): string {
     this.documents.assertDefinitionActive(blueprintId)
-    const roots = this.config.blueprints ?? {}
-    if (Object.hasOwn(roots, blueprintId) && typeof roots[blueprintId] === 'string' && roots[blueprintId]) {
-      return resolve(roots[blueprintId]!)
-    }
+    // RPC callers pass a logical workflow ID. Reject path fragments before
+    // resolving the workspace-owned workflow root.
+    if (!isLogicalWorkflowId(blueprintId)) throw new RemoteError('blueprint/definition-not-found', 'definition not found', { blueprintId })
     try {
-      const library = this.managedLibraryRoot()
-      const root = library && this.documents.libraryDocumentRoot(library, blueprintId)
-      if (root && existsSync(join(root, 'blueprint.json'))) return root
+      const workflowRoot = this.workspaceWorkflowRoot()
+      const root = workflowRoot && this.documents.libraryDocumentRoot(workflowRoot, blueprintId)
+      // A canonical workspace workflow directory is also the mutation target
+      // for a first save. Keep the root resolvable before blueprint.json
+      // exists; read operations still fail through loadConfigured with the
+      // typed definition-not-found error, while ApplyService can persist a
+      // candidate and atomically create the first document.
+      if (root) return root
     } catch (error) {
       throw this.documentFailure(blueprintId, 'load', error)
     }
     throw new RemoteError('blueprint/definition-not-found', 'definition not found', { blueprintId })
   }
 
-  private managedLibraryRoot(): string | undefined {
-    if (this.config.libraryRoot) return resolve(this.config.libraryRoot)
-    if (this.config.runtimeRoot) return resolve(this.config.runtimeRoot, 'definitions')
-    if (this.ctx.baseUrl?.startsWith('file:')) return fileURLToPath(new URL('data/xuanling-blueprint/definitions/', this.ctx.baseUrl))
-    return undefined
+  private hostWorkspaceRoot: string | undefined
+  private resolvingWorkspace: Promise<void> | undefined
+
+  private workspaceWorkflowRoot(): string | undefined {
+    const root = this.config.workspaceRoot ?? CALLER_WORKSPACE.getStore() ?? this.hostWorkspaceRoot
+    return root ? resolve(root, '.xuanling', 'workflows') : undefined
+  }
+
+  /**
+   * Resolve the DSH Workspace that owns `sessionId` (or, for sessions not in
+   * any ownership account such as child step sessions, the registered
+   * Workspace containing the session cwd). Only registered Workspaces are
+   * eligible; a raw cwd never becomes a definition root by itself.
+   */
+  private sessionWorkspaceRoot(sessionId: string | undefined, cwd?: string): string | undefined {
+    if (this.config?.workspaceRoot !== undefined || this.ctx === undefined) return undefined
+    let workspaces: Array<{ path: string; sessionIds?: readonly string[] }> | undefined
+    try {
+      workspaces = (
+        this.ctx.get('workspaceRegistry' as never) as unknown as { list(): Array<{ path: string; sessionIds?: readonly string[] }> } | undefined
+      )?.list()
+    } catch {
+      return undefined
+    }
+    if (!workspaces?.length) return undefined
+    if (sessionId !== undefined) {
+      // Entries come from a duck-typed registry boundary: validate the two
+      // fields used here so a malformed or older record cannot throw out of
+      // every conversation tool.
+      const owner = workspaces.find(
+        workspace =>
+          typeof workspace.path === 'string' && isAbsolute(workspace.path) && Array.isArray(workspace.sessionIds) && workspace.sessionIds.includes(sessionId)
+      )
+      if (owner) return resolve(owner.path)
+      if (cwd === undefined) {
+        try {
+          const live = (
+            this.ctx.get('agents' as never) as unknown as { get(id: unknown): { session?: { header?: { cwd?: string } } } | undefined } | undefined
+          )?.get(sessionId)
+          cwd = live?.session?.header?.cwd
+        } catch {
+          cwd = undefined
+        }
+      }
+    }
+    if (typeof cwd !== 'string' || !isAbsolute(cwd)) return undefined
+    const target = resolve(cwd)
+    let best: string | undefined
+    for (const workspace of workspaces) {
+      if (typeof workspace.path !== 'string' || !isAbsolute(workspace.path)) continue
+      const root = resolve(workspace.path)
+      if ((target === root || target.startsWith(root.endsWith(sep) ? root : root + sep)) && (best === undefined || root.length > best.length)) best = root
+    }
+    return best
+  }
+
+  /** Run `action` against the Workspace of the calling conversation; falls
+   * back to the Host default Workspace when it cannot be attributed. */
+  async withSessionWorkspace<T>(sessionId: string | undefined, action: () => Promise<T>, cwd?: string): Promise<T> {
+    if (CALLER_WORKSPACE.getStore() !== undefined) return await action()
+    const root = this.sessionWorkspaceRoot(sessionId, cwd)
+    return root === undefined ? await action() : await CALLER_WORKSPACE.run(root, action)
+  }
+
+  private async ensureWorkspace(): Promise<void> {
+    if (this.workspaceWorkflowRoot() !== undefined) return
+    const controller = this.ctx.get('workspaceController' as never) as unknown as
+      | {
+          initializeDefault(signal: AbortSignal): Promise<{ workspace: { path: string } } | undefined>
+        }
+      | undefined
+    this.resolvingWorkspace ??= (async () => {
+      try {
+        const value = await controller?.initializeDefault(new AbortController().signal)
+        if (value?.workspace.path && isAbsolute(value.workspace.path)) this.hostWorkspaceRoot = resolve(value.workspace.path)
+        if (this.hostWorkspaceRoot === undefined) {
+          const registry = this.ctx.get('workspaceRegistry' as never) as unknown as { list(): Array<{ path: string }> } | undefined
+          const workspaces = registry?.list()
+          if (workspaces?.length === 1 && isAbsolute(workspaces[0]!.path)) this.hostWorkspaceRoot = resolve(workspaces[0]!.path)
+        }
+      } catch {
+        // Dependency details may contain machine paths. Expose only capability state.
+      }
+    })().finally(() => {
+      this.resolvingWorkspace = undefined
+    })
+    await this.resolvingWorkspace
+    if (this.workspaceWorkflowRoot() === undefined)
+      throw new RemoteError('blueprint/capability-unavailable', 'Host workspace unavailable; configure workspaceRoot.', {
+        method: 'workspace',
+        plugin: PLUGIN_NAME,
+        version: PLUGIN_VERSION
+      })
   }
 
   /** In-process compatibility seam for existing document queue fixtures. The
@@ -603,6 +771,8 @@ export class BlueprintService extends TypertRemoteService {
   }
 
   private documentFailure(blueprintId: string, operation: string, error: unknown): RemoteError {
+    if ((error as { code?: string })?.code === 'DEFINITION_COMMIT_PENDING')
+      return new RemoteError('blueprint/definition-commit-pending', 'Definition commit requires recovery; reload to retry.', { operation })
     if (error instanceof DefinitionDocumentMissingError)
       return new RemoteError('blueprint/definition-not-found', 'configured definition not found', { blueprintId })
     if (error instanceof DocumentRevisionConflictError) return this.revisionConflict(blueprintId, error.expected, error.actual)
@@ -638,6 +808,11 @@ export class BlueprintService extends TypertRemoteService {
 
   private configuredRuntimeRoot(): string {
     if (this.config.runtimeRoot) return resolve(this.config.runtimeRoot)
+    // Canonical workspaces own their runtime beside `workflows`; this keeps
+    // the workspace-native directory backend at `.xuanling/runs/<runId>/`.
+    if (this.config.workspaceRoot) return resolve(this.config.workspaceRoot, '.xuanling')
+    const derivedWorkflowRoot = this.workspaceWorkflowRoot()
+    if (derivedWorkflowRoot !== undefined) return resolve(derivedWorkflowRoot, '..')
     if (this.ctx.baseUrl?.startsWith('file:')) return fileURLToPath(new URL('data/xuanling-blueprint/runtime/', this.ctx.baseUrl))
     throw new RemoteError('blueprint/capability-unavailable', 'runtime location unavailable', {
       method: 'runtime',
@@ -647,6 +822,13 @@ export class BlueprintService extends TypertRemoteService {
   }
 
   private async configuredRuntime(internalRoot?: string): Promise<RuntimeHandle> {
+    if (
+      internalRoot === undefined &&
+      this.config.runtimeRoot === undefined &&
+      this.config.workspaceRoot === undefined &&
+      (this.ctx.get('workspaceController' as never) || this.ctx.get('workspaceRegistry' as never))
+    )
+      await this.ensureWorkspace()
     const root = internalRoot ?? this.configuredRuntimeRoot()
     try {
       return await this.runtimeFor(root)
@@ -659,19 +841,23 @@ export class BlueprintService extends TypertRemoteService {
   async listDefinitions(): Promise<{
     definitions: Array<{ blueprintId: string; name: string; documentRevision: string | null; semanticRevision: string | null }>
   }> {
+    await this.ensureWorkspace()
     return await this.definitions.listDefinitions()
   }
 
   async loadDefinition(args: LoadDefinitionArgs): Promise<DefinitionDocument> {
+    await this.ensureWorkspace()
     return await this.definitions.loadDefinition(args)
   }
 
   /** First save: request identity makes an uncertain response retryable after restart. */
   async createDefinition(args: CreateDefinitionArgs): Promise<DefinitionDocument> {
+    await this.ensureWorkspace()
     return await this.definitions.createDefinition(args)
   }
 
   async deleteDefinition(args: DeleteDefinitionArgs): Promise<{ blueprintId: string; deleted: true }> {
+    await this.ensureWorkspace()
     return await this.definitions.deleteDefinition(args)
   }
 
@@ -680,6 +866,7 @@ export class BlueprintService extends TypertRemoteService {
   }
 
   async describeBlueprint(blueprintId?: string) {
+    if (blueprintId !== undefined) await this.ensureWorkspace()
     return await this.definitions.describeBlueprint(blueprintId)
   }
 
@@ -688,11 +875,202 @@ export class BlueprintService extends TypertRemoteService {
   }
 
   async createBlueprint(candidate: AuthoringCandidate, requestId: string, source: RunSource, signal?: AbortSignal): Promise<DefinitionDocument> {
+    await this.ensureWorkspace()
     return await this.definitions.createBlueprint(candidate, requestId, source, signal)
   }
 
   async saveDefinition(args: SaveDefinitionArgs): Promise<DefinitionDocument> {
-    return await this.definitions.saveDefinition(args)
+    this.checkArgs('saveDefinition', args)
+    await this.ensureWorkspace()
+    let result: WorkflowApplyResult
+    try {
+      result = await this.applyService.applyTrusted({
+        workflowId: args.blueprintId,
+        definitionJson: args.definitionJson,
+        expectedRevision: args.expectedRevision,
+        origin: 'canvas'
+      })
+    } catch (error) {
+      if (error instanceof DocumentRevisionConflictError) throw this.revisionConflict(args.blueprintId, error.expected, error.actual)
+      if (error instanceof RemoteError) throw error
+      throw this.documentFailure(args.blueprintId, 'save', error)
+    }
+    if (result.status === 'applied' && result.document !== undefined) return result.document
+    if (result.issues?.some(issue => issue.code === 'revision-conflict'))
+      throw this.revisionConflict(args.blueprintId, args.expectedRevision, result.diff.from.documentRevision)
+    throw new RemoteError('blueprint/definition-invalid', 'candidate rejected', {
+      issues: result.issues?.map(issue => issue.code).join('; ') ?? 'candidate-rejected'
+    })
+  }
+
+  /**
+   * Canvas history restore: same trust as `saveDefinition` (a person clicked
+   * in the Host UI), same CAS (`expectedRevision`), and the revision's frozen
+   * package closure is restored with the document. Model tools keep using
+   * `workflow_revert`, which requires Host approval.
+   */
+  async restoreDefinitionRevision(args: { blueprintId: string; revision: string; expectedRevision: string }): Promise<DefinitionDocument> {
+    this.checkArgs('restoreDefinitionRevision', args)
+    await this.ensureWorkspace()
+    let result: WorkflowApplyResult
+    try {
+      result = await this.mutateWorkflow(args.blueprintId, () =>
+        this.applyService.revertTrusted({
+          workflowId: args.blueprintId,
+          revision: args.revision,
+          expectedRevision: args.expectedRevision,
+          message: 'canvas restore'
+        })
+      )
+    } catch (error) {
+      if (error instanceof DocumentRevisionConflictError) throw this.revisionConflict(args.blueprintId, error.expected, error.actual)
+      if (error instanceof RemoteError) throw error
+      throw this.documentFailure(args.blueprintId, 'save', error)
+    }
+    if (result.status === 'applied' && result.document !== undefined) return result.document
+    if (result.issues?.some(issue => issue.code === 'revision-conflict'))
+      throw this.revisionConflict(args.blueprintId, args.expectedRevision, result.diff.from.documentRevision)
+    // Restore-specific rejections keep their own typed wire codes; everything
+    // else stays a rejected candidate.
+    const issueCodes = result.issues?.map(issue => issue.code) ?? []
+    if (issueCodes.includes('revision-not-found'))
+      throw new RemoteError('blueprint/revision-not-found', 'revision not found', {
+        blueprintId: args.blueprintId,
+        revision: args.revision
+      })
+    if (issueCodes.includes('revision-package-unavailable'))
+      throw new RemoteError('blueprint/revision-unavailable', 'revision package unavailable', {
+        blueprintId: args.blueprintId,
+        revision: args.revision
+      })
+    throw new RemoteError('blueprint/definition-invalid', 'revision restore rejected', {
+      issues: issueCodes.join('; ') || 'revision-rejected'
+    })
+  }
+
+  async workflowGet(args: { workflowId: string }): Promise<Awaited<ReturnType<ApplyService['get']>>> {
+    this.checkArgs('workflowGet', args)
+    await this.ensureWorkspace()
+    return await this.applyService.get(args.workflowId)
+  }
+
+  async workflowValidate(args: { workflowId: string; definitionJson: string }): Promise<Awaited<ReturnType<ApplyService['validate']>>> {
+    this.checkArgs('workflowValidate', args)
+    await this.ensureWorkspace()
+    return await this.applyService.validate(args.workflowId, args.definitionJson)
+  }
+
+  async workflowPropose(args: {
+    workflowId: string
+    definitionJson: string
+    expectedRevision?: string | null
+    origin?: 'canvas' | 'conversation' | 'import'
+    message?: string
+  }): Promise<WorkflowCandidate> {
+    this.checkArgs('workflowPropose', args)
+    await this.ensureWorkspace()
+    return await this.applyService.propose(args)
+  }
+
+  private async mutateWorkflow(workflowId: string, action: () => Promise<WorkflowApplyResult>): Promise<WorkflowApplyResult> {
+    try {
+      return await action()
+    } catch (error) {
+      if (error instanceof RemoteError) throw error
+      throw this.documentFailure(workflowId, 'save', error)
+    }
+  }
+
+  async workflowApply(args: {
+    workflowId: string
+    definitionJson: string
+    expectedRevision: string
+    origin?: 'canvas' | 'conversation' | 'import'
+    message?: string
+  }): Promise<WorkflowApplyResult> {
+    this.checkArgs('workflowApply', args)
+    await this.ensureWorkspace()
+    const result = await this.mutateWorkflow(args.workflowId, () => this.applyService.apply(args))
+    if (result.status === 'rejected' && result.issues?.some(issue => issue.code === 'revision-conflict'))
+      throw this.revisionConflict(args.workflowId, args.expectedRevision ?? null, result.diff.from.documentRevision)
+    return result
+  }
+
+  /** Internal conversation-tool seam. ToolRuntime invokes this only after
+   * its `tools/pre-execute` approval waterfall has returned allowed-once. */
+  async workflowApplyFromHost(args: {
+    workflowId: string
+    definitionJson: string
+    expectedRevision: string
+    origin?: 'canvas' | 'conversation' | 'import'
+    message?: string
+    approval: typeof WORKFLOW_HOST_APPROVAL
+  }): Promise<WorkflowApplyResult> {
+    await this.ensureWorkspace()
+    const { approval, ...publicArgs } = args
+    this.checkArgs('workflowApply', publicArgs)
+    if (approval !== WORKFLOW_HOST_APPROVAL) return await this.workflowApply(publicArgs)
+    const result = await this.mutateWorkflow(args.workflowId, () => this.applyService.applyTrusted(publicArgs))
+    if (result.status === 'rejected' && result.issues?.some(issue => issue.code === 'revision-conflict'))
+      throw this.revisionConflict(args.workflowId, args.expectedRevision, result.diff.from.documentRevision)
+    return result
+  }
+
+  async workflowRevisions(args: { workflowId: string }): Promise<Awaited<ReturnType<ApplyService['revisions']>>> {
+    this.checkArgs('workflowRevisions', args)
+    await this.ensureWorkspace()
+    return await this.applyService.revisions(args.workflowId)
+  }
+
+  async workflowRevert(args: { workflowId: string; revision: string; expectedRevision: string; message?: string }): Promise<WorkflowApplyResult> {
+    this.checkArgs('workflowRevert', args)
+    await this.ensureWorkspace()
+    return await this.mutateWorkflow(args.workflowId, () => this.applyService.revert(args))
+  }
+
+  async workflowRevertFromHost(args: {
+    workflowId: string
+    revision: string
+    expectedRevision: string
+    message?: string
+    approval: typeof WORKFLOW_HOST_APPROVAL
+  }): Promise<WorkflowApplyResult> {
+    await this.ensureWorkspace()
+    const { approval, ...publicArgs } = args
+    this.checkArgs('workflowRevert', publicArgs)
+    if (approval !== WORKFLOW_HOST_APPROVAL) return await this.workflowRevert(publicArgs)
+    return await this.mutateWorkflow(args.workflowId, () => this.applyService.revertTrusted(publicArgs))
+  }
+
+  async workflowList(): Promise<Awaited<ReturnType<BlueprintDefinitionUseCases['listDefinitions']>>> {
+    await this.ensureWorkspace()
+    return await this.applyService.list()
+  }
+
+  async workflowRun(args: StartRunArgs): Promise<RunAdmissionView> {
+    this.checkArgs('workflowRun', args)
+    return runAdmissionCodec().parse(await this.startRun(args))
+  }
+
+  async workflowInspect(args: InspectRunArgs): Promise<RunSnapshotView> {
+    this.checkArgs('workflowInspect', args)
+    return await this.inspectRun(args)
+  }
+
+  async workflowReport(args: InspectRunArgs): Promise<RunReport> {
+    return await this.withSessionWorkspace(typeof args?.sessionId === 'string' ? args.sessionId : undefined, () => this.workflowReportInScope(args))
+  }
+
+  private async workflowReportInScope(args: InspectRunArgs): Promise<RunReport> {
+    try {
+      this.checkArgs('workflowReport', args)
+      const handle = await this.configuredRuntime()
+      return await this.runReads(handle).reportRun(args.runId, args.sessionId)
+    } catch (error) {
+      if (error instanceof DurabilityFailureError)
+        throw new RemoteError('blueprint/durability-failed', 'Run storage unavailable', { operation: 'workflowReport' })
+      throw error
+    }
   }
 
   private async runtimeFor(runtimeRoot: string): Promise<RuntimeHandle> {
@@ -713,12 +1091,16 @@ export class BlueprintService extends TypertRemoteService {
   }
 
   private async openRuntime(root: string): Promise<RuntimeHandle> {
-    mkdirSync(join(root, 'store'), { recursive: true })
+    // The workspace-native directory is the sole Run persistence medium.
+    mkdirSync(root, { recursive: true })
     const lease = WriterLease.acquire(root)
-    const stopLeaseHeartbeat = lease.startHeartbeat()
+    const stopLeaseHeartbeat = lease.startHeartbeat(() => this.leaseLost(root, lease))
     let opened: RuntimeHandle['opened'] | undefined
     try {
-      opened = await openBlueprintDomain({ backend: 'json', path: join(root, 'store') })
+      // Every durable Run mutation is fenced on the lease: a writer that lost
+      // ownership (stale takeover, split brain) is refused before it can
+      // record intent or dispatch another effect.
+      opened = await openBlueprintDomain({ path: root, fence: () => lease.assertOwned() })
       const store = new RunStore(opened.domain)
       const query = new RunQuery(store)
       const backgroundFailures = new Map<string, Error>()
@@ -762,6 +1144,27 @@ export class BlueprintService extends TypertRemoteService {
       lease.release()
       throw error
     }
+  }
+
+  /** A heartbeat observed that another writer now owns this runtime root.
+   * Stop coordinating it: forget the handle so later requests reopen and see
+   * the current owner, abort in-flight node work, and close the store once
+   * admitted work settles. Fenced writes already refuse durable mutations. */
+  private leaseLost(root: string, lease: WriterLease): void {
+    const handle = this.runtimes.get(root)
+    // Still opening: the fenced store fails the open, which releases nothing
+    // that is no longer ours.
+    if (handle === undefined || handle.lease !== lease) return
+    this.runtimes.delete(root)
+    for (const controllers of handle.controllers.values()) for (const controller of controllers.values()) controller.abort()
+    const retired = (async () => {
+      await Promise.allSettled(handle.cancellationTails.values())
+      await Promise.allSettled(handle.jobs.values())
+      await handle.admissionTail
+      await handle.opened.close()
+    })().catch(() => {})
+    this.retiring.add(retired)
+    void retired.then(() => this.retiring.delete(retired))
   }
 
   /** Internal deterministic verification seam. Production admission uses
@@ -915,6 +1318,7 @@ export class BlueprintService extends TypertRemoteService {
 
   async preflightRun(args: PreflightRunArgs): Promise<PreflightRunValue> {
     this.checkArgs('preflightRun', args)
+    await this.ensureWorkspace()
     const root = this.blueprintRoot(args.blueprintId)
     return await this.documents.withDocument(root, async () => {
       const snapshot = this.documents.loadConfiguredPackage(args.blueprintId, root)
@@ -943,11 +1347,13 @@ export class BlueprintService extends TypertRemoteService {
   async startRun(args: StartRunArgs | InternalStartRunArgs): Promise<{ runId: string; semanticRevision: string; state: string; replayed: boolean }> {
     if (!('blueprintId' in args)) return await this.admitRun(args)
     this.checkArgs('startRun', args)
+    await this.ensureWorkspace()
     return await this.startConfiguredRun(args)
   }
 
   async startSessionRun(args: StartSessionRunArgs) {
     this.checkArgs('startSessionRun', args)
+    await this.ensureWorkspace()
     let caller
     try {
       caller = liveCaller(this.ctx, args.sessionId)
@@ -966,6 +1372,10 @@ export class BlueprintService extends TypertRemoteService {
   /** Admit one durable TeamStage task from an exact root Lead. The Team id is
    * resolved from the live native Agent and never accepted from wire input. */
   async startTeamStage(args: StartTeamStageArgs): Promise<TeamStageActionView> {
+    return await this.withSessionWorkspace(typeof args?.sessionId === 'string' ? args.sessionId : undefined, () => this.startTeamStageInScope(args))
+  }
+
+  private async startTeamStageInScope(args: StartTeamStageArgs): Promise<TeamStageActionView> {
     this.checkArgs('startTeamStage', args)
     const { lead } = this.teamLeadForSession(args.sessionId, 'startTeamStage')
     const handle = await this.configuredRuntime()
@@ -1003,6 +1413,10 @@ export class BlueprintService extends TypertRemoteService {
 
   /** Cancel the canonical TeamStage; memberNames is only a consistency check. */
   async cancelTeamStage(args: CancelTeamStageArgs): Promise<TeamStageActionView> {
+    return await this.withSessionWorkspace(typeof args?.sessionId === 'string' ? args.sessionId : undefined, () => this.cancelTeamStageInScope(args))
+  }
+
+  private async cancelTeamStageInScope(args: CancelTeamStageArgs): Promise<TeamStageActionView> {
     this.checkArgs('cancelTeamStage', args)
     const { lead } = this.teamLeadForSession(args.sessionId, 'cancelTeamStage')
     const handle = await this.configuredRuntime()
@@ -1040,6 +1454,10 @@ export class BlueprintService extends TypertRemoteService {
   /** Accept a redacted output record. `sourceSessionId` is derived from the
    * live caller, and native task status is read through the Lead authority. */
   async acceptTeamStageOutput(args: AcceptTeamStageOutputArgs): Promise<TeamStageActionView> {
+    return await this.withSessionWorkspace(typeof args?.sessionId === 'string' ? args.sessionId : undefined, () => this.acceptTeamStageOutputInScope(args))
+  }
+
+  private async acceptTeamStageOutputInScope(args: AcceptTeamStageOutputArgs): Promise<TeamStageActionView> {
     this.checkArgs('acceptTeamStageOutput', args)
     const { caller, lead } = this.teamLeadForSession(args.sessionId, 'acceptTeamStageOutput')
     const handle = await this.configuredRuntime()
@@ -1163,6 +1581,8 @@ export class BlueprintService extends TypertRemoteService {
     const admitted = handle.admissionTail.then(async () => {
       const replay = await handle.store.replayRun(request)
       if (replay) return { runId: replay.runId, semanticRevision: replay.definitionRevision, state: replay.state, replayed: true }
+      if (metadata.source?.kind === 'tool' && handle.jobs.size >= (this.config.maxQueuedToolRuns ?? DEFAULT_MAX_QUEUED_TOOL_RUNS))
+        throw new RemoteError('blueprint/preflight-blocked', 'new Run blocked by preflight', { checks: [{ code: 'active-run-limit', status: 'block' }] })
       const rootDir = beforeNewAdmission ? await beforeNewAdmission() : args.rootDir
       if (sourceParent !== undefined && metadata.source !== undefined) assertNativeSourceParent(this.ctx, sourceParent, metadata.source.sessionId)
       for (const node of definition.graph.nodes.filter(node => node.teamStage !== undefined)) {
@@ -1173,10 +1593,17 @@ export class BlueprintService extends TypertRemoteService {
           throw new RemoteError('blueprint/preflight-blocked', 'new Run blocked by preflight', { checks: [{ code, status: 'block', nodeId: node.id }] })
         }
       }
-      const created = await handle.store.createRun(request, semanticRevision, args.definitionJson, args.inputJson, metadata)
+      const created = await handle.store.createRun(request, semanticRevision, args.definitionJson, args.inputJson, {
+        ...metadata,
+        // Presence of this field makes an interrupted admission fail closed on
+        // restart instead of silently accepting a later host binding.
+        bindingDigests: {}
+      })
       if (!created.replayed) {
         try {
           await handle.snapshots.freezePackage(created.runId, definition, rootDir)
+          const bindingSnapshot = await this.captureBindingDigests(handle, created.runId, definition)
+          await handle.store.setBindingDigests(created.runId, bindingSnapshot.digests, bindingSnapshot.modelSelections)
         } catch {
           await handle.store.settleTerminal(created.runId, 'failed', { reason: 'resource-freeze-failed' })
           throw new RemoteError('blueprint/durability-failed', 'Run resources could not be frozen', { operation: 'freeze-package' })
@@ -1196,25 +1623,98 @@ export class BlueprintService extends TypertRemoteService {
     }
   }
 
+  /** Resolve every declared binding once during admission. This uses the same
+   * immutable package and Host registries as Attempt preparation, so an
+   * Attempt can compare its live resolution to these facts before dispatch. */
+  private async captureBindingDigests(
+    handle: RuntimeHandle,
+    runId: string,
+    definition: ReturnType<typeof decodeDefinition>
+  ): Promise<{ digests: Record<string, string>; modelSelections: Record<string, HostModelSelection | null> }> {
+    const perNode: Array<Record<string, string>> = []
+    const modelSelections: Record<string, HostModelSelection | null> = {}
+    for (const node of definition.graph.nodes.filter(value => value.kind === 'agentTask')) {
+      // TeamStage admission must resolve the same member closure that the
+      // Attempt path uses.  The ordinary Agent preparation omits member agent
+      // bindings, which would make every native Team Attempt appear to drift
+      // before the Team driver can establish its durable stage.
+      const prepared =
+        node.teamStage === undefined ? await handle.snapshots.prepare(runId, definition, node) : await handle.snapshots.prepareTeam(runId, definition, node)
+      const inheritedModelSelection = node.teamStage === undefined && node.modelSelection === undefined ? captureAgentModelSelection(this.ctx) : undefined
+      const modelSelection =
+        node.teamStage === undefined
+          ? node.modelSelection === undefined
+            ? inheritedModelSelection
+            : {
+                provider: node.modelSelection.provider,
+                model: node.modelSelection.model,
+                ...(node.modelSelection.reasoningEffort === undefined ? {} : { reasoningEffort: node.modelSelection.reasoningEffort })
+              }
+          : undefined
+      // Only inherited routes need persistence: pinned routes are already
+      // part of the frozen definition and are reused directly by Attempts.
+      if (node.teamStage === undefined && node.modelSelection === undefined)
+        modelSelections[node.id] = inheritedModelSelection === undefined ? null : structuredClone(inheritedModelSelection)
+      const effectiveToolNames = resolveEffectiveToolNames(this.ctx, definition, node, this.config.toolBindings)
+      perNode.push(
+        buildBindingFacts({
+          nodeId: node.id,
+          ...(node.agentRef === undefined ? {} : { agentRef: node.agentRef }),
+          ...(node.skillRefs === undefined ? {} : { skillRefs: node.skillRefs }),
+          ...(node.toolsetRefs === undefined ? {} : { toolsetRefs: node.toolsetRefs }),
+          ...(node.toolAllowlist === undefined ? {} : { toolAllowlist: node.toolAllowlist }),
+          resourceDigests: prepared.resourceDigests,
+          effectiveToolNames,
+          toolsetDigest: toolsetBindingDigest(this.ctx, effectiveToolNames),
+          ...(modelSelection === undefined ? {} : { modelSelection }),
+          ...(node.outputSchemaRef === undefined ? {} : { outputSchemaRef: node.outputSchemaRef })
+        }).digests
+      )
+    }
+    return { digests: aggregateBindingDigests(perNode), modelSelections }
+  }
+
   private readonly runReads = (handle: RuntimeHandle): RunReadService => handle.reads
 
   // wire method (descriptor in ./typert.host.ts): inspectRun
   async inspectRun(args: InspectRunArgs & { runtimeRoot?: string }): Promise<RunSnapshotView> {
-    if (args.runtimeRoot === undefined) this.checkArgs('inspectRun', args)
-    const handle = await this.configuredRuntime(args.runtimeRoot)
-    return await this.runReads(handle).inspectRun(args.runId)
+    if (args?.runtimeRoot === undefined && typeof args?.sessionId === 'string')
+      return await this.withSessionWorkspace(args.sessionId, () => this.inspectRunInScope(args))
+    return await this.inspectRunInScope(args)
+  }
+
+  private async inspectRunInScope(args: InspectRunArgs & { runtimeRoot?: string }): Promise<RunSnapshotView> {
+    try {
+      if (args.runtimeRoot === undefined) this.checkArgs('inspectRun', args)
+      const handle = await this.configuredRuntime(args.runtimeRoot)
+      return await this.runReads(handle).inspectRun(args.runId, args.sessionId)
+    } catch (error) {
+      if (error instanceof DurabilityFailureError) throw new RemoteError('blueprint/durability-failed', 'Run storage unavailable', { operation: 'inspectRun' })
+      throw error
+    }
   }
 
   async queryRuns(args: RunQueryArgs): Promise<RunQueryValue> {
-    this.checkArgs('queryRuns', args)
-    const handle = await this.configuredRuntime()
-    return await this.runReads(handle).queryRuns(args)
+    return await this.withSessionWorkspace(typeof args?.sessionId === 'string' ? args.sessionId : undefined, () => this.queryRunsInScope(args))
+  }
+
+  private async queryRunsInScope(args: RunQueryArgs): Promise<RunQueryValue> {
+    try {
+      this.checkArgs('queryRuns', args)
+      const handle = await this.configuredRuntime()
+      return await this.runReads(handle).queryRuns(args)
+    } catch (error) {
+      if (error instanceof DurabilityFailureError) throw new RemoteError('blueprint/durability-failed', 'Run storage unavailable', { operation: 'queryRuns' })
+      throw error
+    }
   }
 
   private async setRunArchived(args: RunLifecycleActionArgs, archived: boolean): Promise<RunLifecycleActionValue> {
-    this.checkArgs(archived ? 'archiveRun' : 'restoreRun', args)
-    const handle = await this.configuredRuntime()
-    return await this.runReads(handle).setArchived(args, archived)
+    return await this.withSessionWorkspace(typeof args?.sessionId === 'string' ? args.sessionId : undefined, async () => {
+      this.checkArgs(archived ? 'archiveRun' : 'restoreRun', args)
+      const handle = await this.configuredRuntime()
+      return await this.runReads(handle).setArchived(args, archived)
+    })
   }
 
   async archiveRun(args: RunLifecycleActionArgs): Promise<RunLifecycleActionValue> {
@@ -1226,47 +1726,143 @@ export class BlueprintService extends TypertRemoteService {
   }
 
   async inspectSession(args: InspectSessionArgs): Promise<InspectSessionValue> {
-    this.checkArgs('inspectSession', args)
-    const handle = await this.configuredRuntime()
-    return await this.runReads(handle).inspectSession(args)
+    return await this.withSessionWorkspace(args?.sessionId, () => this.inspectSessionInScope(args))
+  }
+
+  private async inspectSessionInScope(args: InspectSessionArgs): Promise<InspectSessionValue> {
+    try {
+      this.checkArgs('inspectSession', args)
+      const handle = await this.configuredRuntime()
+      return await this.runReads(handle).inspectSession(args)
+    } catch (error) {
+      if (error instanceof DurabilityFailureError)
+        throw new RemoteError('blueprint/durability-failed', 'Run storage unavailable', { operation: 'inspectSession' })
+      throw error
+    }
   }
 
   // wire method (descriptor in ./typert.host.ts): cancelRun
   async cancelRun(args: CancelRunArgs & { runtimeRoot?: string }): Promise<{ runId: string; state: string }> {
-    if (args.runtimeRoot === undefined) this.checkArgs('cancelRun', args)
-    const handle = await this.configuredRuntime(args.runtimeRoot)
-    const record = await handle.store.tryGet(args.runId)
-    if (record === undefined) {
-      throw new RemoteError('blueprint/run-not-found', `run ${args.runId} not found`, { runId: args.runId })
+    try {
+      if (args.runtimeRoot === undefined) this.checkArgs('cancelRun', args)
+      const handle = await this.configuredRuntime(args.runtimeRoot)
+      const record = await handle.store.tryGet(args.runId)
+      if (record === undefined) {
+        throw new RemoteError('blueprint/run-not-found', `run ${args.runId} not found`, { runId: args.runId })
+      }
+      const afterRequest = await handle.store.requestCancel(args.runId)
+      for (const controller of handle.controllers.get(args.runId)?.values() ?? []) controller.abort()
+      const after = afterRequest.teamStage === undefined ? afterRequest : await this.cancelTeamRun(handle, afterRequest)
+      if (after.teamStage === undefined && after.state === 'cancelling' && !handle.controllers.has(args.runId)) this.execution.scheduleRun(handle, args.runId)
+      return { runId: after.runId, state: after.state }
+    } catch (error) {
+      if (error instanceof DurabilityFailureError) throw new RemoteError('blueprint/durability-failed', 'Run storage unavailable', { operation: 'cancelRun' })
+      throw error
     }
-    const afterRequest = await handle.store.requestCancel(args.runId)
-    for (const controller of handle.controllers.get(args.runId)?.values() ?? []) controller.abort()
-    const after = afterRequest.teamStage === undefined ? afterRequest : await this.cancelTeamRun(handle, afterRequest)
-    if (after.teamStage === undefined && after.state === 'cancelling' && !handle.controllers.has(args.runId)) this.execution.scheduleRun(handle, args.runId)
-    return { runId: after.runId, state: after.state }
+  }
+
+  /**
+   * Move a `recovery_required` Run to the terminal the operator confirmed.
+   * The unknown effect is never re-dispatched; the note is the durable audit
+   * evidence. Replaying the same resolution is idempotent; a stale review
+   * (`expectedSeq`) or a TeamStage with unknown native effects is rejected.
+   */
+  async resolveRecovery(args: ResolveRecoveryArgs): Promise<ResolveRecoveryValue> {
+    return await this.withSessionWorkspace(typeof args?.sessionId === 'string' ? args.sessionId : undefined, () => this.resolveRecoveryInScope(args))
+  }
+
+  /** Idempotent replay: the same operator resolution (terminal state,
+   * resolution and note) on an already-settled Run returns the durable
+   * terminal without a second write. Auto reconciliation entries are never
+   * accepted as a replay. */
+  private recoveryReplay(record: RunRecord, resolution: ResolveRecoveryArgs['resolution'], note: string): ResolveRecoveryValue | undefined {
+    if (record.state !== resolution) return undefined
+    const last = [...record.log].reverse().find(event => event.kind === 'state' && typeof event.detail.recovery === 'string')
+    if (last?.detail.recovery !== resolution || last.detail.evidence !== note || last.detail.actor !== 'operator') return undefined
+    return { runId: record.runId, state: record.state, seq: record.seq, applied: false }
+  }
+
+  private teamStageNeedsCleanup(runId: string): RemoteError {
+    return new RemoteError('blueprint/run-lifecycle-conflict', 'TeamStage recovery needs native Team cleanup', {
+      runId,
+      detail: 'teamstage-recovery-manual'
+    })
+  }
+
+  private async resolveRecoveryInScope(args: ResolveRecoveryArgs): Promise<ResolveRecoveryValue> {
+    try {
+      this.checkArgs('resolveRecovery', args)
+      const note = args.note.trim()
+      if (note.length === 0) throw new RemoteError('blueprint/run-lifecycle-conflict', 'recovery note required', { runId: args.runId, detail: 'note-required' })
+      const handle = await this.configuredRuntime()
+      const record = await handle.store.tryGet(args.runId)
+      if (record === undefined) throw new RemoteError('blueprint/run-not-found', 'Run not found', { runId: args.runId })
+      if (record.state !== 'recovery_required') {
+        const replay = this.recoveryReplay(record, args.resolution, note)
+        if (replay !== undefined) return replay
+        throw new RemoteError('blueprint/run-lifecycle-conflict', 'Run is not waiting for recovery', { runId: args.runId, detail: 'not-recovery-required' })
+      }
+      if (teamStageBlocksRecovery(record.teamStage?.state)) throw this.teamStageNeedsCleanup(args.runId)
+      try {
+        const after = await reconcile(handle.store, record, args.resolution, note, {
+          expectedSeq: args.expectedSeq,
+          operator: true,
+          guardTeamStage: true
+        })
+        return { runId: after.runId, state: after.state, seq: after.seq, applied: true }
+      } catch (error) {
+        if (error instanceof RecoveryStaleError)
+          throw new RemoteError('blueprint/run-lifecycle-conflict', 'Run changed since review', { runId: args.runId, detail: 'stale-review' })
+        if (error instanceof IllegalTransitionError)
+          throw new RemoteError('blueprint/run-lifecycle-conflict', 'Run is not waiting for recovery', { runId: args.runId, detail: 'not-recovery-required' })
+        if (error instanceof TeamStageConflictError) throw this.teamStageNeedsCleanup(args.runId)
+        if (error instanceof TerminalStateError || error instanceof RunNotFoundError) {
+          // Lost the race to another settle (for example a duplicate submit of
+          // the same review): re-read the committed cut and answer with the
+          // idempotent replay instead of leaking a raw store/gateway failure.
+          const current = await handle.store.tryGet(args.runId)
+          const replay = current === undefined ? undefined : this.recoveryReplay(current, args.resolution, note)
+          if (replay !== undefined) return replay
+          throw new RemoteError('blueprint/run-lifecycle-conflict', 'Run is not waiting for recovery', {
+            runId: args.runId,
+            detail: 'not-recovery-required'
+          })
+        }
+        throw error
+      }
+    } catch (error) {
+      if (error instanceof DurabilityFailureError)
+        throw new RemoteError('blueprint/durability-failed', 'Run storage unavailable', { operation: 'resolveRecovery' })
+      throw error
+    }
   }
 
   async decide(args: DecideArgs & { runtimeRoot?: string }): Promise<{ runId: string; decisionId: string; state: string; applied: boolean }> {
-    if (args.runtimeRoot === undefined) this.checkArgs('decide', args)
-    const handle = await this.configuredRuntime(args.runtimeRoot)
-    const record = await handle.store.tryGet(args.runId)
-    if (!record) throw new RemoteError('blueprint/run-not-found', 'Run not found', { runId: args.runId })
-    if (args.action !== 'approve' && args.action !== 'reject')
-      throw new RemoteError('blueprint/decision-invalid', 'unsupported decision action', { detail: 'action-invalid' })
-    const definition = this.decodeOrThrow(record.definitionJson)
-    const waiting = record.attempts.find(a => a.state === 'waiting_input')
-    const node = definition.graph.nodes.find(n => n.id === waiting?.nodeId)
-    const branches = definition.graph.edges.filter(e => e.kind === 'control' && e.from.startsWith(`${node?.id}@`)).map(e => e.from.split('@')[1]!)
-    const branch = args.action === 'approve' && node?.branches?.length === 1 ? node.branches[0]! : args.action
-    if (waiting && branches.length && !branches.includes(branch))
-      throw new RemoteError('blueprint/decision-invalid', 'decision has no matching branch', { detail: 'branch-invalid' })
     try {
-      const decision = await handle.store.decide(args.runId, args.decisionId, args.action, branch)
-      if (decision.applied && decision.record.state === 'running') this.execution.scheduleRun(handle, args.runId)
-      return { runId: args.runId, decisionId: args.decisionId, state: decision.record.state, applied: decision.applied }
+      if (args.runtimeRoot === undefined) this.checkArgs('decide', args)
+      const handle = await this.configuredRuntime(args.runtimeRoot)
+      const record = await handle.store.tryGet(args.runId)
+      if (!record) throw new RemoteError('blueprint/run-not-found', 'Run not found', { runId: args.runId })
+      if (args.action !== 'approve' && args.action !== 'reject')
+        throw new RemoteError('blueprint/decision-invalid', 'unsupported decision action', { detail: 'action-invalid' })
+      const definition = this.decodeOrThrow(record.definitionJson)
+      const waiting = record.attempts.find(a => a.state === 'waiting_input')
+      const node = definition.graph.nodes.find(n => n.id === waiting?.nodeId)
+      const branches = definition.graph.edges.filter(e => e.kind === 'control' && e.from.startsWith(`${node?.id}@`)).map(e => e.from.split('@')[1]!)
+      const branch = args.action === 'approve' && node?.branches?.length === 1 ? node.branches[0]! : args.action
+      if (waiting && branches.length && !branches.includes(branch))
+        throw new RemoteError('blueprint/decision-invalid', 'decision has no matching branch', { detail: 'branch-invalid' })
+      try {
+        const decision = await handle.store.decide(args.runId, args.decisionId, args.action, branch)
+        if (decision.applied && decision.record.state === 'running') this.execution.scheduleRun(handle, args.runId)
+        return { runId: args.runId, decisionId: args.decisionId, state: decision.record.state, applied: decision.applied }
+      } catch (error) {
+        if (error instanceof DecisionConflictError)
+          throw new RemoteError('blueprint/decision-invalid', 'decision conflicts with durable Attempt', { detail: 'decision-conflict' })
+        throw error
+      }
     } catch (error) {
-      if (error instanceof DecisionConflictError)
-        throw new RemoteError('blueprint/decision-invalid', 'decision conflicts with durable Attempt', { detail: 'decision-conflict' })
+      if (error instanceof DurabilityFailureError) throw new RemoteError('blueprint/durability-failed', 'Run storage unavailable', { operation: 'decide' })
       throw error
     }
   }
@@ -1288,6 +1884,7 @@ export class BlueprintService extends TypertRemoteService {
   ): ReturnType<BlueprintPortabilityUseCases['exportInternal']>
   async exportDefinition(args: ExportDefinitionArgs & { rootDir?: string; runtimeRoot?: string; outPath?: string }) {
     if (args.rootDir !== undefined) return await this.portability.exportInternal({ ...args, rootDir: args.rootDir })
+    await this.ensureWorkspace()
     return await this.portability.exportConfigured(args)
   }
 
@@ -1295,6 +1892,7 @@ export class BlueprintService extends TypertRemoteService {
   async importDefinition(args: { archivePath: string; targetDir?: string }): ReturnType<BlueprintPortabilityUseCases['importInternal']>
   async importDefinition(args: ImportDefinitionArgs | { archivePath: string; targetDir?: string }) {
     if ('archivePath' in args) return await this.portability.importInternal(args)
+    await this.ensureWorkspace()
     return await this.portability.importConfigured(args)
   }
 }

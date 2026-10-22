@@ -5,9 +5,10 @@
  * `table.update` (W0.3: sync RMW, missing-record update throws).
  */
 import { z } from 'zod'
-import { runSourceCodec, type RunSource } from '../conversation/contracts.ts'
+import { runIdCodec, runSourceCodec, type RunSource } from '../conversation/contracts.ts'
 import { attemptDiagnosticsCodec, type AttemptDiagnostics } from '../host/runtime-diagnostics.ts'
 import { teamStageExecutionCodec, type TeamStageExecution } from '../host/teamstage-diagnostics.ts'
+import type { ModelSelection as HostModelSelection } from '@deepseek-ai/dsh-agent'
 
 export const RUN_STATES = ['queued', 'running', 'waiting_input', 'cancelling', 'recovery_required', 'succeeded', 'failed', 'cancelled', 'timed_out'] as const
 export const ATTEMPT_STATES = [
@@ -44,13 +45,27 @@ export const TEAM_ACCEPTANCE_CODES = ['accepted', 'rejected'] as const
 export type TeamAcceptanceCode = (typeof TEAM_ACCEPTANCE_CODES)[number]
 export const TEAM_STAGE_SCHEMA_VERSION = 1 as const
 export const TEAM_OUTPUT_ACCEPTANCE_SCHEMA_VERSION = 1 as const
-export const RUN_RECORD_SCHEMA_VERSION = 1 as const
+export const RUN_RECORD_SCHEMA_VERSION = 2 as const
 export const TEAM_EFFECT_STATES = ['pending', 'succeeded', 'failed', 'recovery_required'] as const
 export type TeamEffectState = (typeof TEAM_EFFECT_STATES)[number]
 export const TEAM_KNOWN_CHECKS = ['schema', 'digest', 'artifact-digest', 'agreement'] as const
 export type TeamKnownCheck = (typeof TEAM_KNOWN_CHECKS)[number]
 
+export const runIdSchema = runIdCodec()
+
 const sha256 = z.string().regex(/^[a-f0-9]{64}$/, 'must be a lowercase SHA-256 digest')
+
+/** The resolved, non-secret model route captured at admission. A null value
+ * records that the Host had no default route, so restart/Attempt preparation
+ * does not reread mutable Host state and accidentally authorize a new route. */
+export const modelSelectionSchema = z
+  .object({
+    provider: z.string().min(1),
+    model: z.string().min(1),
+    reasoningEffort: z.string().min(1).optional()
+  })
+  .strict()
+export const bindingSelectionsSchema = z.record(z.string().min(1), modelSelectionSchema.nullable())
 
 /** Host-generated identity, never a client-provided filename. */
 export const teamArtifactIdSchema = z.string().regex(/^ta-[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/)
@@ -460,7 +475,7 @@ export interface AttemptRecord {
   state: AttemptState
   attempt: number
   /** Durable dispatch intent: written BEFORE any external effect. */
-  intent?: { seq: number; at: number; kind: string; resourceDigests: Record<string, string> }
+  intent?: { seq: number; at: number; kind: string; resourceDigests: Record<string, string>; bindingDigests?: Record<string, string> }
   /** Settled outcome: written when the effect is known. */
   result?: { seq: number; at: number; ok: boolean; outcome: unknown; evidence: string }
   sessionId?: string
@@ -475,7 +490,7 @@ export interface TransitionEvent {
 }
 
 export interface RunRecord {
-  /** Additive record schema marker; legacy records are read as version 1. */
+  /** Current record format; compatible record-v1 and markerless shapes migrate on write. */
   schemaVersion: typeof RUN_RECORD_SCHEMA_VERSION
   blueprintId?: string
   source?: RunSource
@@ -485,6 +500,11 @@ export interface RunRecord {
    * and restart recovery read this, never the live file). */
   definitionJson: string
   inputRef: string
+  /** Admission-frozen binding facts. Legacy records omit this field. */
+  bindingDigests?: Record<string, string>
+  bindingAdmission?: 'pending' | 'captured'
+  /** Admission-frozen model routes, including null for an absent Host default. */
+  bindingSelections?: Record<string, HostModelSelection | null>
   commandKey: string
   state: RunState
   attempts: AttemptRecord[]
@@ -517,17 +537,20 @@ export interface RunLifecycleRecord {
 
 export const runRecordSchema = z
   .object({
-    // Legacy RunRecords predate the marker.  Keep their enumerable decoded
-    // shape stable while exposing the effective v1 marker to code that needs
-    // to branch on the record format.  New records are always written with
+    // Compatible RunRecords predate the marker. Keep their enumerable decoded
+    // shape stable while exposing the effective current marker to code that needs
+    // to branch on the record format. New/updated directory records are written with
     // an explicit enumerable schemaVersion by RunStore.createRun().
-    schemaVersion: z.literal(RUN_RECORD_SCHEMA_VERSION).optional(),
+    schemaVersion: z.union([z.literal(1), z.literal(RUN_RECORD_SCHEMA_VERSION)]).optional(),
     blueprintId: z.string().min(1).optional(),
     source: runSourceCodec().optional(),
-    runId: z.string().min(1),
+    runId: runIdSchema,
     definitionRevision: z.string().min(1),
     definitionJson: z.string(),
     inputRef: z.string(),
+    bindingDigests: z.record(z.string(), sha256).optional(),
+    bindingSelections: bindingSelectionsSchema.optional(),
+    bindingAdmission: z.enum(['pending', 'captured']).optional(),
     commandKey: z.string().min(1),
     state: z.enum(RUN_STATES),
     attempts: z.array(
@@ -536,7 +559,15 @@ export const runRecordSchema = z
         nodeId: z.string().min(1),
         state: z.enum(ATTEMPT_STATES),
         attempt: z.number().int().nonnegative(),
-        intent: z.object({ seq: z.number(), at: z.number(), kind: z.string(), resourceDigests: z.record(z.string(), z.string()) }).optional(),
+        intent: z
+          .object({
+            seq: z.number(),
+            at: z.number(),
+            kind: z.string(),
+            resourceDigests: z.record(z.string(), z.string()),
+            bindingDigests: z.record(z.string(), sha256).optional()
+          })
+          .optional(),
         result: z.object({ seq: z.number(), at: z.number(), ok: z.boolean(), outcome: z.unknown(), evidence: z.string() }).optional(),
         sessionId: z.string().optional(),
         diagnostics: attemptDiagnosticsCodec().optional()
@@ -556,6 +587,9 @@ export const runRecordSchema = z
     updatedAt: z.number()
   })
   .superRefine((value, ctx) => {
+    if (value.bindingAdmission !== undefined && value.bindingDigests === undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['bindingDigests'], message: 'admission requires binding snapshot or pending marker' })
+    }
     if (value.teamStage !== undefined && value.teamStage.runId !== value.runId) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['teamStage', 'runId'], message: 'team stage runId must match parent runId' })
     }
@@ -568,7 +602,9 @@ export const runRecordSchema = z
         configurable: true,
         writable: true
       })
-    }
+    } else value.schemaVersion = RUN_RECORD_SCHEMA_VERSION
+    if (value.bindingAdmission === undefined && value.bindingDigests !== undefined)
+      value.bindingAdmission = Object.keys(value.bindingDigests).length === 0 ? 'pending' : 'captured'
     return value as RunRecord
   })
 

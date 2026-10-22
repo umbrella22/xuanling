@@ -4,7 +4,7 @@ import * as ui from '../../src/client/features/authoring/logic/graph/flow-intera
 import { GraphEditor } from '../../src/client/features/authoring/logic/graph/graph-editor.ts'
 
 const definition = () => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'flow',
   name: 'Flow',
   resources: {},

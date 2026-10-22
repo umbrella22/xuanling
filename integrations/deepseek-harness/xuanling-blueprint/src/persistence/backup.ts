@@ -69,14 +69,35 @@ function collectTree(root: string, prefix: string, out: Map<string, Buffer>): vo
   }
 }
 
-/** Create a private backup of one runtime root (store/medium + lease are NOT
- * included — the lease is process state, not durable fact). */
+/** The workspace-native runtime root also contains the writer lease, host
+ * resource configuration and workflow definitions. Only these subtrees are
+ * part of the durable Run boundary; the lease is deliberately excluded so a
+ * restored medium never claims a writer that no longer exists. */
+const DIRECTORY_DURABLE_ROOTS = new Set(['runs', 'commands', 'lifecycle', 'snapshots', 'store'])
+const DIRECTORY_LAYOUT_MARKERS = new Set(['runs', 'commands', 'lifecycle', 'snapshots', 'coordinator-lease.json', 'root-bindings.json'])
+
+function collectDirectoryBoundary(root: string, out: Map<string, Buffer>): void {
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !DIRECTORY_DURABLE_ROOTS.has(entry.name)) continue
+    collectTree(join(root, entry.name), `${entry.name}/`, out)
+  }
+}
+
+/** Create a private backup of one runtime root (the JSON/SQLite `store/`
+ * medium or the workspace-native directory medium, plus no lease). */
 export function createBackup(runtimeRoot: string, options: { createdAt?: string } = {}): BackupResult {
   const root = resolve(runtimeRoot)
-  const store = join(root, 'store')
-  if (!existsSync(store)) throw new BackupIncompleteError(`runtime root has no store directory: ${store}`)
+  if (!existsSync(root)) throw new BackupIncompleteError(`runtime root has no durable run medium: ${root}`)
   const files = new Map<string, Buffer>()
-  collectTree(store, 'store/', files)
+  const rootEntries = readdirSync(root, { withFileTypes: true })
+  const directoryMedium = rootEntries.some(entry => DIRECTORY_LAYOUT_MARKERS.has(entry.name))
+  if (directoryMedium) {
+    collectDirectoryBoundary(root, files)
+  } else {
+    const storeEntry = rootEntries.find(entry => entry.name === 'store' && entry.isDirectory())
+    const store = storeEntry === undefined ? root : join(root, 'store')
+    collectTree(store, store === root ? '' : 'store/', files)
+  }
   const manifestFiles: Record<string, string> = {}
   for (const [path, bytes] of [...files.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
     manifestFiles[path] = sha256(bytes)
@@ -88,9 +109,9 @@ export function createBackup(runtimeRoot: string, options: { createdAt?: string 
     sourceRoot: root,
     files: manifestFiles
   }
-  const entries = [...files.entries()].map(([name, data]) => ({ name, data }))
-  entries.push({ name: 'backup.json', data: Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`) })
-  return { archive: writeZip(entries), manifest }
+  const archiveEntries = [...files.entries()].map(([name, data]) => ({ name, data }))
+  archiveEntries.push({ name: 'backup.json', data: Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`) })
+  return { archive: writeZip(archiveEntries), manifest }
 }
 
 export interface RestoreResult {

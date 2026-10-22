@@ -40,9 +40,8 @@ async function acknowledgePreview(page) {
 }
 const fixture = {
   async prepare({ root }) {
-    const blueprints = {}
     for (const kind of ['parallel', 'failure']) {
-      const id = `execution-sync-${kind}`, dir = join(root, id)
+      const id = `execution-sync-${kind}`, dir = join(root, '.xuanling', 'workflows', id)
       mkdirSync(dir, { mode: 0o700 })
       writeFileSync(join(dir, 'worker.md'), 'Follow the instruction in the input JSON. Do not use tools.\n')
       const worker = name => ({ id: name, kind: 'agentTask', agentRef: 'worker', outputs: { value: 'string' } })
@@ -50,9 +49,8 @@ const fixture = {
         nodes: [worker('a'), worker('b'), { id: 'merge', kind: 'join', join: 'all', inputs: { a: 'string', b: 'string' }, outputs: { a: 'string', b: 'string' } }],
         edges: [{ kind: 'data', from: 'a.value', to: 'merge.a' }, { kind: 'data', from: 'b.value', to: 'merge.b' }]
       } : { nodes: [{ ...worker('bad-output'), outputs: { value: 'json' } }], edges: [] }
-      writeFileSync(join(dir, 'blueprint.json'), JSON.stringify({ schemaVersion: 1, id, name: id,
+      writeFileSync(join(dir, 'blueprint.json'), JSON.stringify({ schemaVersion: 2, id, name: id,
         resources: { worker: { kind: 'agent', path: 'worker.md' } }, graph }))
-      blueprints[id] = dir
     }
     // First root turn is an explicit setup rejection. Subsequent root turns
     // and every Blueprint child use the actual provider without interception.
@@ -76,7 +74,7 @@ writeFileSync(${JSON.stringify(join(root, 'terminal-facts.json'))},JSON.stringif
 const seen=new Set();ctx.on('agent/pre-step',async({agent},next)=>{
 const decision=await next();if(agent.id.startsWith('execution-sync-source-')&&!seen.has(agent.id)){
 seen.add(agent.id);return {kind:'reject'};}return decision;},{prepend:true})}\n`)
-    return { blueprints, operatorModules: [policy] }
+    return { workspaceRoot: root, runtimeRoot: join(root, '.xuanling'), operatorModules: [policy] }
   }
 }
 

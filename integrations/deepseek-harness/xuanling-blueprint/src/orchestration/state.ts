@@ -15,6 +15,19 @@ export class IllegalTransitionError extends Error {
   }
 }
 
+/** The operator reviewed an older cut than the one now durable. */
+export class RecoveryStaleError extends Error {
+  override readonly name = 'RecoveryStaleError'
+  readonly code = 'RECOVERY_STALE'
+  constructor(
+    readonly runId: string,
+    readonly expectedSeq: number,
+    readonly actualSeq: number
+  ) {
+    super(`run ${runId} changed since review (expected seq ${expectedSeq}, actual ${actualSeq})`)
+  }
+}
+
 const ALLOWED: Record<RunState, readonly RunState[]> = {
   // Admission may settle before the scheduler gets a chance to dispatch
   // (for example a resource freeze failure or a structurally empty graph).

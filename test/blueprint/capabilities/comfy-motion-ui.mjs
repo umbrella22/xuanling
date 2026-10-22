@@ -50,7 +50,7 @@ function realFile(root, path) {
 function freshTime(at, start, end) { const t = Date.parse(at); return typeof at === 'string' && Number.isFinite(t) && t >= start && t <= end }
 
 export function motionDefinition(id = 'motion-ui', routed = false) {
-  return { schemaVersion: 1, id, name: `Motion UI-only · ${id}`, resources: {}, graph: {
+  return { schemaVersion: 2, id, name: `Motion UI-only · ${id}`, resources: {}, graph: {
     nodes: [{ id: 'source', kind: 'input', outputs: { 'part.中文': 'string' } }, { id: 'target', kind: 'output', inputs: { value: 'string' } },
       { id: 'gate', kind: 'condition', inputs: { predicate: 'boolean' }, branches: ['yes', 'no'], condition: { inputPort: 'predicate', trueBranch: 'yes', falseBranch: 'no' } },
       { id: 'yes', kind: 'output' }, { id: 'no', kind: 'output' }],
@@ -63,8 +63,8 @@ export function prepareCanvasFixtures(tempRoot, decode, validate) {
   const fixtures = baseFixtures(tempRoot, decode, validate)
   for (const definition of [motionDefinition(), motionDefinition('motion-routed', true)]) {
     validate(decode(JSON.stringify(definition)))
-    const dir = join(tempRoot, 'blueprints', definition.id); mkdirSync(dir, { recursive: true })
-    writeFileSync(join(dir, 'blueprint.json'), JSON.stringify(definition)); fixtures.config.blueprints[definition.id] = dir
+    const dir = join(tempRoot, '.xuanling', 'workflows', definition.id); mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'blueprint.json'), JSON.stringify(definition))
     fixtures.evidence.push({ ...fixtureEvidence(definition), generator: 'comfy-motion-ui.mjs:motionDefinition', providerEvidence: false })
   }
   return fixtures

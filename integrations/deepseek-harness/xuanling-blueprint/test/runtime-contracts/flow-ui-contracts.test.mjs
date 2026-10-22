@@ -42,7 +42,7 @@ import { flowAriaLabels, runStateTitle } from '../../src/client/features/authori
 const sha = value => createHash('sha256').update(value).digest('hex')
 const json = JSON.stringify
 const baseDefinition = (nodes, edges = [], resources = {}, id = 'flow-contracts') => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   id,
   name: '用户标题 / flow contracts',
   resources,
@@ -96,8 +96,9 @@ const terminal = run => ['succeeded', 'failed', 'cancelled', 'timed_out', 'waiti
 
 async function serviceFixture(t, definition = oldReadable(baseDefinition([{ id: 'source', kind: 'input', outputs: { value: 'string' } }]))) {
   const root = mkdtempSync(join(tmpdir(), 'bp-flow-contracts-'))
-  const packageRoot = join(root, 'package'),
-    runtimeRoot = join(root, 'runtime')
+  const packageRoot = join(root, '.xuanling', 'workflows', definition.id),
+    workspaceRoot = root,
+    runtimeRoot = join(root, '.xuanling')
   mkdirSync(join(packageRoot, 'lib'), { recursive: true })
   writeFileSync(join(packageRoot, 'blueprint.json'), json(definition))
   const ctx = new Context()
@@ -110,7 +111,7 @@ async function serviceFixture(t, definition = oldReadable(baseDefinition([{ id: 
       throw new Error('fixture: unexpected Agent dispatch')
     }
   })
-  const fiber = await ctx.plugin(BlueprintService, { blueprints: { [definition.id]: packageRoot }, runtimeRoot })
+  const fiber = await ctx.plugin(BlueprintService, { workspaceRoot, runtimeRoot })
   const service = ctx.blueprint
   const handle = await service.runtimeFor(runtimeRoot)
   let closed = false
@@ -193,7 +194,7 @@ test('C-05/C-08 strict codec: valid optional condition survives without changing
   assert.equal(error, undefined, 'C-05 CONDITION_CODEC_UNAVAILABLE: known optional condition is rejected as unknown-field')
   validateDefinition(decoded)
   assert.deepEqual(decoded.graph.nodes[0].condition, branchConfig)
-  assert.equal(decoded.schemaVersion, 1)
+  assert.equal(decoded.schemaVersion, 2)
   const extra = structuredClone(value)
   extra.graph.nodes[0].condition.expression = 'eval must never execute'
   assert.throws(

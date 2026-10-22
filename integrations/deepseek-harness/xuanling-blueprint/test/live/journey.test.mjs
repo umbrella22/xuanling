@@ -104,7 +104,7 @@ test('environment and profile are isolated; key/base/model/protocol never interp
   assert.equal(env.BP_LIVE_PROVIDER_KEY, synthetic.key)
   for (const name of ['OPENAI_API_KEY', 'DEEPSEEK_API_KEY', 'NODE_OPTIONS', 'HTTPS_PROXY']) assert.equal(env[name], undefined)
   const patch = profilePatch({
-    blueprintRoot: '/isolated/bp',
+    workspaceRoot: '/isolated/workspace',
     runtimeRoot: '/isolated/runtime',
     observerModule: '/isolated/observer.mjs',
     toolIds: ['tool-bash']
@@ -116,6 +116,8 @@ test('environment and profile are isolated; key/base/model/protocol never interp
   assert.match(patch, /plugins: \[\]/)
   assert.match(patch, /id: tool-bash\n  disabled: true/)
   assert.match(patch, /id: session-persistence-jsonl\n  disabled: true/)
+  assert.match(patch, /workspaceRoot/)
+  assert.equal(patch.includes('blueprints'), false)
 })
 
 test('import/ready/structural-only/provider placeholders cannot satisfy the journey oracle', () => {

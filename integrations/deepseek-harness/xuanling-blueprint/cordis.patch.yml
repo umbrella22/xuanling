@@ -1,6 +1,7 @@
-# Native blueprint editor and Host-managed library. Empty config supports
-# draft creation and a durable runtime under the profile data directory.
-# Executing Agent/tool nodes requires their declared resources and Host bindings.
+# Empty config resolves the default workspace through the Host workspace controller.
+# Without that capability, configure an absolute workspaceRoot explicitly.
+# Definitions and runtime are stored under <workspaceRoot>/.xuanling/.
+# Agent execution also requires the declared resources and Host bindings.
 - insert:
     - id: xuanling-blueprint
       name: '@xuanling-rs/xuanling-dsh-blueprint'

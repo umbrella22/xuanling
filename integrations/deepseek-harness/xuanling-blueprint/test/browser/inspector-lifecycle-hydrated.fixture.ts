@@ -7,7 +7,7 @@ import type { HostResourceCatalogEntry } from '../../src/client/adapters/host/re
 import { en, zh } from '../../src/client/shared/i18n/locales.ts'
 import { installCanvasStyles } from '../../src/client/shared/styles/styles.ts'
 const definition = {
-  schemaVersion: 1 as const,
+  schemaVersion: 2 as const,
   id: 'inspector-lifecycle',
   name: 'Inspector',
   resources: { local: { kind: 'agent' as const, path: 'agents/local.md' } },

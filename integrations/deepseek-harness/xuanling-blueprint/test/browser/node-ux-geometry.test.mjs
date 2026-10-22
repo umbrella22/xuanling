@@ -123,7 +123,7 @@ function panelRenderer(Panel, f, t) {
 
 async function fixture() {
   const d = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'Geometry',
     name: 'Synthetic',
     resources: { Agent: { kind: 'agent', source: { kind: 'host', id: 'literal-agent' } } },

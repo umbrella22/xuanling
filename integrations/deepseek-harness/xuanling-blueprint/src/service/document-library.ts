@@ -10,9 +10,11 @@ import {
   DocumentRevisionConflictError,
   loadDefinitionPackage,
   readPackageFiles,
+  restorePackageFiles,
   saveDefinitionDocument,
   type DefinitionDocument,
-  type DefinitionPackage
+  type DefinitionPackage,
+  type RevisionPackageFile
 } from '../definition/persist.ts'
 import type { BlueprintDefinition } from '../definition/types.ts'
 
@@ -126,6 +128,20 @@ export class BlueprintDocumentLibrary {
 
   saveDefinitionDocument(root: string, definition: BlueprintDefinition, expectedRevision: string | null): DefinitionDocument {
     return saveDefinitionDocument(root, definition, expectedRevision)
+  }
+
+  saveDefinitionDocumentWithHistory(
+    root: string,
+    definition: BlueprintDefinition,
+    expectedRevision: string | null,
+    history: { origin?: 'canvas' | 'conversation' | 'import' | 'revert'; message?: string },
+    packageFiles?: Map<string, Buffer>
+  ): DefinitionDocument {
+    return saveDefinitionDocument(root, definition, expectedRevision, history, packageFiles)
+  }
+
+  restorePackageFiles(root: string, packageFiles: Record<string, RevisionPackageFile>, cleanupPaths: string[] = []): void {
+    restorePackageFiles(root, packageFiles, cleanupPaths)
   }
 
   publishPackage(root: string, definition: BlueprintDefinition, files: Array<{ path: string; text: string }>): DefinitionDocument {

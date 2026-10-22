@@ -17,7 +17,7 @@ function runtimeRoot() {
 
 async function open(root) {
   const persistence = await import(join(helpers_packageRoot(), 'lib', 'persistence.js'))
-  const opened = await persistence.openBlueprintDomain({ backend: 'json', path: join(root, 'store') })
+  const opened = await persistence.openBlueprintDomain({ path: root })
   const store = new persistence.RunStore(opened.domain)
   return { persistence, opened, store }
 }
@@ -213,8 +213,10 @@ export async function getCases(helpers) {
         const taken = persistence.WriterLease.acquire(root)
         const takenOk = taken.ownerId !== 'old'
         // A live-PID lease must NOT be taken over even with a stale heartbeat.
+        // Use the parent process: this process's own PID with a foreign owner
+        // token is an earlier incarnation, not proof of a live owner.
         taken.release()
-        writeFileSync(leaseFile, JSON.stringify({ ownerId: 'live', pid: process.pid, startedAt: 1, runtimeRoot: root }))
+        writeFileSync(leaseFile, JSON.stringify({ ownerId: 'live', pid: process.ppid, startedAt: 1, runtimeRoot: root }))
         utimesSync(leaseFile, new Date(stale), new Date(stale))
         let liveHeld = false
         try {
@@ -268,7 +270,7 @@ export async function getCases(helpers) {
     run: async () => {
       const orchestration = await import(join(helpers_packageRoot(), 'lib', 'orchestration.js'))
       const definition = {
-        schemaVersion: 1,
+        schemaVersion: 2,
         id: 'branchy',
         name: 'branchy',
         resources: {},
@@ -314,7 +316,7 @@ export async function getCases(helpers) {
     run: async () => {
       const orchestration = await import(join(helpers_packageRoot(), 'lib', 'orchestration.js'))
       const definition = {
-        schemaVersion: 1,
+        schemaVersion: 2,
         id: 'cond',
         name: 'cond',
         resources: {},

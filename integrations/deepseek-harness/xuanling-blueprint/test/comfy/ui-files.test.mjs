@@ -3,7 +3,7 @@ import test from 'node:test'
 import { BlueprintWorkspace } from '../../src/client/features/authoring/logic/workspace/workspace-controller.ts'
 import { resolveBlueprintHost, BlueprintRemoteError } from '../../src/client/adapters/host/remote.ts'
 const definition = id => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   id,
   name: id,
   resources: {},

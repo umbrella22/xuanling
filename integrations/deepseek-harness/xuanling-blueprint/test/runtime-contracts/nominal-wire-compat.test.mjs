@@ -24,7 +24,7 @@ const values = [
   ['null', null]
 ]
 function graph(nodes, edges = []) {
-  return { schemaVersion: 1, id: 'nominal-wire', name: 'Nominal wire compatibility', resources: {}, graph: { nodes, edges } }
+  return { schemaVersion: 2, id: 'nominal-wire', name: 'Nominal wire compatibility', resources: {}, graph: { nodes, edges } }
 }
 function passThrough(type = nominal) {
   return graph(
@@ -69,8 +69,9 @@ function selectedJoin() {
 async function fixture(t, definition) {
   validateDefinition(decodeDefinition(json(definition)))
   const root = mkdtempSync(join(tmpdir(), 'bp-nominal-wire-'))
-  const packageRoot = join(root, 'package'),
-    runtimeRoot = join(root, 'runtime')
+  const packageRoot = join(root, '.xuanling', 'workflows', definition.id),
+    workspaceRoot = root,
+    runtimeRoot = join(root, '.xuanling')
   mkdirSync(packageRoot, { recursive: true })
   writeFileSync(join(packageRoot, 'blueprint.json'), json(definition))
   let fiber
@@ -85,7 +86,7 @@ async function fixture(t, definition) {
   h.reopen = async () => {
     await h.close()
     const ctx = new Context()
-    fiber = await ctx.plugin(BlueprintService, { blueprints: { [definition.id]: packageRoot }, runtimeRoot })
+    fiber = await ctx.plugin(BlueprintService, { workspaceRoot, runtimeRoot })
     h.service = ctx.blueprint
     h.handle = await h.service.runtimeFor(runtimeRoot)
     await h.handle.driverTail

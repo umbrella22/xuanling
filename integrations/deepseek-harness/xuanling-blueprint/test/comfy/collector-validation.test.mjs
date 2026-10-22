@@ -102,7 +102,7 @@ function emptyFixtureAssertion() {
 }
 test('empty archive fixture accepts actual owned macOS var alias while retaining exact lexical identity and initially-empty requirement', () => {
   const tempRoot = mkdtempSync(join(tmpdir(), 'xuanling-bp-probe-path-')),
-    empty = join(tempRoot, 'blueprints', 'comfy-empty')
+    empty = join(tempRoot, '.xuanling', 'workflows', 'comfy-empty')
   try {
     mkdirSync(empty, { recursive: true })
     if (process.platform === 'darwin') {
@@ -113,8 +113,8 @@ test('empty archive fixture accepts actual owned macOS var alias while retaining
       fixture = { tempRoot, empty, initiallyEmpty: true }
     assert.doesNotThrow(() => validate(fixture), 'OS_VAR_ALIAS_IS_NOT_FIXTURE_ESCAPE')
     assert.throws(() => validate({ ...fixture, initiallyEmpty: false }), /empty import fixture/)
-    assert.throws(() => validate({ ...fixture, empty: join(tempRoot, 'blueprints', 'identity-substitute') }), /empty import fixture/)
-    assert.throws(() => validate({ ...fixture, empty: `${tempRoot}/blueprints/../blueprints/comfy-empty` }), /empty import fixture/)
+    assert.throws(() => validate({ ...fixture, empty: join(tempRoot, '.xuanling', 'workflows', 'identity-substitute') }), /empty import fixture/)
+    assert.throws(() => validate({ ...fixture, empty: `${tempRoot}/.xuanling/workflows/../workflows/comfy-empty` }), /empty import fixture/)
   } finally {
     rmSync(tempRoot, { recursive: true, force: true })
   }
@@ -122,17 +122,18 @@ test('empty archive fixture accepts actual owned macOS var alias while retaining
 test('empty archive fixture rejects escaping target or parent symlink before canonical target lookup', () => {
   const tempRoot = mkdtempSync(join(tmpdir(), 'xuanling-bp-probe-path-')),
     foreign = mkdtempSync(join(tmpdir(), 'xuanling-bp-probe-path-foreign-'))
-  const blueprints = join(tempRoot, 'blueprints'),
-    empty = join(blueprints, 'comfy-empty'),
+  const workflows = join(tempRoot, '.xuanling', 'workflows'),
+    empty = join(workflows, 'comfy-empty'),
     validate = emptyFixtureAssertion()
   try {
-    mkdirSync(blueprints)
+    mkdirSync(workflows, { recursive: true })
     symlinkSync(foreign, empty)
     assert.throws(() => validate({ tempRoot, empty, initiallyEmpty: true }), /empty import fixture/)
     unlinkSync(empty)
-    rmSync(blueprints, { recursive: true })
+    rmSync(workflows, { recursive: true })
     mkdirSync(join(foreign, 'comfy-empty'))
-    symlinkSync(foreign, blueprints)
+    mkdirSync(join(tempRoot, '.xuanling'), { recursive: true })
+    symlinkSync(foreign, workflows)
     assert.throws(() => validate({ tempRoot, empty, initiallyEmpty: true }), /empty import fixture/)
   } finally {
     rmSync(tempRoot, { recursive: true, force: true })
@@ -1132,7 +1133,7 @@ test('group move mounted source preserves header-center path with fresh geometry
 function capturedGroupOracleInput() {
   const group = { id: 'g-6ho4etvu-31', label: '组.中文', nodeIds: ['source', 'wrong', 'zeroTask'] }
   const document = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'comfy-edit',
     name: 'Comfy · comfy-edit',
     resources: { shared: { kind: 'skill', source: { kind: 'shared', rootId: 'probe-skills', path: 'sample' } } },
@@ -1856,7 +1857,7 @@ function synthetic(t) {
       sameConfiguredId: 'comfy-empty',
       archiveIdRewritten: false,
       userData: false,
-      source: '/tmp/xuanling-bp-probe-synthetic/blueprints/comfy-empty',
+      source: '/tmp/xuanling-bp-probe-synthetic/.xuanling/workflows/comfy-empty',
       backup: '/tmp/xuanling-bp-probe-synthetic/backup'
     }
   }
@@ -2818,18 +2819,19 @@ test('new wrapper uses real decoder/validator, keeps original fixture and budget
     assert.equal(fixtures.evidence.find(e => e.id === 'canvas-performance').nodes, 200)
     assert.equal(fixtures.evidence.find(e => e.id === 'canvas-performance').edges, 300)
     assert.equal(fixtures.evidence.find(e => e.id === 'canvas-performance').resources, 20)
-    const edit = decodeDefinition(readFileSync(join(fixtures.config.blueprints['comfy-edit'], 'blueprint.json'), 'utf8'))
+    const workflowRoot = join(fixtures.config.workspaceRoot, '.xuanling', 'workflows')
+    const edit = decodeDefinition(readFileSync(join(workflowRoot, 'comfy-edit', 'blueprint.json'), 'utf8'))
     validateDefinition(edit)
     assert.equal(edit.graph.nodes.find(n => n.id === 'source').outputs['part.中文'], 'string')
     assert.equal(edit.graph.edges[0].to, 'sink.part.中文')
     assert.equal(edit.resources.shared.source.kind, 'shared')
     assert.equal(edit.resources.mcp.kind, 'mcp')
     assert.deepEqual(edit.graph.nodes.find(n => n.id === 'zeroTask').toolAllowlist, [])
-    assert.deepEqual(readdirSync(fixtures.config.blueprints['comfy-empty']), [])
+    assert.deepEqual(readdirSync(join(workflowRoot, 'comfy-empty')), [])
     const manifest = JSON.parse(readFileSync(join(f.dir, 'comfy-fixtures.json'), 'utf8'))
     assert.equal(manifest.seed.id, 'comfy-empty')
-    assert.equal(manifest.empty, fixtures.config.blueprints['comfy-empty'])
-    assert.equal(existsSync(join(fixtures.config.blueprints['probe-portable'], 'lib/agents/a.md')), true)
+    assert.equal(manifest.empty, join(workflowRoot, 'comfy-empty'))
+    assert.equal(existsSync(join(workflowRoot, 'probe-portable', 'lib/agents/a.md')), true)
   } finally {
     if (previous === undefined) delete process.env.BP_COMFY_ARTIFACT_DIR
     else process.env.BP_COMFY_ARTIFACT_DIR = previous

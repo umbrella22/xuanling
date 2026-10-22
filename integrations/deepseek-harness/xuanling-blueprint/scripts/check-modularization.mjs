@@ -860,6 +860,9 @@ function documents(graph) {
   const definitionUseCases = graph.load(resolve(graph.root, 'src/service/definition-use-cases.ts'))
   const definitionClass = graph.exported(definitionUseCases, 'BlueprintDefinitionUseCases').declaration
   requireFact(definitionClass.type === 'ClassDeclaration', 'DOCUMENT_WIRING_INCOMPLETE', 'Expected implemented BlueprintDefinitionUseCases class')
+  const applyService = graph.load(resolve(graph.root, 'src/service/apply-service.ts'))
+  const applyClass = graph.exported(applyService, 'ApplyService').declaration
+  requireFact(applyClass.type === 'ClassDeclaration', 'DOCUMENT_WIRING_INCOMPLETE', 'Expected implemented ApplyService class')
   const portabilityUseCases = graph.load(resolve(graph.root, 'src/service/portability-use-cases.ts'))
   const portabilityClass = graph.exported(portabilityUseCases, 'BlueprintPortabilityUseCases').declaration
   requireFact(portabilityClass.type === 'ClassDeclaration', 'DOCUMENT_WIRING_INCOMPLETE', 'Expected implemented BlueprintPortabilityUseCases class')
@@ -869,13 +872,15 @@ function documents(graph) {
   const portabilityBinding = [...service.imports].find(
     ([, entry]) => entry.source === './service/portability-use-cases.ts' && entry.imported === 'BlueprintPortabilityUseCases'
   )
-  requireFact(definitionBinding && portabilityBinding, 'DOCUMENT_WIRING_INCOMPLETE', 'Service must import the definition and portability collaborators')
+  const applyBinding = [...service.imports].find(([, entry]) => entry.source === './service/apply-service.ts' && entry.imported === 'ApplyService')
+  requireFact(definitionBinding && applyBinding && portabilityBinding, 'DOCUMENT_WIRING_INCOMPLETE', 'Service must import the definition, apply and portability collaborators')
   const definitionCreation = nodes(cl, node => node.type === 'NewExpression' && name(node.callee) === definitionBinding[0])
+  const applyCreation = nodes(cl, node => node.type === 'NewExpression' && name(node.callee) === applyBinding[0])
   const portabilityCreation = nodes(cl, node => node.type === 'NewExpression' && name(node.callee) === portabilityBinding[0])
   requireFact(
-    definitionCreation.length === 1 && portabilityCreation.length === 1,
+    definitionCreation.length === 1 && applyCreation.length === 1 && portabilityCreation.length === 1,
     'DOCUMENT_INSTANCE_COUNT',
-    'Service must construct one definition and one portability collaborator'
+    'Service must construct one definition, one apply and one portability collaborator'
   )
   const collaboratorField = creation => {
     let field
@@ -886,12 +891,12 @@ function documents(graph) {
     return field
   }
   const definitionField = collaboratorField(definitionCreation[0])
+  const applyField = collaboratorField(applyCreation[0])
   const portabilityField = collaboratorField(portabilityCreation[0])
-  requireFact(definitionField && portabilityField, 'DOCUMENT_INSTANCE_COUNT', 'Use-case collaborators must be retained on BlueprintService')
+  requireFact(definitionField && applyField && portabilityField, 'DOCUMENT_INSTANCE_COUNT', 'Use-case collaborators must be retained on BlueprintService')
   const definitionEntries = [
     'listDefinitions',
     'loadDefinition',
-    'saveDefinition',
     'createDefinition',
     'deleteDefinition',
     'describeBlueprint',
@@ -903,13 +908,20 @@ function documents(graph) {
     entry,
     path: reaches(methods, entry, edge => edge.path.startsWith(`this.${portabilityField}.`))
   }))
+  const applyRoutes = [
+    {
+      entry: 'saveDefinition',
+      path: reaches(methods, 'saveDefinition', edge => edge.path.startsWith(`this.${applyField}.`))
+    }
+  ]
   requireFact(
-    definitionRoutes.every(item => item.path.length) && portabilityRoutes.every(item => item.path.length),
+    definitionRoutes.every(item => item.path.length) && applyRoutes.every(item => item.path.length) && portabilityRoutes.every(item => item.path.length),
     'DOCUMENT_WIRING_INCOMPLETE',
-    'Definition and portability façade entries must reach their dedicated collaborators',
-    [...definitionRoutes, ...portabilityRoutes].filter(item => !item.path.length).map(item => graph.location(service, methods.get(item.entry), item.entry))
+    'Definition, apply and portability façade entries must reach their dedicated collaborators',
+    [...definitionRoutes, ...applyRoutes, ...portabilityRoutes].filter(item => !item.path.length).map(item => graph.location(service, methods.get(item.entry), item.entry))
   )
   const definitionMethods = methodTable(definitionClass)
+  const applyMethods = methodTable(applyClass)
   const portabilityMethods = methodTable(portabilityClass)
   requireFact(
     [
@@ -926,6 +938,7 @@ function documents(graph) {
     'DOCUMENT_WIRING_INCOMPLETE',
     'Dedicated use-case collaborators must retain implemented authoring and portability methods'
   )
+  requireFact(applyMethods.has('apply') && applyMethods.has('propose') && applyMethods.has('validate'), 'DOCUMENT_WIRING_INCOMPLETE', 'ApplyService must retain candidate validation, diff and CAS methods')
   requireFact(
     calls(definitionClass.body).some(call => member(call.callee)?.startsWith('this.context.documents.')) &&
       calls(portabilityClass.body).some(call => member(call.callee)?.startsWith('this.context.documents.')),
@@ -1062,6 +1075,7 @@ function documents(graph) {
   return [
     graph.location(service, creation, `this.${field}`),
     ...routes.map(item => ({ ...graph.location(service, methods.get(item.entry), item.entry), calls: item.path })),
+    ...applyRoutes.map(item => ({ ...graph.location(service, methods.get(item.entry), item.entry), calls: item.path })),
     graph.location(service, drains[0], `await this.${field}.drainLibrary`)
   ]
 }
@@ -1381,7 +1395,7 @@ function conversation(graph) {
  * canonical namespace modules. */
 function locale(graph) {
   const registry = graph.load(resolve(graph.root, 'src/client/shared/i18n/locales.ts'))
-  const namespaces = ['./conversation.ts', './commands.ts', './interaction.ts', './resources.ts', './inspector.ts', './document.ts']
+  const namespaces = ['./conversation.ts', './commands.ts', './interaction.ts', './resources.ts', './inspector.ts', './document.ts', './history.ts']
   const runtimeImports = source => [...registry.imports].filter(([, entry]) => entry.source === source && !entry.typeOnly)
   const missing = namespaces.filter(source => runtimeImports(source).length === 0)
   if (missing.length) {

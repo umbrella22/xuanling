@@ -98,8 +98,8 @@ export function computeRevision(input: RevisionInput): DefinitionRevision {
   const fileEntries = [...files.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
   const fileLines = fileEntries.map(([path, digest]) => `${path}\u0000${digest}\n`).join('')
   const semantic = sha256(
-    Buffer.concat([Buffer.from('xuanling-blueprint-semantic-v1\u0000'), Buffer.from(JSON.stringify(semanticProjection(definition))), Buffer.from(fileLines)])
+    Buffer.concat([Buffer.from('xuanling-blueprint-semantic-v2\u0000'), Buffer.from(JSON.stringify(semanticProjection(definition))), Buffer.from(fileLines)])
   )
-  const layout = sha256(Buffer.concat([Buffer.from('xuanling-blueprint-layout-v1\u0000'), Buffer.from(JSON.stringify(definition.presentation ?? null))]))
+  const layout = sha256(Buffer.concat([Buffer.from('xuanling-blueprint-layout-v2\u0000'), Buffer.from(JSON.stringify(definition.presentation ?? null))]))
   return { semantic, layout, files: Object.fromEntries(fileEntries) }
 }

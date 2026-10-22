@@ -158,7 +158,7 @@ const overlap = (a, b) =>
   Math.min(a.x + a.width, b.x + b.width) > Math.max(a.x, b.x) + 0.01 && Math.min(a.y + a.height, b.y + b.height) > Math.max(a.y, b.y) + 0.01
 async function fixture(valid = false) {
   const d = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'Collision',
     name: 'Synthetic',
     resources: {},
@@ -265,7 +265,7 @@ test('actual Panel shared/nested group title strips do not overlap each other or
 })
 test('actual GraphEditor explicit Apply resolves once, keeps manual route bytes and Undo restores canonical', () => {
   const d = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'Apply',
     name: 'Synthetic',
     resources: {},
@@ -310,7 +310,7 @@ test('actual GraphEditor explicit Apply resolves once, keeps manual route bytes 
 })
 test('pinned unsolved collision returns typed identities and remains atomic', () => {
   const d = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'Pinned',
     name: 'Synthetic',
     resources: {},
@@ -341,7 +341,7 @@ test('already valid canonical layout remains unmoved and Apply adds no history',
 import { CanvasInteractions } from '../../src/client/features/authoring/logic/graph/flow-interactions.ts'
 const commandFixture = () =>
   GraphEditor.fromDefinition({
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'Commands',
     name: 'Synthetic',
     resources: {},

@@ -181,7 +181,7 @@ async function fixture() {
   const { GraphEditor } = await import('../../src/client/features/authoring/logic/graph/graph-editor.ts')
   const api = await import('../../src/client/features/authoring/ui/inspector/inspector-composition.tsx')
   const definition = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'view',
     name: 'View',
     resources: { skill: { kind: 'skill', path: 'skills/中文.md', privateConfig: { token: 'REF_SECRET_SENTINEL' } } },

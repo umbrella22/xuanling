@@ -168,7 +168,7 @@ test('pending document load keeps snapshot definition visibility aligned with th
     documentRevision: 'document-one',
     semanticRevision: 'semantic-one',
     layoutRevision: 'layout-one',
-    definitionJson: JSON.stringify({ schemaVersion: 1, id: 'target', name: 'Target', resources: {}, graph: { nodes: [], edges: [] } })
+    definitionJson: JSON.stringify({ schemaVersion: 2, id: 'target', name: 'Target', resources: {}, graph: { nodes: [], edges: [] } })
   })
   await loading
   assert.deepEqual(value.getSnapshot().definition, value.definition)

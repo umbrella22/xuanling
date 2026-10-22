@@ -73,7 +73,7 @@ test('style fragment mutations report centralized and conversation wiring failur
 
 test('locale runtime dictionaries retain exact key parity after namespace assembly', async () => {
   const { zh, en } = await import('../../src/client/shared/i18n/locales.ts')
-  assert.equal(Object.keys(zh).length, 460)
+  assert.equal(Object.keys(zh).length, 570)
   assert.deepEqual(Object.keys(zh).sort(), Object.keys(en).sort())
   for (const key of Object.keys(zh)) assert.equal(typeof zh[key], 'string', key)
   for (const key of Object.keys(en)) assert.equal(typeof en[key], 'string', key)

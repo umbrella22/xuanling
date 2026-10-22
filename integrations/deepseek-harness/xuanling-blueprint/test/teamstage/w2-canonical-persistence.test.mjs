@@ -11,7 +11,7 @@ import { recordTeamEffectIntent, recordTeamEffectRecovery, recordTeamEffectResul
 
 const digest = value => createHash('sha256').update(value).digest('hex')
 const definition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'canonical-persistence',
   name: 'Canonical persistence',
   resources: {
@@ -41,7 +41,7 @@ const definition = {
 
 /** Every reopen closes the actual backend and opens a fresh Cordis context.
  * Backup is taken only while closed and restored into a different directory. */
-async function persistence(t, backend) {
+async function persistence(t, _backend) {
   const root = await mkdtemp(join(tmpdir(), 'blueprint-canonical-persistence-'))
   let runtimeRoot = join(root, 'runtime')
   let opened
@@ -49,8 +49,8 @@ async function persistence(t, backend) {
   let restoreNumber = 0
   const open = async () => {
     await mkdir(join(runtimeRoot, 'store'), { recursive: true })
-    const path = backend === 'json' ? join(runtimeRoot, 'store') : join(runtimeRoot, 'store', 'runs.sqlite')
-    opened = await openBlueprintDomain({ backend, path })
+    const path = join(runtimeRoot, 'store')
+    opened = await openBlueprintDomain({ path })
     store = new RunStore(opened.domain)
   }
   const close = async () => {
@@ -260,7 +260,7 @@ async function acceptFixture(p) {
   return { ...h, args, accepted }
 }
 
-for (const backend of ['json', 'sqlite']) {
+for (const backend of ['directory']) {
   test(`W2.7.1 C-06 ${backend} pending Team effect synchronizes the original Attempt after real reopen`, async t => {
     const p = await persistence(t, backend)
     const h = await teamFixture(p)

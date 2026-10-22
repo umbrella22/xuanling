@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { join } from 'node:path'
 
 const VALID_DEFINITION = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'code-review',
   name: '代码审查',
   resources: {
@@ -125,8 +125,21 @@ export async function getCases(helpers) {
     expect: 'pass',
     run: () => {
       const bad = JSON.parse(JSON.stringify(VALID_DEFINITION))
-      bad.schemaVersion = 2
-      const verdict = expectInvalid(() => def.decodeDefinition(JSON.stringify(bad)), 'schema-version', '/schemaVersion')
+      bad.schemaVersion = 1
+      const verdict = expectInvalid(() => def.decodeDefinition(JSON.stringify(bad)), 'definition-unsupported-version', '/schemaVersion')
+      return { ok: verdict.ok, ...(verdict.ok ? {} : { detail: verdict.detail }) }
+    }
+  })
+
+  cases.push({
+    id: 'D11',
+    title: 'T02: unknown executable step kind is rejected before validation with a located typed issue',
+    contract: 'C-02',
+    expect: 'pass',
+    run: () => {
+      const bad = JSON.parse(JSON.stringify(VALID_DEFINITION))
+      bad.graph.nodes[1].kind = 'scriptCall'
+      const verdict = expectInvalid(() => def.decodeDefinition(JSON.stringify(bad)), 'unsupported-step-kind', '/graph/nodes/1/kind')
       return { ok: verdict.ok, ...(verdict.ok ? {} : { detail: verdict.detail }) }
     }
   })

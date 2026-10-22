@@ -141,7 +141,7 @@ for (const [label, schema] of [
   })
 }
 
-test('C-08 control: schemaVersion=1 legacy plain AgentTask still completes and preserves explicit output', async t => {
+test('C-08 control: schemaVersion=2 plain AgentTask completes and preserves explicit output', async t => {
   const h = await harness(t)
   const { record } = await runSaved(h, definition([agentNode({ outputs: { answer: 'string' } })]))
   assert.equal(record.state, 'succeeded')

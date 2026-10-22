@@ -14,6 +14,7 @@ import {
   type RunSnapshotView
 } from '../conversation/contracts.ts'
 import { focusAttemptsForSession, projectRunSnapshot } from '../conversation/run-projection.ts'
+import { projectRunReport, type RunReport } from '../conversation/run-report.ts'
 import type { BlueprintDefinition } from '../definition/types.ts'
 import { RunLifecycleConflictError, RunNotFoundError } from '../persistence/run-store.ts'
 import type { RunStore } from '../persistence/run-store.ts'
@@ -40,12 +41,24 @@ export interface RunReadContext {
 export class RunReadService {
   constructor(private readonly context: RunReadContext) {}
 
-  async inspectRun(runId: string): Promise<RunSnapshotView> {
+  async inspectRun(runId: string, sessionId?: string): Promise<RunSnapshotView> {
     if (this.context.backgroundFailures.has(runId))
       throw new RemoteError('blueprint/durability-failed', 'background settlement unavailable', { operation: 'driver-settlement' })
     const record = await this.context.store.tryGet(runId)
-    if (record === undefined) throw new RemoteError('blueprint/run-not-found', `run ${runId} not found`, { runId })
+    if (record === undefined || (sessionId !== undefined && !runBelongsToSession(record, sessionId)))
+      throw new RemoteError('blueprint/run-not-found', `run ${runId} not found`, { runId })
     return projectRunSnapshot(record, this.context.teamRuntime(record))
+  }
+
+  /** Same ownership rules as inspectRun; projects the durable cut into a
+   * what-ran / what-failed / why / next-time report. */
+  async reportRun(runId: string, sessionId?: string): Promise<RunReport> {
+    if (this.context.backgroundFailures.has(runId))
+      throw new RemoteError('blueprint/durability-failed', 'background settlement unavailable', { operation: 'driver-settlement' })
+    const record = await this.context.store.tryGet(runId)
+    if (record === undefined || (sessionId !== undefined && !runBelongsToSession(record, sessionId)))
+      throw new RemoteError('blueprint/run-not-found', `run ${runId} not found`, { runId })
+    return projectRunReport(record, this.context.decodeDefinition)
   }
 
   async queryRuns(args: RunQueryArgs): Promise<RunQueryValue> {

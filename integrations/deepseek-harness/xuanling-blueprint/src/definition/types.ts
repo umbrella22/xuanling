@@ -8,7 +8,9 @@
  * skills unversioned).
  */
 
-export const SCHEMA_VERSION = 1
+/** The editable workflow contract is intentionally destructive: v1 documents
+ * are never decoded or migrated by the v2 runtime. */
+export const SCHEMA_VERSION = 2
 
 export type ResourceKind = 'agent' | 'prompt' | 'skill' | 'schema' | 'script' | 'mcp' | 'subflow'
 
@@ -154,6 +156,8 @@ export interface BlueprintDefinition {
 
 export type ValidationIssueCode =
   | 'schema-version'
+  | 'definition-unsupported-version'
+  | 'unsupported-step-kind'
   | 'unknown-field'
   | 'invalid-json'
   | 'missing-field'

@@ -16,6 +16,22 @@ export interface AdmissionIssue {
 const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i
 // eslint-disable-next-line no-control-regex -- NUL/control bytes must be detected, not matched casually
 const ILLEGAL_CHARS = /[<>:"|?*\u0000-\u001f]/
+/** Windows silently strips trailing dots and spaces, so `a.` and `a` collide. */
+const TRAILING_DOT_OR_SPACE = /[. ]$/
+
+/** Package-root names owned by the package itself: the canonical document and
+ * its bookkeeping directories. Compared after NFC + lowercase folding and
+ * Windows trailing dot/space stripping, because case-insensitive filesystems
+ * (default macOS APFS, Windows NTFS) resolve those spellings to the same entry. */
+const PACKAGE_RESERVED_ROOTS = new Set(['blueprint.json', '.revisions', '.candidates', '.library-state'])
+
+export function isPackageReservedPath(path: string): boolean {
+  const first = (path.split('/')[0] ?? '')
+    .normalize('NFC')
+    .toLowerCase()
+    .replace(/[. ]+$/, '')
+  return PACKAGE_RESERVED_ROOTS.has(first) || first.startsWith('.blueprint')
+}
 
 function checkPathSegments(refId: string, path: string, issues: AdmissionIssue[]): void {
   if (path.includes('\u0000')) {
@@ -32,6 +48,9 @@ function checkPathSegments(refId: string, path: string, issues: AdmissionIssue[]
     }
     if (ILLEGAL_CHARS.test(segment)) {
       issues.push({ code: 'reserved-path', message: `segment "${segment}" carries characters illegal on common platforms`, refId, path })
+    }
+    if (segment !== '.' && segment !== '..' && TRAILING_DOT_OR_SPACE.test(segment)) {
+      issues.push({ code: 'reserved-path', message: `segment "${segment}" ends with a dot or space, which Windows strips`, refId, path })
     }
   }
 }

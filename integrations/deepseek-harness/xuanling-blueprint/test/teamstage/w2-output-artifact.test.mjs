@@ -24,7 +24,7 @@ const schemaBytes = JSON.stringify(schema, null, 2)
 const resources = { agent: digest('frozen agent'), answer: digest(schemaBytes), $package: digest('package') }
 const value = { count: 2, answer: '确认\nUnicode 🐱' }
 const definition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'artifact-test',
   name: 'Artifact contract',
   resources: { agent: { kind: 'agent', path: 'lib/agents/agent.md' }, answer: { kind: 'schema', path: 'lib/schemas/answer.json' } },
@@ -50,7 +50,7 @@ const definition = {
   }
 }
 
-async function fixture(t, backend = 'json', options = {}) {
+async function fixture(t, backend = 'directory', options = {}) {
   const frozenSchema = options.schema ?? schema
   const frozenResources = { ...resources, answer: digest(JSON.stringify(frozenSchema, null, 2)) }
   const root = await mkdtemp(join(tmpdir(), 'blueprint-output-artifact-'))
@@ -58,7 +58,7 @@ async function fixture(t, backend = 'json', options = {}) {
   let opened, store, artifacts
   const open = async () => {
     await mkdir(join(runtimeRoot, 'store'), { recursive: true })
-    opened = await openBlueprintDomain({ backend, path: backend === 'json' ? join(runtimeRoot, 'store') : join(runtimeRoot, 'store', 'runs.sqlite') })
+    opened = await openBlueprintDomain({ path: runtimeRoot })
     store = new RunStore(opened.domain)
     artifacts = new TeamOutputArtifacts(runtimeRoot)
   }
@@ -221,7 +221,7 @@ async function fixture(t, backend = 'json', options = {}) {
   return h
 }
 
-for (const backend of ['json', 'sqlite']) {
+for (const backend of ['directory']) {
   test(`W2.7.2 ${backend}: available success diagnostics settle accepted with the original Attempt`, async t => {
     const diagnostics = {
       status: 'available',
@@ -624,6 +624,7 @@ for (const location of ['runtime-root', 'artifact-root', 'artifact-directory', '
   test(`W2.7.2: ${location} symlink is rejected and external sentinel is untouched`, async t => {
     const h = await fixture(t)
     const refs = await h.complete()
+    const before = await h.store.get(h.runId)
     const sentinel = join(h.root, 'sentinel')
     await mkdir(sentinel)
     await writeFile(join(sentinel, 'value.json'), 'external sentinel')
@@ -638,24 +639,27 @@ for (const location of ['runtime-root', 'artifact-root', 'artifact-directory', '
             : h.path(refs[0], location === 'value-file' ? 'value.json' : 'provenance.json')
     await rename(target, `${target}.saved`)
     await symlink(location.endsWith('file') ? join(sentinel, location === 'value-file' ? 'value.json' : 'provenance.json') : sentinel, target)
-    const before = await h.store.get(h.runId)
-    await assert.rejects(h.verify(), error => error.issueCode === 'artifact-physical-path-rejected')
-    assert.deepEqual(await h.store.get(h.runId), before)
+    await assert.rejects(h.verify(), error =>
+      location === 'runtime-root' ? error.code === 'DURABILITY_FAILED' : error.issueCode === 'artifact-physical-path-rejected'
+    )
+    if (location !== 'runtime-root') assert.deepEqual(await h.store.get(h.runId), before)
     assert.equal(await readFile(join(sentinel, 'value.json'), 'utf8'), 'external sentinel')
     assert.equal(await readFile(join(sentinel, 'provenance.json'), 'utf8'), 'external sentinel')
   })
 }
 
-test('W2.7.2: traversal artifact identity cannot access an external file', async t => {
+test('W2.7.2: traversal artifact identity is rejected at the durable boundary and cannot access an external file', async t => {
   const h = await fixture(t)
   await h.complete()
   const sentinel = join(h.root, 'external.json')
   await writeFile(sentinel, 'unchanged')
-  await h.store.transition(h.runId, draft => {
-    draft.teamStage.captures[0].artifactId = '../../external.json'
-  })
   const before = await h.store.get(h.runId)
-  await assert.rejects(h.verify(), error => error.issueCode === 'artifact-required-capture-missing')
+  await assert.rejects(
+    h.store.transition(h.runId, draft => {
+      draft.teamStage.captures[0].artifactId = '../../external.json'
+    }),
+    error => error.code === 'DURABILITY_FAILED'
+  )
   assert.deepEqual(await h.store.get(h.runId), before)
   assert.equal(await readFile(sentinel, 'utf8'), 'unchanged')
 })
@@ -684,12 +688,23 @@ test('W2.7.2: every provenance binding is checked before acceptance', async t =>
     evidence: { ...refs[0].evidence, producerSessionId: 'lead' }
   }
   for (const [field, changed] of Object.entries(changes)) {
+    const prior = await h.store.get(h.runId)
     const ref = { ...refs[0], [field]: changed }
     const { evidenceDigest: _, ...facts } = ref
     ref.evidenceDigest = captureEvidenceDigest(facts)
-    await h.store.transition(h.runId, draft => {
-      draft.teamStage.captures[0] = ref
-    })
+    let rejectedAtDurableBoundary = false
+    try {
+      await h.store.transition(h.runId, draft => {
+        draft.teamStage.captures[0] = ref
+      })
+    } catch (error) {
+      assert.equal(error.code, 'DURABILITY_FAILED', field)
+      rejectedAtDurableBoundary = true
+    }
+    if (rejectedAtDurableBoundary) {
+      assert.deepEqual(await h.store.get(h.runId), prior)
+      continue
+    }
     await writeFile(h.path(refs[0], 'provenance.json'), canonicalJson(ref))
     await assert.rejects(h.verify(), TeamArtifactError, field)
     assert.equal((await h.store.get(h.runId)).attempts[0].result, undefined)
@@ -725,7 +740,7 @@ test('W2.7.2: publication fsync order precedes canonical reference, and fsync fa
     await h.capture(h.reservations[0])
     const renameIndex = events.indexOf('rename')
     assert.equal(events.slice(0, renameIndex).filter(event => event === 'file-fsync').length, 2)
-    assert.deepEqual(events.slice(renameIndex), ['rename', 'dir-fsync', 'bind'])
+    assert.deepEqual(events.slice(renameIndex, renameIndex + 3), ['rename', 'dir-fsync', 'bind'])
     const before = await h.store.get(h.runId)
     await h.spawn(h.reservations[1])
     const ready = await h.store.get(h.runId)

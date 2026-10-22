@@ -18,7 +18,7 @@ const json = JSON.stringify
 const digest = value => createHash('sha256').update(value).digest('hex')
 const config = { inputPort: 'predicate', trueBranch: 'yes', falseBranch: 'no' }
 function graph(nodes, edges = []) {
-  const definition = { schemaVersion: 1, id: 'deterministic-runtime', name: 'Deterministic flow', resources: {}, graph: { nodes, edges } }
+  const definition = { schemaVersion: 2, id: 'deterministic-runtime', name: 'Deterministic flow', resources: {}, graph: { nodes, edges } }
   validateDefinition(decodeDefinition(json(definition)))
   return definition
 }
@@ -87,8 +87,9 @@ function mergeGraph({ controls = false, sharedPort = false, strategy } = {}) {
 }
 async function fixture(t, definition) {
   const root = mkdtempSync(join(tmpdir(), 'bp-deterministic-runtime-'))
-  const packageRoot = join(root, 'package'),
-    runtimeRoot = join(root, 'runtime')
+  const packageRoot = join(root, '.xuanling', 'workflows', definition.id),
+    workspaceRoot = root,
+    runtimeRoot = join(root, '.xuanling')
   mkdirSync(packageRoot, { recursive: true })
   writeFileSync(join(packageRoot, 'blueprint.json'), json(definition))
   const agentCalls = []
@@ -110,7 +111,7 @@ async function fixture(t, definition) {
         throw new Error('unexpected structural Agent dispatch')
       }
     })
-    fiber = await ctx.plugin(BlueprintService, { blueprints: { [definition.id]: packageRoot }, runtimeRoot })
+    fiber = await ctx.plugin(BlueprintService, { workspaceRoot, runtimeRoot })
     h.service = ctx.blueprint
     h.handle = await h.service.runtimeFor(runtimeRoot)
     await h.handle.driverTail

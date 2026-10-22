@@ -46,7 +46,7 @@ try {
         `import {writeFileSync} from 'node:fs';\nexport const inject=['agents'];\nexport function apply(ctx){const facts=[],errors=[];ctx.on('agent/error',({agent,error,turn,step})=>{const code=error?.info?.code??error?.code;const text=String(error?.message??'');errors.push({sessionId:agent.id,turn,step,name:['Error','TypeError','HarnessError','AbortError'].includes(error?.name)?error.name:'other',code:typeof code==='string'&&/^[A-Z_]{1,80}$/.test(code)?code:'unclassified',categories:['timeout','rate limit','tool','parse','json','abort','network','fetch','response','schema'].filter(k=>text.toLowerCase().includes(k))});writeFileSync(${JSON.stringify(errorsFile)},JSON.stringify(errors),{mode:0o600})});ctx.on('tools/result',(exec,result)=>{if(!exec.name.startsWith('blueprint_'))return;let value={};try{value=JSON.parse(result.content.map(c=>c.text??'').join(''))}catch{};facts.push({name:exec.name,sessionId:exec.agent.id,callId:exec.callId,isError:result.isError,blueprintId:value.blueprintId,runId:value.runId,canStart:value.canStart,validationOk:value.ok,errorCode:result.error?.info?.code});writeFileSync(${JSON.stringify(toolsFile)},JSON.stringify(facts),{mode:0o600})})}\n`,
         { mode: 0o600 }
       )
-      return { blueprints: {}, operatorModules: [observer] }
+      return { workspaceRoot: root, runtimeRoot: join(root, '.xuanling'), operatorModules: [observer] }
     }
   }
   profile = await prepareProfile({ mode: 'keyless', installMode: 'cli', pnpmExecutable: process.env.BP_AUTHORING_PNPM }, fixture, root, receipt.steps)
@@ -64,7 +64,7 @@ try {
   delete pi.disabled
   pi.config = { providers: { [model.provider]: provider } }
   entries.push({ id: 'agent-default-model', config: model })
-  entries.find(entry => entry.id === 'xuanling-blueprint').config = {}
+  entries.find(entry => entry.id === 'xuanling-blueprint').config = { workspaceRoot: root, runtimeRoot: join(root, '.xuanling'), skillRoots: [] }
   writeFileSync(overlay, yaml.dump(entries), { mode: 0o600 })
   writeFileSync(join(profile.home, 'dsh/.credentials.yaml'), yaml.dump({ version: credentials.version, refs: { [provider.apiKeyEnv]: key }, records: {} }), {
     mode: 0o600

@@ -175,7 +175,7 @@ async function fixture() {
   const commands = await import('../../src/client/features/authoring/logic/inspector/inspector-commands.ts')
   const { GraphEditor } = await import('../../src/client/features/authoring/logic/graph/graph-editor.ts')
   const definition = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'inspector',
     name: 'Exact / 中文',
     resources: {},

@@ -8,7 +8,7 @@ import { decodeDefinition, validateDefinition } from '../../src/definition/index
 import { documentRevisions } from '../../src/definition/document.ts'
 
 const definition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'fractional-layout',
   name: 'Fractional layout contract',
   resources: {

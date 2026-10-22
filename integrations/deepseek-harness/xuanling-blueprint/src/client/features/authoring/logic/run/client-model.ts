@@ -30,6 +30,8 @@ export interface RunSnapshotView {
   state: string
   seq: number
   definitionRevision: string
+  /** Admission-frozen binding digests (`node:<id>:<facet>` → sha256). */
+  bindingDigests?: Record<string, string> | undefined
   source?: RunSource | undefined
   team?: TeamStageProjection | undefined
   attempts: RunAttemptView[]

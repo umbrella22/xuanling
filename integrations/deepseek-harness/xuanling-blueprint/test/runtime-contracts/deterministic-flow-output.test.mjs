@@ -24,7 +24,7 @@ const staticBindingError = /^(?:input|binding|output)-(?:invalid|unavailable|mis
 
 function joinDefinition() {
   const value = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'deterministic-flow-output',
     name: 'Selected parent missing output',
     resources: {},
@@ -47,7 +47,7 @@ function joinDefinition() {
 
 function aggregateJoinDefinition() {
   const value = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'deterministic-flow-aggregate',
     name: 'Aggregate join output',
     resources: {},
@@ -79,8 +79,9 @@ function aggregateJoinDefinition() {
 
 async function serviceFixture(t, definition) {
   const root = mkdtempSync(join(tmpdir(), 'bp-selected-output-'))
-  const packageRoot = join(root, 'package')
-  const runtimeRoot = join(root, 'runtime')
+  const packageRoot = join(root, '.xuanling', 'workflows', definition.id)
+  const workspaceRoot = root
+  const runtimeRoot = join(root, '.xuanling')
   mkdirSync(packageRoot, { recursive: true })
   writeFileSync(join(packageRoot, 'blueprint.json'), json(definition))
   const ctx = new Context()
@@ -92,7 +93,7 @@ async function serviceFixture(t, definition) {
     }
   })
   const fiber = await ctx.plugin(BlueprintService, {
-    blueprints: { [definition.id]: packageRoot },
+    workspaceRoot,
     runtimeRoot
   })
   t.after(async () => {

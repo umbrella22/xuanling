@@ -65,8 +65,8 @@ Replace `web` with the profile you use.
 
 ```sh
 dsh plugin --profile web add \
-  @xuanling-rs/xuanling-dsh-memory@0.6.1 \
-  @xuanling-rs/xuanling-dsh-skills@0.6.1
+  @xuanling-rs/xuanling-dsh-memory@0.7.0 \
+  @xuanling-rs/xuanling-dsh-skills@0.7.0
 dsh --profile web --dump-config
 dsh web
 ```
@@ -81,8 +81,8 @@ fails startup when it is missing and never falls back to DSH's working directory
 
 ```sh
 dsh plugin --profile web add \
-  @xuanling-rs/xuanling-dsh-tools@0.6.1 \
-  @xuanling-rs/xuanling-dsh-skills@0.6.1
+  @xuanling-rs/xuanling-dsh-tools@0.7.0 \
+  @xuanling-rs/xuanling-dsh-skills@0.7.0
 export XUANLING_WORKSPACE_ROOT=/absolute/path/to/project
 dsh web
 ```
@@ -94,8 +94,8 @@ Same workspace-root requirement. This bundle disables the native `tool-fs` row; 
 
 ```sh
 dsh plugin --profile web add \
-  @xuanling-rs/xuanling-dsh-tools-replace@0.6.1 \
-  @xuanling-rs/xuanling-dsh-skills@0.6.1
+  @xuanling-rs/xuanling-dsh-tools-replace@0.7.0 \
+  @xuanling-rs/xuanling-dsh-skills@0.7.0
 export XUANLING_WORKSPACE_ROOT=/absolute/path/to/project
 dsh web
 ```
@@ -103,8 +103,8 @@ dsh web
 ### Blueprint (optional)
 
 ```sh
-pnpm add --save-exact @xuanling-rs/xuanling-dsh-blueprint@0.6.1
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.6.1
+pnpm add --save-exact @xuanling-rs/xuanling-dsh-blueprint@0.7.0
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.7.0
 ```
 
 TeamStage needs the native Agent Teams profile enabled separately.
@@ -138,6 +138,9 @@ Install into the profile that serves the UI you use. `web` and `headless` are th
 and each keeps its own package set. Use `dsh plugin --profile <profile> list` to inspect installed
 plugins and `dsh plugin --profile <profile> remove <package>` to remove one; restart after a change.
 
+Profile-local `@xuanling-rs/xuanling-mcp@0.7.0` is installed by the selected runtime bundle and
+resolved from that profile's dependencies.
+
 ### Memory, files and Skills
 
 Memory v2 is proposal-first: `memory_search` and `memory_get` read active records, the
@@ -152,7 +155,8 @@ and bounded output. The replacement bundle projects `read`, `write`, `edit`, `re
 
 `xuanling-skills` adds `xuanling-memory-workflow` (project-local facts in DSH file memory,
 cross-project facts in XuanLing), `xuanling-file-workflow` (routes between native and XuanLing file
-tools), and the strict overwrite policy that rejects `fs_write_text` overwrites without
+tools), `xuanling-blueprint-migrate` (assisted Blueprint upgrades, included in `0.7.0`), and the
+strict overwrite policy that rejects `fs_write_text` overwrites without
 `expected_sha256`. See the [skills bundle](xuanling-skills/README.md).
 
 ## How it works
@@ -170,10 +174,10 @@ replacement facade are described in the [bundle READMEs](#links).
 - The bundles are developed and tested against DSH `0.2.1-rc.2` from the `next` channel.
 - The public runtime peer floor is `@deepseek-ai/dsh-* >=0.2.1-alpha.5`, with prereleases included in
   range checks.
-- The `0.6.1` packages currently published to npm target an earlier DSH channel. Published packages
-  can lag this repository, and a newer DSH profile can disable an incompatible plugin instead of
-  starting it. Install a version whose declared DSH range matches your profile, and keep every
-  `@deepseek-ai/dsh-*` package in one profile on the same channel.
+- Release `0.7.0` targets this capability channel. The earlier `0.6.1` packages declare an older DSH
+  range. Install a version whose declared range matches your profile, and keep every
+  `@deepseek-ai/dsh-*` package in one profile on the same channel. DSH can disable an incompatible
+  plugin instead of starting it.
 
 ### Limits
 

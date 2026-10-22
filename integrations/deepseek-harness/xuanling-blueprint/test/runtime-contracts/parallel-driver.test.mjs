@@ -10,7 +10,6 @@ import { BlueprintService } from '../../src/index.ts'
 import { readyNodes } from '../../src/orchestration/scheduler.ts'
 import { reconcileOnStart } from '../../src/orchestration/recovery.ts'
 import { openBlueprintDomain, RunStore, DurabilityFailureError } from '../../src/persistence/index.ts'
-import { join } from 'node:path'
 import { harness, agentResources, definition, runArgs } from './agent-fixtures.mjs'
 
 const completed = { kind: 'completed' }
@@ -254,7 +253,7 @@ test('C-01 unknown sibling cancellation remains recovery_required across reopen 
     // Release only the scripted physical Agent for teardown. It cannot change
     // the already persisted unknown outcome; then close the actual owner.
     await f.cleanup()
-    const opened = await openBlueprintDomain({ backend: 'json', path: join(f.h.runtimeRoot, 'store') })
+    const opened = await openBlueprintDomain({ path: f.h.runtimeRoot })
     try {
       assert.notEqual(opened.domain, previousDomain)
       const store = new RunStore(opened.domain)
@@ -460,7 +459,12 @@ test('C-01 cancel drains an already-started resource preparation without late in
       beforeStart: handle => {
         const prepare = handle.snapshots.prepare.bind(handle.snapshots)
         t.mock.method(handle.snapshots, 'prepare', async (...args) => {
-          if (args[2].id === 'b') {
+          // Admission now resolves every Agent binding before the Run is
+          // queued. Hold only the live execution preparation after the Run
+          // has entered `running`, otherwise the admission snapshot would be
+          // mistaken for the deferred Attempt preparation.
+          const current = await handle.store.get(args[0])
+          if (args[2].id === 'b' && current.state === 'running') {
             entered.resolve()
             await preparation.promise
           }

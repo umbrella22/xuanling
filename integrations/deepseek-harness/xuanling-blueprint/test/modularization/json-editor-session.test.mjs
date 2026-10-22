@@ -26,7 +26,7 @@ import { JsonEditorView, JsonEditor } from '../../src/client/features/authoring/
 
 test('typed JSON adapter preserves malformed draft text and delegates invalid commit rejection to semantic validation', async t => {
   const definition = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'bp',
     name: 'Blueprint',
     resources: {},

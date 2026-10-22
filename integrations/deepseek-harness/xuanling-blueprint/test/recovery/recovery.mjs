@@ -21,7 +21,7 @@ export async function getCases(helpers) {
     const portability = await import(join(packageRoot, 'lib', 'portability.js'))
 
     const makeStore = async root => {
-      const opened = await persistence.openBlueprintDomain({ backend: 'json', path: join(root, 'store') })
+      const opened = await persistence.openBlueprintDomain({ path: root })
       return { opened, store: new persistence.RunStore(opened.domain) }
     }
 

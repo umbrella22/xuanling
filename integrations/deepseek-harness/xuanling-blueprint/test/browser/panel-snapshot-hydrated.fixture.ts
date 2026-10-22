@@ -31,7 +31,7 @@ React.createElement = new Proxy(React.createElement, {
 const { createBlueprintPanel } = await import('../../src/client/features/authoring/ui/panel/panel-composition.tsx')
 const calls: unknown[][] = []
 const definition = (id: string) => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   id,
   name: id,
   resources: {},

@@ -4,6 +4,63 @@ All notable release changes are recorded here. XuanLing uses immutable release
 tags and publishes the launcher, native packages, DeepSeek Harness bundles, and
 ZCode projection from the same source commit.
 
+## 0.7.0 - 2026-10-22
+
+### Breaking
+
+- Blueprint definitions now use schema v2. Definitions saved by the published
+  `0.6.1` Blueprint package (schema v1, including `toolCall`, `scriptCall`,
+  `subflow` and `iteration` nodes) are rejected with
+  `blueprint/definition-invalid` and cannot be opened or run without migration.
+  All XuanLing packages share the `0.7.0` release version. There is no automatic
+  migration; use the migration Skill to prepare and validate a separate copy,
+  or keep `0.6.1` for the original workflows.
+
+### Added
+
+- The `xuanling-blueprint-migrate` Skill ships in the DSH skills bundle. It guides
+  schema v1-to-v2 and legacy profile-storage upgrades, preserves the original
+  package and Run history, validates resources and inputs, and records rollback
+  steps. Removed execution semantics require an explicit redesign rather than
+  only changing the schema version.
+- `workflow_report` returns an execution report instead of the raw snapshot:
+  what ran (state, duration, model route per step), which step failed, why, and
+  what to change next time. It carries stable codes, fixed guidance and the
+  bounded operator recovery note; raw evidence, outputs and provider text are
+  never included.
+- `resolveRecovery` lets a person move a `recovery_required` Run to `failed` or
+  `succeeded` with a required note, guarded by `expectedSeq`. The note is the
+  audit record; the unknown effect is never replayed. The conversation
+  Blueprint view offers the same decision for Runs created in its workspace.
+  TeamStage recoveries are still rejected and need manual Team cleanup.
+- The Blueprint sidebar shows revision history with a structural diff and a
+  CAS-guarded restore (`restoreDefinitionRevision`), a Run report with
+  localized guidance, recovery actions, and per-node resource provenance with
+  the binding digests frozen by the latest Run. The structural diff also warns
+  when only packaged resource files differ, because restoring then reverts
+  those files too.
+
+### Changed
+
+- DSH development and harness dependencies are aligned to `0.2.1-rc.2`; the
+  public runtime peer floor is `>=0.2.1-alpha.5`, with prereleases included in
+  compatibility checks.
+- Blueprint output token limits follow the selected model's DSH/Provider
+  configuration. Blueprint adds no separate model output budget.
+- Conversation tools and conversation Blueprint views follow the calling
+  session's registered DSH workspace instead of always using the Host default.
+  This includes Run history pagination, archive/restore and recovery for
+  conversation-created Runs; calls the Host cannot attribute fall back to the
+  Host default workspace. The sidebar editor still uses the Host default; an
+  explicit `workspaceRoot` still pins every call.
+
+### Fixed
+
+- Standalone Runs without a source conversation explain why node chat history
+  is unavailable and disable the chat button before interaction. Node outputs
+  and Run reports remain available; conversation-created Runs retain native
+  chat navigation.
+
 ## 0.6.1 - 2026-10-15
 
 ### Changed

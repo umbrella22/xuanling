@@ -87,6 +87,7 @@ export interface HostLink {
   createDefinition?(requestId: string, definitionJson: string): Promise<DefinitionDocument>
   deleteDefinition?(blueprintId: string, expectedRevision: string, requestId: string): Promise<{ blueprintId: string; deleted: true }>
   saveDefinition(blueprintId: string, definitionJson: string, expectedRevision: string | null): Promise<DefinitionDocument>
+  restoreDefinitionRevision?(blueprintId: string, revision: string, expectedRevision: string): Promise<DefinitionDocument>
   validate(definitionJson: string): Promise<{ ok: true; semanticRevision: string }>
   preflightRun(blueprintId: string, expectedRevision: string, inputJson: string): Promise<PreflightRunValue>
   startRun(blueprintId: string, expectedRevision: string, inputJson: string, requestId: string): Promise<RunAdmission>
@@ -95,12 +96,28 @@ export interface HostLink {
   archiveRun(runId: string): Promise<RunLifecycleActionValue>
   restoreRun(runId: string): Promise<RunLifecycleActionValue>
   cancelRun(runId: string): Promise<{ runId: string; state: string }>
+  resolveRecovery?(args: {
+    runId: string
+    resolution: 'failed' | 'succeeded' | 'cancelled'
+    note: string
+    expectedSeq: number
+  }): Promise<{ runId: string; state: string; seq: number; applied: boolean }>
   decide(runId: string, decisionId: string, action: 'approve' | 'reject'): Promise<{ runId: string; decisionId: string; state: string; applied: boolean }>
   startTeamStage(args: StartTeamStageArgs): Promise<TeamStageActionView>
   cancelTeamStage(args: CancelTeamStageArgs): Promise<TeamStageActionView>
   acceptTeamStageOutput(args: AcceptTeamStageOutputArgs): Promise<TeamStageActionView>
   exportDefinition?(blueprintId: string): Promise<BlueprintArchive>
   importDefinition?(blueprintId: string, archiveBase64: string): Promise<BlueprintImport>
+  workflowList?(): Promise<CatalogValue>
+  workflowGet?(workflowId: string): Promise<unknown>
+  workflowValidate?(workflowId: string, definitionJson: string): Promise<unknown>
+  workflowPropose?(args: Record<string, unknown>): Promise<unknown>
+  workflowApply?(args: Record<string, unknown>): Promise<unknown>
+  workflowRevisions?(workflowId: string): Promise<unknown>
+  workflowRevert?(args: Record<string, unknown>): Promise<unknown>
+  workflowRun?(args: Record<string, unknown>): Promise<unknown>
+  workflowInspect?(runId: string): Promise<unknown>
+  workflowReport?(runId: string): Promise<unknown>
 }
 export function resolveBlueprintHost(context: { get?: (key: string) => unknown }): HostLink | undefined {
   // Native Cordis authorizes the declared namespace, not a nested root read.
@@ -117,17 +134,20 @@ export function resolveBlueprintHost(context: { get?: (key: string) => unknown }
     if (
       method === 'deleteDefinition' ||
       method === 'createDefinition' ||
+      method === 'restoreDefinitionRevision' ||
       method === 'preflightRun' ||
       method === 'inspectRun' ||
       method === 'queryRuns' ||
       method === 'archiveRun' ||
       method === 'restoreRun' ||
+      method === 'resolveRecovery' ||
       method === 'exportDefinition' ||
       method === 'importDefinition' ||
       method === 'listResources' ||
       method === 'startTeamStage' ||
       method === 'cancelTeamStage' ||
-      method === 'acceptTeamStageOutput'
+      method === 'acceptTeamStageOutput' ||
+      method.startsWith('workflow')
     ) {
       const descriptor = BLUEPRINT_INVOCATIONS.find(item => item.method === method)!
       const parsed = descriptor.result.create().safeParse(result.value)
@@ -145,6 +165,7 @@ export function resolveBlueprintHost(context: { get?: (key: string) => unknown }
     createDefinition: (requestId, definitionJson) => invoke('createDefinition', { requestId, definitionJson }),
     deleteDefinition: (blueprintId, expectedRevision, requestId) => invoke('deleteDefinition', { blueprintId, expectedRevision, requestId }),
     saveDefinition: (blueprintId, definitionJson, expectedRevision) => invoke('saveDefinition', { blueprintId, definitionJson, expectedRevision }),
+    restoreDefinitionRevision: (blueprintId, revision, expectedRevision) => invoke('restoreDefinitionRevision', { blueprintId, revision, expectedRevision }),
     validate: definitionJson => invoke('validate', { definitionJson }),
     preflightRun: (blueprintId, expectedRevision, inputJson) => invoke('preflightRun', { blueprintId, expectedRevision, inputJson }),
     startRun: (blueprintId, expectedRevision, inputJson, requestId) => invoke('startRun', { blueprintId, expectedRevision, inputJson, requestId }),
@@ -153,9 +174,20 @@ export function resolveBlueprintHost(context: { get?: (key: string) => unknown }
     archiveRun: runId => invoke('archiveRun', { runId }),
     restoreRun: runId => invoke('restoreRun', { runId }),
     cancelRun: runId => invoke('cancelRun', { runId }),
+    resolveRecovery: args => invoke('resolveRecovery', args),
     decide: (runId, decisionId, action) => invoke('decide', { runId, decisionId, action }),
     startTeamStage: args => invoke('startTeamStage', args),
     cancelTeamStage: args => invoke('cancelTeamStage', args),
-    acceptTeamStageOutput: args => invoke('acceptTeamStageOutput', args)
+    acceptTeamStageOutput: args => invoke('acceptTeamStageOutput', args),
+    workflowList: () => invoke('workflowList'),
+    workflowGet: workflowId => invoke('workflowGet', { workflowId }),
+    workflowValidate: (workflowId, definitionJson) => invoke('workflowValidate', { workflowId, definitionJson }),
+    workflowPropose: args => invoke('workflowPropose', args),
+    workflowApply: args => invoke('workflowApply', args),
+    workflowRevisions: workflowId => invoke('workflowRevisions', { workflowId }),
+    workflowRevert: args => invoke('workflowRevert', args),
+    workflowRun: args => invoke('workflowRun', args),
+    workflowInspect: runId => invoke('workflowInspect', { runId }),
+    workflowReport: runId => invoke('workflowReport', { runId })
   }
 }

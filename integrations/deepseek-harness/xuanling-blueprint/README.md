@@ -26,7 +26,8 @@ light/dark theme settings.*
 - **DSH-native resources.** Bind existing Agent presets, Skills and exact MCP tool identities
   available to the profile. The resource sidebar groups Agent, Skill, MCP and other resources.
 - **Per-task model routes.** Keep the DSH default or pin Provider, Model and Reasoning effort from
-  the DSH model catalog. Each new Attempt records the route it actually used.
+  the DSH model catalog. Each new Attempt records the route it actually used. Output token limits
+  follow the selected model's DSH/provider configuration; Blueprint adds no separate output budget.
 - **Durable Runs and Attempts.** The definition revision and package resources are frozen at
   admission. Every dispatch writes an intent before the external effect and a result after it.
   Reloading or inspecting a Run never resends work.
@@ -53,18 +54,57 @@ light/dark theme settings.*
 Install the published package into the same profile that serves your DSH Web UI:
 
 ```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.6.1
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.7.0
 ```
 
 Restart that profile and refresh the DSH page. Replace `web` with the profile you use. A new custom
 profile contains only the base bundle and does not include the Web application.
 
-The published `0.6.1` package declares the older DSH `0.2.1-alpha.3` peer set. To run this
-revision on the current DSH `next` channel, install the linked checkout build described under
-[Development](#development). This README follows the current main branch; the published package can
-lag behind it.
+Release `0.7.0` targets the DSH `next` capability channel, with development and harness dependencies
+pinned to `0.2.1-rc.2` and a public runtime peer floor of `>=0.2.1-alpha.5`. Keep DSH packages within
+one profile on the same channel. See [Development](#development) for a linked checkout build.
+
+**Compatibility break.** Release `0.7.0` uses definition schema v2. Definitions saved by the
+published `0.6.1` package (schema v1, including the removed `toolCall`, `scriptCall`, `subflow` and
+`iteration` nodes) are rejected with `blueprint/definition-invalid` and cannot be opened or run.
+Use the [Blueprint migration Skill](../xuanling-skills/skills/xuanling-blueprint-migrate/SKILL.md)
+to prepare and validate a separate copy, or keep using `0.6.1` for the original workflows.
+Migration is manual; installing the new package does not rewrite definitions or Run history.
 
 TeamStage additionally requires the native Agent Teams profile to be enabled explicitly.
+
+
+The default configuration resolves the default workspace through DSH's workspace controller.
+Definitions live in `<workspace>/.xuanling/workflows`; Run records live in
+`<workspace>/.xuanling/runs`. For a headless profile without that controller, set an absolute
+`workspaceRoot` in this plugin's configuration. Definition operations report
+`blueprint/capability-unavailable` when no workspace can be resolved. `runtimeRoot` can override
+Run storage independently; it does not select the definition library.
+
+Conversation tools and conversation Blueprint views follow the calling session's workspace: the
+Host resolves the registered DSH workspace that owns the session (child step sessions fall back to
+the registered workspace containing their cwd) and reads or writes that workspace's `.xuanling`
+data. This covers definition operations, Run history pagination, archive/restore and recovery for
+conversation-created Runs. An unregistered cwd never becomes a definition root. Calls the Host
+cannot attribute (an unregistered cwd, or a profile without the Workspace registry) fall back to
+the Host default workspace. The sidebar editor, which is not tied to a session, still uses the Host
+default workspace. An explicit `workspaceRoot` pins every call to that root.
+
+Conversation `workflow_apply` and `workflow_revert` require Host approval. Apply requires the
+`expectedRevision` returned by the last read. Origin labels and JSON parameters cannot grant
+approval. Revision history includes package bytes; reverting restores those bytes and removes
+subsequent package files. Old history without a captured closure returns
+`revision-package-unavailable`. If a resource restore is interrupted, reads replay its durable
+commit before exposing the document; a blocked replay reports `DEFINITION_COMMIT_PENDING`.
+
+New Run records use record schema 2. Valid markerless and record-v1 records with current frozen
+definitions remain readable and upgrade on write; frozen definition-v1 Runs remain lazy archives.
+Interrupted binding admission requires recovery and never dispatches with a new Host snapshot.
+On POSIX, durable writers fsync files and changed parent directories. On Windows, Node has no
+portable directory fsync: file contents are flushed, but power-loss persistence of directory
+entries has no equivalent guarantee. Host Agent presets backed by readable documents include a
+content digest in binding facts; opaque presets are pinned by identity only, so Host-side prompt
+or body changes that keep the same preset id are not detected as binding drift.
 
 ## First workflow
 
@@ -162,7 +202,9 @@ an outcome the Host cannot confirm becomes `recovery_required` instead of a fabr
 Independent ready nodes execute concurrently. The plugin setting `maxConcurrentNodes` defaults to
 `4` and accepts a positive safe integer; set it to `1` for serial execution. A completed node frees
 its slot immediately, so a fast branch can advance while another branch is still running. Runs
-sharing one runtime remain queued in order.
+sharing one runtime remain queued in order. When an agent tool call asks for a new Run while
+`maxQueuedToolRuns` (default `8`) Runs are already running or queued, admission is blocked with
+the `active-run-limit` preflight check; Runs started from the UI are not limited.
 
 ## Canvas, resources and the Inspector
 
@@ -171,6 +213,28 @@ Skill, Toolset, output-schema and model-route controls. Input, Output, Condition
 nodes hide execution bindings; original references remain in the definition and stay subject to
 Host preflight. A node without a declared toolset has no business tools; Host permissions and
 approvals still apply to selected tools. Preflight does not establish MCP reachability or approval.
+
+**Resource provenance** in the Inspector lists where each resource the node references comes
+from (package path, shared skill root, or Host identity) and the binding digests the latest Run
+froze for that node. Resources outside the workflow package are flagged: editing them changes every
+workflow that references them. Copy such a resource into the package before editing it when the
+workflow must stay stable; the Inspector does not yet perform that copy for you. TeamStage member
+Agents and Host-bound MCP references are listed too (as Host identity, not package paths).
+
+**Revision history** in the sidebar lists saved revisions with their origin (canvas or
+conversation), a structural diff against the current document (nodes, edges, resources, name, or
+layout only), and **Restore this revision**. Restore uses the same trust as a canvas save, requires
+the current `expectedRevision`, restores the revision's package files, and is disabled while the
+canvas has unsaved edits. Revisions are content-addressed, so restoring an earlier revision brings
+back its original revision id and the later one stays restorable. When the definition structure is
+identical and only packaged resource files differ, the diff says so instead of claiming the
+revision is the same: restoring that revision reverts those files.
+
+**Run report** in the Durable Run section explains what ran (state, duration and model route per
+step), which step went wrong, why, and what to change next time. The same report is available to
+the Agent through `workflow_report`. It carries stable codes, fixed guidance for known codes, and
+the bounded operator recovery note; raw evidence, outputs, provider text and child step session IDs
+are never included.
 
 **Port visibility and connections** toggles control inputs, data inputs and data outputs
 independently. These switches affect visibility and new connections only. They do not delete port
@@ -263,6 +327,15 @@ declares references only; it does not create package-local Agent, Skill or schem
 
 ## Share and migrate workflows
 
+For legacy definition upgrades, use the
+[xuanling-blueprint-migrate Skill](../xuanling-skills/skills/xuanling-blueprint-migrate/SKILL.md)
+from the skills bundle. It guides backup, semantic review, a complete upgraded
+copy, validation and destination bindings; the runtime does not auto-migrate
+v1 definitions. Removed node behavior requires a reviewed redesign, and old
+Run history stays unchanged. The Skill is in this checkout for the next release;
+see [setup and an example request](../xuanling-skills/README.md#upgrade-blueprint-definitions)
+to use it now. ZIP import below expects a valid target-format package.
+
 Open **More actions → Files** to export or import a complete ZIP.
 
 - **Export ZIP package** saves edits and packages declared resources. Custom DSH Agent presets,
@@ -285,9 +358,10 @@ Open **More actions → Files** to export or import a complete ZIP.
 | A Block or a missing resource | Read **Run checks**, configure the dependency and check again. |
 | Provider or model error at run time | Configure the model provider in DSH, then check and run again. |
 | Stale checks | Save the current graph and input, then check again. |
+| Step chat is disabled for a standalone Run | This Run has no source conversation. Inspect its node outputs and Run report; start a new Run from a conversation when chat history is needed. |
 | Waiting for input | Use **Approve** or **Reject** in the sidebar's Durable Run section. |
 | Offline or read failure | Restore the connection and refresh or reconnect; inspect confirmed Run facts. |
-| `recovery_required` | Preserve the Run ID and review external effects with the Host operator before another run. |
+| `recovery_required` | Open the step session and confirm what actually happened. Then write a note and choose **Mark as failed** or **Mark as succeeded** in the Durable Run section, or in the conversation Blueprint view for a conversation-created Run. The note is stored in the Run log; nothing is replayed. TeamStage recoveries still need manual Team cleanup. |
 | Import refused | The target must be configured, empty and match the archive's blueprint ID. |
 
 ## Limits

@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { join } from 'node:path'
 
 const DEF = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'code-review',
   name: '代码审查',
   resources: {

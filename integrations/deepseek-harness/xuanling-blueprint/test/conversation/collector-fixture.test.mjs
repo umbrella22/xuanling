@@ -1,7 +1,7 @@
 // Deterministic fixture/loader contracts only; these never claim browser or provider evidence.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, realpathSync, rmSync, readFileSync, mkdirSync, writeFileSync, symlinkSync } from 'node:fs'
+import { mkdtempSync, realpathSync, rmSync, readFileSync, mkdirSync, readdirSync, writeFileSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -608,9 +608,14 @@ test('prepare creates compilable real blueprints and an isolated policy module, 
     const root = mkdtempSync(join(realpathSync(tmpdir()), 'collector-fixture-unit-'))
     try {
       const config = await fixture.prepare({ root, mode })
-      assert.deepEqual(Object.keys(config).sort(), ['blueprints', 'operatorModules'])
+      assert.deepEqual(Object.keys(config).sort(), ['operatorModules', 'runtimeRoot', 'workspaceRoot'])
+      assert.equal(config.workspaceRoot, root)
+      assert.equal(config.runtimeRoot, join(root, '.xuanling'))
       assert.equal(config.operatorModules.length, 1)
-      for (const dir of Object.values(config.blueprints)) {
+      const workflowRoot = join(config.workspaceRoot, '.xuanling', 'workflows')
+      const dirs = readdirSync(workflowRoot).map(id => join(workflowRoot, id))
+      assert.equal(dirs.length, 1)
+      for (const dir of dirs) {
         assert.ok(confined(root, dir))
         const definition = decodeDefinition(readFileSync(join(dir, 'blueprint.json'), 'utf8'))
         validateDefinition(definition)

@@ -106,12 +106,24 @@ export async function getCases(helpers) {
         'ping',
         'preflightRun',
         'queryRuns',
+        'resolveRecovery',
+        'restoreDefinitionRevision',
         'restoreRun',
         'saveDefinition',
         'startRun',
         'startSessionRun',
         'startTeamStage',
-        'validate'
+        'validate',
+        'workflowApply',
+        'workflowGet',
+        'workflowInspect',
+        'workflowList',
+        'workflowPropose',
+        'workflowReport',
+        'workflowRevert',
+        'workflowRevisions',
+        'workflowRun',
+        'workflowValidate'
       ]
       assert.equal(typeof mod.default, 'function', 'built service default export must be a function')
       assert.equal(typert.TYPERT.face, 'host', 'built wire descriptor must expose the host face')
@@ -132,7 +144,7 @@ export async function getCases(helpers) {
       const mod = await import(libIndex)
       const service = new mod.default(new Context())
       const value = await service.ping()
-      return value?.status === 'ok' && value?.service === '@xuanling-rs/xuanling-dsh-blueprint' && value?.version === '0.6.1'
+      return value?.status === 'ok' && value?.service === '@xuanling-rs/xuanling-dsh-blueprint' && value?.version === '0.7.0'
     }
   })
 

@@ -12,14 +12,14 @@ const digest = value => createHash('sha256').update(value).digest('hex')
 
 async function fixture(t, backend, requestId) {
   const root = await mkdtemp(join(tmpdir(), `xuanling-w2.7.3-${backend}-`))
-  const path = backend === 'json' ? join(root, 'store') : join(root, 'store', 'runs.sqlite')
+  const path = join(root, 'store')
   let opened
   let store
 
   const open = async () => {
     if (backend === 'json') await mkdir(join(root, 'store'), { recursive: true })
     else await mkdir(join(root, 'store'), { recursive: true })
-    opened = await openBlueprintDomain({ backend, path })
+    opened = await openBlueprintDomain({ path })
     store = new RunStore(opened.domain)
   }
   const close = async () => {
@@ -93,7 +93,7 @@ test('W2.7.3 red: requestCancel persists the Team cancelling cutoff and owned fa
   )
 })
 
-for (const backend of ['json', 'sqlite']) {
+for (const backend of ['directory']) {
   test(`W2.7.3 red: ${backend} repairs a legacy Run cancelling state without moving the first Team cutoff`, async t => {
     const h = await fixture(t, backend, `legacy-cancelling-${backend}`)
     const legacy = await h.store.transition(h.runId, draft => {
@@ -122,7 +122,7 @@ for (const backend of ['json', 'sqlite']) {
   })
 }
 
-for (const backend of ['json', 'sqlite']) {
+for (const backend of ['directory']) {
   test(`W2.7.3 red: ${backend} pending Team effect reopen preserves cancellation cutoff and owned facts`, async t => {
     const h = await fixture(t, backend, `pending-effect-${backend}`)
     await h.store.requestCancel(h.runId)

@@ -12,7 +12,7 @@ import { collectPreflight } from '../../src/host/preflight.ts'
 import { RuntimeSnapshots } from '../../src/resources/runtime-snapshots.ts'
 
 const base = resources => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'host-resource-blueprint',
   name: 'Host resource blueprint',
   resources,

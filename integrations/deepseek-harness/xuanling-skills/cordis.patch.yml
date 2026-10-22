@@ -6,7 +6,7 @@
 #   - providerName is unique ("xuanling-dsh-skills"), so it never clashes
 #     with the preset's own "filesystem" provider registration;
 #   - includeDefaultRoots stays false: no dependence on ~/.dsh/skills or any
-#     project skill root — the two skills travel with the bundle;
+#     project skill root — the skills travel with the bundle;
 #   - watch stays false: the shipped contents are static, so the catalog
 #     digest and request history stay stable.
 #

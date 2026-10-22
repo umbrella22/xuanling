@@ -3,7 +3,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { join } from 'node:path'
 import { openBlueprintDomain, RunStore } from '../../src/persistence/index.ts'
 import { RuntimeSnapshots } from '../../src/resources/runtime-snapshots.ts'
 import { harness, definition, agentNode, agentResources, records, drain, sha256 } from '../runtime-contracts/agent-fixtures.mjs'
@@ -60,7 +59,7 @@ const internalArgs = (h, value) => ({
 
 async function seedQueued(h, value) {
   const args = internalArgs(h, value)
-  const opened = await openBlueprintDomain({ backend: 'json', path: join(h.runtimeRoot, 'store') })
+  const opened = await openBlueprintDomain({ path: h.runtimeRoot })
   try {
     const store = new RunStore(opened.domain)
     const { runId } = await store.createRun(

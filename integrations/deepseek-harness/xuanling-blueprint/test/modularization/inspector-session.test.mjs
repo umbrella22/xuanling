@@ -18,7 +18,7 @@ import { deriveInspectorPatch, inspectorOptionDelta } from '../../src/client/fea
 import { BlueprintWorkspace } from '../../src/client/features/authoring/logic/workspace/workspace-controller.ts'
 import { JsonEditorView } from '../../src/client/features/authoring/logic/inspector/json-editor.ts'
 const definition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'bp',
   name: 'Blueprint',
   resources: {},

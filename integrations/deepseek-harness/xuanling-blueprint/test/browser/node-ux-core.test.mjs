@@ -6,7 +6,7 @@ import { presentationGroupFrames } from '../../src/client/features/authoring/pre
 import { PALETTE_NODE_FOOTPRINT } from '../../src/client/features/authoring/logic/graph/node-placement.ts'
 
 const definition = () => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'NodeUX',
   name: 'Synthetic node UX',
   resources: {},

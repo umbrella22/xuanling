@@ -12,7 +12,7 @@ const catalogReady = new Promise<void>(resolve => {
   releaseCatalog = resolve
 })
 const delayedCalls: string[] = []
-const delayedDefinition = { schemaVersion: 1, id: 'delayed-blueprint', name: 'Delayed library blueprint', resources: {}, graph: { nodes: [], edges: [] } }
+const delayedDefinition = { schemaVersion: 2, id: 'delayed-blueprint', name: 'Delayed library blueprint', resources: {}, graph: { nodes: [], edges: [] } }
 const DelayedPanel = createBlueprintPanel({
   hostLink: {
     async listDefinitions() {

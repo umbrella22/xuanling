@@ -18,7 +18,7 @@ import {
 } from '../../src/client/features/authoring/ui/inspector/inspector-composition.tsx'
 
 const definition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'Inspector_Roundtrip',
   name: '用户蓝图 / never translated',
   resources: {
@@ -334,7 +334,7 @@ test('C-04 removed node vocabulary is rejected at the Host definition boundary w
     () => hostRoundtrip(GraphEditor.fromDefinition(imported)),
     error => {
       assert.equal(error.code, 'DEFINITION_INVALID')
-      assert.ok(error.issues.some(issue => issue.pointer === '/graph/nodes/3/kind' && issue.code === 'invalid-value'))
+      assert.ok(error.issues.some(issue => issue.pointer === '/graph/nodes/3/kind' && issue.code === 'unsupported-step-kind'))
       assert.ok(error.issues.some(issue => issue.pointer === '/graph/nodes/3/subflowRef' && issue.code === 'unknown-field'))
       return true
     }

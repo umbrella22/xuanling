@@ -15,7 +15,7 @@ const lead = { agent: { id: 'lead-session' }, teamId: 'team-owned', service: {} 
 
 async function fixture(t, { members, taskRevision } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'xuanling-w273-'))
-  const opened = await openBlueprintDomain({ backend: 'json', path: join(root, 'store') })
+  const opened = await openBlueprintDomain({ path: join(root, 'store') })
   const store = new RunStore(opened.domain)
   const { runId } = await store.createRun(
     { scope: 'teamstage', requestId: `w2-7-3-${fixtureNumber++}`, payloadFingerprint: digest(root) },
@@ -40,12 +40,12 @@ async function fixture(t, { members, taskRevision } = {}) {
 
 async function persistentFixture(t, backend) {
   const root = await mkdtemp(join(tmpdir(), `xuanling-w273-reopen-${backend}-`))
-  const path = backend === 'json' ? join(root, 'store') : join(root, 'store', 'runs.sqlite')
+  const path = join(root, 'store')
   let opened
   let store
   const open = async () => {
     await mkdir(join(root, 'store'), { recursive: true })
-    opened = await openBlueprintDomain({ backend, path })
+    opened = await openBlueprintDomain({ path })
     store = new RunStore(opened.domain)
   }
   const close = async () => {
@@ -242,7 +242,7 @@ test('W2.7.3 unknown targeted drain settles recovery and never replays', async t
   assert.equal(interruptCalls, 1, 'unknown drain must not redispatch the child')
 })
 
-for (const backend of ['json', 'sqlite']) {
+for (const backend of ['directory']) {
   test(`W2.7.3 ${backend} reopen skips already-succeeded cancellation effects`, async t => {
     const h = await persistentFixture(t, backend)
     await h.store.requestCancel(h.runId)

@@ -20,6 +20,7 @@ import type { ChatNavigation, OpenExecutionChat } from '../logic/chat-navigation
 import { edgeTypes, frozenContentShape, nodeTypes } from './conversation-renderers.tsx'
 import type { ConversationDisplayGroup, ConversationDisplayNode } from './conversation-renderers.tsx'
 import { renderConversationAttempts } from './conversation-attempts.tsx'
+import { ConversationRecoverySection } from './conversation-recovery.tsx'
 import { displayState, presentConversation } from '../presenters/conversation-presenter.ts'
 export interface ConversationViewInjected {
   controller: ConversationController
@@ -341,6 +342,7 @@ export function ConversationBlueprintView({ controller, sessionId, t, inspectCal
           {archiveConfirmRunId === bound.selected.run.runId ? t('conversation.archiveConfirm') : t('conversation.archiveRun')}
         </button>
       ) : null}
+      {bound ? <ConversationRecoverySection key={bound.selected.run.runId} bound={bound} snapshot={snapshot} controller={controller} t={t} /> : null}
       {chatUnavailable && (
         <p role={'status'} data-bp-chat-unavailable={true}>
           {t('conversation.chatUnavailable')}

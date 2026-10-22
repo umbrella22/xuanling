@@ -2,7 +2,7 @@
 
 [English](README.md) | 简体中文
 
-XuanLing MCP 是一个本地、自包含的工具服务器，为 ZCode 的编码 Agent 提供类型化的文件系统、进程、项目、Memory 与会话工具。同一次调用在 macOS、Linux 和 Windows 上返回相同的结构化结果，数据不离开本机。当前版本：0.6.1。
+XuanLing MCP 是一个本地、自包含的工具服务器，为 ZCode 的编码 Agent 提供类型化的文件系统、进程、项目、Memory 与会话工具。同一次调用在 macOS、Linux 和 Windows 上返回相同的结构化结果，数据不离开本机。当前版本：0.7.0。
 
 ## 为什么选择它
 
@@ -18,10 +18,10 @@ XuanLing MCP 是一个本地、自包含的工具服务器，为 ZCode 的编码
 ## 从 ZCode marketplace 安装
 
 1. 在 ZCode 中将 `umbrella22/xuanling-zcode-marketplace` 添加为 GitHub marketplace source。
-2. 在 ZCode 插件管理器中安装并启用 `xuanling-mcp` 插件（版本 0.6.1）。
+2. 在 ZCode 插件管理器中安装并启用 `xuanling-mcp` 插件（版本 0.7.0）。
 3. 确认 `PATH` 中存在 Node.js 18.17 或更高版本。
 
-插件为自包含分发：内置匹配的 macOS ARM64、Linux x64（glibc 2.35 或更高）与 Windows x64 运行时。不需要全局 npm 安装，安装期间也不会下载二进制文件。
+插件为自包含分发：内置匹配的 macOS ARM64、Linux x64（glibc 2.35 或更高）与 Windows x64 运行时。不依赖全局 npm 安装，安装期间也不会下载二进制文件。
 
 已在 ZCode 3.10.2 上验证，工具以 `mcp__plugin_xuanling-mcp_xuanling__<tool>` 出现。同一时间只安装并启用一个 XuanLing 变体。
 
@@ -52,7 +52,7 @@ Memory 采用先提案流程：每个会话都需要的项目局部事实留在 
 - XuanLing 文件工具限定在当前项目目录内。这是路径能力，不是进程沙箱：你启动的进程仍可能访问其他路径，工具审批与 OS 级隔离仍由 ZCode 负责。
 - 该 additive 变体不安装宿主侧的拦截策略。SHA-256 前置条件需要调用方主动提供，服务器不会改写工具参数；需要保护时请显式传入。
 - Memory 存储在本地；插件不需要 API key、账号或外部服务。
-- 发布物来自不可变的 XuanLing 发布流水线：启动器选择匹配的平台原生包，并在执行前校验其 SHA-256。XuanLing 0.6.1 不带平台发布者证书签名；npm provenance、绑定源码的哈希与带证明的 marketplace 归档包可降低分发风险。
+- 发布物来自不可变的 XuanLing 发布流水线：启动器选择匹配的平台原生包，并在执行前校验其 SHA-256。XuanLing 0.7.0 不带平台发布者证书签名；npm provenance、绑定源码的哈希与带证明的 marketplace 归档包可降低分发风险。
 - ZCode 3.10.2 是本文工具名与限制的验证宿主。更新的 ZCode 版本可能改变宿主工具命名或呈现方式，请以当前工具目录为准。
 
 ## 链接

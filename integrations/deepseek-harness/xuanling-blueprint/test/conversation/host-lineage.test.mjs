@@ -6,7 +6,7 @@ import { openBlueprintDomain, RunStore } from '../../src/persistence/index.ts'
 
 test('host: source and blueprint logical ID commit in the same admission aggregate', async t => {
   const h = await harness(t)
-  const opened = await openBlueprintDomain({ backend: 'json', path: join(h.root, 'isolated-store') })
+  const opened = await openBlueprintDomain({ path: join(h.root, 'isolated-store') })
   t.after(() => opened.close())
   const store = new RunStore(opened.domain)
   const source = { sessionId: 'caller-live', kind: 'tool', callId: 'call-live', turn: 3 }

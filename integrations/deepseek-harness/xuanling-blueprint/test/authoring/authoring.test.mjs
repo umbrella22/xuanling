@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, readdirSync, cpSync } from 'node:fs'
+import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, readdirSync, cpSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -28,7 +28,7 @@ async function fixture(t, config = {}) {
     new ToolRuntime(ctx, { mode: 'native' })
     const caller = { session: { id: 'author', header: {} }, ctx }
     ctx.provide('agents', { get: id => (id === caller.session.id ? caller : undefined) })
-    await ctx.plugin(BlueprintService, config)
+    await ctx.plugin(BlueprintService, { workspaceRoot: root, runtimeRoot: join(root, '.xuanling'), ...config })
     contexts.push(ctx)
     const tool = (name, args = {}, signal = new AbortController().signal) =>
       ctx.tools.execute({ name, arguments: args, agent: caller, callId: `${name}-call`, signal })
@@ -37,7 +37,7 @@ async function fixture(t, config = {}) {
   return { root, open, ...(await open()) }
 }
 const definition = (type = 'json') => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'draft',
   name: 'Authoring fixture',
   resources: {},
@@ -60,12 +60,12 @@ test('D01: default profile runtime admits a valid graph without relocating its l
   const doc = await f.service.createDefinition({ requestId: 'default', definitionJson: JSON.stringify(definition()) })
   const report = await f.service.preflightRun(args(doc))
   assert.equal(report.canStart, true)
-  assert.equal(existsSync(join(f.root, 'data/xuanling-blueprint/runtime')), false, 'preflight must not write runtime')
+  assert.equal(existsSync(join(f.root, '.xuanling', 'runs')), false, 'preflight must not write runtime runs')
   const started = await f.service.startRun({ ...args(doc), requestId: 'start' })
   for (const handle of f.service.runtimes.values()) await handle.driverTail
   assert.equal((await f.service.inspectRun({ runId: started.runId })).state, 'succeeded')
-  assert.ok(existsSync(join(f.root, 'data/xuanling-blueprint/definitions', doc.blueprintId, 'blueprint.json')))
-  assert.ok(existsSync(join(f.root, 'data/xuanling-blueprint/runtime/store')))
+  assert.ok(existsSync(join(f.root, '.xuanling/workflows', doc.blueprintId, 'blueprint.json')))
+  assert.ok(existsSync(join(f.root, '.xuanling/runs')))
 })
 
 test('D03: preflight rejects statically invalid initial output before admission', async t => {
@@ -90,8 +90,7 @@ test('A01-A04: native tools describe, validate and create an entire declared Age
   assert.equal(value(await reopened.tool('blueprint_create', { ...candidate, requestId: 'agent-fixture' })).blueprintId, doc.blueprintId)
   const loaded = await f.service.loadDefinition({ blueprintId: doc.blueprintId })
   assert.ok(JSON.parse(loaded.definitionJson).graph.nodes.some(n => n.agentRef))
-  for (const file of candidate.files)
-    assert.equal(readFileSync(join(f.root, 'data/xuanling-blueprint/definitions', doc.blueprintId, file.path), 'utf8'), file.text)
+  for (const file of candidate.files) assert.equal(readFileSync(join(f.root, '.xuanling/workflows', doc.blueprintId, file.path), 'utf8'), file.text)
   assert.equal(f.service.runtimes.size, 0)
 })
 
@@ -123,7 +122,7 @@ test('A05: subflow directories admit only their recursively declared resource cl
   const candidate = { definition: outer, files }
   assert.equal(value(await f.tool('blueprint_validate', candidate)).ok, true)
   const doc = value(await f.tool('blueprint_create', { ...candidate, requestId: 'subflow' }))
-  for (const file of files) assert.equal(readFileSync(join(f.root, 'data/xuanling-blueprint/definitions', doc.blueprintId, file.path), 'utf8'), file.text)
+  for (const file of files) assert.equal(readFileSync(join(f.root, '.xuanling/workflows', doc.blueprintId, file.path), 'utf8'), file.text)
   const missing = value(await f.tool('blueprint_validate', { ...candidate, files: files.slice(0, 2) }))
   assert.ok(missing.issues.some(i => i.code === 'resource-file-missing'))
   const extra = value(await f.tool('blueprint_validate', { ...candidate, files: [...files, { path: 'lib/subflows/child/secret.txt', text: 'undeclared' }] }))
@@ -206,8 +205,9 @@ test('L03: save/delete ordering uses revision CAS and deletion blocks admission 
 test('L05: failed state write leaves document visible; corrupt state fails closed; backup retains deletion', async t => {
   const f = await fixture(t)
   const doc = await f.service.createDefinition({ requestId: 'state', definitionJson: JSON.stringify(definition()) })
-  const library = join(f.root, 'data/xuanling-blueprint/definitions')
+  const library = join(f.root, '.xuanling', 'workflows')
   const state = join(library, '.library-state')
+  mkdirSync(state, { recursive: true })
   writeFileSync(join(state, 'deleted'), 'not a directory')
   await assert.rejects(f.service.deleteDefinition({ blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, requestId: 'del' }), {
     code: 'blueprint/library-state-invalid'
@@ -226,7 +226,7 @@ test('L05: failed state write leaves document visible; corrupt state fails close
 
 test('A04/L05: exclusive library writer rejects competing mutation and releases after failure', async t => {
   const f = await fixture(t)
-  const library = join(f.root, 'data/xuanling-blueprint/definitions')
+  const library = join(f.root, '.xuanling', 'workflows')
   const lease = acquireLibraryWriter(library)
   const request = { requestId: 'lease', definitionJson: JSON.stringify(definition()) }
   try {
@@ -256,16 +256,14 @@ test('A04: staging failure publishes no partial package and same target can be r
   assert.equal(doc.blueprintId, 'draft')
 })
 
-test('L06: deletion does not remove configured package bytes or bypass existing alias ID validation', async t => {
+test('L06: deletion leaves workspace package bytes and records the deleted workflow', async t => {
   const f = await fixture(t)
   const doc = await f.service.createDefinition({ requestId: 'alias', definitionJson: JSON.stringify(definition()) })
-  const library = join(f.root, 'data/xuanling-blueprint/definitions'),
+  const library = join(f.root, '.xuanling', 'workflows'),
     root = join(library, doc.blueprintId)
-  f.service.config.blueprints = { alias: root }
   const before = readFileSync(join(root, 'blueprint.json'))
-  await assert.rejects(f.service.loadDefinition({ blueprintId: 'alias' }), { code: 'blueprint/definition-invalid' })
   await f.service.deleteDefinition({ blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, requestId: 'delete-original' })
   assert.deepEqual(readFileSync(join(root, 'blueprint.json')), before)
-  assert.equal(readLibraryDeletion(library, 'alias'), undefined)
-  await assert.rejects(f.service.loadDefinition({ blueprintId: 'alias' }), { code: 'blueprint/definition-invalid' })
+  assert.equal(readLibraryDeletion(library, doc.blueprintId)?.requestId, 'delete-original')
+  await assert.rejects(f.service.loadDefinition({ blueprintId: doc.blueprintId }), { code: 'blueprint/definition-deleted' })
 })

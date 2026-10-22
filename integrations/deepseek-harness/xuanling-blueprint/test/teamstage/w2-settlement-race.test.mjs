@@ -11,9 +11,9 @@ const digest = value => createHash('sha256').update(value).digest('hex')
 
 // The verdict models host verification at this boundary. This fixture does
 // not prove immutable artifact file creation or actual native member work.
-async function fixture(t, backend) {
+async function fixture(t, _backend) {
   const root = await mkdtemp(join(tmpdir(), 'blueprint-settlement-race-'))
-  const opened = await openBlueprintDomain({ backend, path: join(root, backend === 'json' ? 'store' : 'store.sqlite') })
+  const opened = await openBlueprintDomain({ path: join(root, 'store') })
   t.after(async () => {
     await opened.close()
     await rm(root, { recursive: true, force: true })
@@ -131,7 +131,7 @@ async function enteredSettlement(gate, result) {
   await Promise.race([gate.ready, result.then(() => assert.fail('acceptance finished before the settlement barrier'))])
 }
 
-for (const backend of ['json', 'sqlite']) {
+for (const backend of ['directory']) {
   const prefix = `W2.7.1 ${backend} settlement`
   const drifts = [
     [

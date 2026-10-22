@@ -25,7 +25,7 @@ const config = () => ({
   requiredChecks: ['schema', 'artifact-digest']
 })
 const ordinary = () => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'runtime-contracts',
   name: 'Definition config',
   resources: {
@@ -415,8 +415,8 @@ test('W1.3 C-02 legacy definition shape and semantic revisions remain unchanged'
   }
   const revision = computeRevision({ rootDir, definition: parsed })
   const document = documentRevisions(parsed, resourceDigests)
-  assert.equal(revision.semantic, '44d5f55be0058bad8872b75dd7f5e8754d5e551dd0ae70ab66cb93519cf95b19')
-  assert.equal(document.semanticRevision, '092291034fb5dbf8c352c8b84acb087df9d0f4be36d1916081d29ccbfaafe33a')
+  assert.equal(revision.semantic, '8bc873f93f035632adcc5c70d086f4283870bd1ea45570c8a30183557880337e')
+  assert.equal(document.semanticRevision, '6f18d3e8ccecde884bc2e469101b57c2184cbc771107473616fcc3b6538794ce')
 })
 for (const [label, mutate] of [
   [

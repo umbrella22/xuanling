@@ -3,7 +3,7 @@ import test from 'node:test'
 import { BlueprintWorkspace } from '../../src/client/features/authoring/logic/workspace/workspace-controller.ts'
 import { WorkspaceIntentError } from '../../src/client/features/authoring/logic/workspace/workspace-intents.ts'
 
-const definition = { schemaVersion: 1, id: 'target', name: 'Target', resources: {}, graph: { nodes: [], edges: [] } }
+const definition = { schemaVersion: 2, id: 'target', name: 'Target', resources: {}, graph: { nodes: [], edges: [] } }
 const document = {
   blueprintId: 'target',
   documentRevision: 'doc',

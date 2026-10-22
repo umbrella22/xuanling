@@ -37,7 +37,7 @@ function treeChildren(tree) {
 const field = (tree, name) => treeChildren(tree).find(node => node.props['data-bp-field'] === name)
 function editorFixture() {
   return GraphEditor.fromDefinition({
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'fixture',
     name: '用户.标题',
     resources: {},

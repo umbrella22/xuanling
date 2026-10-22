@@ -14,12 +14,12 @@ import { definition, agentNode, agentResources } from '../runtime-contracts/agen
 
 const digest = value => createHash('sha256').update(value).digest('hex')
 
-for (const backend of ['json', 'sqlite']) {
+for (const backend of ['directory']) {
   test(`W2.7.3 scheduler cancellation catch must join successful coordinator settlement ${backend}`, async t => {
     const root = await mkdtemp(join(tmpdir(), `blueprint-cancel-settlement-${backend}-`))
     await mkdir(join(root, 'store'))
-    const path = backend === 'json' ? join(root, 'store') : join(root, 'store/runs.sqlite')
-    let opened = await openBlueprintDomain({ backend, path })
+    const path = join(root, 'store')
+    let opened = await openBlueprintDomain({ path })
     t.after(async () => {
       await opened.close()
       await rm(root, { recursive: true, force: true })
@@ -251,7 +251,7 @@ for (const backend of ['json', 'sqlite']) {
       oldContext = opened.ctx,
       oldDomain = opened.domain
     await opened.close()
-    opened = await openBlueprintDomain({ backend, path })
+    opened = await openBlueprintDomain({ path })
     assert.notEqual(opened.ctx, oldContext)
     assert.notEqual(opened.domain, oldDomain)
     const restoredStore = new RunStore(opened.domain)
@@ -264,8 +264,8 @@ for (const backend of ['json', 'sqlite']) {
   test(`W2.7.3 healthy cancelled stage atomically settles the original graph Attempt ${backend}`, async t => {
     const root = await mkdtemp(join(tmpdir(), `blueprint-original-cancel-${backend}-`))
     await mkdir(join(root, 'store'))
-    const path = backend === 'json' ? join(root, 'store') : join(root, 'store/runs.sqlite')
-    let opened = await openBlueprintDomain({ backend, path })
+    const path = join(root, 'store')
+    let opened = await openBlueprintDomain({ path })
     t.after(async () => {
       await opened.close()
       await rm(root, { recursive: true, force: true })
@@ -353,7 +353,7 @@ for (const backend of ['json', 'sqlite']) {
     const oldContext = opened.ctx,
       oldDomain = opened.domain
     await opened.close()
-    opened = await openBlueprintDomain({ backend, path })
+    opened = await openBlueprintDomain({ path })
     assert.notEqual(opened.ctx, oldContext)
     assert.notEqual(opened.domain, oldDomain)
     const restoredStore = new RunStore(opened.domain)

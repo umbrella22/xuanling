@@ -7,7 +7,7 @@ import { GraphEditor } from '../../src/client/features/authoring/logic/graph/gra
 import { decodeClipboard } from '../../src/client/features/authoring/logic/graph/clipboard.ts'
 import { frozenPresentationCodec } from '../../src/conversation/contracts.ts'
 const fixture = () => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'Ports',
   name: 'Synthetic',
   resources: {},

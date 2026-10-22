@@ -15,7 +15,7 @@ import { InspectorSession, renderNodeInspector } from '../../src/client/features
 import { projectInspector } from '../../src/client/features/authoring/presenters/inspector-presenter.ts'
 import { en } from '../../src/client/shared/i18n/locales.ts'
 const definition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'bp',
   name: 'Blueprint',
   resources: {},

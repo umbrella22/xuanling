@@ -215,12 +215,13 @@ export async function prepareProfile(options, fixture, tempRoot, steps) {
   for (const path of [home, cwd, join(home, 'tmp')]) mkdirSync(path, { recursive: true, mode: 0o700 })
   const version = execute(CLI, ['--version'], env, cwd, steps, 'version', 15000)
   ensure(supportsDshVersion(version.stdout.trim()), 'HOST_VERSION_MISMATCH')
-  const config = fixture ? await fixture.prepare({ root: tempRoot, mode: options.mode }) : { blueprints: {} }
-  ensure(config && typeof config.blueprints === 'object' && !Array.isArray(config.blueprints), 'FIXTURE_CONFIG_INVALID')
-  for (const path of Object.values(config.blueprints)) {
-    ensure(confined(tempRoot, path), 'FIXTURE_BLUEPRINT_OUTSIDE_ISOLATION')
-    assertPhysicalPath(path)
-  }
+  const config = fixture ? await fixture.prepare({ root: tempRoot, mode: options.mode }) : { workspaceRoot: tempRoot }
+  ensure(config && typeof config.workspaceRoot === 'string' && isAbsolute(config.workspaceRoot), 'FIXTURE_CONFIG_INVALID')
+  ensure(config.workspaceRoot === tempRoot || confined(tempRoot, config.workspaceRoot), 'FIXTURE_WORKSPACE_OUTSIDE_ISOLATION')
+  assertPhysicalPath(config.workspaceRoot)
+  const runtimeRoot = config.runtimeRoot ?? join(config.workspaceRoot, '.xuanling')
+  ensure(confined(tempRoot, runtimeRoot), 'FIXTURE_RUNTIME_OUTSIDE_ISOLATION')
+  assertPhysicalPath(runtimeRoot)
   let installedPackage, packageManager
   if (options.installMode === 'cli') {
     packageManager = preparePnpmEnvironment({
@@ -303,7 +304,7 @@ export async function prepareProfile(options, fixture, tempRoot, steps) {
     patches.push('- id: agent-default-model\n  config:\n    provider: blueprint-live\n    model: !!js process.env.BP_LIVE_PROVIDER_MODEL')
   } else patches.push('- id: llm-pi-ai\n  disabled: true')
   patches.push(
-    `- id: xuanling-blueprint\n  config: ${JSON.stringify({ blueprints: config.blueprints, runtimeRoot: join(tempRoot, 'runtime'), skillRoots: [] })}`
+    `- id: xuanling-blueprint\n  config: ${JSON.stringify({ workspaceRoot: config.workspaceRoot, runtimeRoot, skillRoots: config.skillRoots ?? [] })}`
   )
   patches.push(`- insert:\n    - id: conversation-observer\n      name: ${JSON.stringify(observer)}\n      config: {}`)
   // Optional operator-owned modules prepare REAL public Session/Tools fixtures.

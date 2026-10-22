@@ -50,7 +50,7 @@ const navigationDocument = id => ({
   documentRevision: `doc-${id}`,
   semanticRevision: `semantic-${id}`,
   layoutRevision: 'layout',
-  definitionJson: JSON.stringify({ schemaVersion: 1, id, name: id, resources: {}, graph: { nodes: [], edges: [] } })
+  definitionJson: JSON.stringify({ schemaVersion: 2, id, name: id, resources: {}, graph: { nodes: [], edges: [] } })
 })
 const navigationCatalog = ['one', 'two'].map(id => ({ blueprintId: id, name: id, documentRevision: `doc-${id}`, semanticRevision: `semantic-${id}` }))
 

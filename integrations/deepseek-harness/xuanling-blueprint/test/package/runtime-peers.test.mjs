@@ -17,14 +17,7 @@ import { hasPnpmImporterDependency, readPnpmLock } from './pnpm-lock.mjs'
 const PACKAGE_ROOT = fileURLToPath(new URL('../../', import.meta.url))
 const VERSION = '0.2.1-rc.2'
 const MINIMUM_RANGE = '>=0.2.1-alpha.5'
-const REQUIRED = [
-  '@deepseek-ai/dsh-llm',
-  '@deepseek-ai/dsh-session',
-  '@deepseek-ai/dsh-storage',
-  '@deepseek-ai/dsh-storage-domain',
-  '@deepseek-ai/dsh-storage-json',
-  '@deepseek-ai/dsh-storage-sqlite'
-]
+const REQUIRED = ['@deepseek-ai/dsh-llm', '@deepseek-ai/dsh-session']
 const SOURCE_FILES = [
   'src/index.ts',
   'src/conversation/host-tools.ts',
@@ -197,12 +190,6 @@ try {
         inventory.some(entry => entry.name === name),
         `Actual runtime inventory must contain ${name}`
       )
-      if (name.startsWith('@deepseek-ai/dsh-storage')) {
-        assert.ok(
-          inventory.some(entry => entry.name === name && entry.kind === 'dynamic'),
-          `Dynamic backend import ${name} must be covered`
-        )
-      }
     }
     assert.deepEqual(
       [...new Set(inventory.map(entry => packageName(entry.name)))].filter(name => !Object.hasOwn(manifest.peerDependencies, name)).sort(),

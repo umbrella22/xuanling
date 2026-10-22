@@ -3,7 +3,7 @@
 English | [Simplified Chinese](README-ZH.md)
 
 This directory contains the npm packaging and release automation for XuanLing
-MCP 0.6.1. A complete release is nine immutable npm items published from one
+MCP 0.7.0. A complete release is nine immutable npm items published from one
 verified commit: the stable Node.js launcher, three platform-specific native
 variants, four DeepSeek Harness bundles, and the optional Blueprint/TeamStage
 plugin. The same verified core artifacts also produce the ZCode marketplace
@@ -15,10 +15,10 @@ archive.
 
 | Package | Published version | Platform |
 | --- | --- | --- |
-| `@xuanling-rs/xuanling-mcp` | `0.6.1` | Stable Node.js launcher |
-| `@xuanling-rs/xuanling-mcp-darwin-arm64` | `0.6.1-darwin-arm64` | macOS Apple Silicon |
-| `@xuanling-rs/xuanling-mcp-linux-x64-gnu` | `0.6.1-linux-x64-gnu` | Linux x64, glibc 2.35 or newer |
-| `@xuanling-rs/xuanling-mcp-win32-x64-msvc` | `0.6.1-win32-x64-msvc` | Windows x64 MSVC |
+| `@xuanling-rs/xuanling-mcp` | `0.7.0` | Stable Node.js launcher |
+| `@xuanling-rs/xuanling-mcp-darwin-arm64` | `0.7.0-darwin-arm64` | macOS Apple Silicon |
+| `@xuanling-rs/xuanling-mcp-linux-x64-gnu` | `0.7.0-linux-x64-gnu` | Linux x64, glibc 2.35 or newer |
+| `@xuanling-rs/xuanling-mcp-win32-x64-msvc` | `0.7.0-win32-x64-msvc` | Windows x64 MSVC |
 
 The launcher and native variants are published under the `@xuanling-rs` npm
 organization. The stable package declares the native variants as aliased
@@ -32,10 +32,10 @@ DeepSeek Harness installs these public bundles directly into a profile:
 
 | Package | Purpose |
 | --- | --- |
-| `@xuanling-rs/xuanling-dsh-memory@0.6.1` | Complete Memory v2 profile with DSH schema projection |
-| `@xuanling-rs/xuanling-dsh-skills@0.6.1` | File and Memory workflow Skills plus strict overwrite policy |
-| `@xuanling-rs/xuanling-dsh-tools@0.6.1` | Additive full XuanLing catalog |
-| `@xuanling-rs/xuanling-dsh-tools-replace@0.6.1` | Opt-in same-name filesystem replacement facade with XuanLing CAS/batch and native host projections |
+| `@xuanling-rs/xuanling-dsh-memory@0.7.0` | Complete Memory v2 profile with DSH schema projection |
+| `@xuanling-rs/xuanling-dsh-skills@0.7.0` | File and Memory workflow Skills plus strict overwrite policy |
+| `@xuanling-rs/xuanling-dsh-tools@0.7.0` | Additive full XuanLing catalog |
+| `@xuanling-rs/xuanling-dsh-tools-replace@0.7.0` | Opt-in same-name filesystem replacement facade with XuanLing CAS/batch and native host projections |
 
 The Memory, Tools, and Tools-replace bundles depend on the exact stable
 `@xuanling-rs/xuanling-mcp` version in the same DSH profile. The Skills bundle
@@ -59,7 +59,7 @@ native builds require Rust 1.98.
 Global installation:
 
 ```sh
-npm install --global @xuanling-rs/xuanling-mcp@0.6.1
+npm install --global @xuanling-rs/xuanling-mcp@0.7.0
 xuanling-mcp --workspace-root /absolute/path/to/project
 ```
 
@@ -72,7 +72,7 @@ An MCP host can pin the same release through `npx`:
       "command": "npx",
       "args": [
         "-y",
-        "@xuanling-rs/xuanling-mcp@0.6.1",
+        "@xuanling-rs/xuanling-mcp@0.7.0",
         "--workspace-root",
         "/absolute/path/to/project"
       ]
@@ -89,8 +89,8 @@ Install the optional Blueprint and TeamStage plugin with the repository's
 pnpm-managed package flow:
 
 ```sh
-pnpm add --save-exact @xuanling-rs/xuanling-dsh-blueprint@0.6.1
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.6.1
+pnpm add --save-exact @xuanling-rs/xuanling-dsh-blueprint@0.7.0
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.7.0
 ```
 
 Restart the selected DSH profile after installation. TeamStage also requires the
@@ -108,7 +108,7 @@ native Agent Teams profile to be enabled explicitly.
   provenance at publication, and binds its binary SHA-256 to the source commit.
   The ZCode marketplace archive also receives a GitHub OIDC build-provenance
   attestation before promotion.
-- XuanLing 0.6.1 does not claim a Developer ID or Authenticode publisher
+- XuanLing 0.7.0 does not claim a Developer ID or Authenticode publisher
   signature. These signatures may be added in a later release; their absence
   does not change the MCP protocol or package integrity contract.
 - Every native package contains the XuanLing MIT license and generated
@@ -139,7 +139,7 @@ node npm/scripts/pack-dsh-bundles.mjs \
   --commit "$(git rev-parse HEAD)"
 node npm/scripts/verify-dsh-release-set.mjs \
   --root npm/dist/dsh \
-  --version 0.6.1 \
+  --version 0.7.0 \
   --commit "$(git rev-parse HEAD)"
 
 node npm/scripts/generate-third-party-licenses.mjs \

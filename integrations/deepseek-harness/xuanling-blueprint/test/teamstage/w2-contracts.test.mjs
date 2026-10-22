@@ -20,7 +20,7 @@ let fixtureNumber = 0
 
 async function fixture(t, members = [], options = {}) {
   const root = await mkdtemp(join(tmpdir(), 'xuanling-w2-'))
-  const opened = await openBlueprintDomain({ backend: 'json', path: join(root, 'store') })
+  const opened = await openBlueprintDomain({ path: join(root, 'store') })
   const store = new RunStore(opened.domain)
   const { runId } = await store.createRun(request(`run-${fixtureNumber++}`), 'rev-1', '{}', '{}')
   const attempt = options.attempt === true ? await store.recordIntent(runId, { nodeId: 'stage-1', kind: 'agentTask' }) : undefined

@@ -5,7 +5,7 @@ import { assertObjectJsonSchema } from '@deepseek-ai/dsh-tools'
 import { decodeDefinition, definitionSchema, pathPattern } from './codec.ts'
 import { validateDefinition } from './validator.ts'
 import { DefinitionInvalidError, type BlueprintDefinition } from './types.ts'
-import { admitResources, admitSnapshotPaths } from '../security/resource-admission.ts'
+import { admitResources, admitSnapshotPaths, isPackageReservedPath } from '../security/resource-admission.ts'
 
 export const candidateCodec = z.strictObject({ definition: z.json(), files: z.array(z.strictObject({ path: z.string(), text: z.string() })) })
 export type AuthoringCandidate = z.infer<typeof candidateCodec>
@@ -32,8 +32,7 @@ export function validateCandidate(candidate: AuthoringCandidate): { ok: true; de
     if (
       !pathPattern.test(file.path) ||
       file.path.split('/').some(part => part === '.' || part === '..' || part === '') ||
-      file.path === 'blueprint.json' ||
-      file.path.startsWith('.library-state/') ||
+      isPackageReservedPath(file.path) ||
       admitSnapshotPaths([file.path]).length
     ) {
       issues.push({ code: 'resource-path-invalid', pointer: at })
@@ -105,13 +104,24 @@ export function inputDescription(definition: BlueprintDefinition) {
 export function authoringGuide() {
   return {
     schema: z.toJSONSchema(definitionSchema, { unrepresentable: 'any' }),
-    workflow: ['blueprint_validate', 'blueprint_create', 'blueprint_preflight', 'blueprint_start', 'blueprint_inspect'],
+    workflow: [
+      'workflow_list',
+      'workflow_get',
+      'workflow_validate',
+      'workflow_propose',
+      'workflow_apply',
+      'workflow_revisions',
+      'workflow_revert',
+      'workflow_run',
+      'workflow_inspect',
+      'workflow_report'
+    ],
     instructions:
       'Create an explicit agentTask node for each agent. Files contain only declared package resources. Creation saves a graph; it does not run it. Use the returned ID/revision. Start accepts input as a JSON value, not a JSON-encoded string. Business tool permissions require declared toolsetRefs and an available Host binding. Never invent paths, model bindings, or revisions. presentation.nodes[id].ports optionally declares strict boolean control, inputs, and outputs display preferences. These preferences do not delete port declarations or change execution; omitted fields retain compatibility defaults.',
     executableNodeKinds: ['input', 'output', 'agentTask', 'condition', 'join', 'humanDecision'],
     example: {
       definition: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         id: 'draft',
         name: 'Agent task',
         resources: { worker: { kind: 'agent', path: 'lib/agents/worker.md' } },

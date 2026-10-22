@@ -5,7 +5,7 @@ import React from 'react'
 import { GraphEditor } from '../../src/client/features/authoring/logic/graph/graph-editor.ts'
 import { InspectorSession, renderNodeInspector } from '../../src/client/features/authoring/ui/inspector/inspector-composition.tsx'
 const definition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'bp',
   name: 'Blueprint',
   resources: {},

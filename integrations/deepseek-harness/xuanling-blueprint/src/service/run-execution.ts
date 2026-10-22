@@ -15,10 +15,11 @@ import { TeamStageDriver } from '../teamstage/driver.ts'
 import type { TeamStageObservations } from '../teamstage/observability.ts'
 import { TeamDriverError, type TeamProviders } from '../teamstage/driver-admission.ts'
 import { TeamAcceptanceRejectedError } from '../teamstage/acceptance.ts'
-import type { PreparedTeam } from '../resources/runtime-snapshots.ts'
+import { FrozenPackageIntegrityError, type Prepared, type PreparedTeam } from '../resources/runtime-snapshots.ts'
 import type { decodeDefinition } from '../definition/index.ts'
 import type { RuntimeHandle } from '../index.ts'
 import type { LeadHandle } from '../teamstage/native-adapter.ts'
+import { buildBindingFacts, toolsetBindingDigest } from './binding-facts.ts'
 
 export interface RunExecutionConfig {
   readonly maxConcurrentNodes?: number
@@ -95,6 +96,12 @@ export class RunExecutionService {
   }
 
   async driveRun(handle: RuntimeHandle, runId: string, definition: ReturnType<typeof decodeDefinition>, sourceParent?: NativeSourceParent): Promise<void> {
+    const admitted = await handle.store.get(runId)
+    if (admitted.bindingAdmission === 'pending') {
+      if (!TERMINAL_RUN_STATES.includes(admitted.state) && admitted.state !== 'recovery_required')
+        await handle.store.settleTerminal(runId, 'recovery_required', { reason: 'admission-incomplete' })
+      return
+    }
     const graph = compileGraph(definition)
     const capacity = this.context.config.maxConcurrentNodes ?? 4
     const controllers = new Map<string, AbortController>()
@@ -267,12 +274,18 @@ export class RunExecutionService {
       for (const port of Object.keys(bound)) omitted.delete(port)
       const input = (graph.dataDeps.get(nodeId)?.length ?? 0) > 0 ? bound : initial
       const inputJson = JSON.stringify(input)
-      const prepared =
-        node.kind === 'agentTask' && bindingError === undefined
-          ? node.teamStage === undefined
-            ? await handle.snapshots.prepare(runId, definition, node)
-            : await handle.snapshots.prepareTeam(runId, definition, node)
-          : undefined
+      let prepared: Prepared | PreparedTeam | undefined
+      if (node.kind === 'agentTask' && bindingError === undefined) {
+        try {
+          prepared =
+            node.teamStage === undefined ? await handle.snapshots.prepare(runId, definition, node) : await handle.snapshots.prepareTeam(runId, definition, node)
+        } catch (error) {
+          if (error instanceof FrozenPackageIntegrityError) throw error
+          // A binding that was available at admission can disappear before an
+          // Attempt. Persist the Attempt and settle a typed drift result.
+          bindingError = new NodeValueError('binding-drift')
+        }
+      }
       if (this.context.isClosing() || controller.signal.aborted) {
         if (this.context.isClosing()) {
           const requested = await handle.store.requestCancel(runId)
@@ -286,13 +299,34 @@ export class RunExecutionService {
       const modelSelection =
         prepared && node.teamStage === undefined
           ? node.modelSelection === undefined
-            ? captureAgentModelSelection(this.context.ctx)
+            ? record.bindingSelections !== undefined && Object.hasOwn(record.bindingSelections, nodeId)
+              ? (record.bindingSelections[nodeId] ?? undefined)
+              : captureAgentModelSelection(this.context.ctx)
             : {
                 provider: node.modelSelection.provider,
                 model: node.modelSelection.model,
                 ...(node.modelSelection.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(node.modelSelection.reasoningEffort) })
               }
           : undefined
+      const bindingFacts =
+        prepared === undefined || node.kind !== 'agentTask'
+          ? undefined
+          : buildBindingFacts({
+              nodeId,
+              ...(node.agentRef === undefined ? {} : { agentRef: node.agentRef }),
+              ...(node.skillRefs === undefined ? {} : { skillRefs: node.skillRefs }),
+              ...(node.toolsetRefs === undefined ? {} : { toolsetRefs: node.toolsetRefs }),
+              ...(node.toolAllowlist === undefined ? {} : { toolAllowlist: node.toolAllowlist }),
+              resourceDigests: prepared.resourceDigests,
+              effectiveToolNames,
+              toolsetDigest: toolsetBindingDigest(this.context.ctx, effectiveToolNames),
+              ...(modelSelection === undefined ? {} : { modelSelection }),
+              ...(node.outputSchemaRef === undefined ? {} : { outputSchemaRef: node.outputSchemaRef })
+            })
+      if (bindingFacts !== undefined && record.bindingDigests !== undefined) {
+        const expected = record.bindingDigests[`node:${nodeId}:binding`]
+        if (expected === undefined || expected !== bindingFacts.digests[`node:${nodeId}:binding`]) bindingError ??= new NodeValueError('binding-drift')
+      }
       if (bindingError === undefined) {
         diagnostics = {
           status: 'available',
@@ -317,7 +351,12 @@ export class RunExecutionService {
         nodeId,
         kind: node.kind,
         ...(sessionIdForAttempt === undefined ? {} : { sessionIdForAttempt }),
-        resourceDigests: diagnostics?.resourceDigests ?? {},
+        // Even a rejected binding keeps the freshly resolved resource
+        // digests as durable evidence.  Diagnostics remain unavailable until
+        // the binding is admissible, but the drift comparison must be
+        // inspectable without dispatching the effect.
+        resourceDigests: prepared?.resourceDigests ?? diagnostics?.resourceDigests ?? {},
+        ...(bindingFacts === undefined ? {} : { bindingDigests: bindingFacts.digests }),
         diagnostics: diagnostics ?? { status: 'unavailable' }
       })
       const executionSessionId = sessionIdForAttempt?.(intent.attemptId)

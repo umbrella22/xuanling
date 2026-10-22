@@ -19,6 +19,7 @@ export const zh = {
   'conversation.openChat': '查看聊天记录',
   'conversation.sourceChat': '返回主聊天',
   'conversation.chatUnavailable': '当前无法打开此聊天记录，请刷新后重试。',
+  'conversation.chatWithoutSource': '此运行未关联来源对话，无法打开节点聊天记录。可在此查看节点输出和运行报告；需要聊天记录时，请从对话启动新运行。',
   'conversation.failedHistory': '此节点保留本次执行的失败记录。主聊天中的后续处理不会更新此蓝图运行。',
   'conversation.stale': '数据已过期 · 保留最后已知事实，活动动画已停止',
   'conversation.unavailable': '暂时无法加载实时蓝图，请稍后刷新。',
@@ -85,6 +86,8 @@ export const en = {
   'conversation.openChat': 'View chat history',
   'conversation.sourceChat': 'Return to main chat',
   'conversation.chatUnavailable': 'This chat history is unavailable. Refresh and try again.',
+  'conversation.chatWithoutSource':
+    'This Run has no source conversation, so its step chats cannot be opened. View the node outputs and Run report here. To use chat history, start a new Run from a conversation.',
   'conversation.failedHistory': 'This node retains the failed execution record. Further work in the main chat does not update this blueprint run.',
   'conversation.stale': 'Stale · showing last known facts; activity animation stopped',
   'conversation.unavailable': 'Unable to load the live blueprint right now. Try refreshing shortly.',

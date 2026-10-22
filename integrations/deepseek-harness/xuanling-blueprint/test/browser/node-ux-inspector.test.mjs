@@ -15,7 +15,7 @@ const elements = tree => (Array.isArray(tree) ? tree.flatMap(elements) : !React.
 const fields = ['agentRef', 'skillRefs', 'toolsetRefs', 'outputSchemaRef']
 function fixture(kind) {
   const definition = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'NodeUXInspector',
     name: 'Synthetic',
     resources: {

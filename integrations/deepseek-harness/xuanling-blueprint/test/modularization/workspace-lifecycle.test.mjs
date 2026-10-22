@@ -10,7 +10,7 @@ const deferred = () => {
   })
   return { promise, resolve, reject }
 }
-const definition = { schemaVersion: 1, id: 'target', name: 'Target', resources: {}, graph: { nodes: [], edges: [] } }
+const definition = { schemaVersion: 2, id: 'target', name: 'Target', resources: {}, graph: { nodes: [], edges: [] } }
 const document = {
   blueprintId: 'target',
   documentRevision: 'doc',

@@ -384,9 +384,9 @@ test('C-04 diagnostics: durable input digests, resources, actual model/options a
   }
 })
 
-test('C-04/C-08 old durable Run: inspectRun marks diagnostics unavailable without manufacturing model/tool facts', async t => {
+test('C-04/C-08 v1 durable Run: inspectRun refuses the removed legacy definition', async t => {
   const h = await harness(t)
-  const opened = await openBlueprintDomain({ backend: 'json', path: join(h.runtimeRoot, 'store') })
+  const opened = await openBlueprintDomain({ path: h.runtimeRoot })
   let runId
   try {
     const store = new RunStore(opened.domain)
@@ -400,12 +400,11 @@ test('C-04/C-08 old durable Run: inspectRun marks diagnostics unavailable withou
     const intent = await store.recordIntent(runId, { nodeId: 'work', kind: 'agentTask' })
     await store.recordResult(runId, intent.attemptId, { ok: true, outcome: { kind: 'succeeded', outputs: { answer: 'LEGACY_OUTPUT' } }, evidence: 'legacy' })
     await store.settleTerminal(runId, 'succeeded', { reason: 'legacy-terminal' })
+    // Seed a terminal archive; current APIs deliberately cannot advance a v1 Run.
+    await opened.domain.table('runs').put(runId, { ...(await store.get(runId)), definitionJson: JSON.stringify({ ...definition(), schemaVersion: 1 }) })
   } finally {
     await opened.close()
   }
-  const view = await h.service.inspectRun({ runId })
-  assert.equal(view.state, 'succeeded', 'control: old durable shape remains readable')
-  assert.equal(view.attempts[0].outputJson, '{"outputs":{"answer":"LEGACY_OUTPUT"}}', 'C-08: explicit old output remains intact')
-  assert.deepEqual(view.attempts[0].diagnostics, { status: 'unavailable' }, 'C-04: current Host defaults are not old Run evidence')
+  await assert.rejects(h.service.inspectRun({ runId }), { code: 'blueprint/run-not-found' })
   assert.equal(h.host.calls.length, 0)
 })

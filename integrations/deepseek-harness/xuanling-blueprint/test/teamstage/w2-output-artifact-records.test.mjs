@@ -71,12 +71,12 @@ const ordinary = {
   updatedAt: 0
 }
 
-test('W2.7.2 records: legacy ordinary Runs retain their exact decoded shape', () => {
+test('W2.7.2 records: retained archive records remain parseable at the storage boundary', () => {
   assert.deepEqual(runRecordSchema.parse(ordinary), ordinary)
   assert.equal(Object.hasOwn(runRecordSchema.parse(ordinary), 'teamStage'), false)
 })
 
-test('W2.7.2 records: legacy accepted Team records remain readable without fabricated artifact refs', () => {
+test('W2.7.2 records: retained archive Team records remain parseable without fabricated artifact refs', () => {
   const legacy = {
     ...ordinary,
     attempts: [

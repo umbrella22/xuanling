@@ -52,7 +52,7 @@ export function teamDefinition(count = 1, extra = {}) {
 // Service runtime uses JSON. Both backend restart controls below restore the
 // exact production middleware snapshot into physical JSON/SQLite storage;
 // they do not claim that the service selects a SQLite runtime backend.
-for (const backend of ['json', 'sqlite'])
+for (const backend of ['directory'])
   for (const fault of ['cancel', 'pending-recovery', 'restart', 'result-write-failure']) {
     test(`native task observation/result window ${backend} ${fault} preserves unknown effect without redispatch`, async t => {
       const entered = Promise.withResolvers(),
@@ -111,13 +111,13 @@ for (const backend of ['json', 'sqlite'])
       // domain, and reopen with a fresh context/store before reconciliation.
       const snapshotRoot = join(h.root, `task-result-window-${backend}-${fault}`)
       mkdirSync(snapshotRoot, { recursive: true })
-      const snapshotPath = backend === 'json' ? snapshotRoot : join(snapshotRoot, 'runs.sqlite')
-      let opened = await openBlueprintDomain({ backend, path: snapshotPath })
+      const snapshotPath = snapshotRoot
+      let opened = await openBlueprintDomain({ path: snapshotPath })
       await opened.domain.table('runs').put(pending.runId, pending)
       const previousContext = opened.ctx,
         previousDomain = opened.domain
       await opened.close()
-      opened = await openBlueprintDomain({ backend, path: snapshotPath })
+      opened = await openBlueprintDomain({ path: snapshotPath })
       t.after(() => opened.close())
       assert.notEqual(opened.ctx, previousContext)
       assert.notEqual(opened.domain, previousDomain)
@@ -214,7 +214,7 @@ for (const backend of ['json', 'sqlite'])
         JSON.stringify({
           backend,
           fault,
-          actual_scope_backend: 'json',
+          actual_scope_backend: 'directory',
           native_claims: 1,
           original_attempt: originalAttempt.attemptId,
           task_revision: 2,

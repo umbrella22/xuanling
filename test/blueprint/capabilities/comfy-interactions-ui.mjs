@@ -68,14 +68,14 @@ function realFile(dir, path) {
 export function assertEmptyImportFixture(fixture) {
   const message = 'empty import fixture escapes disposable root'
   ensure(fixture.initiallyEmpty === true && isAbsolute(fixture.tempRoot ?? '') && fixture.tempRoot === resolve(fixture.tempRoot)
-    && fixture.empty === join(fixture.tempRoot, 'blueprints', 'comfy-empty') && confined(fixture.tempRoot, fixture.empty), message)
+    && fixture.empty === join(fixture.tempRoot, '.xuanling', 'workflows', 'comfy-empty') && confined(fixture.tempRoot, fixture.empty), message)
   // Reject links in owned components before resolving the target; /var's OS alias remains valid.
-  for (const path of [fixture.tempRoot, join(fixture.tempRoot, 'blueprints'), fixture.empty]) {
+  for (const path of [fixture.tempRoot, join(fixture.tempRoot, '.xuanling'), join(fixture.tempRoot, '.xuanling', 'workflows'), fixture.empty]) {
     const stat = lstatSync(path)
     ensure(stat.isDirectory() && !stat.isSymbolicLink(), message)
   }
   const canonicalRoot = realpathSync(fixture.tempRoot), canonicalEmpty = realpathSync(fixture.empty)
-  ensure(confined(canonicalRoot, canonicalEmpty) && canonicalEmpty === join(canonicalRoot, 'blueprints', 'comfy-empty'), message)
+  ensure(confined(canonicalRoot, canonicalEmpty) && canonicalEmpty === join(canonicalRoot, '.xuanling', 'workflows', 'comfy-empty'), message)
 }
 export function verifyArchiveDownload(bytes, response, blueprintId) {
   const archive = value(response, 'same real Host archive response')
@@ -95,7 +95,7 @@ function importLockWitness({ before, stages, keys } = {}) {
       && event.ctrlKey === (index === 1) && event.metaKey === (index === 2) && event.altKey === false && event.shiftKey === false)
 }
 function fixtureDefinition(id, resources = true) {
-  return { schemaVersion: 1, id, name: `Comfy · ${id}`, resources: resources ? {
+  return { schemaVersion: 2, id, name: `Comfy · ${id}`, resources: resources ? {
     agent: { kind: 'agent', path: 'lib/agents/comfy.md' },
     shared: { kind: 'skill', source: { kind: 'shared', rootId: 'probe-skills', path: 'sample' } },
     mcp: { kind: 'mcp', bindingId: 'comfy-zero' },
@@ -116,8 +116,8 @@ export function prepareCanvasFixtures(tempRoot, decode, validate) {
   fixtures.config.toolBindings = { 'comfy-zero': { tools: [] } }
   for (const definition of [fixtureDefinition('comfy-edit'), fixtureDefinition('comfy-other'), fixtureDefinition('comfy-files', false)]) {
     validate(decode(JSON.stringify(definition)))
-    const root = join(tempRoot, 'blueprints', definition.id)
-    mkdirSync(root, { recursive: true }); fixtures.config.blueprints[definition.id] = root
+    const root = join(tempRoot, '.xuanling', 'workflows', definition.id)
+    mkdirSync(root, { recursive: true })
     writeFileSync(join(root, 'blueprint.json'), JSON.stringify(definition))
     if (definition.resources.agent) {
       mkdirSync(join(root, 'lib/agents'), { recursive: true })
@@ -125,8 +125,8 @@ export function prepareCanvasFixtures(tempRoot, decode, validate) {
     }
     fixtures.evidence.push({ ...fixtureEvidence(definition), generator: 'comfy-interactions-ui.mjs:fixtureDefinition/w2', keyRead: false, providerCalls: 0 })
   }
-  const empty = join(tempRoot, 'blueprints', 'comfy-empty')
-  mkdirSync(empty); fixtures.config.blueprints['comfy-empty'] = empty
+  const empty = join(tempRoot, '.xuanling', 'workflows', 'comfy-empty')
+  mkdirSync(empty)
   const seed = fixtureDefinition('comfy-empty', false)
   validate(decode(JSON.stringify(seed)))
   const reportDir = process.env.BP_COMFY_ARTIFACT_DIR
@@ -1588,7 +1588,7 @@ export function validateComfyReport(report, context) {
   ensure(ui.downloads?.length === 1 && ui.downloads[0].kind === 'archive', 'current archive download evidence missing')
   for (const d of ui.downloads) ensure(d.kind === 'archive' && realFile(reportDir, d.path) && d.sha256 === sha256(readFileSync(d.path)) && d.provenance?.startsWith('actual Playwright'), 'download hash/provenance/missing file')
   ensure(ui.fixtureRotation?.sameConfiguredId === 'comfy-empty' && ui.fixtureRotation.archiveIdRewritten === false && ui.fixtureRotation.userData === false, 'same-ID empty archive fixture identity missing')
-  ensure(ui.fixtureRotation.source === join(report.environment.temp_root, 'blueprints/comfy-empty') && confined(report.environment.temp_root, ui.fixtureRotation.backup), 'archive filesystem rotation escapes disposable probe fixture')
+  ensure(ui.fixtureRotation.source === join(report.environment.temp_root, '.xuanling/workflows/comfy-empty') && confined(report.environment.temp_root, ui.fixtureRotation.backup), 'archive filesystem rotation escapes disposable probe fixture')
   return { ok: true, original, assertions: report.assertions.length, mountedCases: cases.size }
 }
 

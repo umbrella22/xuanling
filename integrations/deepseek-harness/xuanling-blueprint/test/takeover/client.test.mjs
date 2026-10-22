@@ -18,7 +18,7 @@ import { BLUEPRINT_LOCALE, en } from '../../src/client/shared/i18n/locales.ts'
 import { decodeDefinition, validateDefinition } from '../../src/definition/index.ts'
 import { BLUEPRINT_INVOCATIONS } from '../../src/typert-descriptors.ts'
 const definition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'takeover-client',
   name: 'Takeover client fixture',
   resources: { worker: { kind: 'agent', path: 'lib/agents/worker.md' } },
@@ -431,7 +431,7 @@ test('C-08 inspect failure marks stale without erasing facts; decision retries p
 
 test('C-09 real canvas edge projection preserves the complete legal dotted port name', () => {
   const d = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'dotted-ports',
     name: 'Dotted ports',
     resources: {},
@@ -627,7 +627,7 @@ test('C-08 local document drafts use the canonical host validator before adoptio
   assert.equal(f.calls[1][1].definitionJson, JSON.stringify(bad))
 })
 test('C-08 host-validated drafts still require the loaded ID/schema binding and retain all existing fields', async () => {
-  for (const patch of [{ id: 'other-package' }, { schemaVersion: 2 }]) {
+  for (const patch of [{ id: 'other-package' }, { schemaVersion: 1 }]) {
     const candidate = { ...definition, ...patch }
     // The ID/schema mismatch is a browser binding check even if a transport
     // erroneously reports validation success; it is not a copied graph schema.

@@ -10,12 +10,14 @@ import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import {
   inspectSessionCodec,
+  runIdCodec,
   runAdmissionCodec,
   type InspectSessionArgs,
   type InspectSessionValue,
   type RunAdmissionView,
   type RunSource
 } from './contracts.ts'
+import { WORKFLOW_HOST_APPROVAL } from '../service/apply-service.ts'
 
 export interface ConversationToolService {
   listDefinitions(): Promise<{ definitions: Array<{ blueprintId: string; name: string; documentRevision: string | null; semanticRevision: string | null }> }>
@@ -24,6 +26,44 @@ export interface ConversationToolService {
   validateBlueprint(candidate: AuthoringCandidate): Promise<unknown>
   createBlueprint(candidate: AuthoringCandidate, requestId: string, source: RunSource, signal?: AbortSignal): Promise<unknown>
   preflightRun(args: PreflightRunArgs): Promise<PreflightRunValue>
+  workflowList(): Promise<unknown>
+  workflowGet(args: { workflowId: string }): Promise<unknown>
+  workflowValidate(args: { workflowId: string; definitionJson: string }): Promise<unknown>
+  workflowPropose(args: {
+    workflowId: string
+    definitionJson: string
+    expectedRevision?: string | null
+    origin?: 'canvas' | 'conversation' | 'import'
+    message?: string
+  }): Promise<unknown>
+  workflowApply(args: {
+    workflowId: string
+    definitionJson: string
+    expectedRevision: string
+    origin?: 'canvas' | 'conversation' | 'import'
+    message?: string
+  }): Promise<unknown>
+  workflowApplyFromHost(args: {
+    workflowId: string
+    definitionJson: string
+    expectedRevision: string
+    origin?: 'canvas' | 'conversation' | 'import'
+    message?: string
+    approval: typeof WORKFLOW_HOST_APPROVAL
+  }): Promise<unknown>
+  workflowRevisions(args: { workflowId: string }): Promise<unknown>
+  workflowRevert(args: { workflowId: string; revision: string; expectedRevision: string; message?: string }): Promise<unknown>
+  workflowRevertFromHost(args: {
+    workflowId: string
+    revision: string
+    expectedRevision: string
+    message?: string
+    approval: typeof WORKFLOW_HOST_APPROVAL
+  }): Promise<unknown>
+  workflowInspect(args: { runId: string; sessionId?: string }): Promise<unknown>
+  workflowReport(args: { runId: string; sessionId?: string }): Promise<unknown>
+  /** Optional: scope one tool call to the caller conversation's Workspace. */
+  withSessionWorkspace?<T>(sessionId: string | undefined, action: () => Promise<T>, cwd?: string): Promise<T>
 }
 export interface ToolStartArgs {
   blueprintId: string
@@ -61,7 +101,7 @@ export function callerSource(ctx: Context, exec: ToolRunContext): RunSource {
 }
 
 const toolStartArgs = z.strictObject({ blueprintId: z.string().min(1), expectedRevision: z.string().min(1), input: z.json() })
-const toolInspectArgs = z.strictObject({ runId: z.string().min(1).optional() })
+const toolInspectArgs = z.strictObject({ runId: runIdCodec().optional() })
 function strictToolArgs<T>(codec: z.ZodType<T>, args: unknown): T {
   const parsed = codec.safeParse(args)
   if (!parsed.success) throw new HarnessError('INVALID_ARGS', 'INVALID_ARGS')
@@ -104,6 +144,8 @@ async function toolResult<T>(operation: () => Promise<T>): Promise<T> {
       'blueprint/library-busy',
       'blueprint/capability-unavailable',
       'blueprint/definition-write-failed',
+      'blueprint/definition-commit-pending',
+      'blueprint/approval-required',
       'session-unavailable',
       'nested-run-unavailable',
       'blueprint/definition-not-found',
@@ -133,7 +175,7 @@ async function toolResult<T>(operation: () => Promise<T>): Promise<T> {
             code === 'RUN_NOT_FOUND'
           ? mapTeamStageError(error)
           : 'blueprint/tool-failed'
-    const hint = safe === 'blueprint/capability-unavailable' ? 'Open the plugin in a file-based DSH profile or configure its runtimeRoot.' : undefined
+    const hint = safe === 'blueprint/capability-unavailable' ? 'Configure workspaceRoot for workflow definitions or runtimeRoot for Run storage.' : undefined
     throw new HarnessError(hint ? `${safe}: ${hint}` : safe, safe)
   }
 }
@@ -148,6 +190,60 @@ export function installConversationTools(
     scoped.effect(() => {
       const removers: Array<() => void> = []
       try {
+        // Approval belongs to this exact Host execution, never model JSON.
+        // A monotonic guard also covers pre-execute handlers that short-circuit
+        // this hook; the body consumes the registry token once.
+        const grants = new Set<ToolRunContext['token']>()
+        removers.push(() => grants.clear())
+        const mutatesWorkflow = (name: string) => name === 'workflow_apply' || name === 'workflow_revert'
+        const consumeApproval = (exec: ToolRunContext) => {
+          if (!exec || !grants.delete(exec.token)) throw new HarnessError('Workflow requires Host approval', 'blueprint/approval-required')
+          exec.signal.throwIfAborted()
+        }
+        removers.push(
+          scoped.on('tools/pre-execute', async (exec, next) => {
+            if (!mutatesWorkflow(exec.name)) return next()
+            const approval = scoped.get('approval' as never) as unknown as
+              | {
+                  request(args: { agent: Agent; toolName: string; callId: ToolRunContext['callId']; reason: string; signal: AbortSignal }): Promise<string>
+                }
+              | undefined
+            if (approval === undefined || exec.agent === undefined || exec.signal.aborted)
+              return { kind: 'deny' as const, reason: 'Workflow Host approval unavailable' }
+            let outcome: string
+            try {
+              outcome = await approval.request({
+                agent: exec.agent,
+                toolName: exec.name,
+                callId: exec.callId,
+                reason: 'Changing a canonical workflow requires approval.',
+                signal: exec.signal
+              })
+            } catch {
+              return { kind: 'deny' as const, reason: 'Workflow Host approval unavailable' }
+            }
+            if (outcome !== 'allowed-once' || exec.signal.aborted) return { kind: 'deny' as const, reason: 'Workflow Host approval was not granted' }
+            grants.add(exec.token)
+            return { kind: 'allow' as const }
+          }),
+          scoped.tools.guard(exec => (mutatesWorkflow(exec.name) && !grants.has(exec.token) ? 'Workflow requires Host approval' : undefined)),
+          scoped.on('tools/result', exec => {
+            grants.delete(exec.token)
+          })
+        )
+        // Every conversation tool resolves definitions and Runs inside the
+        // Workspace of the calling session, so switching projects in DSH
+        // switches the workflow library with it.
+        const register: typeof scoped.tools.register = tool => {
+          const scope = service.withSessionWorkspace?.bind(service)
+          if (scope === undefined) return scoped.tools.register(tool)
+          const execute = tool.execute
+          return scoped.tools.register({
+            ...tool,
+            execute: ((args: never, exec: ToolRunContext) =>
+              scope(exec?.agent?.session?.id, async () => await execute(args, exec), exec?.agent?.session?.header?.cwd)) as typeof execute
+          })
+        }
         const jsonOutput = { schema: { type: 'json' as const }, render: renderJson }
         const candidateParameters = {
           definition: { type: 'json' as const, required: true as const },
@@ -165,7 +261,7 @@ export function installConversationTools(
           }
         }
         removers.push(
-          scoped.tools.register(
+          register(
             defineTool({
               name: 'blueprint_describe',
               description:
@@ -184,7 +280,7 @@ export function installConversationTools(
           )
         )
         removers.push(
-          scoped.tools.register(
+          register(
             defineTool({
               name: 'blueprint_validate',
               description:
@@ -196,7 +292,7 @@ export function installConversationTools(
           )
         )
         removers.push(
-          scoped.tools.register(
+          register(
             defineTool({
               name: 'blueprint_create',
               description:
@@ -222,7 +318,7 @@ export function installConversationTools(
           )
         )
         removers.push(
-          scoped.tools.register(
+          register(
             defineTool({
               name: 'blueprint_preflight',
               description:
@@ -250,7 +346,7 @@ export function installConversationTools(
           )
         )
         removers.push(
-          scoped.tools.register(
+          register(
             defineTool({
               name: 'blueprint_list',
               description: 'List configured blueprints and their current document revision for an explicit blueprint_start.',
@@ -292,7 +388,7 @@ export function installConversationTools(
           )
         )
         removers.push(
-          scoped.tools.register(
+          register(
             defineTool({
               name: 'blueprint_start',
               description:
@@ -330,7 +426,7 @@ export function installConversationTools(
           )
         )
         removers.push(
-          scoped.tools.register(
+          register(
             defineTool({
               name: 'blueprint_inspect',
               description: 'Read only the frozen blueprint Run associated with this conversation. Optionally select a Run belonging to this session.',
@@ -351,6 +447,207 @@ export function installConversationTools(
             })
           )
         )
+        const workflowProposeArgs = z.strictObject({
+          workflowId: z.string().min(1),
+          definition: z.json(),
+          expectedRevision: z.string().min(1).nullable().optional(),
+          origin: z.enum(['canvas', 'conversation', 'import']).optional(),
+          message: z.string().min(1).optional()
+        })
+        const workflowApplyArgs = z.strictObject({
+          workflowId: z.string().min(1),
+          definition: z.json(),
+          expectedRevision: z.string().min(1),
+          origin: z.enum(['canvas', 'conversation', 'import']).optional(),
+          message: z.string().min(1).optional()
+        })
+        removers.push(
+          register(
+            defineTool({
+              name: 'workflow_list',
+              description: 'List canonical workspace workflow definitions and their current document revisions.',
+              parameters: {},
+              output: jsonOutput,
+              execute: args =>
+                toolResult(async () => {
+                  strictToolArgs(z.strictObject({}), args)
+                  return JSON.parse(JSON.stringify(await service.workflowList()))
+                })
+            })
+          )
+        )
+        removers.push(
+          register(
+            defineTool({
+              name: 'workflow_get',
+              description: 'Read one canonical workflow definition, including its document and semantic revisions.',
+              parameters: { workflowId: { type: 'string', required: true } },
+              output: jsonOutput,
+              execute: args =>
+                toolResult(async () =>
+                  JSON.parse(JSON.stringify(await service.workflowGet(strictToolArgs(z.strictObject({ workflowId: z.string().min(1) }), args))))
+                )
+            })
+          )
+        )
+        removers.push(
+          register(
+            defineTool({
+              name: 'workflow_validate',
+              description: 'Validate a complete workflow candidate without changing the canonical file.',
+              parameters: { workflowId: { type: 'string', required: true }, definition: { type: 'json', required: true } },
+              output: jsonOutput,
+              execute: args =>
+                toolResult(async () => {
+                  const parsed = strictToolArgs(z.strictObject({ workflowId: z.string().min(1), definition: z.json() }), args)
+                  return JSON.parse(
+                    JSON.stringify(await service.workflowValidate({ workflowId: parsed.workflowId, definitionJson: JSON.stringify(parsed.definition) }))
+                  )
+                })
+            })
+          )
+        )
+        for (const [name, method, description] of [
+          ['workflow_propose', 'workflowPropose', 'Propose a validated candidate and return semantic/layout diff and a candidate ID.'],
+          ['workflow_apply', 'workflowApplyFromHost', 'Apply a candidate through the shared validation, host approval and required revision CAS authority.']
+        ] as const) {
+          removers.push(
+            register(
+              defineTool({
+                name,
+                description,
+                parameters: {
+                  workflowId: { type: 'string', required: true },
+                  definition: { type: 'json', required: true },
+                  expectedRevision: { type: 'string', ...(method === 'workflowApplyFromHost' ? { required: true as const } : {}) },
+                  origin: { type: 'string' },
+                  message: { type: 'string' }
+                },
+                output: jsonOutput,
+                execute: (args, exec) =>
+                  toolResult(async () => {
+                    if (method === 'workflowApplyFromHost') consumeApproval(exec)
+                    const parsed = strictToolArgs(method === 'workflowApplyFromHost' ? workflowApplyArgs : workflowProposeArgs, args)
+                    return JSON.parse(
+                      JSON.stringify(
+                        await service[method]({
+                          workflowId: parsed.workflowId,
+                          definitionJson: JSON.stringify(parsed.definition),
+                          ...(parsed.expectedRevision === undefined ? {} : { expectedRevision: parsed.expectedRevision }),
+                          ...(parsed.origin === undefined ? {} : { origin: parsed.origin }),
+                          ...(parsed.message === undefined ? {} : { message: parsed.message }),
+                          ...(method === 'workflowApplyFromHost' ? { approval: WORKFLOW_HOST_APPROVAL } : {})
+                        } as never)
+                      )
+                    )
+                  })
+              })
+            )
+          )
+        }
+        removers.push(
+          register(
+            defineTool({
+              name: 'workflow_revisions',
+              description: 'List immutable workflow apply history.',
+              parameters: { workflowId: { type: 'string', required: true } },
+              output: jsonOutput,
+              execute: args =>
+                toolResult(async () =>
+                  JSON.parse(JSON.stringify(await service.workflowRevisions(strictToolArgs(z.strictObject({ workflowId: z.string().min(1) }), args))))
+                )
+            })
+          )
+        )
+        removers.push(
+          register(
+            defineTool({
+              name: 'workflow_revert',
+              description: 'Create a new revision from an immutable historical workflow revision.',
+              parameters: {
+                workflowId: { type: 'string', required: true },
+                revision: { type: 'string', required: true },
+                expectedRevision: { type: 'string', required: true },
+                message: { type: 'string' }
+              },
+              output: jsonOutput,
+              execute: (args, exec) =>
+                toolResult(async () => {
+                  consumeApproval(exec)
+                  const parsed = strictToolArgs(
+                    z.strictObject({
+                      workflowId: z.string().min(1),
+                      revision: z.string().min(1),
+                      expectedRevision: z.string().min(1),
+                      message: z.string().optional()
+                    }),
+                    args
+                  )
+                  return JSON.parse(
+                    JSON.stringify(
+                      await service.workflowRevertFromHost({
+                        workflowId: parsed.workflowId,
+                        revision: parsed.revision,
+                        expectedRevision: parsed.expectedRevision,
+                        ...(parsed.message === undefined ? {} : { message: parsed.message }),
+                        approval: WORKFLOW_HOST_APPROVAL
+                      })
+                    )
+                  )
+                })
+            })
+          )
+        )
+        removers.push(
+          register(
+            defineTool({
+              name: 'workflow_run',
+              description: 'Run a saved workflow after its revision and input have been preflighted.',
+              parameters: {
+                blueprintId: { type: 'string', required: true },
+                expectedRevision: { type: 'string', required: true },
+                input: { type: 'json', required: true }
+              },
+              output: jsonOutput,
+              execute: (args, exec) =>
+                toolResult(async () => {
+                  exec.signal.throwIfAborted()
+                  const parsed = strictToolArgs(toolStartArgs, args)
+                  return runAdmissionCodec().parse(
+                    await start(
+                      { blueprintId: parsed.blueprintId, expectedRevision: parsed.expectedRevision, inputJson: JSON.stringify(parsed.input) },
+                      callerSource(ctx, exec)
+                    )
+                  )
+                })
+            })
+          )
+        )
+        for (const [name, method] of [
+          ['workflow_inspect', 'workflowInspect'],
+          ['workflow_report', 'workflowReport']
+        ] as const) {
+          removers.push(
+            register(
+              defineTool({
+                name,
+                description:
+                  name === 'workflow_inspect'
+                    ? 'Inspect a frozen workflow Run.'
+                    : 'Report what a workflow Run did, which step failed, why, and what to change next time (codes plus fixed guidance; no raw evidence).',
+                parameters: { runId: { type: 'string', required: true } },
+                output: jsonOutput,
+                execute: (args, exec) =>
+                  toolResult(async () => {
+                    const parsed = strictToolArgs(z.strictObject({ runId: runIdCodec() }), args)
+                    if (!exec.agent) throw new HarnessError('session-unavailable', 'session-unavailable')
+                    const live = liveCaller(ctx, exec.agent.session.id, exec.agent)
+                    return JSON.parse(JSON.stringify(await service[method]({ ...parsed, sessionId: live.session.id })))
+                  })
+              })
+            )
+          )
+        }
       } catch (error) {
         for (const remove of removers.reverse()) remove()
         throw error

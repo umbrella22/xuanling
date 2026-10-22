@@ -2,14 +2,19 @@
 import {
   inspectSessionArgsCodec,
   inspectSessionCodec,
+  resolveRecoveryArgsCodec,
+  resolveRecoveryValueCodec,
   runLifecycleActionArgsCodec,
   runLifecycleActionCodec,
   runQueryArgsCodec,
   runQueryCodec
 } from '../../../../conversation/contracts.ts'
+import { teamStageBlocksRecovery } from '../../../../host/teamstage-recovery.ts'
 import type {
   InspectSessionArgs,
   InspectSessionValue,
+  ResolveRecoveryArgs,
+  ResolveRecoveryValue,
   RunLifecycleActionArgs,
   RunQueryArgs,
   RunLifecycleActionValue,
@@ -23,6 +28,7 @@ export interface ConversationHost {
   queryRuns?(args: RunQueryArgs): Promise<unknown>
   archiveRun?(args: RunLifecycleActionArgs): Promise<RunLifecycleActionValue>
   restoreRun?(args: RunLifecycleActionArgs): Promise<RunLifecycleActionValue>
+  resolveRecovery?(args: ResolveRecoveryArgs): Promise<ResolveRecoveryValue>
 }
 
 /** Expose only the one read RPC; preserve native proxy receivers and strict wire decoding. */
@@ -72,6 +78,20 @@ export function resolveConversationHost(ctx: { get(key: string): unknown }): Con
       return parsed.data
     }
   }
+  if (typeof namespace.resolveRecovery === 'function') {
+    host.resolveRecovery = async args => {
+      const request = resolveRecoveryArgsCodec().safeParse(args)
+      if (!request.success) throw new BlueprintRemoteError('blueprint/bad-request')
+      const result = await namespace.resolveRecovery!.call(namespace, request.data)
+      if (!result || typeof result !== 'object' || Array.isArray(result) || typeof result.ok !== 'boolean') {
+        throw new BlueprintRemoteError('blueprint/dto-invalid')
+      }
+      if (!result.ok) throw new BlueprintRemoteError(typeof result.error?.code === 'string' ? result.error.code : 'blueprint/remote-failed')
+      const parsed = resolveRecoveryValueCodec().safeParse(result.value)
+      if (!parsed.success) throw new BlueprintRemoteError('blueprint/dto-invalid')
+      return parsed.data
+    }
+  }
   return host
 }
 
@@ -116,6 +136,9 @@ function validateTeamStageContinuity(previous: TeamStageProjection, current: Tea
     (previous.taskRevision === undefined || (current.taskRevision !== undefined && current.taskRevision >= previous.taskRevision))
   )
 }
+
+/** Typed Host answer for a lifecycle conflict on a healthy connection. */
+const RECOVERY_CONFLICT_CODE = 'blueprint/run-lifecycle-conflict'
 
 export class ConversationController {
   private snapshot: ConversationSnapshot
@@ -232,7 +255,9 @@ export class ConversationController {
     const epoch = ++this.epoch
     const sessionId = this.snapshot.sessionId
     try {
-      await archiveRun({ runId: value.selected.run.runId })
+      // The Session scopes a conversation-created Run to its registered
+      // Workspace; without it the Host would archive into its default store.
+      await archiveRun({ runId: value.selected.run.runId, sessionId })
       if (epoch !== this.epoch || !this.connected) return
       this.choices.delete(sessionId)
       await this.refresh()
@@ -242,6 +267,50 @@ export class ConversationController {
         connection: this.snapshot.value?.status === 'bound' ? 'stale' : 'unavailable',
         errorCode: error instanceof BlueprintRemoteError ? error.code : 'blueprint/remote-failed'
       })
+    }
+  }
+
+  /** Resolve the observed `recovery_required` Run at its frozen sequence. The
+   * unknown effect is never replayed: the note becomes the durable audit
+   * evidence. Typed failures publish the existing static error code and return
+   * false; a successful call refreshes the bound Session facts. */
+  async resolveRecovery(resolution: 'failed' | 'succeeded', note: string): Promise<boolean> {
+    const value = this.snapshot.value
+    const resolve = this.host?.resolveRecovery
+    if (!this.connected || !resolve || value?.status !== 'bound') return false
+    const epoch = ++this.epoch
+    const runId = value.selected.run.runId
+    try {
+      const resolved = await resolve({
+        runId,
+        sessionId: this.snapshot.sessionId,
+        resolution,
+        note: note.trim(),
+        expectedSeq: value.selected.run.seq
+      })
+      if (epoch !== this.epoch || !this.connected) return false
+      if (resolved.runId !== runId) throw new BlueprintRemoteError('blueprint/dto-invalid')
+      await this.refresh()
+      return true
+    } catch (error) {
+      if (epoch !== this.epoch || !this.connected) return false
+      const errorCode = error instanceof BlueprintRemoteError ? error.code : 'blueprint/remote-failed'
+      if (errorCode === RECOVERY_CONFLICT_CODE) {
+        // A typed lifecycle conflict (stale review, Run already settled,
+        // TeamStage needs native cleanup) is a business answer from a healthy
+        // Host, not a lost connection. Re-read the Session so the form sees the
+        // current state and `seq`, then keep the code visible; marking the
+        // view stale here would lock the form on its outdated `expectedSeq`.
+        await this.refresh()
+        if (!this.connected || this.snapshot.connection !== 'connected') return false
+        this.publish({ errorCode })
+        return false
+      }
+      this.publish({
+        connection: this.snapshot.value?.status === 'bound' ? 'stale' : 'unavailable',
+        errorCode
+      })
+      return false
     }
   }
 
@@ -305,6 +374,18 @@ export class ConversationController {
       if (this.pending === epoch) this.pending = null
     }
   }
+}
+
+/** Recovery is resolvable in the conversation seat only for the bound selected
+ * Run. A TeamStage with an unknown native effect is `team-manual`: the contract
+ * rejects resolution until the native Team is cleaned up, so the UI must not
+ * offer the buttons. */
+export type ConversationRecoveryState = 'none' | 'resolvable' | 'team-manual'
+export function conversationRecoveryState(value: InspectSessionValue | null | undefined): ConversationRecoveryState {
+  if (value?.status !== 'bound') return 'none'
+  const run = value.selected.run
+  if (run.state !== 'recovery_required') return 'none'
+  return teamStageBlocksRecovery(run.team?.state) ? 'team-manual' : 'resolvable'
 }
 
 export function conversationFocusNodes(value: InspectSessionValue | null): string[] {

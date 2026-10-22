@@ -7,7 +7,7 @@ import { GraphEditor } from '../../src/client/features/authoring/logic/graph/gra
 import { decodeClipboard } from '../../src/client/features/authoring/logic/graph/clipboard.ts'
 import { frozenPresentationCodec } from '../../src/conversation/contracts.ts'
 const definition = () => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'NodeUXCodec',
   name: 'Synthetic',
   resources: {
@@ -105,21 +105,12 @@ for (const field of ['ports', 'resources']) {
     assert.equal(editor.redo(), true)
   })
 }
-test('U11 GREEN old schemaVersion 1 remains strict and reversible', () => {
-  const raw = definition(),
-    result = decoded(raw)
-  assert.ok(result.value)
-  const editor = GraphEditor.fromDefinition(result.value)
-  const old = computeRevision({ rootDir: process.cwd(), definition: raw })
-  editor.patchPresentation(['task'], { title: '展示修改' })
-  const updated = computeRevision({
-    rootDir: process.cwd(),
-    definition: editor.exportDefinition()
-  })
-  assert.equal(updated.semantic, old.semantic)
-  assert.notEqual(updated.layout, old.layout)
-  assert.equal(editor.undo(), true)
-  assert.deepEqual(editor.exportDefinition().presentation.nodes, raw.presentation.nodes)
+test('U11 GREEN schemaVersion 1 is rejected without a compatibility path', () => {
+  const raw = definition()
+  raw.schemaVersion = 1
+  const result = decoded(raw)
+  assert.equal(result.value, undefined)
+  assert.ok(result.issues.some(issue => issue.code === 'definition-unsupported-version' && issue.pointer === '/schemaVersion'))
 })
 
 test('U12 hard break: non-executable node vocabulary and fields fail closed at definition decode', () => {

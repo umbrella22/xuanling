@@ -27,7 +27,7 @@ test('view binding rejects the previous published editor during asynchronous dra
   const validation = new Promise(resolve => {
     resolveValidation = resolve
   })
-  const definition = { schemaVersion: 1, id: 'target', name: 'Target', resources: {}, graph: { nodes: [], edges: [] } }
+  const definition = { schemaVersion: 2, id: 'target', name: 'Target', resources: {}, graph: { nodes: [], edges: [] } }
   const document = {
     blueprintId: 'target',
     documentRevision: 'r1',

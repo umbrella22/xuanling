@@ -11,7 +11,7 @@ const node = id => ({
 })
 function fixture(edges = []) {
   return GraphEditor.fromDefinition({
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'Gate',
     name: 'Synthetic',
     resources: {},

@@ -5,7 +5,7 @@ import { createBlueprintPanel } from '../../src/client/features/authoring/ui/pan
 import { installCanvasStyles } from '../../src/client/shared/styles/styles.ts'
 import { en } from '../../src/client/shared/i18n/locales.ts'
 const definition = (id: string) => ({
-  schemaVersion: 1 as const,
+  schemaVersion: 2 as const,
   id,
   name: `Fixture ${id}`,
   resources: {

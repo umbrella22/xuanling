@@ -1,14 +1,14 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
-import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash, randomUUID } from 'node:crypto'
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import type { DefinitionPackage } from '../definition/persist.ts'
+import { appendRevisionHistory, loadDefinitionPackage, type DefinitionPackage } from '../definition/persist.ts'
 import type { BlueprintDocumentLibrary } from './document-library.ts'
-import { readZip } from '../portability/zip.ts'
-import { exportBlueprint, importBlueprint } from '../portability/index.ts'
+import { ImportConflictError, exportBlueprint, importBlueprint } from '../portability/index.ts'
+import { fsyncDirectory, mkdirDurable } from '../persistence/durable-fs.ts'
 import { resolveHostExportResources } from '../portability/host-resources.ts'
 import { resolveResource, type SkillRoot } from '../resources/resolver.ts'
 import { snapshotDirectory } from '../resources/index.ts'
@@ -112,22 +112,54 @@ export class BlueprintPortabilityUseCases {
   async importConfigured(args: { blueprintId: string; archiveBase64: string }): Promise<{ blueprintId: string; filesWritten: number; closureDigest: string }> {
     this.context.checkArgs('importDefinition', args)
     const root = this.context.blueprintRoot(args.blueprintId)
+    // Validate the complete archive before entering the workspace mutation
+    // queue. Acquiring the writer lease creates the workspace state directory;
+    // malformed or incompatible bytes must therefore fail without touching a
+    // previously absent destination.
+    let archive: Buffer
+    try {
+      archive = Buffer.from(args.archiveBase64, 'base64')
+      if (archive.toString('base64') !== args.archiveBase64) throw new Error('invalid archive encoding')
+      const validationRoot = mkdtempSync(join(tmpdir(), 'bp-import-validate-'))
+      try {
+        const checked = importBlueprint(archive, join(validationRoot, 'package'))
+        const definition = this.context.decodeOrThrow(readFileSync(join(checked.targetDir, 'blueprint.json'), 'utf8'))
+        this.context.checkResources(definition)
+        if (definition.id !== args.blueprintId) throw new Error('configured ID mismatch')
+      } finally {
+        rmSync(validationRoot, { recursive: true, force: true })
+      }
+    } catch (error) {
+      throw this.context.portabilityFailure('import', error)
+    }
     return await this.context.documents.withDocument(
       root,
       () => {
         this.context.documents.assertDefinitionActive(args.blueprintId)
+        const parent = dirname(root)
+        const stage = join(parent, `.bp-import-seed-${randomUUID()}`)
         try {
-          const archive = Buffer.from(args.archiveBase64, 'base64')
-          if (archive.toString('base64') !== args.archiveBase64) throw new Error('invalid archive encoding')
-          const definitionEntry = readZip(archive).find(entry => entry.name === 'blueprint.json')
-          if (!definitionEntry) throw new Error('missing definition')
-          const definition = this.context.decodeOrThrow(definitionEntry.data.toString('utf8'))
-          this.context.checkResources(definition)
-          if (definition.id !== args.blueprintId) throw new Error('configured ID mismatch')
-          const target = existsSync(root) ? realpathSync(root) : root
-          const result = importBlueprint(archive, target, { allowExisting: true })
+          // Import into an unpublished staging root, seed the baseline revision,
+          // then publish the complete package atomically. A failure before the
+          // rename leaves the canonical destination untouched.
+          mkdirDurable(parent)
+          const result = importBlueprint(archive, stage)
+          const snapshot = loadDefinitionPackage(stage)
+          if (snapshot.document.blueprintId !== args.blueprintId) throw new Error('configured ID mismatch')
+          appendRevisionHistory(stage, snapshot.document, {
+            parentRevision: null,
+            origin: 'import',
+            packageFiles: snapshot.files
+          })
+          if (existsSync(root)) {
+            if (!statSync(root).isDirectory() || readdirSync(root).length > 0) throw new ImportConflictError(root)
+            rmSync(root, { recursive: true })
+          }
+          renameSync(stage, root)
+          fsyncDirectory(parent)
           return { blueprintId: args.blueprintId, filesWritten: result.filesWritten.length, closureDigest: result.manifest.closureDigest }
         } catch (error) {
+          rmSync(stage, { recursive: true, force: true })
           throw this.context.portabilityFailure('import', error)
         }
       },

@@ -725,10 +725,10 @@ publish()
 }
 
 function fixture(root, paths, config) {
-  const definitionRoot = join(root, 'definition')
+  const definitionRoot = join(root, '.xuanling', 'workflows', BLUEPRINT_ID)
   mkdirSync(join(definitionRoot, 'lib'), { recursive: true, mode: 0o700 })
   const definition = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: BLUEPRINT_ID,
     name: 'Live TeamStage acceptance graph',
     resources: {
@@ -800,7 +800,7 @@ function fixture(root, paths, config) {
   )
   const operatorPath = join(root, 'live-teamstage-operator.mjs')
   writeFileSync(operatorPath, operatorSource(paths, config), { mode: 0o600 })
-  return { blueprints: { [BLUEPRINT_ID]: definitionRoot }, operatorModules: [operatorPath] }
+  return { workspaceRoot: root, runtimeRoot: join(root, '.xuanling'), operatorModules: [operatorPath] }
 }
 
 function validateReportDir(path) {

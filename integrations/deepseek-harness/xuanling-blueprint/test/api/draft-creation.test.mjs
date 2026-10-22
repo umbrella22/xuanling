@@ -26,7 +26,7 @@ async function fixture(t) {
       }
     })
     new ToolRuntime(ctx, { mode: 'native' })
-    await ctx.plugin(BlueprintService, {})
+    await ctx.plugin(BlueprintService, { workspaceRoot: root, runtimeRoot: join(root, '.xuanling') })
     fibers.push(ctx)
     return ctx.blueprint
   }
@@ -73,7 +73,7 @@ test('empty library opens editable draft; first save and host restart preserve t
 test('create retries are idempotent; conflicting content and browser locators are rejected', async t => {
   const f = await fixture(t)
   assert.equal(typeof f.host.createDefinition, 'function', 'Host must expose first-save creation')
-  const definition = { schemaVersion: 1, id: 'draft', name: '中文 / exact name', resources: {}, graph: { nodes: [], edges: [] } }
+  const definition = { schemaVersion: 2, id: 'draft', name: '中文 / exact name', resources: {}, graph: { nodes: [], edges: [] } }
   const args = { requestId: 'exact opaque request / 中文', definitionJson: JSON.stringify(definition) }
   const [a, b] = await Promise.all([f.host.createDefinition(args), f.host.createDefinition(args)])
   assert.deepEqual(a, b)
@@ -140,9 +140,9 @@ test('managed library never follows a blueprint directory symlink', async t => {
   assert.equal(typeof f.host.createDefinition, 'function')
   const doc = await f.host.createDefinition({
     requestId: 'symlink',
-    definitionJson: JSON.stringify({ schemaVersion: 1, id: 'draft', name: 'Draft', resources: {}, graph: { nodes: [], edges: [] } })
+    definitionJson: JSON.stringify({ schemaVersion: 2, id: 'draft', name: 'Draft', resources: {}, graph: { nodes: [], edges: [] } })
   })
-  const library = join(f.root, 'data/xuanling-blueprint/definitions')
+  const library = join(f.root, '.xuanling/workflows')
   const target = join(library, doc.blueprintId),
     outside = join(f.root, 'outside')
   rmSync(target, { recursive: true })
@@ -186,7 +186,7 @@ test('first-save check and export bind the assigned identity and never dispatch 
 
 test('untrusted new draft is validated before adoption; rejected bytes are retained', async t => {
   const f = await fixture(t)
-  const raw = JSON.stringify({ requestId: 'bad', definitionJson: JSON.stringify({ schemaVersion: 1, id: 'draft-bad', graph: { nodes: [] } }) })
+  const raw = JSON.stringify({ requestId: 'bad', definitionJson: JSON.stringify({ schemaVersion: 2, id: 'draft-bad', graph: { nodes: [] } }) })
   f.storage.setItem(newDraftKey, raw)
   await f.workspace.initialize()
   assert.equal(f.workspace.definition, null)

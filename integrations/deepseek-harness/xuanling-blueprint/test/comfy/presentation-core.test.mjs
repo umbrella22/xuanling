@@ -4,7 +4,7 @@ import { decodeDefinition } from '../../src/definition/codec.ts'
 import { validateDefinition } from '../../src/definition/validator.ts'
 
 const base = () => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'flow',
   name: 'Flow',
   resources: {},

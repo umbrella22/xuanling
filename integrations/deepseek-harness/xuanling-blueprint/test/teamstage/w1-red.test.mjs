@@ -110,7 +110,7 @@ test('W1 RED C-02: RunStore exposes atomic TeamStage binding', async () => {
   const root = await mkdtemp(join(tmpdir(), 'xuanling-teamstage-red-'))
   let opened
   try {
-    opened = await openBlueprintDomain({ backend: 'json', path: join(root, 'store') })
+    opened = await openBlueprintDomain({ path: join(root, 'store') })
     const store = new RunStore(opened.domain)
     assert.equal(typeof store.bindTeamStage, 'function', 'binding must be a RunStore single-record RMW operation')
   } finally {
@@ -119,20 +119,20 @@ test('W1 RED C-02: RunStore exposes atomic TeamStage binding', async () => {
   }
 })
 
-test('W1 GREEN CONTROL C-09: ordinary legacy RunRecord remains readable', () => {
+test('W1 C-09: an archive-shaped RunRecord remains schema-parseable without becoming runtime-visible', () => {
   assert.equal(runRecordSchema.safeParse(record()).success, true)
 })
 
 const digest = value => createHash('sha256').update(value).digest('hex')
 const admit = (store, id) => store.createRun({ scope: 'run', requestId: id, payloadFingerprint: digest(id) }, 'rev-1', '{}', '{}')
 
-for (const backend of ['json', 'sqlite']) {
-  test(`W1 C-02/C-06 ${backend}: binding is durable, idempotent, and legacy reads survive reopen`, async t => {
+for (const backend of ['directory']) {
+  test(`W1 C-02/C-06 ${backend}: binding is durable, idempotent, and archived v1 Runs stay hidden`, async t => {
     const root = await mkdtemp(join(tmpdir(), `xuanling-teamstage-${backend}-`))
     const runtimeRoot = join(root, 'runtime')
     await mkdir(join(runtimeRoot, 'store'), { recursive: true })
-    const path = backend === 'json' ? join(runtimeRoot, 'store') : join(runtimeRoot, 'store', 'runs.sqlite')
-    let opened = await openBlueprintDomain({ backend, path })
+    const path = join(runtimeRoot, 'store')
+    let opened = await openBlueprintDomain({ path })
     let store = new RunStore(opened.domain)
     const { runId } = await admit(store, 'team-binding')
     const binding = { stageId: 'stage-1', teamId: 'team-1', leadSessionId: 'lead-session', taskSpecificationFingerprint: digest('task-spec') }
@@ -178,22 +178,24 @@ for (const backend of ['json', 'sqlite']) {
     )
     await opened.close()
     opened = undefined
-    opened = await openBlueprintDomain({ backend, path })
+    opened = await openBlueprintDomain({ path })
     store = new RunStore(opened.domain)
     assert.equal((await store.get(runId)).teamStage.outputAcceptance.evidenceDigest, accepted.evidenceDigest)
     const legacyId = 'legacy-run'
-    await opened.domain.table('runs').put(legacyId, record())
-    assert.equal(Object.hasOwn(await store.get(legacyId), 'teamStage'), false)
+    await opened.domain.table('runs').put(legacyId, { ...record(), runId: legacyId, definitionJson: JSON.stringify({ schemaVersion: 1, id: 'legacy' }) })
+    await assert.rejects(() => store.get(legacyId), { code: 'RUN_NOT_FOUND' })
+    assert.equal(await store.tryGet(legacyId), undefined)
+    assert.deepEqual(await store.listRunIds(), [runId])
     await opened.close()
     opened = undefined
     const backup = createBackup(runtimeRoot)
     const restoredRoot = join(root, 'restored')
     restoreBackup(backup.archive, restoredRoot)
-    const restoredPath = backend === 'json' ? join(restoredRoot, 'store') : join(restoredRoot, 'store', 'runs.sqlite')
-    opened = await openBlueprintDomain({ backend, path: restoredPath })
+    const restoredPath = join(restoredRoot, 'store')
+    opened = await openBlueprintDomain({ path: restoredPath })
     store = new RunStore(opened.domain)
     assert.deepEqual(await store.get(runId), settled, 'TeamStage fields must survive backup/restore byte-for-byte')
-    assert.equal(Object.hasOwn(await store.get(legacyId), 'teamStage'), false)
+    await assert.rejects(() => store.get(legacyId), { code: 'RUN_NOT_FOUND' })
     t.after(async () => {
       await opened?.close()
       await rm(root, { recursive: true, force: true })

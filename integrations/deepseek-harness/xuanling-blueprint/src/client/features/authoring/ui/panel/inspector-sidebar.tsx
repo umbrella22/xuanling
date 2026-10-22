@@ -17,6 +17,7 @@ import { nodeKindTitle } from '../../logic/graph/node-catalog.ts'
 import { renderAttemptDiagnostics } from '../../../../shared/diagnostics/diagnostics.ts'
 import { preflightActionKey } from '../../../../shared/diagnostics/diagnostics-model.ts'
 import type { BlueprintDefinition } from '../../../../../definition/types.ts'
+import { nodeResourceRefs, ResourceProvenance, RevisionHistorySection, RunReportSection } from './run-insights.tsx'
 
 export interface InspectorSidebarEnvironment {
   hostLink: HostLink | undefined
@@ -65,6 +66,7 @@ export function InspectorSidebar({
   openChat,
   button
 }: InspectorSidebarProps): React.ReactElement {
+  const chatWithoutSource = snapshot?.source === undefined && snapshot?.attempts.some(attempt => attempt.sessionId !== undefined)
   return (
     <aside className={'bp-inspector'} id={id} hidden={hidden} aria-label={t('inspector.ariaLabel')}>
       <h2>{t('inspector.title')}</h2>
@@ -88,6 +90,16 @@ export function InspectorSidebar({
               t={t}
             />
           </fieldset>
+          {definition?.graph.nodes.some(node => node.id === selectedNode.id) && (
+            <ResourceProvenance
+              key={`provenance-${selectedNode.id}`}
+              t={t}
+              nodeId={selectedNode.id}
+              refs={nodeResourceRefs(definition.graph.nodes.find(node => node.id === selectedNode.id)!)}
+              resources={definition.resources}
+              bindingDigests={snapshot?.bindingDigests}
+            />
+          )}
         </section>
       ) : (
         <p className={'bp-help'}>{t('inspector.selectNode')}</p>
@@ -187,6 +199,11 @@ export function InspectorSidebar({
             {t('conversation.chatUnavailable')}
           </p>
         )}
+        {env.openSession && chatWithoutSource && (
+          <p className={'bp-help'} id={`${id}-chat-without-source`} data-bp-chat-unavailable-reason={'no-source'}>
+            {t('conversation.chatWithoutSource')}
+          </p>
+        )}
         {env.openSession && snapshot?.source && (
           <button type={'button'} data-bp-source-chat={snapshot.source.sessionId} onClick={() => openChat(snapshot.source!.sessionId)}>
             {t('conversation.sourceChat')}
@@ -207,6 +224,7 @@ export function InspectorSidebar({
             {t('conversation.openChat')}
           </button>
         ))}
+        <RunReportSection t={t} hostLink={env.hostLink} workspace={workspace} snapshot={snapshot} perform={perform} />
         {snapshot?.attempts.some(attempt => attempt.state === 'waiting_input') && (
           <div>
             {button('run.approve', 'approve', () => perform(() => workspace.decide('approve')), workspace.busy)}
@@ -223,9 +241,10 @@ export function InspectorSidebar({
               <button
                 type={'button'}
                 data-bp-open-attempt={attempt.attemptId}
-                disabled={attempt.attemptId === undefined || attempt.sessionId === undefined}
+                disabled={snapshot?.source === undefined || attempt.attemptId === undefined || attempt.sessionId === undefined}
+                aria-describedby={chatWithoutSource ? `${id}-chat-without-source` : undefined}
                 onClick={() => {
-                  if (attempt.attemptId && attempt.sessionId) openChat(attempt.sessionId, snapshot?.source?.sessionId)
+                  if (snapshot?.source && attempt.attemptId && attempt.sessionId) openChat(attempt.sessionId, snapshot.source.sessionId)
                 }}
               >
                 {t('conversation.openChat')}
@@ -240,6 +259,7 @@ export function InspectorSidebar({
           ))}
         </ol>
       </details>
+      <RevisionHistorySection t={t} hostLink={env.hostLink} workspace={workspace} editable={editable} perform={perform} />
     </aside>
   )
 }

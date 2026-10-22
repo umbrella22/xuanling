@@ -12,6 +12,7 @@ const NODE_VALUE_ERROR_CODES = new Set([
   'binding-missing',
   'binding-unavailable',
   'binding-invalid',
+  'binding-drift',
   'output-missing',
   'output-invalid'
 ])
@@ -20,6 +21,7 @@ export function projectRunSnapshot(record: RunRecord, runtime?: TeamStageRuntime
     runId: record.runId,
     state: record.state,
     definitionRevision: record.definitionRevision,
+    ...(record.bindingDigests === undefined ? {} : { bindingDigests: { ...record.bindingDigests } }),
     ...(record.source === undefined ? {} : { source: { ...record.source } }),
     attempts: record.attempts.map(a => {
       const outcome = a.result?.outcome as { kind?: string; outputs?: unknown; value?: unknown } | undefined

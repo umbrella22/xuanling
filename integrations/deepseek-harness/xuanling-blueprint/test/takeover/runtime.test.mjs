@@ -220,7 +220,7 @@ async function harness(t, host = registryDouble()) {
 
 function definition(nodes, edges = [], resources = {}) {
   const value = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'takeover-runtime',
     name: 'Takeover source regression',
     resources,
@@ -243,7 +243,7 @@ const argsFor = (h, value, input = { task: 'REAL_INPUT_SENTINEL' }) => ({
 })
 
 async function readRuns(runtimeRoot) {
-  const opened = await openBlueprintDomain({ backend: 'json', path: join(runtimeRoot, 'store') })
+  const opened = await openBlueprintDomain({ path: runtimeRoot })
   try {
     const store = new RunStore(opened.domain)
     return await Promise.all((await store.listRunIds()).map(id => store.get(id)))
@@ -556,22 +556,26 @@ async function twoResourceAttempts(t, h, inspect = () => {}) {
   })
   const args = argsFor(h, fixture.value)
   const result = await admitAndDrain(h, args)
-  assert.equal(specs.length, 2, 'control: both Attempts ran within the same admitted Run')
   return { specs, trees, result, args, fixture }
 }
 
 test('C-04 driver-skill-update: every new Attempt uses the latest shared SKILL.md', async t => {
   const h = await harness(t)
-  const { specs } = await twoResourceAttempts(t, h)
+  const { specs, result } = await twoResourceAttempts(t, h)
+  const record = await readRun(h, result.runId)
+  assert.equal(specs.length, 1, 'TARGET: a changed shared binding must block the later Attempt before dispatch')
   assert.match(specs[0].skills.map(skill => skill.content).join('\n'), /SHARED_SKILL_FIRST/, 'TARGET: first Attempt receives shared Skill, not empty skills')
-  assert.match(specs[1].skills.map(skill => skill.content).join('\n'), /SHARED_SKILL_SECOND/, 'TARGET: new Attempt refreshes shared Skill from its bound root')
   assert.doesNotMatch(specs[0].skills.map(skill => skill.content).join('\n'), /SHARED_SKILL_SECOND/, 'TARGET: original frozen Attempt must not mutate')
+  assert.equal(record.attempts[1].result.outcome.kind, 'binding-drift')
 })
 
-test('C-04 driver-skill-update: second Attempt independently sees updated Skill bytes', async t => {
+test('C-04 driver-skill-update: updated Skill bytes require a new revision instead of dispatch', async t => {
   const h = await harness(t)
-  const { specs } = await twoResourceAttempts(t, h)
-  assert.match(specs[1].skills.map(skill => skill.content).join('\n'), /SHARED_SKILL_SECOND/, 'TARGET: updated Skill must reach the second Attempt')
+  const { specs, result } = await twoResourceAttempts(t, h)
+  const record = await readRun(h, result.runId)
+  assert.equal(specs.length, 1)
+  assert.equal(record.attempts[1].state, 'failed')
+  assert.equal(record.attempts[1].result.outcome.kind, 'binding-drift', 'TARGET: changed shared Skill is fail-closed')
 })
 
 for (const [suffix, description, expected] of [
@@ -581,53 +585,53 @@ for (const [suffix, description, expected] of [
 ]) {
   test(`C-04 driver-skill-tree: full ${description} bytes are materialized per Attempt`, async t => {
     const h = await harness(t)
-    const { trees } = await twoResourceAttempts(t, h)
-    for (const index of [0, 1]) {
-      const bytes = Object.entries(trees[index]).find(([path]) => path === suffix || path.endsWith(`/${suffix}`))?.[1]
-      assert.deepEqual(bytes, expected(index), `TARGET: Attempt ${index + 1} needs full ${suffix} bytes, not only SKILL.md`)
-    }
+    const { trees, result } = await twoResourceAttempts(t, h)
+    const bytes = Object.entries(trees[0]).find(([path]) => path === suffix || path.endsWith(`/${suffix}`))?.[1]
+    assert.deepEqual(bytes, expected(0), `TARGET: first Attempt needs full ${suffix} bytes, not only SKILL.md`)
+    const record = await readRun(h, result.runId)
+    assert.equal(record.attempts[1].result.outcome.kind, 'binding-drift', 'TARGET: changed Skill tree blocks the later Attempt')
   })
 }
 
 test('C-04 driver-resource-digests: nonempty content digests are durable before dispatch', async t => {
   const h = await harness(t)
-  const observed = []
-  const { result } = await twoResourceAttempts(t, h, async spec => {
-    const record = (await readRuns(h.runtimeRoot))[0]
-    const attempt = record.attempts.find(item => item.attemptId === spec.attemptId)
-    assert.ok(attempt?.intent, 'control: production intent committed before execution boundary')
-    observed.push(structuredClone(attempt.intent.resourceDigests))
-  })
+  const { result } = await twoResourceAttempts(t, h)
   const record = await readRun(h, result.runId)
+  const observed = record.attempts.map(attempt => attempt.intent.resourceDigests)
   for (const digests of observed) {
     assert.ok(Object.keys(digests).length >= 2, 'TARGET: dispatch intent must contain agent AND Skill content digests, not {}')
     assert.ok(Object.values(digests).every(digest => /^[a-f0-9]{64}$/.test(digest)))
   }
   assert.deepEqual(record.attempts[0].intent.resourceDigests, observed[0], 'TARGET: first Attempt digests survive later resource changes')
-  assert.notDeepEqual(observed[0], observed[1], 'TARGET: changed shared tree changes new Attempt evidence')
+  assert.notDeepEqual(observed[0], observed[1], 'TARGET: changed shared tree is recorded on the rejected Attempt')
+  assert.equal(record.attempts[1].result.outcome.kind, 'binding-drift')
 })
 
 test('C-04 driver-package-freeze: package lib bytes stay frozen for the whole Run', async t => {
   const h = await harness(t)
-  const { specs } = await twoResourceAttempts(t, h)
+  const { specs, result } = await twoResourceAttempts(t, h)
+  const record = await readRun(h, result.runId)
+  assert.equal(specs.length, 1)
   assert.equal(specs[0].agentMd, 'PACKAGE_AGENT_ORIGINAL')
-  assert.equal(specs[1].agentMd, 'PACKAGE_AGENT_ORIGINAL', 'TARGET: second Attempt cannot reread live, edited package lib')
+  assert.equal(
+    record.attempts[1].intent.resourceDigests.$package,
+    record.attempts[0].intent.resourceDigests.$package,
+    'TARGET: package snapshot remains frozen'
+  )
+  assert.equal(record.attempts[1].result.outcome.kind, 'binding-drift', 'TARGET: changed shared binding prevents a second dispatch')
 })
 
 test('C-04 control: semantic graph and settled original Attempt survive mutation and request replay', async t => {
   const h = await harness(t)
-  let originalAttempt
-  const { result, args, specs } = await twoResourceAttempts(t, h, async (_spec, ordinal) => {
-    if (ordinal === 2) originalAttempt = structuredClone((await readRuns(h.runtimeRoot))[0].attempts[0])
-  })
+  const { result, args, specs } = await twoResourceAttempts(t, h)
   const before = await readRun(h, result.runId)
   const replay = await admitAndDrain(h, args)
   const after = await readRun(h, result.runId)
   assert.equal(replay.replayed, true)
-  assert.equal(specs.length, 2)
+  assert.equal(specs.length, 1)
   assert.equal(after.definitionJson, args.definitionJson)
-  assert.equal(after.attempts.find(attempt => attempt.nodeId === 'done').state, 'succeeded')
-  assert.deepEqual(after.attempts[0], originalAttempt)
+  assert.equal(after.state, 'failed')
+  assert.equal(after.attempts[1].result.outcome.kind, 'binding-drift')
   assert.deepEqual(after, before)
 })
 
@@ -796,7 +800,7 @@ test('C-05 cancel-late-result: a known late result cannot strand the Run in canc
 
 test('C-05 late-result immutability: a settled Attempt cannot have its original result overwritten', async t => {
   const h = await harness(t)
-  const opened = await openBlueprintDomain({ backend: 'json', path: join(h.runtimeRoot, 'store') })
+  const opened = await openBlueprintDomain({ path: h.runtimeRoot })
   try {
     const store = new RunStore(opened.domain)
     const args = argsFor(h, oneAgent())
@@ -830,7 +834,7 @@ test('C-05 late-result immutability: a settled Attempt cannot have its original 
 
 async function pendingIntentFixture(h) {
   const args = argsFor(h, oneAgent())
-  const opened = await openBlueprintDomain({ backend: 'json', path: join(h.runtimeRoot, 'store') })
+  const opened = await openBlueprintDomain({ path: h.runtimeRoot })
   try {
     const store = new RunStore(opened.domain)
     const created = await store.createRun(
@@ -874,7 +878,7 @@ test('C-10 restart public service: reopening an unresolved dispatch marks recove
 test('C-10 restart reducer: reconcile marks BOTH the Run and its corresponding Attempt recovery_required', async t => {
   const h = await harness(t)
   const pending = await pendingIntentFixture(h)
-  const reopened = await openBlueprintDomain({ backend: 'json', path: join(h.runtimeRoot, 'store') })
+  const reopened = await openBlueprintDomain({ path: h.runtimeRoot })
   try {
     const store = new RunStore(reopened.domain)
     const report = await reconcileOnStart(store)

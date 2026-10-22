@@ -684,21 +684,27 @@ test("README documents the mount and the legacy tool surface stays out", () => {
 });
 
 test("public install commands use a shipped runnable DSH profile", () => {
-  const compatibilityReadmes = new Set([
+  const replacementReadmes = new Set([
     path.join("xuanling-tools-replace", "README.md"),
     path.join("xuanling-tools-replace", "README-ZH.md"),
   ]);
   for (const relative of publicReadmes) {
     const readme = readText(relative);
-    if (compatibilityReadmes.has(relative)) {
-      assert.doesNotMatch(readme, /dsh plugin --profile web add[^\n]*xuanling-dsh-tools-replace/);
-      assert.match(readme, /@xuanling-rs\/xuanling-dsh-tools/);
-    } else {
+    assert.match(
+      readme,
+      /dsh plugin --profile web add/,
+      `${relative}: install command targets the shipped Web profile`,
+    );
+    if (replacementReadmes.has(relative)) {
+      assert.match(readme, /Do not start here for a new installation|新安装不要从这里开始/);
+      assert.match(readme, /export XUANLING_WORKSPACE_ROOT=\/absolute\/path\/to\/project/);
       assert.match(
         readme,
-        /dsh plugin --profile web add/,
-        `${relative}: install command targets the shipped Web profile`,
+        /dsh plugin --profile web remove @xuanling-rs\/xuanling-dsh-memory @xuanling-rs\/xuanling-dsh-tools/,
+        `${relative}: explicit replacement removes conflicting runtime bundles first`,
       );
+      assert.ok(readme.includes(`dsh plugin --profile web add @xuanling-rs/xuanling-dsh-tools-replace@${workspaceVersion}`));
+      assert.match(readme, /Approval is required|必须审批/);
     }
     assert.doesNotMatch(
       readme,

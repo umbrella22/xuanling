@@ -14,7 +14,7 @@ import {
 
 const binding = Object.freeze({ instanceId: 'ws-1', blueprintId: 'bp', editorEpoch: 2, documentRevision: 'rev-1' })
 const definition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'bp',
   name: 'Blueprint',
   resources: {},

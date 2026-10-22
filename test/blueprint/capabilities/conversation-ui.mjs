@@ -62,7 +62,7 @@ No missing scene or provider may be replaced by a mock. Failed/missing evidence 
 Reports are lightweight receipt.json, collector.log and masked native screenshots; no source snapshots/raw logs.
 
 Main-owned fixture module contract (operator setup/actions ONLY; it cannot return acceptance facts):
-  prepare({root,mode}) -> {blueprints:{logicalId:absoluteDirUnderRoot},operatorModules?:[absoluteMjsUnderRoot]}
+  prepare({root,mode}) -> {workspaceRoot:absoluteDirUnderRoot,runtimeRoot?:absoluteDirUnderRoot,operatorModules?:[absoluteMjsUnderRoot]}
     Creates ephemeral real blueprints and optional public DSH Session/Tools setup plugins. No fake provider.
   arrange({page,gateway,root,mode}) -> {sessionId,plainSessionId,blueprintId,definitionPath,
                                      executionSessionId?,streamSessionId?,inputJson?}

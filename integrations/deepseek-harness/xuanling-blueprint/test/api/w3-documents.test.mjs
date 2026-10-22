@@ -18,7 +18,7 @@ import { decodeDefinition, validateDefinition } from '../../src/definition/index
 import { acquireLibraryWriter } from '../../src/definition/library-state.ts'
 
 const doc = (more = {}) => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'sample',
   name: 'Actual configured blueprint',
   resources: {},
@@ -35,10 +35,10 @@ const doc = (more = {}) => ({
 const codec = method => TYPERT.invocations.find(i => i.method === method)?.parameters[0]?.codec.create()
 async function fixture(t, { missing = false, empty = false, host } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'bp-w3-doc-'))
-  const rootDir = join(root, 'configured')
-  const runtimeRoot = join(root, 'runtime')
-  mkdirSync(rootDir)
-  if (!missing) writeFileSync(join(rootDir, 'blueprint.json'), JSON.stringify(doc()))
+  const rootDir = join(root, '.xuanling', 'workflows', 'sample')
+  const runtimeRoot = join(root, '.xuanling')
+  mkdirSync(rootDir, { recursive: true })
+  if (!missing && !empty) writeFileSync(join(rootDir, 'blueprint.json'), JSON.stringify(doc()))
   const ctx = new Context()
   ctx.provide('systemPrompt', {
     tools() {
@@ -50,7 +50,7 @@ async function fixture(t, { missing = false, empty = false, host } = {}) {
     host.attach(ctx)
     ctx.provide('agents', host.registry)
   }
-  const config = { blueprints: empty ? {} : { sample: rootDir }, runtimeRoot, skillRoots: [] }
+  const config = { workspaceRoot: root, runtimeRoot, skillRoots: [] }
   const fiber = await ctx.plugin(BlueprintService, config)
   const service = ctx.blueprint
   t.after(async () => {
@@ -104,11 +104,6 @@ test('service catalog: empty config is empty, missing configured document has nu
   requireDocumentApi(h.service)
   assert.deepEqual(await h.service.listDefinitions(), { definitions: [] })
   await assert.rejects(h.service.loadDefinition({ blueprintId: 'sample' }), { code: 'blueprint/definition-not-found' })
-  h.config.blueprints = { sample: h.rootDir }
-  rmSync(join(h.rootDir, 'blueprint.json'))
-  assert.deepEqual(await h.service.listDefinitions(), {
-    definitions: [{ blueprintId: 'sample', name: 'sample', documentRevision: null, semanticRevision: null }]
-  })
   assert.equal(existsSync(join(h.rootDir, 'blueprint.json')), false)
 })
 test('service document CAS: layout-only changes conflict without changing semantic, stale write preserves file', async t => {
@@ -355,7 +350,6 @@ test('document queue: physical root aliases serialize facade saves and rejected 
   let saving
   try {
     await entered.promise
-    h.config.blueprints = { sample: alias }
     const before = readFileSync(join(h.rootDir, 'blueprint.json'))
     let settled = false
     saving = h.service
@@ -437,7 +431,8 @@ test('document library drain: actual service disposal waits for an entered libra
   let disposal
   try {
     await entered.promise
-    assert.throws(() => acquireLibraryWriter(join(h.runtimeRoot, 'definitions')), { code: 'COORDINATOR_ALREADY_ACTIVE' })
+    const libraryRoot = join(h.root, '.xuanling', 'workflows')
+    assert.throws(() => acquireLibraryWriter(libraryRoot), { code: 'COORDINATOR_ALREADY_ACTIVE' })
     let disposed = false
     disposal = h.fiber.dispose().then(() => {
       disposed = true
@@ -455,7 +450,7 @@ test('document library drain: actual service disposal waits for an entered libra
   await disposal
   assert.deepEqual(events, ['mutation-entered', 'mutation-complete', 'disposed'])
   assert.equal(readFileSync(marker, 'utf8'), 'COMPLETE_LIBRARY_MUTATION')
-  const lease = acquireLibraryWriter(join(h.runtimeRoot, 'definitions'))
+  const lease = acquireLibraryWriter(join(h.root, '.xuanling', 'workflows'))
   lease.release()
 })
 
@@ -485,11 +480,13 @@ test('document failure: file-shaped root and unreadable document are not treated
     safeError('blueprint/definition-write-failed', h.root)
   )
   assert.equal(existsSync(join(h.rootDir, 'blueprint.json')), true)
-  const fileRoot = join(h.root, 'file-not-directory')
-  writeFileSync(fileRoot, 'UNCHANGED_FILE')
-  h.config.blueprints = { sample: fileRoot }
+  const fileRoot = join(h.root, 'file-workspace')
+  mkdirSync(join(fileRoot, '.xuanling'), { recursive: true })
+  const workflowFile = join(fileRoot, '.xuanling', 'workflows')
+  writeFileSync(workflowFile, 'UNCHANGED_FILE')
+  h.config.workspaceRoot = fileRoot
   await assert.rejects(h.service.listDefinitions(), safeError('blueprint/definition-write-failed', h.root))
-  assert.equal(readFileSync(fileRoot, 'utf8'), 'UNCHANGED_FILE')
+  assert.equal(readFileSync(workflowFile, 'utf8'), 'UNCHANGED_FILE')
 })
 
 for (const kind of ['definition', 'lib-root', 'lib-file', 'declared-resource']) {
@@ -536,7 +533,6 @@ test('configured root alias and internal file symlink: ordinary bytes work witho
   const h = await fixture(t)
   const alias = join(h.root, 'alias')
   symlinkSync(h.rootDir, alias)
-  h.config.blueprints = { sample: alias }
   mkdirSync(join(h.rootDir, 'lib'))
   writeFileSync(join(h.rootDir, 'lib', 'actual.txt'), 'INTERNAL_BYTES')
   symlinkSync(join(h.rootDir, 'lib', 'actual.txt'), join(h.rootDir, 'lib', 'link.txt'))
@@ -549,20 +545,20 @@ test('configured root alias and internal file symlink: ordinary bytes work witho
   assert.equal(Buffer.from(bundle.files.find(f => f.path === 'lib/link.txt').base64, 'base64').toString(), 'INTERNAL_BYTES')
 })
 
-test('public runtime requires host configuration instead of guessing a global directory', async t => {
+test('public runtime uses the workspace-native directory when runtimeRoot is omitted', async t => {
   const h = await fixture(t)
   h.config.runtimeRoot = undefined
   const loaded = await h.service.loadDefinition({ blueprintId: 'sample' })
-  await assert.rejects(h.service.startRun({ blueprintId: 'sample', expectedRevision: loaded.documentRevision, inputJson: '{}', requestId: 'no-runtime' }), {
-    code: 'blueprint/capability-unavailable'
+  const admitted = await h.service.startRun({
+    blueprintId: 'sample',
+    expectedRevision: loaded.documentRevision,
+    inputJson: '{}',
+    requestId: 'workspace-runtime'
   })
-  for (const method of ['inspectRun', 'cancelRun', 'decide']) {
-    await assert.rejects(h.service[method](method === 'decide' ? { runId: 'unknown', decisionId: 'decision', action: 'approve' } : { runId: 'unknown' }), {
-      code: 'blueprint/capability-unavailable'
-    })
-  }
-  assert.equal(h.service.runtimes.size, 0)
-  assert.equal(existsSync(h.runtimeRoot), false)
+  await drain(h.service)
+  assert.equal((await h.service.inspectRun({ runId: admitted.runId })).state, 'succeeded')
+  assert.ok(existsSync(join(h.root, '.xuanling', 'runs', admitted.runId, 'run.json')))
+  await assert.rejects(h.service.inspectRun({ runId: 'unknown' }), { code: 'blueprint/run-not-found' })
 })
 
 test('portable archive bytes: configured Skill closure roundtrips to empty configured root, no locators or shared write', async t => {
@@ -586,9 +582,10 @@ test('portable archive bytes: configured Skill closure roundtrips to empty confi
   assert.equal(files.get('lib/skills/skill/helpers/tool.txt').toString(), 'COMPLETE_CLOSURE')
   assert.deepEqual(JSON.parse(files.get('blueprint.json')).resources.skill, { kind: 'skill', path: 'lib/skills/skill' })
   assert.equal(archive.includes(Buffer.from(h.root)), false)
-  const target = join(h.root, 'empty-destination')
-  mkdirSync(target)
-  h.config.blueprints = { sample: target }
+  const targetWorkspace = join(h.root, 'empty-destination-workspace')
+  const target = join(targetWorkspace, '.xuanling', 'workflows')
+  mkdirSync(target, { recursive: true })
+  h.config.workspaceRoot = targetWorkspace
   const imported = await h.service.importDefinition({ blueprintId: 'sample', archiveBase64: exported.archiveBase64 })
   assert.equal(resultCodec('importDefinition').safeParse(imported).success, true)
   assert.equal(imported.closureDigest, exported.closureDigest)
@@ -596,15 +593,19 @@ test('portable archive bytes: configured Skill closure roundtrips to empty confi
   assert.equal('targetDir' in imported, false)
   const reopened = await h.service.loadDefinition({ blueprintId: 'sample' })
   assert.deepEqual(JSON.parse(reopened.definitionJson), JSON.parse(files.get('blueprint.json')))
+  const importedHistory = await h.service.workflowRevisions({ workflowId: 'sample' })
+  assert.equal(importedHistory.revisions.length, 1)
+  assert.equal(importedHistory.revisions[0].origin, 'import')
+  assert.equal(importedHistory.revisions[0].revision, reopened.documentRevision)
   assert.equal(readFileSync(join(skill, 'SKILL.md'), 'utf8'), 'SHARED_SKILL_A')
   assert.equal(readFileSync(join(skill, 'helpers', 'tool.txt'), 'utf8'), 'COMPLETE_CLOSURE')
-  const before = readFileSync(join(target, 'blueprint.json'))
+  const before = readFileSync(join(target, 'sample', 'blueprint.json'))
   await assert.rejects(h.service.importDefinition({ blueprintId: 'sample', archiveBase64: exported.archiveBase64 }), error => {
     safeError('blueprint/import-failed', h.root)(error)
     assert.equal(error.details.code, 'IMPORT_CONFLICT')
     return true
   })
-  assert.deepEqual(readFileSync(join(target, 'blueprint.json')), before)
+  assert.deepEqual(readFileSync(join(target, 'sample', 'blueprint.json')), before)
 })
 
 test('import/export failure bytes are rejected with safe codes and no destination writes', async t => {
@@ -617,8 +618,9 @@ test('import/export failure bytes are rejected with safe codes and no destinatio
       data: e.name === 'blueprint.json' ? Buffer.from(JSON.stringify(doc({ name: 'EXTERNAL_SENTINEL_CANARY' }))) : e.data
     }))
   )
-  const target = join(h.root, 'absent-destination')
-  h.config.blueprints = { sample: target, other: join(h.root, 'id-mismatch') }
+  const targetWorkspace = join(h.root, 'absent-destination-workspace')
+  const target = join(targetWorkspace, '.xuanling', 'workflows')
+  h.config.workspaceRoot = targetWorkspace
   for (const archiveBase64 of ['!invalid-base64', 'YQ==', badDigest.toString('base64')]) {
     await assert.rejects(h.service.importDefinition({ blueprintId: 'sample', archiveBase64 }), safeError('blueprint/import-failed', h.root))
     assert.equal(existsSync(target), false)
@@ -627,8 +629,8 @@ test('import/export failure bytes are rejected with safe codes and no destinatio
     h.service.importDefinition({ blueprintId: 'other', archiveBase64: exported.archiveBase64 }),
     safeError('blueprint/import-failed', h.root)
   )
-  assert.equal(existsSync(h.config.blueprints.other), false)
-  h.config.blueprints = { sample: h.rootDir }
+  assert.equal(existsSync(join(target, 'other')), false)
+  h.config.workspaceRoot = h.root
   writeFileSync(
     join(h.rootDir, 'blueprint.json'),
     JSON.stringify(doc({ resources: { unavailable: { kind: 'skill', source: { kind: 'shared', rootId: 'missing-root', path: 'demo' } } } }))
@@ -661,7 +663,7 @@ test('hostProbe logical configured Skill: real public Agent/session contract and
   await assert.rejects(h.service.hostProbe({ blueprintId: 'sample', resourceId: 'missing', input: '' }), safeError('blueprint/host-probe-invalid', h.root))
 })
 
-test('configured roots: each new Attempt refreshes full Skill, package remains frozen, old Attempt digest immutable', async t => {
+test('configured roots: admission-bound Skill drift fails closed, package remains frozen, old Attempt digest immutable', async t => {
   const host = hostRegistry(call => {
     call.packageText = readFileSync(join(call.options.meta.cwd, 'lib', 'agent.md'), 'utf8')
     call.skillFile = readFileSync(join(call.options.meta.cwd, '.blueprint-skills', '0', 'helpers', 'data.txt'), 'utf8')
@@ -726,33 +728,34 @@ test('configured roots: each new Attempt refreshes full Skill, package remains f
   await h.service.decide({ runId: admitted.runId, decisionId: 'approve-once', action: 'approve' })
   await drain(h.service)
   const after = await handle.store.get(admitted.runId)
-  assert.equal(after.state, 'succeeded')
-  assert.equal(host.calls.length, 2)
+  assert.equal(after.state, 'failed')
+  assert.equal(host.calls.length, 1, 'TARGET: a changed shared binding must block the later Attempt before dispatch')
   assert.deepEqual(
     host.calls.map(c => c.packageText),
-    ['FROZEN_AGENT_A', 'FROZEN_AGENT_A']
+    ['FROZEN_AGENT_A']
   )
   assert.deepEqual(
     host.calls.map(c => c.skillFile),
-    ['HELPER_A', 'HELPER_B']
+    ['HELPER_A']
   )
   assert.deepEqual(
     host.calls.map(c => c.input),
-    ['ACTUAL_INPUT', 'ACTUAL_INPUT']
+    ['ACTUAL_INPUT']
   )
   assert.deepEqual(
     after.attempts.find(a => a.nodeId === 'first'),
     first
   )
   const second = after.attempts.find(a => a.nodeId === 'second')
+  assert.equal(second.result.outcome.kind, 'binding-drift')
   assert.notEqual(second.intent.resourceDigests.skill, first.intent.resourceDigests.skill)
   assert.equal(second.intent.resourceDigests.$package, first.intent.resourceDigests.$package)
   assert.ok(Object.values(second.intent.resourceDigests).every(v => /^[a-f0-9]{64}$/.test(v)))
   const snapshot = await h.service.inspectRun({ runId: admitted.runId })
   assert.equal(resultCodec('inspectRun').safeParse(snapshot).success, true)
-  assert.equal(snapshot.attempts.find(a => a.nodeId === 'second').resultKind, 'succeeded')
+  assert.equal(snapshot.attempts.find(a => a.nodeId === 'second').resultKind, 'binding-drift')
   assert.equal((await h.service.decide({ runId: admitted.runId, decisionId: 'approve-once', action: 'approve' })).applied, false)
   await assert.rejects(h.service.decide({ runId: admitted.runId, decisionId: 'approve-once', action: 'reject' }), { code: 'blueprint/decision-invalid' })
-  assert.deepEqual(await h.service.cancelRun({ runId: admitted.runId }), { runId: admitted.runId, state: 'succeeded' })
+  assert.deepEqual(await h.service.cancelRun({ runId: admitted.runId }), { runId: admitted.runId, state: 'failed' })
   assert.deepEqual(await handle.store.get(admitted.runId), after)
 })

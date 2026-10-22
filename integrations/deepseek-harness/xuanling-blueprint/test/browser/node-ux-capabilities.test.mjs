@@ -47,7 +47,7 @@ function inspectorFixture(kind, team = false) {
       : {})
   }
   const editor = GraphEditor.fromDefinition({
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'Capabilities',
     name: 'Synthetic',
     resources,
@@ -212,7 +212,7 @@ function panelRenderer(Panel, f, t) {
 for (const kind of kinds.filter(k => k !== 'unknown'))
   test(`W2.2 actual Panel ${kind} has meaningful binding summary only`, async () => {
     const definition = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       id: 'PanelCapability',
       name: 'Synthetic',
       resources: {},

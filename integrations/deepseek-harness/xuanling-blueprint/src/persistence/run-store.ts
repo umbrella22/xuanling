@@ -13,6 +13,7 @@ import { z } from 'zod'
 import { runSourceCodec, type RunSource } from '../conversation/contracts.ts'
 import { attemptDiagnosticsCodec, type AttemptDiagnostics } from '../host/runtime-diagnostics.ts'
 import { teamStageExecutionCodec, type TeamStageExecution } from '../host/teamstage-diagnostics.ts'
+import type { ModelSelection as HostModelSelection } from '@deepseek-ai/dsh-agent'
 import type { DomainLike, KvTableLike } from './domain.ts'
 import type { CommandRecord } from './records.ts'
 import { assertObjectJsonSchema } from '@deepseek-ai/dsh-tools'
@@ -38,6 +39,7 @@ import {
   teamStageRecordSchema,
   teamCaptureArtifactRefSchema,
   teamMemberReservationSchema,
+  bindingSelectionsSchema,
   type AttemptRecord,
   type RunLifecycleRecord,
   type RunRecord,
@@ -51,7 +53,7 @@ import {
   type TeamCaptureArtifactRef
 } from './records.ts'
 import { CommandAdmission, CommandConflictError, DurabilityFailureError, newRunId, type AdmissionRequest, type AdmissionResult } from './command-admission.ts'
-import { IllegalTransitionError, transitionRun } from '../orchestration/state.ts'
+import { IllegalTransitionError, RecoveryStaleError, transitionRun } from '../orchestration/state.ts'
 
 const LOG_CAP = 200
 const ACTIVE_TEAM_ATTEMPT_STATES = new Set(['preparing', 'ready', 'running'])
@@ -164,7 +166,6 @@ export class RunStore {
   private readonly lifecycle: KvTableLike<string, RunLifecycleRecord>
   readonly admission: CommandAdmission
   private readonly queues = new Map<string, Promise<unknown>>()
-
   private serial<T>(key: string, task: () => Promise<T>): Promise<T> {
     const result = (this.queues.get(key) ?? Promise.resolve()).then(task)
     const tail = result.catch(() => {})
@@ -180,6 +181,22 @@ export class RunStore {
     this.commands = domain.table('commands') as KvTableLike<string, CommandRecord>
     this.lifecycle = domain.table('run_lifecycle') as KvTableLike<string, RunLifecycleRecord>
     this.admission = new CommandAdmission(this.commands)
+  }
+
+  private isLegacyDefinition(record: RunRecord): boolean {
+    try {
+      const parsed = JSON.parse(record.definitionJson) as { schemaVersion?: unknown } | null
+      // RunStore is also used by low-level persistence tests with an opaque
+      // definition reference (for example `def-1` or `{}`). Those references
+      // are not definition documents and therefore cannot identify a legacy
+      // schema. A record is a legacy Run only when its frozen definition is an
+      // object that explicitly declares definition schema 1. This keeps the
+      // destructive v1 cutover fail-closed while avoiding false archival of
+      // opaque synthetic references that the service never emits.
+      return parsed !== null && typeof parsed === 'object' && parsed.schemaVersion === 1
+    } catch {
+      return false
+    }
   }
 
   /** Read-only replay lookup BEFORE any new capability check or snapshot.
@@ -213,13 +230,32 @@ export class RunStore {
     definitionRevision: string,
     definitionJson: string,
     inputRef: string,
-    metadata: { blueprintId?: string; source?: RunSource } = {}
+    metadata: {
+      blueprintId?: string
+      source?: RunSource
+      bindingDigests?: Record<string, string>
+      bindingSelections?: Record<string, HostModelSelection | null>
+    } = {}
   ): Promise<{ runId: string; replayed: boolean }> {
-    const frozen = z.strictObject({ blueprintId: z.string().min(1).optional(), source: runSourceCodec().optional() }).parse(metadata)
+    const frozen = z
+      .strictObject({
+        blueprintId: z.string().min(1).optional(),
+        source: runSourceCodec().optional(),
+        bindingDigests: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)).optional(),
+        bindingSelections: bindingSelectionsSchema.optional()
+      })
+      .parse(metadata) as {
+      blueprintId?: string
+      source?: RunSource
+      bindingDigests?: Record<string, string>
+      bindingSelections?: Record<string, HostModelSelection | null>
+    }
     return await this.serial('admission', () =>
       this.createRunSerial(request, definitionRevision, definitionJson, inputRef, {
         ...(frozen.blueprintId === undefined ? {} : { blueprintId: frozen.blueprintId }),
-        ...(frozen.source === undefined ? {} : { source: frozen.source })
+        ...(frozen.source === undefined ? {} : { source: frozen.source }),
+        ...(frozen.bindingDigests === undefined ? {} : { bindingDigests: frozen.bindingDigests }),
+        ...(frozen.bindingSelections === undefined ? {} : { bindingSelections: frozen.bindingSelections })
       })
     )
   }
@@ -229,7 +265,12 @@ export class RunStore {
     definitionRevision: string,
     definitionJson: string,
     inputRef: string,
-    metadata: { blueprintId?: string; source?: RunSource } = {}
+    metadata: {
+      blueprintId?: string
+      source?: RunSource
+      bindingDigests?: Record<string, string>
+      bindingSelections?: Record<string, HostModelSelection | null>
+    } = {}
   ): Promise<{ runId: string; replayed: boolean }> {
     const admitted: AdmissionResult = await this.admission.admit(request)
     if (admitted.replayed && admitted.runId !== null) {
@@ -253,6 +294,11 @@ export class RunStore {
       definitionRevision,
       definitionJson,
       inputRef,
+      ...(metadata.bindingDigests === undefined ? {} : { bindingDigests: structuredClone(metadata.bindingDigests) }),
+      ...(metadata.bindingSelections === undefined ? {} : { bindingSelections: structuredClone(metadata.bindingSelections) }),
+      ...(metadata.bindingDigests === undefined
+        ? {}
+        : { bindingAdmission: Object.keys(metadata.bindingDigests).length === 0 ? ('pending' as const) : ('captured' as const) }),
       commandKey: admitted.commandKey,
       state: 'queued',
       attempts: [],
@@ -270,6 +316,29 @@ export class RunStore {
     return { runId, replayed: false }
   }
 
+  /** Complete the admission snapshot before the Run is scheduled. A missing
+   * or conflicting snapshot is a durability failure, never allow-drift. */
+  async setBindingDigests(
+    runId: string,
+    bindingDigests: Record<string, string>,
+    bindingSelections: Record<string, HostModelSelection | null> = {}
+  ): Promise<RunRecord> {
+    const parsed = z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)).parse(bindingDigests)
+    const selections = bindingSelectionsSchema.parse(bindingSelections) as Record<string, HostModelSelection | null>
+    return await this.transition(runId, draft => {
+      if (draft.bindingAdmission === 'captured') {
+        if (!isDeepStrictEqual(draft.bindingDigests, parsed) || !isDeepStrictEqual(draft.bindingSelections ?? {}, selections)) throw new AttemptSettledError()
+        return
+      }
+      if (draft.state !== 'queued' || draft.attempts.length > 0) throw new AttemptSettledError()
+      if (draft.bindingDigests !== undefined && Object.keys(draft.bindingDigests).length > 0 && !isDeepStrictEqual(draft.bindingDigests, parsed))
+        throw new AttemptSettledError()
+      draft.bindingDigests = structuredClone(parsed)
+      draft.bindingSelections = structuredClone(selections)
+      draft.bindingAdmission = 'captured'
+    })
+  }
+
   async get(runId: string): Promise<RunRecord> {
     const record = await this.tryGet(runId)
     if (record === undefined) throw new RunNotFoundError(runId)
@@ -278,7 +347,8 @@ export class RunStore {
 
   async tryGet(runId: string): Promise<RunRecord | undefined> {
     try {
-      return await this.runs.get(runId)
+      const record = await this.runs.get(runId)
+      return record === undefined || this.isLegacyDefinition(record) ? undefined : record
     } catch (cause) {
       throw new DurabilityFailureError('run read', cause)
     }
@@ -1006,7 +1076,10 @@ export class RunStore {
   async listRunIds(): Promise<string[]> {
     if (this.runs.entries === undefined) throw new DurabilityFailureError('run list', new Error('backend lacks entries()'))
     try {
-      return [...this.runs.entries()].map(([id]) => id).sort()
+      return [...this.runs.entries()]
+        .filter(([, record]) => !this.isLegacyDefinition(record as RunRecord))
+        .map(([id]) => id)
+        .sort()
     } catch (cause) {
       throw new DurabilityFailureError('run list', cause)
     }
@@ -1067,7 +1140,8 @@ export class RunStore {
         cause instanceof TeamOutputRejectedError ||
         cause instanceof TeamEffectReplayError ||
         cause instanceof TeamArtifactError ||
-        cause instanceof IllegalTransitionError
+        cause instanceof IllegalTransitionError ||
+        cause instanceof RecoveryStaleError
       )
         throw cause
       if (cause instanceof Error && String(cause.message).includes('has no record')) {
@@ -1087,6 +1161,7 @@ export class RunStore {
       nodeId: string
       kind: string
       resourceDigests?: Record<string, string>
+      bindingDigests?: Record<string, string>
       diagnostics?: AttemptDiagnostics
       sessionId?: string
       /** Build a reserved execution identity after the durable Attempt ID exists. */
@@ -1097,6 +1172,8 @@ export class RunStore {
     const sessionId = attempt.sessionId === undefined ? undefined : z.string().min(1).parse(attempt.sessionId)
     const diagnostics = attempt.diagnostics === undefined ? undefined : attemptDiagnosticsCodec().parse(attempt.diagnostics)
     const resourceDigests = attempt.resourceDigests ?? (diagnostics?.status === 'available' ? diagnostics.resourceDigests : {})
+    const bindingDigests =
+      attempt.bindingDigests === undefined ? undefined : z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)).parse(attempt.bindingDigests)
     if (diagnostics?.status === 'available' && !sameDigests(resourceDigests, diagnostics.resourceDigests)) throw new AttemptSettledError()
     const newAttemptId = `att-${randomUUID()}`
     const generatedSessionId = attempt.sessionIdForAttempt === undefined ? undefined : z.string().min(1).parse(attempt.sessionIdForAttempt(newAttemptId))
@@ -1109,7 +1186,13 @@ export class RunStore {
       if (draft.attempts.some(a => ['failed', 'timed_out', 'cancelled'].includes(a.state))) throw new AttemptSettledError()
       if (draft.state === 'queued') draft.state = 'running'
       const seq = draft.seq + 1
-      const intent = { seq, at: Date.now(), kind: attempt.kind, resourceDigests: structuredClone(resourceDigests) }
+      const intent = {
+        seq,
+        at: Date.now(),
+        kind: attempt.kind,
+        resourceDigests: structuredClone(resourceDigests),
+        ...(bindingDigests === undefined ? {} : { bindingDigests: structuredClone(bindingDigests) })
+      }
       if (draft.attempts.some(a => a.nodeId === attempt.nodeId)) throw new AttemptSettledError()
       draft.attempts.push({
         attemptId: newAttemptId,

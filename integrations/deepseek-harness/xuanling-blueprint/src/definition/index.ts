@@ -2,7 +2,23 @@
 export { decodeDefinition, idPattern, pathPattern } from './codec.ts'
 export { validateDefinition } from './validator.ts'
 export { computeRevision, semanticProjection, type DefinitionRevision } from './revision.ts'
-export { loadDefinition, readStoredRevision, saveDefinition, type SaveOptions, type SaveResult } from './persist.ts'
+export {
+  loadDefinition,
+  readStoredRevision,
+  saveDefinition,
+  readRevision,
+  readRevisionHistory,
+  appendRevisionHistory,
+  restorePackageFiles,
+  PackageResourceMissingError,
+  RevisionHistoryInvalidError,
+  type SaveOptions,
+  type SaveResult,
+  type DefinitionDocument,
+  type DefinitionRevisionRecord,
+  type RevisionPackageFile,
+  type RevisionOrigin
+} from './persist.ts'
 export {
   DefinitionInvalidError,
   IoWriteFailedError,

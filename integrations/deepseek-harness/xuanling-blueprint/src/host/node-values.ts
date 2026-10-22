@@ -8,6 +8,7 @@ type NodeValueErrorCode =
   | 'binding-missing'
   | 'binding-unavailable'
   | 'binding-invalid'
+  | 'binding-drift'
   | 'output-missing'
   | 'output-invalid'
 export class NodeValueError extends Error {

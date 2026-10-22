@@ -1,6 +1,6 @@
 {
   "name": "@xuanling-rs/xuanling-dsh-blueprint",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "private": false,
   "description": "Native DeepSeek Harness blueprint editor and durable graph execution with scoped agents, structured output, optional TeamStage, cancellation and recovery.",
   "homepage": "https://github.com/umbrella22/xuanling/tree/main/integrations/deepseek-harness/xuanling-blueprint",
@@ -39,7 +39,7 @@
     "format:check": "vp fmt src test vite.config.ts package.json '!src/host/dsh-structured-compat.ts' --check",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "vp lint",
-    "test": "node --experimental-transform-types --import ./scripts/test-tsx-register.mjs --test --test-concurrency=1 \"test/**/*.test.mjs\"",
+    "test": "node scripts/check-test-prereqs.mjs && node --experimental-transform-types --import ./scripts/test-tsx-register.mjs --test --test-concurrency=1 \"test/**/*.test.mjs\"",
     "verify": "node scripts/verify.mjs"
   },
   "devDependencies": {
@@ -89,10 +89,6 @@
     "@deepseek-ai/dsh-session-title-llm": "0.2.1-rc.2",
     "@deepseek-ai/dsh-shell": "0.2.1-rc.2",
     "@deepseek-ai/dsh-spill": "0.2.1-rc.2",
-    "@deepseek-ai/dsh-storage": "0.2.1-rc.2",
-    "@deepseek-ai/dsh-storage-domain": "0.2.1-rc.2",
-    "@deepseek-ai/dsh-storage-json": "0.2.1-rc.2",
-    "@deepseek-ai/dsh-storage-sqlite": "0.2.1-rc.2",
     "@deepseek-ai/dsh-subagent": "0.2.1-rc.2",
     "@deepseek-ai/dsh-tool-call-timeout-policy": "0.2.1-rc.2",
     "@deepseek-ai/dsh-tools": "0.2.1-rc.2",
@@ -121,10 +117,6 @@
     "@deepseek-ai/cordis-plugin-include": ">=1.0.10-alpha.2",
     "@deepseek-ai/dsh-llm": ">=0.2.1-alpha.5",
     "@deepseek-ai/dsh-session": ">=0.2.1-alpha.5",
-    "@deepseek-ai/dsh-storage": ">=0.2.1-alpha.5",
-    "@deepseek-ai/dsh-storage-domain": ">=0.2.1-alpha.5",
-    "@deepseek-ai/dsh-storage-json": ">=0.2.1-alpha.5",
-    "@deepseek-ai/dsh-storage-sqlite": ">=0.2.1-alpha.5",
     "@deepseek-ai/dsh-subagent": ">=0.2.1-alpha.5",
     "@deepseek-ai/dsh-tools": ">=0.2.1-alpha.5",
     "@deepseek-ai/dsh-typert-protocol": ">=0.2.1-alpha.5",

@@ -42,7 +42,7 @@ const check = (name, value) => {
 const digest = path => createHash('sha256').update(readFileSync(path)).digest('hex')
 const resourceDescription = '用于代码审查的工具集，支持依赖检查、变更追踪和证据整理；完整简介应通过悬停提示展示，卡片内仅显示单行，过长内容使用省略号隐藏。 '.repeat(3).trim()
 const definition = id => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   id,
   name: `JSON editor ${id}`,
   resources: { tools: { kind: 'mcp', bindingId: 'fixture' } },
@@ -84,11 +84,11 @@ const apiFor = async authUrl => {
 }
 try {
   const performance = performanceDefinition()
-  const performanceRoot = join(root, 'performance')
+  const performanceRoot = join(root, '.xuanling', 'workflows', performance.id)
   mkdirSync(join(performanceRoot, 'lib/agents'), { recursive: true })
   writeFileSync(join(performanceRoot, 'blueprint.json'), JSON.stringify(performance))
   for (const ref of Object.values(performance.resources)) writeFileSync(join(performanceRoot, ref.path), 'Performance fixture agent.\n')
-  const config = { blueprints: { [performance.id]: performanceRoot } }
+  const config = { workspaceRoot: root, runtimeRoot: join(root, '.xuanling'), skillRoots: [] }
   const profile = await prepareProfile(
     { mode: 'keyless', installMode: 'cli', pnpmExecutable: process.env.BP_AUTHORING_PNPM },
     { prepare: async () => config },

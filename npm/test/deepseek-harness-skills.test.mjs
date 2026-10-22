@@ -247,6 +247,9 @@ test("the skills bundle manifest declares the dsh bundle and pins its dependenci
     "skills/xuanling-file-workflow/agents/openai.yaml",
     "skills/xuanling-memory-workflow/SKILL.md",
     "skills/xuanling-memory-workflow/agents/openai.yaml",
+    "skills/xuanling-blueprint-migrate/SKILL.md",
+    "skills/xuanling-blueprint-migrate/agents/openai.yaml",
+    "skills/xuanling-blueprint-migrate/references/v1-to-v2.md",
   ]);
   assert.equal(
     manifest.dependencies?.["@deepseek-ai/dsh-skill-filesystem"],
@@ -336,7 +339,7 @@ test("xuanling-memory-workflow keeps proposal and review in separate turns", () 
 });
 
 test("portable per-skill agent metadata travels with the bundle", () => {
-  for (const name of ["xuanling-file-workflow", "xuanling-memory-workflow"]) {
+  for (const name of ["xuanling-file-workflow", "xuanling-memory-workflow", "xuanling-blueprint-migrate"]) {
     const metadata = readBundle(path.join("skills", name, "agents", "openai.yaml"));
     assert.ok(metadata.includes(name), `${name}: openai.yaml names the skill`);
     assert.ok(metadata.includes(`$${name}`), `${name}: default_prompt references $${name}`);
@@ -351,6 +354,9 @@ test("the skills bundle never carries the ZCode-only compat shim", () => {
     path.join("skills", "xuanling-file-workflow", "agents", "openai.yaml"),
     path.join("skills", "xuanling-memory-workflow", "SKILL.md"),
     path.join("skills", "xuanling-memory-workflow", "agents", "openai.yaml"),
+    path.join("skills", "xuanling-blueprint-migrate", "SKILL.md"),
+    path.join("skills", "xuanling-blueprint-migrate", "agents", "openai.yaml"),
+    path.join("skills", "xuanling-blueprint-migrate", "references", "v1-to-v2.md"),
   ];
   for (const relative of scanned) {
     const text = readBundle(relative);

@@ -41,7 +41,7 @@ export function runtimeDefinition() {
   }
   for (let i = 1; i <= 4; i++) positions[`review-${i}`] = { x: 420, y: 100 + (i - 1) * 240 }
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: RUN_ID,
     name: 'Anonymous structural waiting workflow',
     resources: {},
@@ -89,12 +89,10 @@ export async function prepare({ root, mode }) {
   if (mode !== 'keyless') throw new Error('FIXTURE_MODE_INVALID')
   const { decodeDefinition } = await import('../../../integrations/deepseek-harness/xuanling-blueprint/src/definition/codec.ts')
   const { validateDefinition } = await import('../../../integrations/deepseek-harness/xuanling-blueprint/src/definition/validator.ts')
-  const blueprints = {}
   for (const d of [runtimeDefinition(), authorDefinition(), performanceDefinition()]) {
     validateDefinition(decodeDefinition(JSON.stringify(d)))
-    const dir = join(root, d.id)
+    const dir = join(root, '.xuanling', 'workflows', d.id)
     mkdirSync(join(dir, 'lib/agents'), { recursive: true })
-    blueprints[d.id] = dir
     writeFileSync(join(dir, 'blueprint.json'), JSON.stringify(d))
     for (const ref of Object.values(d.resources))
       if (ref.path) {
@@ -103,7 +101,7 @@ export async function prepare({ root, mode }) {
             ? '{}'
             : ref.kind === 'subflow'
               ? JSON.stringify({
-                  schemaVersion: 1,
+                  schemaVersion: 2,
                   id: 'nested',
                   name: 'Nested anonymous structural graph',
                   resources: {},
@@ -120,7 +118,7 @@ export async function prepare({ root, mode }) {
     `export const inject=['agents','tools','agentPresets'];\nconst installFixturePolicies=${installFixturePolicies.toString()};\nexport function apply(ctx){installFixturePolicies(ctx,'keyless');ctx.effect(()=>ctx.agentPresets.register({id:'node-ux-agent',name:'node-ux-skill',plugins:[{name:'@deepseek-ai/dsh-persona',config:{prefix:'Anonymous reviewer.',complete:true,includeRuntimeContext:false}}]}))}\n`,
     { flag: 'wx' }
   )
-  return { blueprints, operatorModules: [policy] }
+  return { workspaceRoot: root, runtimeRoot: join(root, '.xuanling'), operatorModules: [policy] }
 }
 export async function arrange({ page, gateway, root }) {
   await gateway.call('workspace/initializeDefault', {})

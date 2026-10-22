@@ -9,7 +9,7 @@ import { decodeDefinition, validateDefinition } from '../../src/definition/index
 import { en } from '../../src/client/shared/i18n/locales.ts'
 
 const initial = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'host-inspector',
   name: 'Host Inspector',
   resources: { local: { kind: 'agent', path: 'lib/agents/local.md' } },

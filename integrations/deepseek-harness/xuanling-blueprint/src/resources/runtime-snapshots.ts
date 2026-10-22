@@ -22,6 +22,19 @@ interface Bundle {
   files: FrozenFile[]
   digest: string
 }
+
+/** The durable package manifest is part of the Run's frozen execution
+ * boundary.  A malformed or tampered manifest must fail the Run before an
+ * Attempt intent is written; treating it as an ordinary binding drift would
+ * create an Attempt with no trustworthy package to execute. */
+export class FrozenPackageIntegrityError extends Error {
+  readonly code = 'FROZEN_PACKAGE_INTEGRITY'
+
+  constructor() {
+    super('frozen package integrity rejected')
+    this.name = 'FrozenPackageIntegrityError'
+  }
+}
 export interface Prepared {
   agentMd: string
   /** Host-owned preset selected for this Attempt. The preset body is never
@@ -39,7 +52,7 @@ export interface Prepared {
  * lets callers provide `ctx.agentPresets`/`ctx.skills` without coupling the
  * portable blueprint package to a particular DSH release. */
 export interface HostResourceProvider {
-  getAgentPreset(id: string): Promise<{ composition?: HostAgentComposition } | undefined>
+  getAgentPreset(id: string): Promise<{ composition?: HostAgentComposition; digest?: string } | undefined>
   getSkill(
     id: string,
     options: { cwd: string }
@@ -79,7 +92,8 @@ export function createHostResourceProvider(ownerCtx: { get(service: string): unk
         } else return undefined
         if (typeof registry.readDocument === 'function') {
           const document = await registry.readDocument(id)
-          return { composition: parseHostAgentComposition(document.content) }
+          const content = document.content
+          return { composition: parseHostAgentComposition(content), digest: hash(Buffer.from(content)) }
         }
         return {}
       } catch {
@@ -174,7 +188,11 @@ function durableWrite(path: string, value: Bundle): void {
   }
 }
 function load(path: string): Bundle {
-  return verify(JSON.parse(readFileSync(path, 'utf8')) as Bundle)
+  try {
+    return verify(JSON.parse(readFileSync(path, 'utf8')) as Bundle)
+  } catch {
+    throw new FrozenPackageIntegrityError()
+  }
 }
 function fileBytes(value: Bundle, path: string): Buffer {
   const file = value.files.find(f => f.path === path)
@@ -251,10 +269,14 @@ export class RuntimeSnapshots {
       const preset = await this.hostResources.getAgentPreset(hostAgentId)
       if (preset === undefined) throw new ResourceUnavailableError(node.agentRef, `Host Agent preset "${hostAgentId}" unavailable`)
       agentPreset = hostAgentId
+      // Content digest when the Host exposes readable bytes; otherwise only
+      // the stable identity. Opaque presets are documented as identity-only.
+      resourceDigests[node.agentRef] = hash(
+        Buffer.from(JSON.stringify({ hostAgentId, composition: preset.composition ?? null, digest: preset.digest ?? null }))
+      )
       if (preset.composition !== undefined) {
         hostAgentComposition = structuredClone(preset.composition)
         const bytes = Buffer.from(JSON.stringify(hostAgentComposition))
-        resourceDigests[node.agentRef] = hash(bytes)
         durableWrite(join(this.runtimeRoot, 'snapshots', 'host-agents', `${hash(bytes)}.json`), bundle([{ path: 'preset.json', digest: hash(bytes), bytes }]))
       }
     } else {

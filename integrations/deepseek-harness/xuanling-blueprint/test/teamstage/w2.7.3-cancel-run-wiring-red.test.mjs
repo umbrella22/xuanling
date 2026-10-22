@@ -12,7 +12,7 @@ let fixtureNumber = 0
 
 test('W2.7.3 red: cancelRun settles the source Team through owned drain and task CAS', async () => {
   const root = await mkdtemp(join(tmpdir(), `xuanling-w273-wiring-${fixtureNumber++}-`))
-  const opened = await openBlueprintDomain({ backend: 'json', path: join(root, 'store') })
+  const opened = await openBlueprintDomain({ path: join(root, 'store') })
   const store = new RunStore(opened.domain)
   const lead = { id: 'lead-session', session: { id: 'lead-session', header: { origin: 'root' } } }
   const members = [

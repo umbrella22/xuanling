@@ -44,7 +44,7 @@ async function fixture(t) {
       execute: async () => ({})
     })
   )
-  await ctx.plugin(BlueprintService, {})
+  await ctx.plugin(BlueprintService, { workspaceRoot: root, runtimeRoot: join(root, '.xuanling') })
   t.after(async () => {
     await ctx.fiber.dispose()
     rmSync(root, { recursive: true, force: true })
@@ -78,7 +78,7 @@ test('listResources returns strict safe DTO including provenance and describe ex
   assert.deepEqual(guide.resourceCatalog, value.resources)
   const candidate = {
     definition: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       id: 'draft',
       name: 'Uses DSH resources',
       resources: {

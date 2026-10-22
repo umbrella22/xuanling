@@ -20,7 +20,7 @@ import { validateDefinition } from '../../src/definition/validator.ts'
 import { BLUEPRINT_INVOCATIONS } from '../../src/typert-descriptors.ts'
 
 const definition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'space_demo',
   name: '用户标题 / exact title',
   resources: {

@@ -4,7 +4,7 @@ English | [简体中文](README-ZH.md)
 
 This directory holds repository-only verification assets. Maintainers and CI use them from a
 checkout; no npm package or integration bundle ships or imports this tree. The inventory matches
-repository release `0.6.1`.
+repository release `0.7.0`.
 
 ## Layout
 

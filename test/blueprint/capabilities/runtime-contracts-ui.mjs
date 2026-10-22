@@ -40,7 +40,7 @@ function ensure(passed, label) { if (!passed) throw new Error(label) }
 const requestArgs = request => { const body = request.postDataJSON(); return body?.payload?.args?.args ?? body?.payload?.args }
 
 function flowDefinition(id, configured = true) {
-  return { schemaVersion: 1, id, name: `UI · ${id}`, resources: {}, graph: {
+  return { schemaVersion: 2, id, name: `UI · ${id}`, resources: {}, graph: {
     nodes: [
       { id: 'ui-gate', kind: 'condition', inputs: { predicate: 'boolean' }, branches: ['yes', 'no'], ...(configured ? { condition: { inputPort: 'predicate', trueBranch: 'yes', falseBranch: 'no' } } : {}) },
       { id: 'yesPath', kind: 'output' }, { id: 'noPath', kind: 'output' }, { id: 'merge', kind: 'join' },
@@ -59,8 +59,8 @@ export function prepareCanvasFixtures(tempRoot, decode, validate) {
   const any = flowDefinition('runtime-ui-any'); any.graph.nodes.find(n => n.kind === 'join').join = 'any'
   for (const definition of [flowDefinition('runtime-ui-flow'), flowDefinition('runtime-ui-legacy', false), severities, any]) {
     validate(decode(JSON.stringify(definition))) // Broken fixtures are harness failures.
-    const packageRoot = join(tempRoot, 'blueprints', definition.id)
-    mkdirSync(packageRoot, { recursive: true }); fixtures.config.blueprints[definition.id] = packageRoot
+    const packageRoot = join(tempRoot, '.xuanling', 'workflows', definition.id)
+    mkdirSync(packageRoot, { recursive: true })
     writeFileSync(join(packageRoot, 'blueprint.json'), JSON.stringify(definition))
     if (definition.resources.agent) {
       mkdirSync(join(packageRoot, 'lib/agents'), { recursive: true }); mkdirSync(join(packageRoot, 'lib/schemas'), { recursive: true })

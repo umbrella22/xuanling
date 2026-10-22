@@ -73,7 +73,7 @@ test('resource rows preserve metadata and portable identity while omitting refer
   }
 })
 
-const definition = { schemaVersion: 1, id: 'one', name: 'One', resources: {}, graph: { nodes: [], edges: [] } }
+const definition = { schemaVersion: 2, id: 'one', name: 'One', resources: {}, graph: { nodes: [], edges: [] } }
 const document = {
   blueprintId: 'one',
   documentRevision: 'doc',

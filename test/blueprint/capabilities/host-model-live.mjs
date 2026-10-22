@@ -300,13 +300,12 @@ try {
   receipt.selection = selection
   const fixture = {
     prepare: async () => {
-      const blueprints = {}
       for (const mode of ['explicit', 'default']) {
         const id = `host-model-${mode}`,
-          packageRoot = join(root, id)
+          packageRoot = join(root, '.xuanling', 'workflows', id)
         mkdirSync(packageRoot, { mode: 0o700 })
         const definition = {
-          schemaVersion: 1,
+          schemaVersion: 2,
           id,
           name: `Host model ${mode}`,
           resources: { agent: { kind: 'agent', source: { kind: 'host', id: 'minimal' } } },
@@ -326,12 +325,11 @@ try {
         writeFileSync(join(packageRoot, 'blueprint.json'), JSON.stringify(definition), {
           mode: 0o600
         })
-        blueprints[id] = packageRoot
       }
       const observer = join(root, 'host-model-observer.mjs')
       const source = `import {writeFileSync,renameSync} from 'node:fs';\nimport {createHash} from 'node:crypto';\nimport * as yaml from 'js-yaml';\nimport {entryListSchema} from '@deepseek-ai/cordis-plugin-include';\nexport const inject=['agents','llm','agentPresets'];\nconst attachObserver=${attachObserver.toString()};\nexport function apply(ctx){attachObserver(ctx,{digest:value=>createHash('sha256').update(value).digest('hex'),loadComposition:content=>yaml.load(content,{schema:entryListSchema}),flush:facts=>{const file=${JSON.stringify(observerFile)};writeFileSync(file+'.next',JSON.stringify(facts),{mode:0o600});renameSync(file+'.next',file)}})}\n`
       writeFileSync(observer, source, { mode: 0o600 })
-      return { blueprints, operatorModules: [observer] }
+      return { workspaceRoot: root, runtimeRoot: join(root, '.xuanling'), operatorModules: [observer] }
     }
   }
   profile = await prepareProfile({ mode: 'keyless', installMode: 'cli', pnpmExecutable: process.env.BP_AUTHORING_PNPM }, fixture, root, receipt.steps)

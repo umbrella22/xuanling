@@ -5,10 +5,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { openBlueprintDomain, RunStore } from '../../src/persistence/index.ts'
 
-async function fixture(t, backend = 'json') {
+async function fixture(t, _backend = 'directory') {
   const root = await mkdtemp(join(tmpdir(), 'blueprint-native-observation-'))
-  const path = backend === 'json' ? join(root, 'store') : join(root, 'store', 'runs.sqlite')
-  let opened = await openBlueprintDomain({ backend, path })
+  const path = join(root, 'store')
+  let opened = await openBlueprintDomain({ path })
   const store = new RunStore(opened.domain)
   const { runId } = await store.createRun({ scope: 'observation', requestId: 'run', payloadFingerprint: 'a'.repeat(64) }, 'revision', '{}', '{}')
   await store.bindTeamStage(runId, { stageId: 'stage', teamId: 'team', leadSessionId: 'lead', taskSpecificationFingerprint: 'b'.repeat(64) })
@@ -22,7 +22,7 @@ async function fixture(t, backend = 'json') {
     runId,
     async reopen() {
       await opened.close()
-      opened = await openBlueprintDomain({ backend, path })
+      opened = await openBlueprintDomain({ path })
       return new RunStore(opened.domain)
     }
   }
@@ -57,7 +57,7 @@ test('W2.6 C-02/C-05 native observations reject foreign, stale, backwards and te
   assert.deepEqual(await store.get(runId), cancelled)
 })
 
-for (const backend of ['json', 'sqlite']) {
+for (const backend of ['directory']) {
   test(`W2.6 C-02/C-06 ${backend} native observation survives reopen and concurrent stale writers cannot overwrite it`, async t => {
     const { store, runId, reopen } = await fixture(t, backend)
     const writers = await Promise.allSettled([

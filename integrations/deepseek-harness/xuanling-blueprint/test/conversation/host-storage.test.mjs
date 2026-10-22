@@ -25,7 +25,7 @@ async function fixture(t, backend) {
   }
   const open = async (location = runtimeRoot) => {
     assert.equal(opened, undefined)
-    opened = await openBlueprintDomain({ backend, path: backend === 'json' ? join(location, 'store') : join(location, 'store', 'runs.db') })
+    opened = await openBlueprintDomain({ path: join(location, 'store') })
     return new RunStore(opened.domain)
   }
   t.after(async () => {
@@ -34,8 +34,8 @@ async function fixture(t, backend) {
   })
   return { root, runtimeRoot, open, close, domain: () => opened.domain, table: name => opened.domain.table(name) }
 }
-for (const backend of ['json', 'sqlite']) {
-  test(`host ${backend}: source/intent survive reopen, recovery, legacy and backup/restore without synthesized lineage`, async t => {
+for (const backend of ['directory']) {
+  test(`host ${backend}: source/intent survive reopen, recovery and backup/restore without synthesized lineage`, async t => {
     const h = await fixture(t, backend)
     let store = await h.open()
     const meta = metadata()
@@ -45,11 +45,9 @@ for (const backend of ['json', 'sqlite']) {
     const intent = await store.recordIntent(runId, { nodeId: 'work', kind: 'agentTask', sessionId: 'reserved-native-agent' })
     assert.equal((await store.get(runId)).attempts[0].sessionId, 'reserved-native-agent')
     assert.equal((await store.get(runId)).attempts[0].intent.seq, intent.seq)
-    const { runId: legacyId } = await admit(store, 'legacy', {})
-    const legacy = await store.get(legacyId)
-    assert.equal(Object.hasOwn(legacy, 'source'), false)
-    assert.equal(Object.hasOwn(legacy, 'blueprintId'), false)
-    await store.settleTerminal(legacyId, 'succeeded')
+    const { runId: legacyId } = await store.createRun(request('legacy'), 'legacy-revision', JSON.stringify({ schemaVersion: 1, id: 'legacy' }), '{}')
+    assert.equal(await store.tryGet(legacyId), undefined, 'v1 Runs remain lazy archives and never enter the runtime')
+    await assert.rejects(() => store.get(legacyId), { code: 'RUN_NOT_FOUND' })
     await h.close()
     store = await h.open()
     assert.deepEqual((await store.get(runId)).source, source)
@@ -59,18 +57,17 @@ for (const backend of ['json', 'sqlite']) {
     assert.equal(recovered.state, 'recovery_required')
     assert.equal(recovered.attempts[0].result, undefined, 'unknown effect is not replayed or invented')
     assert.equal(recovered.attempts[0].sessionId, 'reserved-native-agent')
-    const old = await store.get(legacyId)
     await h.close()
     store = await h.open()
     assert.deepEqual(await store.get(runId), recovered)
-    assert.deepEqual(await store.get(legacyId), old)
+    await assert.rejects(() => store.get(legacyId), { code: 'RUN_NOT_FOUND' })
     await h.close()
     const backup = createBackup(h.runtimeRoot)
     const restored = join(h.root, 'restored')
     restoreBackup(backup.archive, restored)
     store = await h.open(restored)
     assert.deepEqual(await store.get(runId), recovered)
-    assert.deepEqual(await store.get(legacyId), old)
+    await assert.rejects(() => store.get(legacyId), { code: 'RUN_NOT_FOUND' })
   })
   test(`host ${backend}: admission and intent failures dispatch no effects; bind-crash replay retains original source`, async t => {
     const h = await fixture(t, backend)

@@ -3,7 +3,7 @@
 // evaluated unmodified. The carrier and slot seats are deterministic fixtures.
 import assert from 'node:assert/strict'
 import { createHash, webcrypto } from 'node:crypto'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -101,7 +101,7 @@ const installedLocale = actualFactory(
 const productionClient = process.env.BLUEPRINT_NATIVE_CLIENT_ARTIFACT ? actualFactory(resolve(process.env.BLUEPRINT_NATIVE_CLIENT_ARTIFACT)) : sourceClient
 const document = {
   blueprintId: 'native-fixture',
-  definitionJson: '{"schemaVersion":1,"id":"native-fixture"}',
+  definitionJson: '{"schemaVersion":2,"id":"native-fixture"}',
   documentRevision: 'document-1',
   semanticRevision: 'semantic-1',
   layoutRevision: 'layout-1'
@@ -363,16 +363,15 @@ const ownDescriptors = client => client.typert.remotes.list().filter(d => d.name
 // no prototype surrogate, replaced reducer or fabricated action DTO is used.
 async function durableFixture(t, { teamAvailable = true, leadRole = 'lead' } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'blueprint-native-durable-'))
-  const runtimeRoot = join(root, 'runtime')
-  const definitionRoot = join(root, 'definition')
-  mkdirSync(definitionRoot)
+  const workspaceRoot = root
+  const runtimeRoot = join(root, '.xuanling')
   const lead = { id: 'native-lead', session: { id: 'native-lead', header: { origin: 'root' } } }
   const tasks = new Map()
   const effects = []
   let serviceFiber
-  const config = { blueprints: { 'native-durable': definitionRoot }, runtimeRoot }
+  const config = { workspaceRoot, runtimeRoot }
   const records = async () => {
-    const opened = await openBlueprintDomain({ backend: 'json', path: join(runtimeRoot, 'store') })
+    const opened = await openBlueprintDomain({ path: runtimeRoot })
     try {
       const store = new RunStore(opened.domain)
       return await Promise.all((await store.listRunIds()).map(id => store.get(id)))
@@ -448,7 +447,7 @@ async function durableFixture(t, { teamAvailable = true, leadRole = 'lead' } = {
   t.after(() => rmSync(root, { recursive: true, force: true }))
   await ownContribution(f.client, TYPERT_REMOTE)
   const teamDefinition = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'native-team-durable',
     name: 'Native Team durable boundary fixture',
     resources: { worker: { kind: 'agent', path: 'lib/agents/worker.md' }, resultSchema: { kind: 'schema', path: 'lib/schemas/result.json' } },
@@ -489,7 +488,7 @@ async function durableFixture(t, { teamAvailable = true, leadRole = 'lead' } = {
     return { admission: { ...admission, semanticRevision: 'team-semantic-1', state: 'running' }, args: [] }
   }
   const definition = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'native-durable',
     name: 'Native durable boundary fixture',
     resources: {},
@@ -741,6 +740,7 @@ test('C-08 host and remote select one unchanged strict descriptor/codec source',
     'deleteDefinition',
     'createDefinition',
     'saveDefinition',
+    'restoreDefinitionRevision',
     'validate',
     'preflightRun',
     'startRun',
@@ -752,11 +752,22 @@ test('C-08 host and remote select one unchanged strict descriptor/codec source',
     'restoreRun',
     'inspectRun',
     'cancelRun',
+    'resolveRecovery',
     'cancelTeamStage',
     'acceptTeamStageOutput',
     'decide',
     'exportDefinition',
-    'importDefinition'
+    'importDefinition',
+    'workflowList',
+    'workflowGet',
+    'workflowValidate',
+    'workflowPropose',
+    'workflowApply',
+    'workflowRevisions',
+    'workflowRevert',
+    'workflowRun',
+    'workflowInspect',
+    'workflowReport'
   ]
   assert.deepEqual(
     BLUEPRINT_INVOCATIONS.map(d => d.method),

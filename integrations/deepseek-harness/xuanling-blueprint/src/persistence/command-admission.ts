@@ -27,8 +27,10 @@ export class DurabilityFailureError extends Error {
   override readonly name = 'DurabilityFailureError'
   readonly code = 'DURABILITY_FAILED'
   readonly operation: string
-  constructor(operation: string, _cause: unknown) {
-    super(`durable write failed during ${operation}`)
+  constructor(operation: string, cause: unknown) {
+    // The cause stays attached for diagnostics (for example, which record is
+    // unreadable); wire projections keep exposing only `operation`.
+    super(`durable write failed during ${operation}`, { cause })
     this.operation = operation
   }
 }

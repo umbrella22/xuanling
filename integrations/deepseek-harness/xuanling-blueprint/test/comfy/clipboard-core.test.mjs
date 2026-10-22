@@ -4,7 +4,7 @@ import { GraphEditor } from '../../src/client/features/authoring/logic/graph/gra
 import { decodeClipboard } from '../../src/client/features/authoring/logic/graph/clipboard.ts'
 
 const fixture = () => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'source',
   name: 'Flow',
   resources: {},
@@ -162,7 +162,7 @@ const resources = {
   subflow: { kind: 'subflow', path: 'lib/subflow.json' }
 }
 const resourceDefinition = refs => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'source',
   name: 'Resources',
   resources: structuredClone(resources),
@@ -235,7 +235,7 @@ test('C04 dangling/wrong-kind ref is invalid before clipboard emission', () => {
 
 test('C04 supported node declarations remain copyable while removed node vocabulary fails closed', () => {
   const d = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'unfinished',
     name: 'Draft',
     resources: {},

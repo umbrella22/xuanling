@@ -5,7 +5,7 @@ import { BlueprintWorkspace } from '../../src/client/features/authoring/logic/wo
 import { resolveBlueprintHost } from '../../src/client/adapters/host/remote.ts'
 
 const definition = id => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   id,
   name: '用户.ID',
   resources: {},

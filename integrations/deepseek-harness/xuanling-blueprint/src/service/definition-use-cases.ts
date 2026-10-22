@@ -13,7 +13,7 @@ import type { DefinitionDocument } from '../definition/persist.ts'
 import type { BlueprintDefinition } from '../definition/types.ts'
 
 export interface DefinitionUseCaseConfig {
-  readonly blueprints?: Record<string, string>
+  readonly workspaceRoot?: string
   readonly toolBindings?: ToolBindings
 }
 
@@ -21,7 +21,7 @@ export interface DefinitionUseCaseContext {
   readonly ctx: Context
   readonly config: DefinitionUseCaseConfig
   readonly documents: BlueprintDocumentLibrary
-  readonly managedLibraryRoot: () => string | undefined
+  readonly workspaceWorkflowRoot: () => string | undefined
   readonly configuredRuntimeRoot?: () => string
   readonly blueprintRoot: (blueprintId: string) => string
   readonly decodeOrThrow: (definitionJson: string) => BlueprintDefinition
@@ -44,9 +44,9 @@ export class BlueprintDefinitionUseCases {
   async listDefinitions(): Promise<{
     definitions: Array<{ blueprintId: string; name: string; documentRevision: string | null; semanticRevision: string | null }>
   }> {
-    const { documents, config, managedLibraryRoot, blueprintRoot, decodeOrThrow } = this.context
+    const { documents, workspaceWorkflowRoot, blueprintRoot, decodeOrThrow } = this.context
     const definitions: Array<{ blueprintId: string; name: string; documentRevision: string | null; semanticRevision: string | null }> = []
-    const library = managedLibraryRoot()
+    const library = workspaceWorkflowRoot()
     let managed: string[] = []
     try {
       if (library) managed = documents.libraryIds(library).filter(id => existsSync(join(library, id, 'blueprint.json')))
@@ -57,7 +57,7 @@ export class BlueprintDefinitionUseCases {
         reason: 'package-read-failed'
       })
     }
-    for (const blueprintId of [...new Set([...Object.keys(config.blueprints ?? {}), ...managed])].sort()) {
+    for (const blueprintId of managed.sort()) {
       if (documents.readDeletion(blueprintId)) continue
       const root = blueprintRoot(blueprintId)
       const item = await documents.withDocument(root, () => {
@@ -89,17 +89,16 @@ export class BlueprintDefinitionUseCases {
 
   /** First save: request identity makes an uncertain response retryable after restart. */
   async createDefinition(args: { requestId: string; definitionJson: string }): Promise<DefinitionDocument> {
-    const { documents, config, managedLibraryRoot, decodeOrThrow, checkResources, revisionConflict, documentFailure } = this.context
+    const { documents, workspaceWorkflowRoot, decodeOrThrow, checkResources, revisionConflict, documentFailure } = this.context
     this.context.checkArgs('createDefinition', args)
-    const library = managedLibraryRoot()
+    const library = workspaceWorkflowRoot()
     if (!library)
       throw new RemoteError('blueprint/capability-unavailable', 'library root unavailable', {
         method: 'createDefinition',
         plugin: '@xuanling-rs/xuanling-dsh-blueprint',
-        version: '0.6.1'
+        version: '0.7.0'
       })
     const id = createdBlueprintId(args.requestId)
-    if (Object.hasOwn(config.blueprints ?? {}, id)) throw revisionConflict(id, null, null)
     const definition = decodeOrThrow(args.definitionJson)
     definition.id = id
     checkResources(definition)
@@ -132,13 +131,13 @@ export class BlueprintDefinitionUseCases {
   }
 
   async deleteDefinition(args: { blueprintId: string; expectedRevision: string; requestId: string }): Promise<{ blueprintId: string; deleted: true }> {
-    const { documents, managedLibraryRoot, blueprintRoot, revisionConflict, documentFailure } = this.context
+    const { documents, workspaceWorkflowRoot, blueprintRoot, revisionConflict, documentFailure } = this.context
     this.context.checkArgs('deleteDefinition', args)
-    if (!managedLibraryRoot())
+    if (!workspaceWorkflowRoot())
       throw new RemoteError('blueprint/capability-unavailable', 'library unavailable', {
         method: 'deleteDefinition',
         plugin: '@xuanling-rs/xuanling-dsh-blueprint',
-        version: '0.6.1'
+        version: '0.7.0'
       })
     const replay = () => {
       const deleted = documents.readDeletion(args.blueprintId)
@@ -158,7 +157,7 @@ export class BlueprintDefinitionUseCases {
         const document = documents.loadConfigured(args.blueprintId, root)
         if (document.documentRevision !== args.expectedRevision) throw revisionConflict(args.blueprintId, args.expectedRevision, document.documentRevision)
         try {
-          documents.writeLibraryDeletion(managedLibraryRoot()!, {
+          documents.writeLibraryDeletion(workspaceWorkflowRoot()!, {
             stateVersion: 1,
             blueprintId: args.blueprintId,
             documentRevision: args.expectedRevision,
@@ -205,22 +204,21 @@ export class BlueprintDefinitionUseCases {
   }
 
   async createBlueprint(candidate: AuthoringCandidate, requestId: string, source: RunSource, signal?: AbortSignal): Promise<DefinitionDocument> {
-    const { documents, config, managedLibraryRoot, decodeOrThrow, revisionConflict, documentFailure } = this.context
+    const { documents, workspaceWorkflowRoot, decodeOrThrow, revisionConflict, documentFailure } = this.context
     signal?.throwIfAborted()
     const result = validateCandidate(candidate)
     if (!result.ok)
       throw new RemoteError('blueprint/definition-invalid', 'candidate rejected; use blueprint_validate for issues', {
         issues: result.issues.map(issue => issue.code).join('; ')
       })
-    const library = managedLibraryRoot()
+    const library = workspaceWorkflowRoot()
     if (!library)
       throw new RemoteError('blueprint/capability-unavailable', 'library unavailable', {
         method: 'createBlueprint',
         plugin: '@xuanling-rs/xuanling-dsh-blueprint',
-        version: '0.6.1'
+        version: '0.7.0'
       })
     const id = createdBlueprintId(JSON.stringify([source.sessionId, requestId]))
-    if (Object.hasOwn(config.blueprints ?? {}, id)) throw revisionConflict(id, null, null)
     const definition = { ...result.definition, id }
     const root = documents.libraryDocumentRoot(library, id)!
     return await documents.withDocument(

@@ -274,7 +274,7 @@ const cases = [
       )
       return edit(source, [{ start: canonical.right.start, end: canonical.right.end, text: source.slice(canonical.left.start, canonical.left.end) }])
     },
-    failure: /alias facade save waits for the physical-root queue/
+    failure: /(?:alias facade save waits for the physical-root queue|later facade write joins the pending action before its rejection)/
   },
   {
     id: 'admission-replay-before-precheck',

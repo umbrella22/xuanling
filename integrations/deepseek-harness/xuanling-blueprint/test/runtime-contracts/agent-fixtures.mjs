@@ -37,7 +37,7 @@ export const bindingResources = {
 }
 export const agentNode = (extra = {}) => ({ id: 'work', kind: 'agentTask', agentRef: 'worker', ...extra })
 export function definition(nodes = [agentNode()], resources = agentResources, edges = []) {
-  const value = { schemaVersion: 1, id: 'runtime-contracts', name: 'Runtime contracts', resources, graph: { nodes, edges } }
+  const value = { schemaVersion: 2, id: 'runtime-contracts', name: 'Runtime contracts', resources, graph: { nodes, edges } }
   validateDefinition(decodeDefinition(JSON.stringify(value)))
   return value
 }
@@ -214,8 +214,9 @@ function registryFixture(ctx, onTurn) {
 
 export async function harness(t, { onTurn = call => call.finish(), config = {}, tools = true, factory = true, mode = 'native', ptcRun } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'bp-agent-contracts-'))
-  const rootDir = join(root, 'package')
-  const runtimeRoot = join(root, 'runtime')
+  const rootDir = join(root, '.xuanling', 'workflows', 'runtime-contracts')
+  const workspaceRoot = root
+  const runtimeRoot = join(root, '.xuanling')
   mkdirSync(join(rootDir, 'lib', 'agents'), { recursive: true })
   mkdirSync(join(rootDir, 'lib', 'schemas'), { recursive: true })
   writeFileSync(join(rootDir, 'lib', 'agents', 'worker.md'), AGENT_BYTES)
@@ -261,7 +262,7 @@ export async function harness(t, { onTurn = call => call.finish(), config = {}, 
   const host = registryFixture(ctx, onTurn)
   if (factory) ctx.provide('agents', host.registry)
   const fiber = await ctx.plugin(BlueprintService, {
-    blueprints: { 'runtime-contracts': rootDir },
+    workspaceRoot,
     runtimeRoot,
     ...config
   })
@@ -329,7 +330,7 @@ export const runArgs = (doc, input = { task: 'INPUT_SECRET_SENTINEL' }, requestI
   requestId
 })
 export async function records(h) {
-  const opened = await openBlueprintDomain({ backend: 'json', path: join(h.runtimeRoot, 'store') })
+  const opened = await openBlueprintDomain({ path: h.runtimeRoot })
   try {
     const store = new RunStore(opened.domain)
     return await Promise.all((await store.listRunIds()).map(id => store.get(id)))

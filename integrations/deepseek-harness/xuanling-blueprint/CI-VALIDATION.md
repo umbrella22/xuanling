@@ -26,7 +26,10 @@ pnpm --dir integrations/deepseek-harness/xuanling-blueprint test
 `test` discovers every `test/**/*.test.mjs` file, including runner calibration and
 live-journey fixtures. Hydrated UI fixtures use the harness Playwright and real
 Edge with synthetic data, so Edge installation is required before the full test
-command. These fixtures do not exercise a real DSH profile or provider journey.
+command; `test` first runs `scripts/check-test-prereqs.mjs`, which stops with the
+missing step (build, harness install or Edge) instead of letting dozens of fixtures
+fail. Set `BP_TEST_SKIP_PREREQS=1` to bypass it. These fixtures do not exercise a
+real DSH profile or provider journey.
 Build must finish before verification suites importing `lib` start. Freeze source,
 CI configuration, manifests, and built artifacts before collecting evidence.
 

@@ -103,7 +103,7 @@ test('whitespace URL credentials never enter resolved Host preset export ZIP', a
     source = join(root, 'source')
   mkdirSync(source)
   const definition = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'url-whitespace',
     name: 'URL whitespace',
     resources: { agent: { kind: 'agent', source: { kind: 'host', id: 'custom-preset' } } },
@@ -135,7 +135,7 @@ test('archive import rejects whitespace URL credentials after valid integrity ch
     source = join(root, 'source')
   mkdirSync(source)
   const definition = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'unsafe-url-import',
     name: 'Unsafe URL import',
     resources: { agent: { kind: 'agent', source: { kind: 'host', id: 'custom-preset' } } },
@@ -224,7 +224,7 @@ function credentialExportFixture(t) {
     source = join(root, 'source')
   mkdirSync(source)
   const definition = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'credential-key',
     name: 'Credential key',
     resources: { agent: { kind: 'agent', source: { kind: 'host', id: 'custom-preset' } } },
@@ -323,7 +323,7 @@ test('export-import-export preserves formatted Host artifact bindings and comple
     packageRoot = join(root, 'source')
   mkdirSync(packageRoot)
   const definition = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'portable-roundtrip',
     name: 'Portable roundtrip',
     resources: {
@@ -396,7 +396,7 @@ test('export includes custom Skill full tree and typed Agent/MCP artifacts, excl
     packageRoot = join(root, 'source')
   mkdirSync(packageRoot)
   const definition = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'portable-host',
     name: 'Portable Host resources',
     resources: {
@@ -487,7 +487,7 @@ test('Host preset Attempt digests bind immutable composition bytes, not only ide
   })
   const snapshots = new RuntimeSnapshots(join(root, 'runtime'), undefined, provider)
   const definition = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'host-attempt',
     name: 'Host attempt',
     resources: { agent: { kind: 'agent', source: { kind: 'host', id: 'host-custom' } } },

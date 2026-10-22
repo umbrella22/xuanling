@@ -62,8 +62,8 @@ Agent task、Approval、Condition、Join 与 Output 节点，绑定 DSH 现有 A
 
 ```sh
 dsh plugin --profile web add \
-  @xuanling-rs/xuanling-dsh-memory@0.6.1 \
-  @xuanling-rs/xuanling-dsh-skills@0.6.1
+  @xuanling-rs/xuanling-dsh-memory@0.7.0 \
+  @xuanling-rs/xuanling-dsh-skills@0.7.0
 dsh --profile web --dump-config
 dsh web
 ```
@@ -78,8 +78,8 @@ dsh web
 
 ```sh
 dsh plugin --profile web add \
-  @xuanling-rs/xuanling-dsh-tools@0.6.1 \
-  @xuanling-rs/xuanling-dsh-skills@0.6.1
+  @xuanling-rs/xuanling-dsh-tools@0.7.0 \
+  @xuanling-rs/xuanling-dsh-skills@0.7.0
 export XUANLING_WORKSPACE_ROOT=/absolute/path/to/project
 dsh web
 ```
@@ -91,8 +91,8 @@ dsh web
 
 ```sh
 dsh plugin --profile web add \
-  @xuanling-rs/xuanling-dsh-tools-replace@0.6.1 \
-  @xuanling-rs/xuanling-dsh-skills@0.6.1
+  @xuanling-rs/xuanling-dsh-tools-replace@0.7.0 \
+  @xuanling-rs/xuanling-dsh-skills@0.7.0
 export XUANLING_WORKSPACE_ROOT=/absolute/path/to/project
 dsh web
 ```
@@ -100,8 +100,8 @@ dsh web
 ### Blueprint（可选）
 
 ```sh
-pnpm add --save-exact @xuanling-rs/xuanling-dsh-blueprint@0.6.1
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.6.1
+pnpm add --save-exact @xuanling-rs/xuanling-dsh-blueprint@0.7.0
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.7.0
 ```
 
 TeamStage 还需要单独启用原生 Agent Teams profile。
@@ -135,6 +135,9 @@ TeamStage 还需要单独启用原生 Agent Teams profile。
 package 集合。用 `dsh plugin --profile <profile> list` 查看已安装插件，用
 `dsh plugin --profile <profile> remove <package>` 移除；变更后重启。
 
+所选 runtime bundle 会把 `@xuanling-rs/xuanling-mcp@0.7.0` 安装到 profile 内，
+并从该 profile 的依赖中解析运行时。
+
 ### Memory、文件与 Skill
 
 Memory v2 是提案优先的：`memory_search` 与 `memory_get` 读取 active 记录，
@@ -148,7 +151,8 @@ Memory v2 是提案优先的：`memory_search` 与 `memory_get` 读取 active �
 [tools-replace](xuanling-tools-replace/README-ZH.md)。
 
 `xuanling-skills` 增加 `xuanling-memory-workflow`（项目局部事实写入 DSH 文件 Memory，跨项目
-事实写入 XuanLing）、`xuanling-file-workflow`（在原生与 XuanLing 文件工具之间路由），以及
+事实写入 XuanLing）、`xuanling-file-workflow`（在原生与 XuanLing 文件工具之间路由）、
+`xuanling-blueprint-migrate`（辅助升级蓝图，已包含在 `0.7.0` 中），以及
 严格覆盖策略：缺少 `expected_sha256` 的 `fs_write_text` 覆盖会被拒绝。详见
 [skills bundle](xuanling-skills/README-ZH.md)。
 
@@ -165,9 +169,9 @@ projection、result projection、Skills 策略与替换 facade 的细节见[各 
 
 - 各 bundle 以 DSH `next` 频道的 `0.2.1-rc.2` 为开发和测试基线。
 - 公开运行时 peer 下限是 `@deepseek-ai/dsh-* >=0.2.1-alpha.5`，预发布版本也参与范围比较。
-- 当前发布到 npm 的 `0.6.1` package 面向更早的 DSH 频道。已发布的 package 可能落后于本
-  仓库，较新的 DSH profile 也可能停用不兼容插件而不是启动它。请安装声明范围与自身 profile
-  匹配的版本，并让同一 profile 中所有 `@deepseek-ai/dsh-*` package 保持在同一频道。
+- `0.7.0` 面向上述能力频道，旧版 `0.6.1` package 声明的是更早的 DSH 范围。请安装声明范围
+  与自身 profile 匹配的版本，并让同一 profile 中所有 `@deepseek-ai/dsh-*` package 保持在同一
+  频道。DSH 可能停用不兼容插件而不是启动它。
 
 ### 限制
 

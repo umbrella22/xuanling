@@ -9,7 +9,10 @@
 import type { RunStore } from '../persistence/run-store.ts'
 import { TeamStageConflictError, TerminalStateError } from '../persistence/run-store.ts'
 import type { RunRecord } from '../persistence/records.ts'
-import { IllegalTransitionError } from './state.ts'
+import { IllegalTransitionError, RecoveryStaleError } from './state.ts'
+import { teamStageBlocksRecovery } from '../host/teamstage-recovery.ts'
+
+export { RecoveryStaleError }
 
 const ATTEMPT_TERMINAL = new Set(['succeeded', 'failed', 'cancelled', 'timed_out', 'skipped'])
 const RUN_TERMINAL = new Set(['succeeded', 'failed', 'cancelled', 'timed_out'])
@@ -49,6 +52,11 @@ export async function reconcileOnStart(store: RunStore): Promise<ReconciliationR
   for (const runId of await store.listRunIds()) {
     report.scanned += 1
     const run = await store.get(runId)
+    if (run.bindingAdmission === 'pending' && !['succeeded', 'failed', 'cancelled', 'timed_out', 'recovery_required'].includes(run.state)) {
+      await store.settleTerminal(runId, 'recovery_required', { reason: 'admission-incomplete' })
+      report.recoveryRequired.push({ runId, attemptId: 'admission', nodeId: 'admission', intentKind: 'binding-snapshot' })
+      continue
+    }
     // Team effects are canonical facts independent of the bounded audit log.
     // A pending or explicitly unknown create/spawn/message/task effect stays
     // unknown after restart, including when the Run was waiting for input. Never
@@ -112,12 +120,29 @@ export type RecoveryAction = 'succeeded' | 'failed' | 'cancelled' | 'timed_out'
 
 /** Apply a human-reviewed recovery decision: the reviewed evidence settles
  * the pending attempt, then the run takes the reviewed terminal state. */
-export async function reconcile(store: RunStore, run: RunRecord, action: RecoveryAction, evidence: string): Promise<RunRecord> {
+export interface ReconcileOptions {
+  /** Reject when the durable cut moved past the one the operator reviewed. */
+  readonly expectedSeq?: number
+  /** Marks the audit entry as a human operator resolution. */
+  readonly operator?: boolean
+  /** Reject when the durable TeamStage is not settled: its unknown native
+   * effects must be cleaned up through the Team boundary before the Run can
+   * take a reviewed terminal state. */
+  readonly guardTeamStage?: boolean
+}
+
+export async function reconcile(store: RunStore, run: RunRecord, action: RecoveryAction, evidence: string, options: ReconcileOptions = {}): Promise<RunRecord> {
   if (run.state !== 'recovery_required') {
     throw new IllegalTransitionError(run.state, action)
   }
   return await store.transition(run.runId, draft => {
     if (draft.state !== 'recovery_required') throw new IllegalTransitionError(draft.state, action)
+    if (options.expectedSeq !== undefined && draft.seq !== options.expectedSeq) throw new RecoveryStaleError(draft.runId, options.expectedSeq, draft.seq)
+    // Optimistic guard: a TeamStage that moved (or gained unknown effects)
+    // after the operator reviewed the cut must be rejected inside the same
+    // atomic transition, not only by the pre-read in the service.
+    if (options.guardTeamStage === true && teamStageBlocksRecovery(draft.teamStage?.state))
+      throw new TeamStageConflictError(draft.runId, 'TeamStage recovery needs native Team cleanup')
     const seq = draft.seq + 1
     for (const attempt of draft.attempts) {
       if (attempt.intent === undefined || attempt.result !== undefined || ATTEMPT_TERMINAL.has(attempt.state)) continue
@@ -131,6 +156,6 @@ export async function reconcile(store: RunStore, run: RunRecord, action: Recover
       }
     }
     draft.state = action
-    draft.log.push({ seq, at: Date.now(), kind: 'state', detail: { recovery: action, evidence } })
+    draft.log.push({ seq, at: Date.now(), kind: 'state', detail: { recovery: action, evidence, ...(options.operator === true ? { actor: 'operator' } : {}) } })
   })
 }

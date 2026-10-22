@@ -903,9 +903,11 @@ test('actual probe adapter preserves original assertions/budgets and uses owned 
 test('production fixture decoder/validator and actual inspect codec accept only owned public definition and raw fields', t => {
   const f = fixture(t),
     fixtures = collector.prepareCanvasFixtures(join(f.dir, 'owned-fixture'), decodeDefinition, validateDefinition)
+  const workflowRoot = join(fixtures.config.workspaceRoot, '.xuanling', 'workflows')
   for (const id of ['motion-ui', 'motion-routed']) {
-    assert.ok(fixtures.config.blueprints[id].startsWith(f.dir))
-    const definition = decodeDefinition(readFileSync(join(fixtures.config.blueprints[id], 'blueprint.json'), 'utf8'))
+    const definitionRoot = join(workflowRoot, id)
+    assert.ok(definitionRoot.startsWith(f.dir))
+    const definition = decodeDefinition(readFileSync(join(definitionRoot, 'blueprint.json'), 'utf8'))
     validateDefinition(definition)
     assert.equal(definition.graph.nodes.find(n => n.id === 'source').outputs['part.中文'], 'string')
     assert.deepEqual(GraphEditor.fromDefinition(definition).exportDefinition(), definition, 'MOTION_FIXTURE_MUST_BE_EXACT_PUBLIC_EDITOR_SAVE_PREIMAGE')

@@ -360,7 +360,7 @@ export function createStructuredBlueprint() {
   const schemaBytes = JSON.stringify({ type: 'object', properties: { nonce: { type: 'string' } }, required: ['nonce'], additionalProperties: false })
   const agentBytes = 'Call structured_output exactly once with the exact nonce from the input JSON. Do not report it as text. Do not add other properties.\n'
   const definition = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'live-journey',
     name: 'Runtime contracts structured nonce journey',
     resources: {
@@ -554,9 +554,19 @@ export async function runIsolatedStructured(config, progress, { diagnosticBudget
       cwd = join(temp, 'cwd'),
       profile = `bp-runtime-live-${randomUUID()}`
     const dir = join(home, 'dsh/profiles', profile),
-      bp = join(temp, 'blueprint'),
-      runtime = join(temp, 'runtime')
-    for (const path of [dir, cwd, join(home, 'tmp'), join(dir, 'node_modules/@xuanling-rs'), runtime, join(bp, 'lib/agents'), join(bp, 'lib/schema')])
+      workspace = join(temp, 'workspace'),
+      bp = join(workspace, '.xuanling', 'workflows', 'live-journey'),
+      runtime = join(workspace, '.xuanling')
+    for (const path of [
+      dir,
+      cwd,
+      join(home, 'tmp'),
+      join(dir, 'node_modules/@xuanling-rs'),
+      runtime,
+      workspace,
+      join(bp, 'lib/agents'),
+      join(bp, 'lib/schema')
+    ])
       mkdirSync(path, { recursive: true })
     const blueprint = createStructuredBlueprint()
     writeFileSync(join(bp, 'blueprint.json'), JSON.stringify(blueprint.definition), { mode: 0o600 })
@@ -586,7 +596,7 @@ export async function runIsolatedStructured(config, progress, { diagnosticBudget
     observerFile = join(temp, 'observer-facts.json')
     writeFileSync(
       join(dir, 'cordis.patch.yml'),
-      profilePatch({ blueprintRoot: bp, runtimeRoot: runtime, observerModule: observer, toolIds, liveConfig: config }),
+      profilePatch({ workspaceRoot: workspace, runtimeRoot: runtime, observerModule: observer, toolIds, liveConfig: config }),
       { mode: 0o600 }
     )
     const nonce = `bp-runtime-live-${randomUUID()}`,

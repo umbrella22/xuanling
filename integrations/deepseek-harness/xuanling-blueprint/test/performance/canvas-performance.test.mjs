@@ -55,14 +55,15 @@ test('all probe fixtures and the full 200/300/20 performance graph pass the actu
   t.after(() => rmSync(root, { recursive: true, force: true }))
   mkdirSync(root, { recursive: true })
   const fixtures = prepareCanvasFixtures(root, decodeDefinition, validateDefinition)
+  const workflowRoot = join(fixtures.config.workspaceRoot, '.xuanling', 'workflows')
   assert.deepEqual(
     fixtures.evidence.find(f => f.id === 'canvas-performance'),
     evidence
   )
   for (const d of canvasDefinitions()) {
-    assert.equal(readFileSync(join(fixtures.config.blueprints[d.id], 'blueprint.json'), 'utf8'), JSON.stringify(d))
-    for (const ref of Object.values(d.resources))
-      if (ref.path) assert.match(readFileSync(join(fixtures.config.blueprints[d.id], ref.path), 'utf8'), /fixture-agent/)
+    const definitionRoot = join(workflowRoot, d.id)
+    assert.equal(readFileSync(join(definitionRoot, 'blueprint.json'), 'utf8'), JSON.stringify(d))
+    for (const ref of Object.values(d.resources)) if (ref.path) assert.match(readFileSync(join(definitionRoot, ref.path), 'utf8'), /fixture-agent/)
   }
   assert.match(readFileSync(join(fixtures.skillDir, 'SKILL.md'), 'utf8'), /CONTENT-H1/)
 })

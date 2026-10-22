@@ -22,11 +22,12 @@ test('collector merges the real DSH init comments and empty array into a native-
       prior = readFileSync(path, 'utf8')
     assert.match(prior, /^# Your patch layer/)
     assert.deepEqual(loadOverlayPatches('dsh', path), [])
-    const patches = '- id: llm-pi-ai\n  disabled: true\n- id: xuanling-blueprint\n  config: {blueprints: {}}'
+    const patches =
+      '- id: llm-pi-ai\n  disabled: true\n- id: xuanling-blueprint\n  config: {workspaceRoot: /tmp/workspace, runtimeRoot: /tmp/workspace/.xuanling}'
     writeFileSync(path, runtime.collectorOverlaySource(prior, patches))
     assert.deepEqual(loadOverlayPatches('dsh', path), [
       { id: 'llm-pi-ai', disabled: true },
-      { id: 'xuanling-blueprint', config: { blueprints: {} } }
+      { id: 'xuanling-blueprint', config: { workspaceRoot: '/tmp/workspace', runtimeRoot: '/tmp/workspace/.xuanling' } }
     ])
   } finally {
     rmSync(root, { recursive: true, force: true })

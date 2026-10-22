@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { GraphEditor } from '../../src/client/features/authoring/logic/graph/graph-editor.ts'
 
 export const fixture = () => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'flow',
   name: 'Flow',
   resources: {},

@@ -22,7 +22,8 @@ DSH 负责模型、原生会话和工具权限；蓝图负责画布、保存的�
 - **DSH 原生资源。** 绑定 profile 中已有的 Agent preset、Skill 和精确 MCP 工具身份。资源
   侧栏按 Agent、Skill、MCP 和其他资源分类。
 - **按任务选择模型路由。** 保留 DSH 默认，或从 DSH 模型目录指定 Provider、模型和推理强度。
-  每个新 Attempt 记录实际使用的路由。
+  每个新 Attempt 记录实际使用的路由。输出 token 上限跟随所选模型的 DSH/Provider 配置，
+  蓝图不另设输出预算。
 - **持久 Run 与 Attempt。** 接纳 Run 时冻结定义版本与包内资源；每次派发先写入 intent，外部
   副作用完成后再写 result。刷新或查看 Run 不会重放工作。
 - **执行前检查。** 运行前检查验证声明的资源、Host 工具绑定和源节点端口值；阻止项会拦截
@@ -45,17 +46,46 @@ DSH 负责模型、原生会话和工具权限；蓝图负责画布、保存的�
 把已发布包安装到提供 DSH Web 界面的同一个 profile：
 
 ```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.6.1
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.7.0
 ```
 
 重启该 profile 并刷新 DSH 页面。把 `web` 换成实际使用的 profile；新建的自定义 profile 只包含
 基础 bundle，不会自动包含 Web 应用。
 
-已发布的 `0.6.1` 包声明的是较早的 DSH `0.2.1-alpha.3` peer 集。在当前 DSH `next` 频道上运行
-本版本时，请使用 [开发](#开发) 中的 checkout 链接构建。本 README 跟随当前 main 分支，已发布包
-可能落后于它。
+`0.7.0` 面向 DSH `next` 能力频道，开发与测试依赖固定为 `0.2.1-rc.2`，公开运行时 peer 下限
+为 `>=0.2.1-alpha.5`。同一 profile 内的 DSH 包应保持在同一频道。checkout 链接构建见
+[开发](#开发)。
+
+**不兼容变更。** `0.7.0` 使用定义 schema v2。已发布的 `0.6.1` 保存的定义（schema v1，包括已移除的
+`toolCall`、`scriptCall`、`subflow`、`iteration` 节点）会被拒绝并返回 `blueprint/definition-invalid`，
+无法打开或运行。请使用[蓝图迁移 Skill](../xuanling-skills/skills/xuanling-blueprint-migrate/SKILL.md)
+准备并校验独立副本，或继续用 `0.6.1` 运行原工作流。迁移需要手动执行；安装新版不会改写定义或 Run 历史。
 
 TeamStage 还需要显式启用原生 Agent Teams profile。
+
+
+默认空配置通过 DSH workspace controller 取得默认工作区。定义保存到
+`<workspace>/.xuanling/workflows`，Run 保存到 `<workspace>/.xuanling/runs`。没有该能力的
+headless profile 需要在插件配置中显式设置绝对路径 `workspaceRoot`；无法取得工作区时，定义
+操作返回 `blueprint/capability-unavailable`。`runtimeRoot` 可独立覆盖 Run 存储位置，不选择定义目录。
+对话工具和对话中的蓝图视图会跟随调用会话所在的工作区：Host 找到拥有该会话的已注册 DSH 工作区
+（子步骤会话则回退到包含其 cwd 的已注册工作区），读写那个工作区的 `.xuanling` 数据。未注册的
+cwd 不会成为定义目录。这里包括定义操作，以及对话创建的 Run 的历史分页、归档/恢复和 recovery 处理。
+Host 无法归属的调用（未注册 cwd，或没有 Workspace registry 的 profile）回退到 Host 默认工作区；
+侧栏编辑器不绑定会话，也仍使用 Host 默认工作区。显式配置 `workspaceRoot` 时，所有调用都固定到该根。
+
+对话 `workflow_apply`、`workflow_revert` 必须经 Host 审批；apply 必须携带上次读取的
+`expectedRevision`。origin 标签和 JSON 参数都不能授予审批。新 revision history 包含包内文件
+bytes；回滚会恢复这些内容并删除后加的包内文件。没有资源快照的旧 history 返回
+`revision-package-unavailable`。资源恢复中断后，读取先重放持久提交；恢复受阻返回
+`DEFINITION_COMMIT_PENDING`，不能读取半恢复的定义。
+
+新 Run record 使用 schema 2；合法无 marker、record-v1 且冻结定义为当前格式的记录继续可读，
+后续写入升级。冻结 definition-v1 的旧 Run 保留为 lazy archive。binding admission 中断会进入
+恢复状态，不能使用新的 Host snapshot 自动执行。POSIX 写入会 fsync 文件和变动的父目录；
+Windows 的 Node 没有可移植的目录 fsync，文件内容仍会刷盘，但目录项不承诺相同的掉电保证。
+可读取文档的 Host Agent preset 会把内容 digest 纳入 binding facts；opaque preset 只固定身份，
+Host 端同名 preset 的 prompt/body 变化不会触发 binding-drift。
 
 ## 第一个工作流
 
@@ -140,7 +170,8 @@ result；Host 无法确认的结果会进入 `recovery_required`（需要恢复�
 
 彼此独立的已就绪节点并行执行。插件配置 `maxConcurrentNodes` 默认是 `4`，取值为正安全整数；
 设为 `1` 可串行执行。节点完成后立即释放槽位，较快分支无需等待无关的慢分支。共享同一 runtime
-的多个 Run 仍按顺序排队。
+的多个 Run 仍按顺序排队。Agent 通过工具调用发起新 Run 时，如果已在运行或排队的 Run 达到
+`maxQueuedToolRuns`（默认 `8`），准入会以 `active-run-limit` 预检项拒绝；从界面发起的 Run 不受此限制。
 
 ## 画布、资源与检查器
 
@@ -148,6 +179,21 @@ result；Host 无法确认的结果会进入 `recovery_required`（需要恢复�
 和模型路由控件。输入、输出、条件、汇合和人工决策节点隐藏执行型绑定；定义中已有的引用仍会保留，
 并继续由 Host 运行前检查约束。没有声明工具集的节点没有业务工具；所选工具仍受 Host 权限和审批
 约束。运行前检查不证明 MCP 已连通或已获得审批。
+
+**资源来源** 位于检查器中，列出节点引用的每个资源来自哪里（包内路径、共享 Skill 根或 Host 身份），
+以及最近一次运行为该节点冻结的绑定 digest。TeamStage 成员 Agent 和 Host 绑定的 MCP 引用也会列出
+（显示为 Host 身份，而不是包内路径）。不在工作流包内的资源会被标出：修改它会影响所有引用它的
+工作流。需要稳定时，先把资源复制进包内再改；检查器目前还不会替你完成这一步复制。
+
+**修订历史** 位于侧栏，列出已保存的修订及其来源（画布或对话）、与当前文档的结构差异（节点、连线、
+资源、名称，或仅布局），并提供 **恢复到此版本**。恢复与画布保存同等信任，必须携带当前
+`expectedRevision`，会恢复该修订的包内文件；画布有未保存修改时不可用。修订按内容寻址，所以恢复
+较早的修订会回到它原来的 revision id，较晚的修订仍可再恢复。如果定义结构相同、只有包内资源文件不同，
+差异会明确说明这一点，而不是声称版本相同：恢复该修订会同时回退这些文件。
+
+**运行报告** 位于持久运行区，说明做了什么（每步的状态、耗时和模型路由）、哪一步出错、为什么、
+下次怎么避免。Agent 也可通过 `workflow_report` 读取同一份报告。报告包含稳定错误码、已知错误码的
+固定建议，以及长度受限的 operator recovery 说明；不包含原始证据、输出、Provider 文本或子步骤会话 ID。
 
 **端口显示与连线** 可分别开关控制输入、数据输入和数据输出。开关只影响显示和是否允许新连线，
 不会删除端口声明、执行顺序、数据传递或已有边；某一方向已有连线时会保持显示，必须先断开该边
@@ -227,6 +273,13 @@ blueprint_create 保存。返回 blueprintId 和 documentRevision，先不要启
 
 ## 分享与迁移
 
+升级旧格式定义可使用 skills bundle 中的
+[xuanling-blueprint-migrate Skill](../xuanling-skills/skills/xuanling-blueprint-migrate/SKILL.md)。
+它指导备份、语义检查、生成完整升级副本、校验和目标环境绑定；运行时不自动迁移 v1 定义。
+已移除节点的行为需要明确重设计，旧 Run 历史保持原样。该 Skill 已加入当前源码，随下一版
+发布；现在使用见[配置和调用示例](../xuanling-skills/README-ZH.md#升级蓝图定义)。
+下方 ZIP 导入要求包内定义已符合目标格式。
+
 打开 **更多操作 → 文件** 可导出或导入完整 ZIP：
 
 - **导出 ZIP 包** 先保存编辑，再打包声明的资源。自定义 DSH Agent preset、完整 Skill 目录和
@@ -246,9 +299,10 @@ blueprint_create 保存。返回 blueprintId 和 documentRevision，先不要启
 | 有阻止项或缺少资源 | 查看 **运行前检查**，补齐依赖后重新检查。 |
 | 运行时出现 Provider 或模型错误 | 在 DSH 中配置模型 Provider，然后重新检查并运行。 |
 | 检查已过期 | 保存当前图和输入，再检查一次。 |
+| 独立运行的节点聊天入口不可用 | 此 Run 没有关联来源对话。可查看节点输出和运行报告；需要聊天记录时，请从对话启动新运行。 |
 | 等待输入 | 在侧栏的持久运行区选择 **批准** 或 **拒绝**。 |
 | 离线或读取失败 | 恢复连接后刷新或重连；查看已确认的 Run 事实。 |
-| `recovery_required` | 保留 Run ID，由 Host 运维者核对外部副作用后再决定下一次运行。 |
+| `recovery_required` | 打开该步骤的会话，确认实际发生了什么；然后在持久运行区写一段说明，选择 **标记为失败** 或 **标记为已完成**。对话创建的 Run 可以直接在对话的蓝图视图里处理。说明会写入 Run 日志，系统不会重放。TeamStage 的恢复仍需人工清理 Team。 |
 | 导入被拒绝 | 目标必须已配置、为空，且与包内蓝图 ID 一致。 |
 
 ## 限制

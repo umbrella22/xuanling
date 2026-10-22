@@ -7,6 +7,7 @@ import { zh as interactionZh, en as interactionEn } from './interaction.ts'
 import { zh as resourcesZh, en as resourcesEn } from './resources.ts'
 import { zh as inspectorZh, en as inspectorEn } from './inspector.ts'
 import { zh as documentZh, en as documentEn } from './document.ts'
+import { zh as historyZh, en as historyEn } from './history.ts'
 
 export const BLUEPRINT_LOCALE = 'xuanlingBlueprint'
 
@@ -25,7 +26,8 @@ export const zh = {
   ...interactionZh,
   ...resourcesZh,
   ...inspectorZh,
-  ...documentZh
+  ...documentZh,
+  ...historyZh
 } satisfies Record<ViewMessageKey, string> & Record<string, string>
 
 export type BlueprintLocaleKey = keyof typeof zh
@@ -37,5 +39,6 @@ export const en = {
   ...interactionEn,
   ...resourcesEn,
   ...inspectorEn,
-  ...documentEn
+  ...documentEn,
+  ...historyEn
 } satisfies LocaleDictOf<typeof BLUEPRINT_LOCALE>

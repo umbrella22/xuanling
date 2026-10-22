@@ -16,7 +16,7 @@ const yaml = includeRequire('js-yaml')
 
 function definition() {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'host-contract',
     name: 'Host contract',
     resources: {

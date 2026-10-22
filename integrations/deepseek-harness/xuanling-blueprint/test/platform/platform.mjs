@@ -69,7 +69,7 @@ export async function getCases(helpers) {
         writeFileSync(
           join(root, 'bp', 'blueprint.json'),
           JSON.stringify({
-            schemaVersion: 1,
+            schemaVersion: 2,
             id: 'plat',
             name: 'plat',
             resources: { a: { kind: 'agent', path: 'lib/agents/a.md' } },
@@ -81,7 +81,7 @@ export async function getCases(helpers) {
         const reopened = def.loadDefinition(join(root, 'bp'))
         // Durable store roundtrip on this OS.
         mkdirSync(join(root, 'runtime', 'store'), { recursive: true })
-        const opened = await persistence.openBlueprintDomain({ backend: 'json', path: join(root, 'runtime', 'store') })
+        const opened = await persistence.openBlueprintDomain({ path: join(root, 'runtime', 'store') })
         const store = new persistence.RunStore(opened.domain)
         const created = await store.createRun({ scope: 'p', requestId: 'r1', payloadFingerprint: 'fp' }, saved.revision.semantic, '{}', 'input')
         await store.settleTerminal(created.runId, 'succeeded')
@@ -110,7 +110,7 @@ export async function getCases(helpers) {
         writeFileSync(
           join(root, 'bp', 'blueprint.json'),
           JSON.stringify({
-            schemaVersion: 1,
+            schemaVersion: 2,
             id: 'plat2',
             name: 'plat2',
             resources: {

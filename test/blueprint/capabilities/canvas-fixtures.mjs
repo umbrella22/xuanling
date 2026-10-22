@@ -16,10 +16,10 @@ export function performanceDefinition() {
       edges.push({ kind: 'data', from: `perf-in-${String((i + offset) % 100).padStart(3, '0')}.value`, to: `perf-out-${index}.${port}` })
     }
   }
-  return { schemaVersion: 1, id: 'canvas-performance', name: 'Performance · 200 / 300 / 20', resources,
+  return { schemaVersion: 2, id: 'canvas-performance', name: 'Performance · 200 / 300 / 20', resources,
     graph: { nodes, edges }, presentation: { nodes: positions }, metadata: { fixture: 'w3-performance-v1' } }
 }
-const structural = id => ({ schemaVersion: 1, id, name: id, resources: {}, graph: {
+const structural = id => ({ schemaVersion: 2, id, name: id, resources: {}, graph: {
   nodes: [{ id: 'in', kind: 'input', outputs: { request: 'string' } }, { id: 'out', kind: 'output', inputs: { value: 'string' } }],
   edges: [{ kind: 'data', from: 'in.request', to: 'out.value' }],
 }, presentation: { nodes: { in: { x: 80, y: 80 }, out: { x: 460, y: 80 } } } })
@@ -33,7 +33,7 @@ export function canvasDefinitions() {
   alpha.metadata = { retained: { note: 'Keep all existing document fields' } }
   const beta = structural('canvas-beta')
   beta.name = 'Canvas beta'
-  const approval = { schemaVersion: 1, id: 'canvas-approval', name: 'Approval workflow', resources: {}, graph: {
+  const approval = { schemaVersion: 2, id: 'canvas-approval', name: 'Approval workflow', resources: {}, graph: {
     nodes: [{ id: 'gate', kind: 'humanDecision' }, { id: 'out', kind: 'output' }], edges: [{ kind: 'control', from: 'gate', to: 'out' }],
   }, presentation: { nodes: { gate: { x: 80, y: 80 }, out: { x: 460, y: 80 } } } }
   const portable = structural('probe-portable')
@@ -48,7 +48,7 @@ export function fixtureEvidence(definition) {
     resources: Object.keys(definition.resources).length, json, sha256: createHash('sha256').update(json).digest('hex'), generator: 'canvas-fixtures.mjs:performanceDefinition/w3-performance-v1' }
 }
 export function prepareCanvasFixtures(tempRoot, decodeDefinition, validateDefinition) {
-  const config = { blueprints: {}, runtimeRoot: join(tempRoot, 'runtime'), skillRoots: [{ rootId: 'probe-skills', rootPath: join(tempRoot, 'shared-skills') }] }
+  const config = { workspaceRoot: tempRoot, runtimeRoot: join(tempRoot, '.xuanling'), skillRoots: [{ rootId: 'probe-skills', rootPath: join(tempRoot, 'shared-skills') }] }
   const evidence = []
   mkdirSync(config.runtimeRoot, { recursive: true })
   mkdirSync(join(config.skillRoots[0].rootPath, 'sample'), { recursive: true })
@@ -57,8 +57,7 @@ export function prepareCanvasFixtures(tempRoot, decodeDefinition, validateDefini
     // Same production decoder/validator used by host save. A broken fixture
     // fails before install/boot, never counts as a product red assertion.
     validateDefinition(decodeDefinition(JSON.stringify(definition)))
-    const root = join(tempRoot, 'blueprints', definition.id)
-    config.blueprints[definition.id] = root
+    const root = join(tempRoot, '.xuanling', 'workflows', definition.id)
     mkdirSync(root, { recursive: true })
     writeFileSync(join(root, 'blueprint.json'), JSON.stringify(definition))
     for (const ref of Object.values(definition.resources)) if (ref.path) {

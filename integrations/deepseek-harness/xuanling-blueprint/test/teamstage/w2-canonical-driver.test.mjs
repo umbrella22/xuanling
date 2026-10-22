@@ -12,7 +12,7 @@ import { reconcileOnStart } from '../../src/orchestration/recovery.ts'
 const digest = value => createHash('sha256').update(value).digest('hex')
 async function oldFixture(t, members = [], options = {}) {
   const root = await mkdtemp(join(tmpdir(), 'blueprint-canonical-red-'))
-  const opened = await openBlueprintDomain({ backend: 'json', path: join(root, 'store') })
+  const opened = await openBlueprintDomain({ path: join(root, 'store') })
   const store = new RunStore(opened.domain)
   const { runId } = await store.createRun({ scope: 'run', requestId: 'canonical', payloadFingerprint: digest('request') }, 'rev-1', '{}', '{}')
   const attempt = await store.recordIntent(runId, { nodeId: 'work', kind: 'agentTask' })

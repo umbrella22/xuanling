@@ -4,6 +4,8 @@ import { z } from 'zod'
 import { attemptDiagnosticsCodec } from '../host/runtime-diagnostics.ts'
 import { teamStageExecutionCodec, teamStageRuntimeCodec } from '../host/teamstage-diagnostics.ts'
 
+export const runIdCodec = () => z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/, 'invalid run ID')
+
 const id = () => z.string().min(1)
 const TEAM_STAGE_SCHEMA_VERSION = 1 as const
 const TEAM_OUTPUT_ACCEPTANCE_SCHEMA_VERSION = 1 as const
@@ -20,7 +22,7 @@ export const teamOutputAcceptanceCodec = () =>
   z.strictObject({
     code: z.enum(['accepted', 'rejected']),
     schemaVersion: z.literal(TEAM_OUTPUT_ACCEPTANCE_SCHEMA_VERSION),
-    runId: id(),
+    runId: runIdCodec(),
     stageId: id(),
     taskId: id(),
     attemptId: id().optional(),
@@ -36,7 +38,7 @@ export const teamStageProjectionCodec = () =>
   z.strictObject({
     schemaVersion: z.literal(TEAM_STAGE_SCHEMA_VERSION),
     stageId: id(),
-    runId: id(),
+    runId: runIdCodec(),
     teamId: id(),
     leadSessionId: id(),
     attemptId: id().optional(),
@@ -76,7 +78,7 @@ export type TeamTaskView = z.infer<ReturnType<typeof teamTaskViewCodec>>
 export const startTeamStageArgsCodec = () =>
   z.strictObject({
     sessionId: id(),
-    runId: id(),
+    runId: runIdCodec(),
     stageId: id(),
     taskSpecificationFingerprint: teamDigest(),
     subject: z.string().min(1),
@@ -88,7 +90,7 @@ export type StartTeamStageArgs = z.infer<ReturnType<typeof startTeamStageArgsCod
 export const cancelTeamStageArgsCodec = () =>
   z.strictObject({
     sessionId: id(),
-    runId: id(),
+    runId: runIdCodec(),
     memberNames: z.array(id()),
     reason: z.string().min(1).max(256).optional()
   })
@@ -96,7 +98,7 @@ export type CancelTeamStageArgs = z.infer<ReturnType<typeof cancelTeamStageArgsC
 export const acceptTeamStageOutputArgsCodec = () =>
   z.strictObject({
     sessionId: id(),
-    runId: id(),
+    runId: runIdCodec(),
     stageId: id(),
     taskId: id(),
     code: z.enum(['accepted', 'rejected']),
@@ -112,7 +114,7 @@ export const acceptTeamStageOutputArgsCodec = () =>
 export type AcceptTeamStageOutputArgs = z.infer<ReturnType<typeof acceptTeamStageOutputArgsCodec>>
 export const teamStageActionCodec = () =>
   z.strictObject({
-    runId: id(),
+    runId: runIdCodec(),
     team: teamStageProjectionCodec(),
     task: teamTaskViewCodec().optional(),
     replayed: z.boolean()
@@ -120,9 +122,10 @@ export const teamStageActionCodec = () =>
 export type TeamStageActionView = z.infer<ReturnType<typeof teamStageActionCodec>>
 export const runSnapshotCodec = () =>
   z.strictObject({
-    runId: id(),
+    runId: runIdCodec(),
     state: z.string(),
     definitionRevision: z.string(),
+    bindingDigests: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)).optional(),
     source: runSourceCodec().optional(),
     seq: z.number(),
     attempts: z.array(
@@ -186,7 +189,7 @@ export const startSessionRunArgsCodec = () =>
     sessionId: id()
   })
 export type StartSessionRunArgs = z.infer<ReturnType<typeof startSessionRunArgsCodec>>
-export const runAdmissionCodec = () => z.strictObject({ runId: id(), semanticRevision: z.string(), state: z.string(), replayed: z.boolean() })
+export const runAdmissionCodec = () => z.strictObject({ runId: runIdCodec(), semanticRevision: z.string(), state: z.string(), replayed: z.boolean() })
 export type RunAdmissionView = z.infer<ReturnType<typeof runAdmissionCodec>>
 const RUN_HISTORY_STATES = ['queued', 'running', 'waiting_input', 'cancelling', 'recovery_required', 'succeeded', 'failed', 'cancelled', 'timed_out'] as const
 const runHistoryStateCodec = () => z.enum(RUN_HISTORY_STATES)
@@ -208,7 +211,7 @@ export const runQueryArgsCodec = () =>
 export type RunQueryArgs = z.infer<ReturnType<typeof runQueryArgsCodec>>
 const runHistorySummaryCodec = () =>
   z.strictObject({
-    runId: id(),
+    runId: runIdCodec(),
     blueprintId: id().optional(),
     state: runHistoryStateCodec(),
     createdAt: z.number(),
@@ -219,11 +222,72 @@ const runHistorySummaryCodec = () =>
   })
 export const runQueryCodec = () => z.strictObject({ runs: z.array(runHistorySummaryCodec()), nextCursor: id().optional() })
 export type RunQueryValue = z.infer<ReturnType<typeof runQueryCodec>>
-export const runLifecycleActionArgsCodec = () => z.strictObject({ runId: id() })
+export const runLifecycleActionArgsCodec = () => z.strictObject({ runId: runIdCodec(), sessionId: id().optional() })
 export type RunLifecycleActionArgs = z.infer<ReturnType<typeof runLifecycleActionArgsCodec>>
-export const runLifecycleActionCodec = () => z.strictObject({ runId: id(), archived: z.boolean() })
+export const runLifecycleActionCodec = () => z.strictObject({ runId: runIdCodec(), archived: z.boolean() })
 export type RunLifecycleActionValue = z.infer<ReturnType<typeof runLifecycleActionCodec>>
-export const inspectSessionArgsCodec = () => z.strictObject({ sessionId: id(), runId: id().optional() })
+/** Human resolution of a `recovery_required` Run. `sessionId` scopes a
+ * conversation-created Run to its Workspace; the canvas omits it. */
+export const resolveRecoveryArgsCodec = () =>
+  z.strictObject({
+    runId: runIdCodec(),
+    sessionId: id().optional(),
+    resolution: z.enum(['failed', 'succeeded', 'cancelled']),
+    note: z.string().min(1).max(500),
+    expectedSeq: z.number().int().nonnegative()
+  })
+export type ResolveRecoveryArgs = z.infer<ReturnType<typeof resolveRecoveryArgsCodec>>
+export const resolveRecoveryValueCodec = () =>
+  z.strictObject({ runId: runIdCodec(), state: z.string(), seq: z.number().int().nonnegative(), applied: z.boolean() })
+export type ResolveRecoveryValue = z.infer<ReturnType<typeof resolveRecoveryValueCodec>>
+/** Strict wire projection of a Run report. Raw evidence and outputs are not
+ * representable here: only codes, fixed guidance and bounded facts. */
+export const runReportCodec = () =>
+  z.strictObject({
+    runId: runIdCodec(),
+    state: z.string(),
+    outcome: z.enum(['succeeded', 'failed', 'cancelled', 'timed_out', 'needs-recovery', 'waiting-input', 'in-progress']),
+    workflow: z.strictObject({ id: id().optional(), name: z.string().optional(), definitionRevision: z.string() }),
+    timing: z.strictObject({
+      createdAt: z.number().finite(),
+      updatedAt: z.number().finite(),
+      durationMs: z.number().finite().nonnegative()
+    }),
+    summary: z.strictObject({
+      steps: z.number().int().nonnegative(),
+      succeeded: z.number().int().nonnegative(),
+      failed: z.number().int().nonnegative(),
+      skipped: z.number().int().nonnegative(),
+      pending: z.number().int().nonnegative()
+    }),
+    steps: z.array(
+      z.strictObject({
+        nodeId: id(),
+        title: z.string().optional(),
+        kind: z.string().optional(),
+        attempt: z.number().int().nonnegative(),
+        attemptId: id(),
+        state: z.string(),
+        durationMs: z.number().finite().nonnegative().optional(),
+        model: z.strictObject({ provider: z.string(), model: z.string(), reasoningEffort: z.string().optional() }).optional(),
+        resultKind: z.string().optional(),
+        errorCode: z.string().optional()
+      })
+    ),
+    problems: z.array(
+      z.strictObject({
+        nodeId: id().optional(),
+        attemptId: id().optional(),
+        code: id(),
+        why: z.string(),
+        avoid: z.string()
+      })
+    ),
+    recovery: z.strictObject({ reason: z.string().optional(), resolvedAs: z.string().optional(), note: z.string().optional() }).optional(),
+    markdown: z.string()
+  })
+export type RunReportValue = z.infer<ReturnType<typeof runReportCodec>>
+export const inspectSessionArgsCodec = () => z.strictObject({ sessionId: id(), runId: runIdCodec().optional() })
 export type InspectSessionArgs = z.infer<ReturnType<typeof inspectSessionArgsCodec>>
 export const inspectSessionCodec = () =>
   z.discriminatedUnion('status', [
@@ -231,7 +295,9 @@ export const inspectSessionCodec = () =>
     z.strictObject({
       status: z.literal('bound'),
       sessionId: id(),
-      runs: z.array(z.strictObject({ runId: id(), blueprintId: id().optional(), state: z.string(), createdAt: z.number(), definitionRevision: z.string() })),
+      runs: z.array(
+        z.strictObject({ runId: runIdCodec(), blueprintId: id().optional(), state: z.string(), createdAt: z.number(), definitionRevision: z.string() })
+      ),
       nextCursor: id().optional(),
       selected: z.strictObject({
         run: runSnapshotCodec(),

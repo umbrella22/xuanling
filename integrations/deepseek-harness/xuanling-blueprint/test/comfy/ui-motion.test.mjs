@@ -138,7 +138,7 @@ function environment({ visible = true, reduced = false } = {}) {
 async function fixture(options = {}) {
   const env = environment(options)
   const d = options.definition ?? {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'flow',
     name: 'Flow',
     resources: {},
@@ -581,7 +581,7 @@ test('C10 static execution edge keeps public identity/relation/path when light i
 })
 test('C10 actual condition branch lights only succeeded durable boolean output; human/unknown branch paths stay static', async () => {
   const definition = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'flow',
     name: 'Branches',
     resources: {},
@@ -652,7 +652,7 @@ test('C10 actual condition branch lights only succeeded durable boolean output; 
 })
 test('C10 imported incomplete data declarations remain static and missing attempts stay idle; edge index is current editor order', async () => {
   const definition = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'flow',
     name: 'Imported',
     resources: {},

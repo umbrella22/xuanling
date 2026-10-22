@@ -119,7 +119,7 @@ function holdBusy(workspace) {
 }
 async function fixture({ viewportRaw, load = true, openSession } = {}) {
   const d = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'flow',
     name: 'Flow',
     resources: {},
@@ -225,6 +225,8 @@ test('execution sync sidebar: explicit history actions preserve dirty editor sta
     team: { leadSessionId: 'real-source', members: [{ memberId: 'member', name: 'worker', sessionId: 'member-child' }] }
   })
   const tree = f.render()
+  assert.equal(one(tree, node => node.props['data-bp-open-attempt'] === 'historic-attempt').props.disabled, false)
+  assert.equal(all(tree, node => node.props['data-bp-chat-unavailable-reason'] === 'no-source').length, 0)
   one(tree, node => node.props['data-bp-open-attempt'] === 'historic-attempt').props.onClick()
   one(tree, node => node.props['data-bp-source-chat'] === 'real-source').props.onClick()
   one(tree, node => node.props['data-bp-open-member'] === 'member').props.onClick()
@@ -254,6 +256,35 @@ test('execution sync sidebar: legacy source-less Run cannot invent a root action
   const action = one(tree, node => node.type === 'button' && node.children.includes(en['conversation.openChat']))
   assert.equal(action.props.disabled, true)
 })
+for (const state of ['running', 'failed', 'succeeded']) {
+  test(`execution sync sidebar: source-less ${state} Run with real Attempt and Session IDs explains unavailable chat before interaction`, async () => {
+    const opened = [],
+      f = await fixture({ openSession: async (...args) => opened.push(args) })
+    f.workspace.editor.renameDefinition('Keep unsaved edits')
+    const definitionBefore = f.workspace.editor.exportDefinition()
+    const snapshot = {
+      runId: 'standalone',
+      state,
+      definitionRevision: 'frozen',
+      seq: 3,
+      logTail: [],
+      attempts: [{ nodeId: 'worker', attemptId: 'standalone-attempt', attempt: 1, state, sessionId: 'standalone-child', outputJson: '"saved output"' }]
+    }
+    f.workspace.model.applySnapshot(snapshot)
+    const tree = f.render(),
+      chat = one(tree, node => node.props['data-bp-open-attempt'] === 'standalone-attempt')
+    assert.equal(chat.props.disabled, true, 'IDs alone cannot make a source-less subagent addressable')
+    const notice = one(tree, node => node.props['data-bp-chat-unavailable-reason'] === 'no-source')
+    assert.ok(notice.children.includes(en['conversation.chatWithoutSource']))
+    assert.equal(all(tree, node => node.props['data-bp-chat-unavailable'] === true).length, 0, 'do not suggest refreshing a permanently unaddressable chat')
+    chat.props.onClick()
+    assert.deepEqual(opened, [], 'the handler also prevents invalid native navigation')
+    assert.equal(one(tree, node => node.props['data-bp-output'] === 'worker').children[0], '"saved output"')
+    assert.deepEqual(f.workspace.editor.exportDefinition(), definitionBefore)
+    assert.equal(f.workspace.dirty, true)
+    assert.equal(f.workspace.model.view.state, state)
+  })
+}
 test('W2 panel actually exposes frozen toolbar and gesture entrypoints', async () => {
   const f = await fixture()
   for (const id of ['mode-pan', 'mode-select', 'motion-toggle', 'shortcuts', 'export-blueprint', 'import-blueprint']) {

@@ -510,7 +510,7 @@ async function main() {
 
       // Export bytes over the wire, then import into the SAME configured ID's
       // emptied disposable root. Never rewrite the archive ID or use real data.
-      const bpDir = fixtures.config.blueprints['probe-portable']
+      const bpDir = join(fixtures.config.workspaceRoot, '.xuanling', 'workflows', 'probe-portable')
       const beforePackage = { definition: readFileSync(join(bpDir, 'blueprint.json')), agent: readFileSync(join(bpDir, 'lib', 'agents', 'a.md')) }
       const exp = await callApi('blueprint/exportDefinition', { args: { blueprintId: 'probe-portable' } }, 'probe-export-1')
       report.artifacts.blueprint_export = exp

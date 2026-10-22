@@ -13,7 +13,7 @@ const translate =
   }
 const elements = x => (Array.isArray(x) ? x.flatMap(elements) : !React.isValidElement(x) ? [] : [x, ...elements(x.props.children)])
 const definition = () => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'Ports',
   name: 'Synthetic',
   resources: {},

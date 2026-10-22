@@ -1,0 +1,4 @@
+interface:
+  display_name: "XuanLing Blueprint Migration"
+  short_description: "Upgrade saved Blueprints with reviewed copies"
+  default_prompt: "Use $xuanling-blueprint-migrate to inspect my saved Blueprint, prepare an upgraded copy for the installed DSH version, and validate it while preserving the original."

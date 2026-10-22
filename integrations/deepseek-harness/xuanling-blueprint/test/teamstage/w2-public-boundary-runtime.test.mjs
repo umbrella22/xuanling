@@ -18,7 +18,7 @@ const teamStage = {
   requiredChecks: ['schema']
 }
 const teamDefinition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'public-team-runtime',
   name: 'Public Team runtime',
   resources: { worker: { kind: 'agent', path: 'lib/agents/worker.md' }, resultSchema: { kind: 'schema', path: 'lib/schemas/result.json' } },
@@ -102,7 +102,7 @@ function makeTeamHarness({ available = true } = {}) {
 
 async function fixture(t, harness = makeTeamHarness()) {
   const root = await mkdtemp(join(tmpdir(), `xuanling-w26-${fixtureNumber++}-`))
-  const opened = await openBlueprintDomain({ backend: 'json', path: join(root, 'store') })
+  const opened = await openBlueprintDomain({ path: join(root, 'store') })
   const store = new RunStore(opened.domain)
   const definitionJson = JSON.stringify(teamDefinition)
   const { runId } = await store.createRun(

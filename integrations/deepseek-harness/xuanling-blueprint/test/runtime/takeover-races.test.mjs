@@ -26,7 +26,7 @@ const text = message =>
     .map(b => b.text)
     .join('\n')
 function definition(nodes, edges = [], resources = {}) {
-  const value = { schemaVersion: 1, id: 'w2-races', name: 'Isolated races', graph: { nodes, edges }, resources }
+  const value = { schemaVersion: 2, id: 'w2-races', name: 'Isolated races', graph: { nodes, edges }, resources }
   validateDefinition(decodeDefinition(JSON.stringify(value)))
   return value
 }
@@ -202,11 +202,11 @@ async function fixture(t, host = publicHost()) {
 }
 const direct = h => ({ runId: 'direct', attemptId: 'direct', nodeId: 'work', cwd: h.rootDir, agentMd: '', skills: [], input: 'REAL', timeoutMs: 2_000 })
 
-for (const backend of ['json', 'sqlite']) {
+for (const backend of ['directory']) {
   for (const action of ['succeeded', 'failed', 'cancelled', 'timed_out']) {
     test(`recovery ${backend}: reviewed ${action} atomically matches Attempt and Run, survives reopen`, async t => {
       const root = mkdtempSync(join(tmpdir(), 'bp-w2-reconcile-'))
-      const spec = { backend, path: join(root, backend === 'sqlite' ? 'runs.sqlite' : 'store') }
+      const spec = { backend, path: join(root, 'store') }
       let opened = await openBlueprintDomain(spec)
       t.after(async () => {
         await opened.close()
@@ -245,7 +245,7 @@ for (const backend of ['json', 'sqlite']) {
   }
   test(`store ${backend}: simultaneous duplicate admission and competing results serialize`, async t => {
     const root = mkdtempSync(join(tmpdir(), 'bp-w2-store-race-'))
-    const opened = await openBlueprintDomain({ backend, path: join(root, backend === 'sqlite' ? 'runs.sqlite' : 'store') })
+    const opened = await openBlueprintDomain({ path: join(root, 'store') })
     t.after(async () => {
       await opened.close()
       rmSync(root, { recursive: true, force: true })
@@ -338,7 +338,7 @@ test('service: decision admitted before previous waiting driver drains still sch
   assert.equal(h.host.calls.length, 1)
 })
 
-test('service: restart waiting decision uses frozen package, fresh shared closure only on new Attempt', async t => {
+test('service: restart waiting decision re-resolves shared binding and fails closed on drift', async t => {
   const h = await fixture(t)
   const shared = join(h.root, 'shared', 'review')
   mkdirSync(join(shared, 'scripts'), { recursive: true })
@@ -370,10 +370,12 @@ test('service: restart waiting decision uses frozen package, fresh shared closur
   })
   await h.service.decide({ runId: admitted.runId, runtimeRoot: h.runtimeRoot, decisionId: 'after-restart', action: 'approve' })
   await h.drain()
-  assert.equal((await h.run(admitted.runId)).state, 'succeeded')
-  assert.equal(specs.length, 1)
-  assert.equal(specs[0].agentMd, 'FROZEN_PACKAGE')
-  assert.match(specs[0].skills[0].content, /AFTER_RESTART/)
+  const run = await h.run(admitted.runId)
+  assert.equal(run.state, 'failed')
+  assert.equal(specs.length, 0, 'binding drift must block the fresh Attempt before dispatch')
+  const work = run.attempts.find(attempt => attempt.nodeId === 'work')
+  assert.equal(work?.result?.outcome?.kind, 'binding-drift')
+  assert.match(work?.intent?.resourceDigests?.$package ?? '', /^[a-f0-9]{64}$/)
 })
 
 test('executor: pre-abort has no creation or dispatch; in-flight abort invokes public cancel once', async t => {
@@ -637,10 +639,17 @@ test('service: cancellation before intent/creation does not publish or dispatch 
   const entered = deferred()
   const release = deferred()
   const prepare = RuntimeSnapshots.prototype.prepare
+  let preparations = 0
   t.mock.method(RuntimeSnapshots.prototype, 'prepare', async function (...args) {
     const prepared = await prepare.apply(this, args)
-    entered.resolve()
-    await release.promise
+    preparations += 1
+    // Admission resolves the binding digest before startRun returns. Block
+    // only the later Attempt preparation so cancellation can win before its
+    // intent is durable.
+    if (preparations === 2) {
+      entered.resolve()
+      await release.promise
+    }
     return prepared
   })
   const start = await h.service.startRun(h.args())

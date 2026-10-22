@@ -1,5 +1,6 @@
 /** Persistence barrel: domain bootstrap, records, lease, admission, store. */
 export { openBlueprintDomain, type BlueprintDomainSpec, type DomainLike, type KvTableLike, type OpenedDomain } from './domain.ts'
+export { openDirectoryDomain } from './directory-domain.ts'
 export {
   recordsSchema,
   runLifecycleSchema,

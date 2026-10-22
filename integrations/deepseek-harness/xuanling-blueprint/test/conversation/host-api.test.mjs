@@ -656,3 +656,28 @@ test('host: native creation rejection retains durable source/intent identity and
   assert.equal(view.selected.run.runId, started.runId)
   for (const raw of ['RAW_CREATION_SECRET', '/private/native/create']) assert.equal(JSON.stringify(view).includes(raw), false)
 })
+
+test('host: agent-started Runs are refused while the runtime queue is full; UI-started Runs are not', async t => {
+  const h = await liveHarness(t, { config: { maxQueuedToolRuns: 1 } })
+  const doc = await h.save(definition())
+  const args = { blueprintId: doc.blueprintId, expectedRevision: doc.documentRevision, input: {} }
+  const handle = await h.service.configuredRuntime()
+  // Stand in for one Run already running or queued in this runtime.
+  let release
+  handle.jobs.set('queue-occupant', new Promise(resolve => (release = resolve)))
+  try {
+    const blocked = await h.tool('blueprint_start', args, h.caller, 'queue-full')
+    assert.equal(blocked.isError, true)
+    assert.equal(blocked.error.info.code, 'blueprint/preflight-blocked')
+    assert.deepEqual(await records(h), [])
+    const ui = await h.service.startSessionRun({ ...runArgs(doc, {}, 'queue-ui'), sessionId: h.caller.id })
+    assert.equal(ui.replayed, false)
+  } finally {
+    handle.jobs.delete('queue-occupant')
+    release()
+  }
+  await drain(h)
+  value(await h.tool('blueprint_start', args, h.caller, 'queue-free'))
+  await drain(h)
+  assert.equal((await records(h)).length, 2)
+})

@@ -38,9 +38,9 @@ const rpcFor = async authUrl => {
   }
 }
 try {
-  const packageRoot = join(root, 'blueprint'); mkdirSync(join(packageRoot, 'lib/agents'), { recursive: true })
+  const packageRoot = join(root, '.xuanling', 'workflows', blueprintId); mkdirSync(join(packageRoot, 'lib/agents'), { recursive: true })
   writeFileSync(join(packageRoot, 'lib/agents/local.md'), 'Local blueprint agent.\n')
-  const definition = { schemaVersion: 1, id: blueprintId, name: 'Host resources and models',
+  const definition = { schemaVersion: 2, id: blueprintId, name: 'Host resources and models',
     resources: { local: { kind: 'agent', path: 'lib/agents/local.md' }, builtin: { kind: 'agent', source: { kind: 'host', id: 'minimal' } } },
     graph: { nodes: [{ id: 'task', kind: 'agentTask', agentRef: 'local', outputs: { text: 'string' } }], edges: [] }, presentation: { nodes: { task: { x: 100, y: 120 } } } }
   writeFileSync(join(packageRoot, 'blueprint.json'), JSON.stringify(definition))
@@ -48,7 +48,7 @@ try {
   writeFileSync(operator, `export const inject=['agentPresets'];
 export function apply(ctx){ctx.effect(()=>ctx.agentPresets.register({id:'host-review',name:'Host Review / QA',plugins:[{name:'@deepseek-ai/dsh-persona',config:{prefix:'Controlled host reviewer.',complete:true,includeRuntimeContext:false}}]}))}
 `)
-  const profile = await prepareProfile({ mode: 'keyless', installMode: 'linked' }, { prepare: async () => ({ blueprints: { [blueprintId]: packageRoot }, operatorModules: [operator] }) }, root, receipt.steps)
+  const profile = await prepareProfile({ mode: 'keyless', installMode: 'linked' }, { prepare: async () => ({ workspaceRoot: root, runtimeRoot: join(root, '.xuanling'), operatorModules: [operator] }) }, root, receipt.steps)
   receipt.installMode = 'linked'; receipt.installedHost = digest(readFileSync(join(profile.installedPackage, 'lib/index.js')))
   receipt.installedClient = digest(readFileSync(join(profile.installedPackage, 'lib/client.js')))
   const skillDirectory = join(profile.home, 'dsh/skills')

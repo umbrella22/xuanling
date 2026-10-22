@@ -306,6 +306,9 @@ jobs:
         run: |
           pnpm --dir integrations/deepseek-harness/xuanling-blueprint install --frozen-lockfile
           pnpm --dir test/blueprint install --frozen-lockfile
+      - name: Install Edge for deterministic browser fixtures
+        working-directory: test/blueprint
+        run: pnpm exec playwright install --with-deps msedge
       - name: Prepare disposable report roots for package contracts
         run: |
           mkdir -p \

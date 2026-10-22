@@ -19,7 +19,7 @@ const team = {
 
 function definition(kind = 'agentTask') {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'public-team-boundary',
     name: 'Public Team boundary',
     resources: {
@@ -95,7 +95,7 @@ function makeHarness() {
 async function fixture(t, { kind = 'agentTask', sourceSessionId = 'lead-session', attemptState = 'running' } = {}) {
   const harness = makeHarness()
   const root = await mkdtemp(join(tmpdir(), `xuanling-w274-${fixtureNumber++}-`))
-  const opened = await openBlueprintDomain({ backend: 'json', path: join(root, 'store') })
+  const opened = await openBlueprintDomain({ path: join(root, 'store') })
   const store = new RunStore(opened.domain)
   const frozen = definition(kind)
   const { runId } = await store.createRun(

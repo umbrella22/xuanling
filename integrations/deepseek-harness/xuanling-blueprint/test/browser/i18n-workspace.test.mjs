@@ -6,7 +6,7 @@ import { inject } from '../../src/client/index.ts'
 import { BlueprintWorkspace } from '../../src/client/features/authoring/logic/workspace/workspace-controller.ts'
 
 const definition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'language-fixture',
   name: '用户定义 / user title',
   resources: {},

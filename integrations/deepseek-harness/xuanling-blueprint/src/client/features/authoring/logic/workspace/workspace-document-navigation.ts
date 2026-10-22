@@ -38,7 +38,7 @@ export function newWorkspaceDraft(context: WorkspaceNavigationContext, name = 'U
   if (context.read().disposed) return
   context.batch(() => {
     const id = context.beginDraft(crypto.randomUUID())
-    context.finishDraft({ schemaVersion: 1, id, name, resources: {}, graph: { nodes: [], edges: [] } })
+    context.finishDraft({ schemaVersion: 2, id, name, resources: {}, graph: { nodes: [], edges: [] } })
     context.persistDraft()
     context.emit()
   })
@@ -107,7 +107,7 @@ export async function loadWorkspaceDocument(context: WorkspaceNavigationContext,
   if (!catalog) throw new Error('Blueprint not in configured catalog')
   let generation!: number
   context.batch(() => {
-    generation = context.beginLoad({ schemaVersion: 1, id: blueprintId, name: catalog.name, resources: {}, graph: { nodes: [], edges: [] } })
+    generation = context.beginLoad({ schemaVersion: 2, id: blueprintId, name: catalog.name, resources: {}, graph: { nodes: [], edges: [] } })
     context.emit()
   })
   if (context.read().disposed || generation !== context.read().generation) return
@@ -115,7 +115,7 @@ export async function loadWorkspaceDocument(context: WorkspaceNavigationContext,
   if (generation !== context.read().generation) return
   const definition: BlueprintDefinition = document
     ? readHostDefinition(document.definitionJson, blueprintId)
-    : { schemaVersion: 1, id: blueprintId, name: catalog.name, resources: {}, graph: { nodes: [], edges: [] } }
+    : { schemaVersion: 2, id: blueprintId, name: catalog.name, resources: {}, graph: { nodes: [], edges: [] } }
   if (definition.id !== blueprintId || (document && document.blueprintId !== blueprintId)) throw new Error('Unrelated definition response')
   context.installDocument(document, definition)
   try {

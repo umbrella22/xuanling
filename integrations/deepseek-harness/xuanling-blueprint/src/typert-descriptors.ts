@@ -2,6 +2,7 @@
 import { z } from 'zod'
 import {
   startSessionRunArgsCodec,
+  runIdCodec,
   runAdmissionCodec,
   inspectSessionArgsCodec,
   inspectSessionCodec,
@@ -9,6 +10,9 @@ import {
   runQueryCodec,
   runLifecycleActionArgsCodec,
   runLifecycleActionCodec,
+  resolveRecoveryArgsCodec,
+  resolveRecoveryValueCodec,
+  runReportCodec,
   runSnapshotCodec,
   startTeamStageArgsCodec,
   cancelTeamStageArgsCodec,
@@ -39,6 +43,7 @@ const resultSymbols: Record<string, string> = {
   loadDefinition: 'DefinitionDocument',
   createDefinition: 'DefinitionDocument',
   saveDefinition: 'DefinitionDocument',
+  restoreDefinitionRevision: 'DefinitionDocument',
   queryRuns: 'RunQueryValue',
   archiveRun: 'RunLifecycleActionValue',
   restoreRun: 'RunLifecycleActionValue',
@@ -85,6 +90,7 @@ export const BLUEPRINT_INVOCATIONS = [
   ),
   invocation('createDefinition', () => object({ requestId: id(), definitionJson: text() }), document),
   invocation('saveDefinition', () => object({ blueprintId: id(), definitionJson: text(), expectedRevision: text().nullable() }), document),
+  invocation('restoreDefinitionRevision', () => object({ blueprintId: id(), revision: text().min(1), expectedRevision: text().min(1) }), document),
   invocation(
     'validate',
     () => object({ definitionJson: text() }),
@@ -113,7 +119,7 @@ export const BLUEPRINT_INVOCATIONS = [
   invocation(
     'startRun',
     () => object({ blueprintId: id(), expectedRevision: id(), inputJson: text(), requestId: id() }),
-    () => object({ runId: id(), semanticRevision: text(), state: text(), replayed: z.boolean() })
+    () => object({ runId: runIdCodec(), semanticRevision: text(), state: text(), replayed: z.boolean() })
   ),
   invocation('startSessionRun', startSessionRunArgsCodec, runAdmissionCodec),
   invocation('startTeamStage', startTeamStageArgsCodec, teamStageActionCodec),
@@ -121,18 +127,19 @@ export const BLUEPRINT_INVOCATIONS = [
   invocation('queryRuns', runQueryArgsCodec, runQueryCodec),
   invocation('archiveRun', runLifecycleActionArgsCodec, runLifecycleActionCodec),
   invocation('restoreRun', runLifecycleActionArgsCodec, runLifecycleActionCodec),
-  invocation('inspectRun', () => object({ runId: id() }), runSnapshotCodec),
+  invocation('inspectRun', () => object({ runId: runIdCodec(), sessionId: id().optional() }), runSnapshotCodec),
   invocation(
     'cancelRun',
-    () => object({ runId: id() }),
-    () => object({ runId: id(), state: text() })
+    () => object({ runId: runIdCodec() }),
+    () => object({ runId: runIdCodec(), state: text() })
   ),
+  invocation('resolveRecovery', resolveRecoveryArgsCodec, resolveRecoveryValueCodec),
   invocation('cancelTeamStage', cancelTeamStageArgsCodec, teamStageActionCodec),
   invocation('acceptTeamStageOutput', acceptTeamStageOutputArgsCodec, teamStageActionCodec),
   invocation(
     'decide',
-    () => object({ runId: id(), decisionId: id(), action: z.enum(['approve', 'reject']) }),
-    () => object({ runId: id(), decisionId: id(), state: text(), applied: z.boolean() })
+    () => object({ runId: runIdCodec(), decisionId: id(), action: z.enum(['approve', 'reject']) }),
+    () => object({ runId: runIdCodec(), decisionId: id(), state: text(), applied: z.boolean() })
   ),
   invocation(
     'exportDefinition',
@@ -144,5 +151,61 @@ export const BLUEPRINT_INVOCATIONS = [
     'importDefinition',
     () => object({ blueprintId: id(), archiveBase64: id() }),
     () => object({ blueprintId: id(), filesWritten: z.number(), closureDigest: text() })
-  )
+  ),
+  invocation('workflowList', undefined, () => z.unknown()),
+  invocation(
+    'workflowGet',
+    () => object({ workflowId: id() }),
+    () => z.unknown()
+  ),
+  invocation(
+    'workflowValidate',
+    () => object({ workflowId: id(), definitionJson: text() }),
+    () => z.unknown()
+  ),
+  invocation(
+    'workflowPropose',
+    () =>
+      object({
+        workflowId: id(),
+        definitionJson: text(),
+        expectedRevision: text().nullable().optional(),
+        origin: z.enum(['canvas', 'conversation', 'import']).optional(),
+        message: text().optional()
+      }),
+    () => z.unknown()
+  ),
+  invocation(
+    'workflowApply',
+    () =>
+      object({
+        workflowId: id(),
+        definitionJson: text(),
+        expectedRevision: id(),
+        origin: z.enum(['canvas', 'conversation', 'import']).optional(),
+        message: text().optional()
+      }),
+    () => z.unknown()
+  ),
+  invocation(
+    'workflowRevisions',
+    () => object({ workflowId: id() }),
+    () => z.unknown()
+  ),
+  invocation(
+    'workflowRevert',
+    () => object({ workflowId: id(), revision: id(), expectedRevision: id(), message: text().optional() }),
+    () => z.unknown()
+  ),
+  invocation(
+    'workflowRun',
+    () => object({ blueprintId: id(), expectedRevision: id(), inputJson: text(), requestId: id() }),
+    () => z.unknown()
+  ),
+  invocation(
+    'workflowInspect',
+    () => object({ runId: runIdCodec(), sessionId: id().optional() }),
+    () => z.unknown()
+  ),
+  invocation('workflowReport', () => object({ runId: runIdCodec(), sessionId: id().optional() }), runReportCodec)
 ]
