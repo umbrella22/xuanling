@@ -23,9 +23,11 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     env:
       BP_PLAN_ID: dsh-blueprint-takeover-v1
-      BP_PACKAGE_REPORT_DIR: ${{ runner.temp }}/blueprint-package-reports
     steps:
       - uses: actions/checkout@v4
+
+      - name: Select temporary report directory
+        run: echo "BP_PACKAGE_REPORT_DIR=$RUNNER_TEMP/blueprint-package-reports" >> "$GITHUB_ENV"
 
       - uses: pnpm/action-setup@v5.0.0
         with:

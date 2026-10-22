@@ -46,7 +46,7 @@ try {
     "format:check": "vp fmt src test vite.config.ts package.json '!src/host/dsh-structured-compat.ts' --check",
     typecheck: "tsc --noEmit -p tsconfig.json",
     lint: "vp lint",
-    test: "node --experimental-transform-types --import ./scripts/test-tsx-register.mjs --test --test-concurrency=1 \"test/**/*.test.mjs\"",
+    test: "node scripts/check-test-prereqs.mjs && node --experimental-transform-types --import ./scripts/test-tsx-register.mjs --test --test-concurrency=1 \"test/**/*.test.mjs\"",
     verify: "node scripts/verify.mjs",
   });
   assert.equal(manifest.distribution, "GitHub Release asset and npm registry");
