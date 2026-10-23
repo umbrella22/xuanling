@@ -148,7 +148,7 @@ export async function getCases(helpers) {
       const mod = await import(libIndex)
       const service = new mod.default(new Context())
       const value = await service.ping()
-      return value?.status === 'ok' && value?.service === '@xuanling-rs/xuanling-dsh-blueprint' && value?.version === '0.8.0'
+      return value?.status === 'ok' && value?.service === '@xuanling-rs/xuanling-dsh-blueprint' && value?.version === '0.8.1'
     }
   })
 

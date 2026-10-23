@@ -4,7 +4,7 @@ English | [Simplified Chinese](README-ZH.md)
 
 **Additive DeepSeek Harness bundle for the complete XuanLing MCP catalog: all
 43 typed tools, added next to DSH's native tools.** Package
-`@xuanling-rs/xuanling-dsh-tools@0.8.0`.
+`@xuanling-rs/xuanling-dsh-tools@0.8.1`.
 
 ## What it is
 
@@ -48,21 +48,21 @@ switch.
 
 ```sh
 export XUANLING_WORKSPACE_ROOT=/absolute/path/to/project
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-tools@0.8.0
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-tools@0.8.1
 dsh --profile web --dump-config
 ```
 
 Keep the variable in the environment of every process that starts DSH. Use
 `--profile headless` for the headless profile; a custom new profile name starts
 from the base bundle only. The profile gets
-`@xuanling-rs/xuanling-mcp@0.8.0`; no global package or `npx` is needed.
+`@xuanling-rs/xuanling-mcp@0.8.1`; no global package or `npx` is needed.
 
 ## Quickstart
 
 1. Restart the profile and refresh DSH.
 2. Ask the model to search `mcp_catalog__xuanling` for `system_info` and
    activate it; call `mcp__xuanling__system_info` and check that
-   `xuanling_version` is `0.8.0`.
+   `xuanling_version` is `0.8.1`.
 3. Activate one filesystem tool, for example `fs_stat`, and read a path inside
    `XUANLING_WORKSPACE_ROOT`. Paths outside the root are denied by design.
 
@@ -106,7 +106,7 @@ from the base bundle only. The profile gets
   background job and resume with a follow-up call.
 - **A program is not found with `inherit_env: false`.** Retry with
   `inherit_env: true` only when inheriting the login environment is acceptable.
-- **Launcher or version mismatch.** Reinstall the exact `0.8.0` version; do not
+- **Launcher or version mismatch.** Reinstall the exact `0.8.1` version; do not
   mix versions in one profile, and remove any other XuanLing runtime bundle.
 
 ## Links

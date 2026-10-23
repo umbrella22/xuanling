@@ -49,7 +49,7 @@ The launcher requires Node.js 18.17 or newer and installs the matching native pa
 current platform.
 
 ```sh
-npm install --global @xuanling-rs/xuanling-mcp@0.8.0
+npm install --global @xuanling-rs/xuanling-mcp@0.8.1
 xuanling-mcp --version
 ```
 
@@ -62,7 +62,7 @@ An MCP client can pin the same version without a global install:
       "command": "npx",
       "args": [
         "-y",
-        "@xuanling-rs/xuanling-mcp@0.8.0",
+        "@xuanling-rs/xuanling-mcp@0.8.1",
         "--workspace-root",
         "/absolute/path/to/project",
         "--tool-profile",
@@ -180,8 +180,8 @@ editor, durable Runs, and optional native Agent Teams stages; it is installed se
 
 ```sh
 dsh plugin --profile web add \
-  @xuanling-rs/xuanling-dsh-memory@0.8.0 \
-  @xuanling-rs/xuanling-dsh-skills@0.8.0
+  @xuanling-rs/xuanling-dsh-memory@0.8.1 \
+  @xuanling-rs/xuanling-dsh-skills@0.8.1
 ```
 
 Replace `web` with the profile you use. The shipped `headless` profile works the same way; a new
@@ -251,7 +251,7 @@ on the development machine; they are not part of a public checkout.
 
 ## Version and compatibility
 
-The current repository release is `0.8.0`. Published npm versions and this repository revision can
+The current repository release is `0.8.1`. Published npm versions and this repository revision can
 target different DSH channels: check [CHANGELOG.md](CHANGELOG.md),
 [Releases](https://github.com/umbrella22/xuanling/releases), and each integration README for the
 exact channel and peer floor of the version you install. A DSH plugin installed into a profile is

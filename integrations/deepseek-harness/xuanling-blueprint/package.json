@@ -1,6 +1,6 @@
 {
   "name": "@xuanling-rs/xuanling-dsh-blueprint",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "private": false,
   "description": "Native DeepSeek Harness blueprint editor and durable graph execution with scoped agents, structured output, optional TeamStage, cancellation and recovery.",
   "homepage": "https://github.com/umbrella22/xuanling/tree/main/integrations/deepseek-harness/xuanling-blueprint",

@@ -46,17 +46,17 @@ DSH 负责模型、原生会话和工具权限；蓝图负责画布、保存的�
 把已发布包安装到提供 DSH Web 界面的同一个 profile：
 
 ```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.8.0
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.8.1
 ```
 
 重启该 profile 并刷新 DSH 页面。把 `web` 换成实际使用的 profile；新建的自定义 profile 只包含
 基础 bundle，不会自动包含 Web 应用。
 
-`0.8.0` 面向 DSH `next` 能力频道，开发与测试依赖固定为 `0.2.1-rc.2`，公开运行时 peer 下限
+`0.8.1` 面向 DSH `next` 能力频道，开发与测试依赖固定为 `0.2.1-rc.2`，公开运行时 peer 下限
 为 `>=0.2.1-alpha.5`。同一 profile 内的 DSH 包应保持在同一频道。checkout 链接构建见
 [开发](#开发)。
 
-**自 0.7.0 起的不兼容变更。** `0.8.0` 使用定义 schema v2。已发布的 `0.6.1` 保存的定义（schema v1，包括已移除的
+**自 0.7.0 起的不兼容变更。** `0.8.1` 使用定义 schema v2。已发布的 `0.6.1` 保存的定义（schema v1，包括已移除的
 `toolCall`、`scriptCall`、`subflow`、`iteration` 节点）会被拒绝并返回 `blueprint/definition-invalid`，
 无法打开或运行。请使用[蓝图迁移 Skill](../xuanling-skills/skills/xuanling-blueprint-migrate/SKILL.md)
 准备并校验独立副本，或继续用 `0.6.1` 运行原工作流。迁移需要手动执行；安装新版不会改写定义或 Run 历史。

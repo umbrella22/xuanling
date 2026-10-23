@@ -45,7 +45,7 @@ MCP Server 通过 stdio 暴露完整目录，可与任意 MCP Client 配合使�
 启动器要求 Node.js 18.17 或更高版本，并会为当前平台安装匹配的原生包。
 
 ```sh
-npm install --global @xuanling-rs/xuanling-mcp@0.8.0
+npm install --global @xuanling-rs/xuanling-mcp@0.8.1
 xuanling-mcp --version
 ```
 
@@ -58,7 +58,7 @@ MCP Client 也可以通过 `npx` 固定同一版本，无需全局安装：
       "command": "npx",
       "args": [
         "-y",
-        "@xuanling-rs/xuanling-mcp@0.8.0",
+        "@xuanling-rs/xuanling-mcp@0.8.1",
         "--workspace-root",
         "/absolute/path/to/project",
         "--tool-profile",
@@ -171,8 +171,8 @@ profile。四个 bundle 对应不同取舍：
 
 ```sh
 dsh plugin --profile web add \
-  @xuanling-rs/xuanling-dsh-memory@0.8.0 \
-  @xuanling-rs/xuanling-dsh-skills@0.8.0
+  @xuanling-rs/xuanling-dsh-memory@0.8.1 \
+  @xuanling-rs/xuanling-dsh-skills@0.8.1
 ```
 
 把 `web` 换成实际使用的 profile。内置 `headless` profile 用法相同；新建的自定义 profile 只包含
@@ -232,7 +232,7 @@ Agent Teams 阶段执行。
 
 ## 版本与兼容性
 
-当前仓库版本是 `0.8.0`。已发布的 npm 版本与本仓库当前修订可能面向不同的 DSH 频道：安装前请查看
+当前仓库版本是 `0.8.1`。已发布的 npm 版本与本仓库当前修订可能面向不同的 DSH 频道：安装前请查看
 [CHANGELOG.md](CHANGELOG.md)、[Releases](https://github.com/umbrella22/xuanling/releases) 以及
 对应集成 README 中该版本的确切频道与 peer 下限。DSH 会在安装时校验 profile 的运行时；不兼容的
 插件版本会被禁用，而不会被启动。

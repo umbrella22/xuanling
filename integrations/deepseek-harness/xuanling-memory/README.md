@@ -4,7 +4,7 @@ English | [Simplified Chinese](README-ZH.md)
 
 **Recommended DeepSeek Harness bundle for XuanLing Memory v2: nine
 proposal-first memory tools, added next to DSH's native tools.** Package
-`@xuanling-rs/xuanling-dsh-memory@0.8.0`.
+`@xuanling-rs/xuanling-dsh-memory@0.8.1`.
 
 ## What it is
 
@@ -39,12 +39,12 @@ process, artifact, or session tools are added.
 ## Install
 
 ```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-memory@0.8.0
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-memory@0.8.1
 ```
 
 Use `--profile headless` for the headless profile. A custom new profile name
 starts from the base bundle only and is not a runnable Web or Headless app.
-The command installs `@xuanling-rs/xuanling-mcp@0.8.0` inside the profile; no
+The command installs `@xuanling-rs/xuanling-mcp@0.8.1` inside the profile; no
 global npm package or `npx` is needed.
 
 ## Quickstart
@@ -97,7 +97,7 @@ global npm package or `npx` is needed.
 - **A candidate never becomes active.** It is awaiting review; call
   `memory_review` only on an explicit user decision.
 - **Startup fails.** Check Node.js 22.14+, platform support, and reinstall the
-  exact `0.8.0` version. Remove any other XuanLing runtime bundle.
+  exact `0.8.1` version. Remove any other XuanLing runtime bundle.
 
 ## Links
 

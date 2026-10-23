@@ -54,17 +54,17 @@ light/dark theme settings.*
 Install the published package into the same profile that serves your DSH Web UI:
 
 ```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.8.0
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.8.1
 ```
 
 Restart that profile and refresh the DSH page. Replace `web` with the profile you use. A new custom
 profile contains only the base bundle and does not include the Web application.
 
-Release `0.8.0` targets the DSH `next` capability channel, with development and harness dependencies
+Release `0.8.1` targets the DSH `next` capability channel, with development and harness dependencies
 pinned to `0.2.1-rc.2` and a public runtime peer floor of `>=0.2.1-alpha.5`. Keep DSH packages within
 one profile on the same channel. See [Development](#development) for a linked checkout build.
 
-**Compatibility break since 0.7.0.** Release `0.8.0` uses definition schema v2. Definitions saved by the
+**Compatibility break since 0.7.0.** Release `0.8.1` uses definition schema v2. Definitions saved by the
 published `0.6.1` package (schema v1, including the removed `toolCall`, `scriptCall`, `subflow` and
 `iteration` nodes) are rejected with `blueprint/definition-invalid` and cannot be opened or run.
 Use the [Blueprint migration Skill](../xuanling-skills/skills/xuanling-blueprint-migrate/SKILL.md)

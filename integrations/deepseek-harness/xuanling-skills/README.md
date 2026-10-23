@@ -4,7 +4,7 @@ English | [Simplified Chinese](README-ZH.md)
 
 **Three on-demand XuanLing workflow Skills and the strict XuanLing overwrite
 policy for DeepSeek Harness.** Registers no MCP server and ships no binary.
-Package `@xuanling-rs/xuanling-dsh-skills@0.8.0`.
+Package `@xuanling-rs/xuanling-dsh-skills@0.8.1`.
 
 ## What it is
 
@@ -46,11 +46,11 @@ Install it together with the runtime bundle you selected:
 
 ```sh
 dsh plugin --profile web add \
-  @xuanling-rs/xuanling-dsh-memory@0.8.0 \
-  @xuanling-rs/xuanling-dsh-skills@0.8.0
+  @xuanling-rs/xuanling-dsh-memory@0.8.1 \
+  @xuanling-rs/xuanling-dsh-skills@0.8.1
 ```
 
-Replace `xuanling-dsh-memory` with `xuanling-dsh-tools@0.8.0` for the full
+Replace `xuanling-dsh-memory` with `xuanling-dsh-tools@0.8.1` for the full
 catalog. Use `--profile headless` for the headless profile; a custom new
 profile name starts from the base bundle only. No global package is needed.
 
@@ -76,12 +76,12 @@ profile name starts from the base bundle only. No global package is needed.
 ## Upgrade Blueprint definitions
 
 The [Blueprint migration Skill](skills/xuanling-blueprint-migrate/SKILL.md)
-was introduced in `0.7.0` and is included in `0.8.0`; the earlier `0.6.1` package does not include it. Install
+was introduced in `0.7.0` and is included in `0.8.1`; the earlier `0.6.1` package does not include it. Install
 the skills bundle into the profile that runs the target Blueprint version,
 then restart the profile:
 
 ```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-skills@0.8.0
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-skills@0.8.1
 ```
 
 Ask the DSH Agent:
@@ -132,7 +132,7 @@ directory, including `references/`, and invoke `$xuanling-blueprint-migrate`.
 ## Troubleshooting
 
 - **Skills do not appear.** Restart, confirm the `xuanling-skills` provider
-  in `--dump-config`, and reinstall the exact `0.8.0` version.
+  in `--dump-config`, and reinstall the exact `0.8.1` version.
 - **The overwrite guard does not fire.** Check the exact public name; the
   replacement bundle exposes `write` instead, so the guard does not apply
   there.

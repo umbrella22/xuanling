@@ -2,7 +2,7 @@
 
 [English](README.md) | 简体中文
 
-本目录维护 XuanLing MCP 0.8.0 的 npm 打包与发布自动化。一个完整发行版由九个不可变 npm
+本目录维护 XuanLing MCP 0.8.1 的 npm 打包与发布自动化。一个完整发行版由九个不可变 npm
 item 组成，全部从同一个已验证 commit 发布：稳定 Node.js 启动器、三个平台原生变体、四个
 DeepSeek Harness bundle，以及可选的 Blueprint/TeamStage 插件。同一组经过验证的 core
 artifact 还会生成 ZCode marketplace archive。
@@ -13,10 +13,10 @@ artifact 还会生成 ZCode marketplace archive。
 
 | Package | 发布版本 | 平台 |
 | --- | --- | --- |
-| `@xuanling-rs/xuanling-mcp` | `0.8.0` | 稳定 Node.js 启动器 |
-| `@xuanling-rs/xuanling-mcp-darwin-arm64` | `0.8.0-darwin-arm64` | macOS Apple Silicon |
-| `@xuanling-rs/xuanling-mcp-linux-x64-gnu` | `0.8.0-linux-x64-gnu` | Linux x64，glibc 2.35 或更高版本 |
-| `@xuanling-rs/xuanling-mcp-win32-x64-msvc` | `0.8.0-win32-x64-msvc` | Windows x64 MSVC |
+| `@xuanling-rs/xuanling-mcp` | `0.8.1` | 稳定 Node.js 启动器 |
+| `@xuanling-rs/xuanling-mcp-darwin-arm64` | `0.8.1-darwin-arm64` | macOS Apple Silicon |
+| `@xuanling-rs/xuanling-mcp-linux-x64-gnu` | `0.8.1-linux-x64-gnu` | Linux x64，glibc 2.35 或更高版本 |
+| `@xuanling-rs/xuanling-mcp-win32-x64-msvc` | `0.8.1-win32-x64-msvc` | Windows x64 MSVC |
 
 启动器与原生变体都发布在 `@xuanling-rs` npm organization 下。稳定 package 以带 npm
 alias 的 optional dependency 声明三个原生变体，npm 根据 `os`、`cpu` 和 `libc`
@@ -29,10 +29,10 @@ DeepSeek Harness 会把以下公开 bundle 直接安装到指定 profile：
 
 | Package | 作用 |
 | --- | --- |
-| `@xuanling-rs/xuanling-dsh-memory@0.8.0` | 带 DSH schema projection 的完整 Memory v2 profile |
-| `@xuanling-rs/xuanling-dsh-skills@0.8.0` | 文件与 Memory 工作流 Skill，以及严格 overwrite policy |
-| `@xuanling-rs/xuanling-dsh-tools@0.8.0` | 增量挂载完整 XuanLing catalog |
-| `@xuanling-rs/xuanling-dsh-tools-replace@0.8.0` | 显式启用的同名文件系统 replacement facade，提供 XuanLing CAS/batch 与宿主原生投影 |
+| `@xuanling-rs/xuanling-dsh-memory@0.8.1` | 带 DSH schema projection 的完整 Memory v2 profile |
+| `@xuanling-rs/xuanling-dsh-skills@0.8.1` | 文件与 Memory 工作流 Skill，以及严格 overwrite policy |
+| `@xuanling-rs/xuanling-dsh-tools@0.8.1` | 增量挂载完整 XuanLing catalog |
+| `@xuanling-rs/xuanling-dsh-tools-replace@0.8.1` | 显式启用的同名文件系统 replacement facade，提供 XuanLing CAS/batch 与宿主原生投影 |
 
 Memory、Tools 与 Tools-replace 三个 bundle 在同一 DSH profile 内精确依赖稳定版
 `@xuanling-rs/xuanling-mcp`。Skills bundle 不包含 MCP runtime。
@@ -53,7 +53,7 @@ package flow 使用仓库固定的 pnpm 11.28.5，原生构建要求 Rust 1.98�
 全局安装：
 
 ```sh
-npm install --global @xuanling-rs/xuanling-mcp@0.8.0
+npm install --global @xuanling-rs/xuanling-mcp@0.8.1
 xuanling-mcp --workspace-root /absolute/path/to/project
 ```
 
@@ -66,7 +66,7 @@ MCP Host 也可以通过 `npx` 固定同一发行版本：
       "command": "npx",
       "args": [
         "-y",
-        "@xuanling-rs/xuanling-mcp@0.8.0",
+        "@xuanling-rs/xuanling-mcp@0.8.1",
         "--workspace-root",
         "/absolute/path/to/project"
       ]
@@ -81,8 +81,8 @@ MCP Host 也可以通过 `npx` 固定同一发行版本：
 可选 Blueprint 与 TeamStage 使用仓库统一的 pnpm package flow 安装：
 
 ```sh
-pnpm add --save-exact @xuanling-rs/xuanling-dsh-blueprint@0.8.0
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.8.0
+pnpm add --save-exact @xuanling-rs/xuanling-dsh-blueprint@0.8.1
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.8.1
 ```
 
 安装后重启所选 DSH profile。TeamStage 仍需显式启用原生 Agent Teams profile。
@@ -96,7 +96,7 @@ dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.8.0
 - 每个原生 package 都记录显式 release-trust 状态，发布时强制生成 npm provenance，并用
   source commit 与 binary SHA-256 绑定构建结果。ZCode marketplace archive 在 promotion
   前还会生成 GitHub OIDC build-provenance attestation。
-- XuanLing 0.8.0 不声明 Developer ID 或 Authenticode 发布者签名。后续版本可以增加这些
+- XuanLing 0.8.1 不声明 Developer ID 或 Authenticode 发布者签名。后续版本可以增加这些
   签名，但缺少平台发布者证书不改变 MCP 协议或 package 完整性合同。
 - 每个原生 package 都包含 XuanLing MIT 许可证和生成的第三方 notices。
 - 启动器 package 同时包含相互匹配的英文与简体中文 README。
@@ -124,7 +124,7 @@ node npm/scripts/pack-dsh-bundles.mjs \
   --commit "$(git rev-parse HEAD)"
 node npm/scripts/verify-dsh-release-set.mjs \
   --root npm/dist/dsh \
-  --version 0.8.0 \
+  --version 0.8.1 \
   --commit "$(git rev-parse HEAD)"
 
 node npm/scripts/generate-third-party-licenses.mjs \

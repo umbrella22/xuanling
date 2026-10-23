@@ -57,7 +57,7 @@ combinations fail with an explicit launcher error.
 ## Install
 
 ```sh
-npm install --global @xuanling-rs/xuanling-mcp@0.8.0
+npm install --global @xuanling-rs/xuanling-mcp@0.8.1
 xuanling-mcp --version
 ```
 
@@ -79,7 +79,7 @@ Add the server to the MCP client configuration:
       "command": "npx",
       "args": [
         "-y",
-        "@xuanling-rs/xuanling-mcp@0.8.0",
+        "@xuanling-rs/xuanling-mcp@0.8.1",
         "--workspace-root",
         "/absolute/path/to/project"
       ]
@@ -200,7 +200,7 @@ they do not start a stdio server session.
   musl Linux, and ARM Windows are not published.
 - Supported MCP protocol revisions are `2024-11-05`, `2025-03-26`,
   `2025-06-18`, and `2025-11-25`.
-- The native binaries in 0.8.0 are not Developer ID or Authenticode signed.
+- The native binaries in 0.8.1 are not Developer ID or Authenticode signed.
   npm provenance and the launcher's SHA-256 check provide the package integrity
   contract.
 - The filesystem capability is not an OS sandbox for processes started by
@@ -218,7 +218,7 @@ they do not start a stdio server session.
 | --- | --- |
 | `Unsupported platform: <os>/<arch>` | The target is not published. Use macOS Apple Silicon, Linux x64 with glibc 2.35 or newer, or Windows x64. |
 | `Unsupported Linux libc` or `Unsupported Linux glibc` | XuanLing publishes a glibc build only and requires glibc 2.35 or newer. |
-| `Missing optional dependency` or `Native binary checksum mismatch` | Reinstall the pinned version, for example `npm install --global @xuanling-rs/xuanling-mcp@0.8.0`. Published npm versions are immutable. |
+| `Missing optional dependency` or `Native binary checksum mismatch` | Reinstall the pinned version, for example `npm install --global @xuanling-rs/xuanling-mcp@0.8.1`. Published npm versions are immutable. |
 | Memory tools report `memory store unavailable` or `cannot resolve the default memory DB path` | Pass an explicit writable `--memory-db <PATH>`, or set `HOME`/`USERPROFILE` so the default `~/.xuanling/memory.db` can be resolved. Non-memory tools keep working. |
 | The host sees fewer tools than expected | A `--tool-profile` selection is active. Combine profiles or use `--tool-profile all`, then restart the server process. |
 | The host exits before `initialize` | Check the Node.js version (18.17 or newer) and the host's stdio launch configuration. |

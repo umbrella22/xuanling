@@ -4,6 +4,19 @@ All notable release changes are recorded here. XuanLing uses immutable release
 tags and publishes the launcher, native packages, DeepSeek Harness bundles, and
 ZCode projection from the same source commit.
 
+## 0.8.1 - 2026-10-23
+
+### Changed
+
+- Reissue the managed Blueprint workflow release under a new immutable version
+  after the interrupted 0.8.0 rollout. This release includes the managed node
+  conversations, pinned child Blueprint composition, permission-preset handling,
+  portable child closure and Team session fixes described in 0.8.0.
+- Synchronize the Cargo workspace, npm launcher and native variants, five DSH
+  packages, ZCode plugins, runtime version reports and installation examples to
+  0.8.1. Runtime behavior and Blueprint definition schema v2 are unchanged from
+  0.8.0.
+
 ## 0.8.0 - 2026-10-22
 
 ### Added

@@ -5,7 +5,7 @@ English | [Simplified Chinese](README-ZH.md)
 **Opt-in DeepSeek Harness filesystem replacement: DSH's native
 `read`/`write`/`edit` surface backed by XuanLing's SHA-256-guarded file
 operations, with host approval, observation, image, and diff behavior
-preserved.** Package `@xuanling-rs/xuanling-dsh-tools-replace@0.8.0`.
+preserved.** Package `@xuanling-rs/xuanling-dsh-tools-replace@0.8.1`.
 
 ## What it is
 
@@ -50,7 +50,7 @@ cards and observation rules keep working.
 ```sh
 export XUANLING_WORKSPACE_ROOT=/absolute/path/to/project
 dsh plugin --profile web remove @xuanling-rs/xuanling-dsh-memory @xuanling-rs/xuanling-dsh-tools
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-tools-replace@0.8.0
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-tools-replace@0.8.1
 dsh --profile web --dump-config
 ```
 
@@ -101,7 +101,7 @@ the headless profile; a custom new profile name starts from the base bundle.
   in the environment of the DSH process; a non-absolute value reports
   `[XUANLING_FACADE_INVALID_ROOT]`.
 - **Startup mentions a missing XuanLing definition.** The runtime is incomplete
-  or mismatched; reinstall the exact `0.8.0` versions and restart.
+  or mismatched; reinstall the exact `0.8.1` versions and restart.
 - **`[XUANLING_FACADE_NOT_OBSERVED]` or a rejected edit.** Read the file first
   (or take `file_hash` for a whole-file write) in the same session; for an
   ambiguous edit, make `old_string` unique or re-read after an external change.
