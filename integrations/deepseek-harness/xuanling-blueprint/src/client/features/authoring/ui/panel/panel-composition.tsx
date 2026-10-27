@@ -25,7 +25,7 @@ export function createBlueprintPanel(env: PanelEnvironment): React.ComponentType
     const { snapshot: workspaceSnapshot, binding: workspaceBinding } = usePanelWorkspaceStore(workspace, React)
     return (
       <WorkspacePanel
-        env={env}
+        env={{ ...env, hostLink: workspace.host }}
         t={t}
         workspace={workspace}
         workspaceSnapshot={workspaceSnapshot}

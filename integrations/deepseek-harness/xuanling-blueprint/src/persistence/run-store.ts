@@ -40,6 +40,7 @@ import {
   teamCaptureArtifactRefSchema,
   teamMemberReservationSchema,
   bindingSelectionsSchema,
+  runContextSchema,
   parentRunSchema,
   runIdSchema,
   frozenBlueprintSchema,
@@ -258,6 +259,7 @@ export class RunStore {
       source?: RunSource
       bindingDigests?: Record<string, string>
       bindingSelections?: Record<string, HostModelSelection | null>
+      context?: NonNullable<RunRecord['context']>
     } = {}
   ): Promise<{ runId: string; replayed: boolean }> {
     const frozen = z
@@ -272,7 +274,8 @@ export class RunStore {
         blueprintId: z.string().min(1).optional(),
         source: runSourceCodec().optional(),
         bindingDigests: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)).optional(),
-        bindingSelections: bindingSelectionsSchema.optional()
+        bindingSelections: bindingSelectionsSchema.optional(),
+        context: runContextSchema.optional()
       })
       .parse(metadata) as {
       parent?: NonNullable<RunRecord['parent']>
@@ -283,6 +286,7 @@ export class RunStore {
       source?: RunSource
       bindingDigests?: Record<string, string>
       bindingSelections?: Record<string, HostModelSelection | null>
+      context?: NonNullable<RunRecord['context']>
     }
     return await this.serial('admission', () =>
       this.createRunSerial(request, definitionRevision, definitionJson, inputRef, {
@@ -293,7 +297,8 @@ export class RunStore {
         ...(frozen.blueprintId === undefined ? {} : { blueprintId: frozen.blueprintId }),
         ...(frozen.source === undefined ? {} : { source: frozen.source }),
         ...(frozen.bindingDigests === undefined ? {} : { bindingDigests: frozen.bindingDigests }),
-        ...(frozen.bindingSelections === undefined ? {} : { bindingSelections: frozen.bindingSelections })
+        ...(frozen.bindingSelections === undefined ? {} : { bindingSelections: frozen.bindingSelections }),
+        ...(frozen.context === undefined ? {} : { context: frozen.context })
       })
     )
   }
@@ -312,6 +317,7 @@ export class RunStore {
       source?: RunSource
       bindingDigests?: Record<string, string>
       bindingSelections?: Record<string, HostModelSelection | null>
+      context?: NonNullable<RunRecord['context']>
     } = {}
   ): Promise<{ runId: string; replayed: boolean }> {
     const admitted: AdmissionResult = await this.admission.admit(request)

@@ -352,6 +352,14 @@ function assertNotRun(fn, reason) {
   assert.throws(fn, error => error instanceof VerificationNotRunError && error.code === 'VERIFICATION_NOT_RUN' && error.reasonCode === reason)
 }
 
+test('acceptance rejects a critical report that omits workspace write policy evidence', t => {
+  const fixture = evaluatorFixture(t)
+  const critical = fixture.reports.get('critical')
+  for (const run of critical.runs) run.results = run.results.filter(result => result.id !== 'T11b')
+  fixture.writeGate('critical')
+  assertTypedFailure(fixture.evaluate, 'REQUIRED_CASE_MISSING')
+})
+
 test('synthetic evaluator only: fixed complete manifest validates; does NOT prove live/OS/lifecycle', t => {
   const f = evaluatorFixture(t)
   assert.equal(f.evaluate().ok, true)

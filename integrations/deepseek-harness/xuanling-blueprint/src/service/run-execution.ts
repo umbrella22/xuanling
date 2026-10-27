@@ -1,10 +1,12 @@
 import type { Context } from '@deepseek-ai/cordis'
+import { WorkspaceWriteLease, WorkspaceWriteError, needsWorkspaceWriteLease } from './workspace-write-lease.ts'
 import { ChildRunExecution, childOutputs } from './child-run-execution.ts'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { createHash, randomUUID } from 'node:crypto'
 import { captureNativeSourceParent, assertNativeSourceParent, type NativeSourceParent } from '../conversation/native-session-lineage.ts'
 import { AgentCompositionUnsupportedError, BlueprintAgentExecutor, captureAgentModelSelection } from '../host/agent-executor.ts'
 import { resolveEffectiveToolNames, type ToolBindings } from '../host/preflight.ts'
+import { scopeForSession } from '../host/resource-context.ts'
 import type { AttemptDiagnostics } from '../host/runtime-diagnostics.ts'
 import { TERMINAL_RUN_STATES, type RunRecord } from '../persistence/records.ts'
 import type { RunStore } from '../persistence/run-store.ts'
@@ -30,6 +32,7 @@ export interface RunExecutionConfig {
 
 export interface RunExecutionContext {
   readonly ctx: Context
+  readonly workspaceForRun?: (record: RunRecord) => string | undefined
   readonly config: RunExecutionConfig
   readonly isClosing: () => boolean
   readonly decodeDefinition: (definitionJson: string) => ReturnType<typeof decodeDefinition>
@@ -60,6 +63,11 @@ interface NodeSettlement {
  * admission/wire policy; this owner supervises concurrent Attempts and is the
  * only place that drives structural nodes, Agent effects and TeamStage effects.
  */
+function preparationContext(ctx: Context, sessionId: string | undefined, cwd?: string): { scope?: object; cwd?: string } {
+  const scope = scopeForSession(ctx, sessionId)
+  return { ...(scope === undefined ? {} : { scope }), ...(cwd === undefined ? {} : { cwd }) }
+}
+
 export class RunExecutionService {
   private readonly children: ChildRunExecution
   constructor(private readonly context: RunExecutionContext) {
@@ -256,6 +264,8 @@ export class RunExecutionService {
     const graph = compileGraph(definition)
     const node = graph.nodeById.get(nodeId)!
     let intent: Awaited<ReturnType<RunStore['recordIntent']>> | undefined
+    let writeLease: WorkspaceWriteLease | undefined
+    let writeQuiescent = true
     let diagnostics: Extract<AttemptDiagnostics, { status: 'available' }> | undefined
     const settledDiagnostics = (code: string) => (diagnostics === undefined ? {} : { diagnostics: { ...diagnostics, acceptance: { code } } })
     try {
@@ -293,7 +303,19 @@ export class RunExecutionService {
       if (node.kind === 'agentTask' && bindingError === undefined) {
         try {
           prepared =
-            node.teamStage === undefined ? await handle.snapshots.prepare(runId, definition, node) : await handle.snapshots.prepareTeam(runId, definition, node)
+            node.teamStage === undefined
+              ? await handle.snapshots.prepare(
+                  runId,
+                  definition,
+                  node,
+                  preparationContext(this.context.ctx, record.source?.sessionId, this.context.workspaceForRun?.(record))
+                )
+              : await handle.snapshots.prepareTeam(
+                  runId,
+                  definition,
+                  node,
+                  preparationContext(this.context.ctx, record.source?.sessionId, this.context.workspaceForRun?.(record))
+                )
         } catch (error) {
           if (error instanceof FrozenPackageIntegrityError) throw error
           // A binding that was available at admission can disappear before an
@@ -442,17 +464,31 @@ export class RunExecutionService {
         return
       }
       if (prepared && diagnostics) {
-        const cwd = prepared.materialize(intent.attemptId)
+        // Frozen resources live at an isolated runtime path; ordinary node work
+        // runs in the project checkout when the runtime is workspace-native.
+        const resourceDir = prepared.materialize(intent.attemptId)
+        const cwd = prepared.projectCwd ?? resourceDir
+        if (prepared.projectCwd !== undefined && (node.teamStage !== undefined || needsWorkspaceWriteLease(effectiveToolNames)))
+          writeLease = await WorkspaceWriteLease.acquire(cwd, { runId, attemptId: intent.attemptId }, controller.signal)
+        controller.signal.throwIfAborted()
+        const skills =
+          cwd === resourceDir
+            ? prepared.skills
+            : prepared.skills.map(skill => ({
+                ...skill,
+                content: skill.content.replaceAll('.blueprint-skills/', `${resourceDir}/.blueprint-skills/`)
+              }))
         if (node.teamStage !== undefined) {
           const parent = sourceParent ?? (record.source === undefined ? undefined : captureNativeSourceParent(this.context.ctx, record.source.sessionId))
           if (!parent) throw new TeamDriverError('teamstage-identity-unavailable')
           assertNativeSourceParent(this.context.ctx, parent, record.source!.sessionId)
+          writeQuiescent = false
           await new TeamStageDriver(this.context.ctx, handle.store, handle.root, this.context.config.teamProviders, this.context.teamObservations).execute({
             record,
             node,
             attemptId: intent.attemptId,
             source: parent.agent,
-            prepared: prepared as PreparedTeam,
+            prepared: { ...(prepared as PreparedTeam), skills },
             effectiveToolNames,
             input,
             cwd,
@@ -468,12 +504,18 @@ export class RunExecutionService {
               return outputs
             }
           })
+          const teamResult = await handle.store.get(runId)
+          writeQuiescent =
+            teamResult.teamStage?.state !== 'recovery_required' &&
+            !teamResult.teamStage?.effects?.some(effect => ['pending', 'recovery_required'].includes(effect.state))
           return
         }
         const registry = this.context.ctx.get('agents')
         if (!registry) throw new AgentCompositionUnsupportedError('missing registry')
         const executor = new BlueprintAgentExecutor(this.context.ctx, registry as never)
+        writeQuiescent = false
         const evidence = await executor.execute({
+          ...(writeLease === undefined ? {} : { workspaceWrite: writeLease }),
           runId,
           attemptId: intent.attemptId,
           nodeId,
@@ -488,7 +530,7 @@ export class RunExecutionService {
           ...(prepared.agentPreset === undefined ? {} : { agentPreset: prepared.agentPreset }),
           ...(prepared.agentComposition === undefined ? {} : { agentComposition: prepared.agentComposition }),
           ...(prepared.hostAgentComposition === undefined ? {} : { hostAgentComposition: prepared.hostAgentComposition }),
-          skills: prepared.skills,
+          skills,
           input: typeof input === 'string' ? input : inputJson,
           cwd,
           signal: controller.signal,
@@ -498,6 +540,7 @@ export class RunExecutionService {
           modelSelection,
           ...(prepared.outputSchema === undefined ? {} : { outputSchema: prepared.outputSchema })
         })
+        writeQuiescent = evidence.outcome.kind !== 'recovery_required'
         if (evidence.outcome.kind === 'recovery_required') {
           return { terminal: 'recovery_required', detail: { reason: 'agent-effect-unknown', sessionId: evidence.sessionId } }
         }
@@ -575,11 +618,16 @@ export class RunExecutionService {
         await handle.store.recordResult(runId, intent.attemptId, { ok: false, outcome: { kind: issue }, evidence: issue, ...settledDiagnostics(issue) })
         return
       }
-      const kind = error instanceof NodeValueError ? error.code : 'failed'
+      if (error instanceof WorkspaceWriteError && error.code === 'workspace-recovery-required')
+        return { terminal: 'recovery_required', detail: { reason: error.code } }
+      const kind = error instanceof NodeValueError || error instanceof WorkspaceWriteError ? error.code : controller.signal.aborted ? 'cancelled' : 'failed'
       if (intent)
         await handle.store.recordResult(runId, intent.attemptId, {
           ok: false,
-          outcome: { kind, detail: error instanceof NodeValueError ? kind : 'node resources, binding or output rejected' },
+          outcome: {
+            kind,
+            detail: error instanceof NodeValueError || error instanceof WorkspaceWriteError ? kind : 'node resources, binding or output rejected'
+          },
           evidence: 'node-failed',
           ...settledDiagnostics(kind)
         })
@@ -589,6 +637,8 @@ export class RunExecutionService {
         if (current.state === 'cancelling' || current.attempts.some(a => ['failed', 'timed_out', 'cancelled'].includes(a.state))) return
         return { terminal: 'failed', detail: { reason: 'prepare-failed' } }
       }
+    } finally {
+      writeLease?.finish(writeQuiescent)
     }
   }
 }

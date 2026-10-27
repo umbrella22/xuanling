@@ -18,7 +18,7 @@ const caseIds = {
   portability: sequence('P', 7),
   security: ['T16-S1', 'T16-S2', 'T16-H1', 'T16-H2', 'T16-P1', 'T16-U1'],
   recovery: sequence('RC', 4),
-  critical: ['T04-R1', 'T04-R2', 'T04-R3', 'RT1', 'RT3', 'RT11', 'RC1', 'RC2', 'RC3'],
+  critical: ['T11b', 'T04-R1', 'T04-R2', 'T04-R3', 'RT1', 'RT3', 'RT11', 'RC1', 'RC2', 'RC3'],
   browser: ['B1'],
   performance: ['PERF1'],
   platform: sequence('PL', 4),

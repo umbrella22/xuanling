@@ -25,11 +25,13 @@ export function ConversationRecoverySection({ bound, snapshot, controller, t }: 
   const recovery = conversationRecoveryState(bound)
   const runId = bound.selected.run.runId
   const [note, setNote] = React.useState('')
+  const [quiescent, setQuiescent] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
   const [resolved, setResolved] = React.useState<string | null>(null)
   const [errorCode, setErrorCode] = React.useState<string | null>(null)
   React.useEffect(() => {
     setNote('')
+    setQuiescent(false)
     setBusy(false)
     setResolved(null)
     setErrorCode(null)
@@ -38,7 +40,7 @@ export function ConversationRecoverySection({ bound, snapshot, controller, t }: 
   const resolve = (resolution: 'failed' | 'succeeded') => {
     setBusy(true)
     setErrorCode(null)
-    void controller.resolveRecovery(resolution, note).then(applied => {
+    void controller.resolveRecovery(resolution, note, quiescent).then(applied => {
       setBusy(false)
       if (applied) {
         setResolved(resolution)
@@ -60,6 +62,10 @@ export function ConversationRecoverySection({ bound, snapshot, controller, t }: 
           ) : (
             <div>
               <p className={'bp-help'}>{t('recovery.help')}</p>
+              <label className="bp-field">
+                <input type="checkbox" checked={quiescent} onChange={event => setQuiescent(event.currentTarget.checked)} />
+                {t('recovery.quiescent')}
+              </label>
               <label className={'bp-field'}>
                 {t('recovery.note')}
                 <textarea

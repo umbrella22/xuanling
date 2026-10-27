@@ -48,7 +48,7 @@ XuanLing 让 MCP Host 获得一个本地、可预测的统一工具面，而不�
 ## 安装
 
 ```sh
-npm install --global @xuanling-rs/xuanling-mcp@0.8.1
+npm install --global @xuanling-rs/xuanling-mcp@0.9.0
 xuanling-mcp --version
 ```
 
@@ -68,7 +68,7 @@ xuanling-mcp --version
       "command": "npx",
       "args": [
         "-y",
-        "@xuanling-rs/xuanling-mcp@0.8.1",
+        "@xuanling-rs/xuanling-mcp@0.9.0",
         "--workspace-root",
         "/absolute/path/to/project"
       ]
@@ -174,7 +174,7 @@ canonical row。
   ARM Windows 不在发布范围内。
 - 支持的 MCP 协议版本为 `2024-11-05`、`2025-03-26`、`2025-06-18` 和
   `2025-11-25`。
-- 0.8.1 的原生 binary 没有 Developer ID 或 Authenticode 签名；package 完整性合同由
+- 0.9.0 的原生 binary 没有 Developer ID 或 Authenticode 签名；package 完整性合同由
   npm provenance 和启动器的 SHA-256 校验保证。
 - 文件系统 capability 不是 XuanLing 工具所启动进程的 OS sandbox。
 - catalog 在服务器进程内不变，服务器不会声明 `tools.listChanged`。修改 profile 或
@@ -189,7 +189,7 @@ canonical row。
 | --- | --- |
 | `Unsupported platform: <os>/<arch>` | 该目标未发布。请使用 macOS Apple Silicon、glibc 2.35 或更高版本的 Linux x64，或 Windows x64。 |
 | `Unsupported Linux libc` 或 `Unsupported Linux glibc` | XuanLing 只发布 glibc 构建，并要求 glibc 2.35 或更高版本。 |
-| `Missing optional dependency` 或 `Native binary checksum mismatch` | 重新安装固定版本，例如 `npm install --global @xuanling-rs/xuanling-mcp@0.8.1`。已发布的 npm 版本不可变。 |
+| `Missing optional dependency` 或 `Native binary checksum mismatch` | 重新安装固定版本，例如 `npm install --global @xuanling-rs/xuanling-mcp@0.9.0`。已发布的 npm 版本不可变。 |
 | Memory 工具报告 `memory store unavailable` 或 `cannot resolve the default memory DB path` | 传入可写的 `--memory-db <PATH>`，或设置 `HOME`/`USERPROFILE` 以便解析默认的 `~/.xuanling/memory.db`。非 Memory 工具仍可正常使用。 |
 | Host 看到的工具比预期少 | 当前启用了 `--tool-profile` 选择。组合多个 profile 或使用 `--tool-profile all`，然后重启服务器进程。 |
 | Host 在 `initialize` 前退出 | 检查 Node.js 版本（18.17 或更高）以及 Host 的 stdio 启动配置。 |

@@ -3,7 +3,7 @@ import type { BlueprintDefinition } from '../../../../../definition/types.ts'
 import { readHostDefinition } from './document.ts'
 import { GraphEditor } from '../graph/graph-editor.ts'
 import { BlueprintRemoteError } from '../../../../adapters/host/remote.ts'
-import type { BlueprintArchive, CatalogValue, DefinitionDocument, HostLink } from '../../../../adapters/host/remote.ts'
+import type { BlueprintArchive, CatalogValue, DefinitionDocument, HostLink, LibraryRef, LibrarySummary } from '../../../../adapters/host/remote.ts'
 import type { WorkspaceNotice } from '../../../../shared/contracts/view-contract.ts'
 import { definitionSemantics } from './workspace-definition-semantics.ts'
 import type { WorkspaceDraftCreation } from './workspace-document-navigation.ts'
@@ -26,6 +26,8 @@ export interface WorkspaceDocumentWriteContext {
     creation: WorkspaceDraftCreation | undefined
     deletion: WorkspaceDeletion | undefined
     nodeCount: number
+    library: LibraryRef | undefined
+    libraries: LibrarySummary[]
   }
   assertActive(): void
   isDirty(): boolean
@@ -63,7 +65,7 @@ export async function saveWorkspaceDocument(context: WorkspaceDocumentWriteConte
     creation.submittedJson ??= submitted
     context.persistDraft()
     try {
-      doc = await context.host.createDefinition(creation.requestId, creation.submittedJson)
+      doc = await context.host.createDefinition(creation.requestId, creation.submittedJson, context.read().library)
     } catch (error) {
       // Only a definitive rejection permits a corrected payload on this identity.
       // An uncertain write outcome retains the exact request and submitted JSON.
@@ -73,7 +75,7 @@ export async function saveWorkspaceDocument(context: WorkspaceDocumentWriteConte
       }
       throw error
     }
-  } else doc = await context.host.saveDefinition(id, submitted, context.read().document?.documentRevision ?? null)
+  } else doc = await context.host.saveDefinition(id, submitted, context.read().document?.documentRevision ?? null, context.read().library)
   if (generation !== context.read().generation) throw new Error('Document changed while saving')
   if (creation) {
     const current = context.exportDefinition()
@@ -113,7 +115,7 @@ export async function deleteWorkspaceDocument(context: WorkspaceDocumentWriteCon
       deletion = { blueprintId: id, revision, requestId: crypto.randomUUID() }
       context.setDeletion(deletion)
     }
-    const result = await context.host.deleteDefinition(id, revision, deletion.requestId)
+    const result = await context.host.deleteDefinition(id, revision, deletion.requestId, context.read().library)
     if (result.blueprintId !== id || result.deleted !== true) throw new BlueprintRemoteError('blueprint/dto-invalid')
     if (!context.read().disposed) context.removeCatalog(id)
   }
@@ -142,7 +144,7 @@ export async function exportWorkspaceArchive(context: WorkspaceDocumentWriteCont
   const id = context.read().blueprintId!
   if (generation !== context.read().generation || context.isDirty()) throw new BlueprintRemoteError('blueprint/document-stale')
   const revision = context.read().document?.documentRevision
-  const archive = await context.host.exportDefinition(id)
+  const archive = await context.host.exportDefinition(id, context.read().library)
   if (
     generation !== context.read().generation ||
     id !== context.read().blueprintId ||
@@ -165,7 +167,26 @@ export async function importWorkspaceArchive(
   if (!context.host?.importDefinition) throw new BlueprintRemoteError('blueprint/capability-unavailable')
   if (confirmedId !== blueprintId) throw new BlueprintRemoteError('blueprint/import-confirmation-required')
   const generation = context.read().generation
-  const catalog = (await context.host.listDefinitions()).definitions
+  const current = context.read().library
+  const selected =
+    current === undefined
+      ? undefined
+      : context
+          .read()
+          .libraries.find(entry =>
+            entry.library.kind === 'global' ? current.kind === 'global' : entry.library.workspaceId === (current as { workspaceId?: string }).workspaceId
+          )
+  const catalog =
+    selected === undefined
+      ? (await context.host.listDefinitions()).definitions
+      : selected.assets
+          .filter(asset => asset.status === 'ready')
+          .map(asset => ({
+            blueprintId: asset.blueprintId,
+            name: asset.name,
+            documentRevision: asset.documentRevision,
+            semanticRevision: asset.semanticRevision
+          }))
   if (generation !== context.read().generation) throw new BlueprintRemoteError('blueprint/document-stale')
   const target = catalog.find(d => d.blueprintId === blueprintId)
   if (!target) throw new BlueprintRemoteError('blueprint/configured-id-required')
@@ -174,7 +195,7 @@ export async function importWorkspaceArchive(
     (context.read().blueprintId === blueprintId && (context.read().nodeCount || Object.keys(context.exportDefinition().resources).length || context.isDirty()))
   )
     throw new BlueprintRemoteError('blueprint/import-target-nonempty')
-  const result = await context.host.importDefinition(blueprintId, archiveBase64)
+  const result = await context.host.importDefinition(blueprintId, archiveBase64, context.read().library)
   if (result.blueprintId !== blueprintId) throw new BlueprintRemoteError('blueprint/dto-invalid')
   if (generation !== context.read().generation) return
   await context.initialize()

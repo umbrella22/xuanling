@@ -11,7 +11,14 @@ export interface ViewportStorage {
   getItem(key: string): string | null
   setItem(key: string, value: string): void
 }
-export const viewportKey = (blueprintId: string): string => `xuanling-blueprint:viewport:${encodeURIComponent(blueprintId)}`
+export const viewportKey = (blueprintId: string, library?: object): string =>
+  library === undefined
+    ? `xuanling-blueprint:viewport:${encodeURIComponent(blueprintId)}`
+    : `xuanling-blueprint:viewport:${libraryScopeKey(library)}:${encodeURIComponent(blueprintId)}`
+function libraryScopeKey(library: object): string {
+  const value = library as { kind?: unknown; workspaceId?: unknown }
+  return value.kind === 'global' ? 'global' : `workspace:${String(value.workspaceId)}`
+}
 export function defaultViewportState(): ViewportState {
   return { version: 1, viewport: { x: 0, y: 0, zoom: 1 }, mode: 'pan', minimap: true, motion: 'on', canvasLocked: false }
 }
@@ -67,9 +74,9 @@ export class ViewportStateStore {
   invalidate(): void {
     this.generation++
   }
-  bind(blueprintId: string): ViewportBinding {
+  bind(blueprintId: string, library?: object): ViewportBinding {
     const generation = ++this.generation
-    const key = viewportKey(blueprintId)
+    const key = viewportKey(blueprintId, library)
     let state = defaultViewportState()
     let readStatus: ViewportReadStatus = 'unavailable'
     if (this.storage) {

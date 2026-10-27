@@ -568,7 +568,7 @@ test('native control: official mount of unchanged host descriptors routes throug
   await assembly
   const value = await withHost(f.client, link => link.listDefinitions())
   assert.equal(value.definitions[0].blueprintId, document.blueprintId)
-  assert.deepEqual(f.carrierCalls, [['/api', 'blueprint/listDefinitions', { args: {} }]])
+  assert.deepEqual(f.carrierCalls, [['/api', 'blueprint/listDefinitions', { args: { args: {} } }]])
   await assembly.dispose()
   assert.equal(f.client.get('remote.blueprint'), undefined)
 })
@@ -745,6 +745,15 @@ test('C-08 host and remote select one unchanged strict descriptor/codec source',
     'inspectNodeSession',
     'ping',
     'listDefinitions',
+    'listBlueprintLibraries',
+    'associateDefinition',
+    'extractTemplate',
+    'listTemplates',
+    'loadTemplate',
+    'saveTemplate',
+    'instantiateTemplate',
+    'listAgentDocuments',
+    'importAgentDocument',
     'listResources',
     'loadDefinition',
     'deleteDefinition',

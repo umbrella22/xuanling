@@ -185,4 +185,33 @@ export const styledControlsCss = `
 const nodeContentCss =
   '.bp-workspace .bp-node{height:auto}.bp-workspace .bp-node [data-bp-node-content]{width:100%;display:flow-root}.bp-workspace .bp-node .bp-port-columns>div{flex:1;min-width:0}.bp-workspace .bp-node .bp-port-row{white-space:normal;overflow-wrap:anywhere}.bp-workspace .bp-node-title,.bp-workspace .bp-node-summary,.bp-workspace .bp-node-state,.bp-workspace .bp-node-note{overflow-wrap:anywhere;white-space:normal}'
 
-export const panelCss = editorAffordanceCss + jsonEditorCss + nodeContentCss + hostControlsCss + resourceLibraryCss + styledControlsCss
+const libraryCascadeCss = `
+/* Library cascade: level-one library picker with a quiet, text-first status chip. */
+.bp-workspace .bp-library-cascade{display:flex;align-items:flex-end;gap:10px;flex:0 1 360px;min-width:0}
+.bp-workspace .bp-library-level{display:grid;grid-template-columns:minmax(0,1fr);gap:4px;flex:1 1 220px;min-width:0}
+.bp-workspace .bp-library-level-label{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:var(--dsw-alias-label-secondary,var(--bp-muted));font-size:12px;font-weight:500;line-height:16px}
+.bp-workspace .bp-library-level .bp-select{width:100%;min-width:0}
+.bp-workspace .bp-library-cascade .bp-select>button.bp-select-trigger{min-height:32px;height:32px;padding:0 10px;gap:8px;border-radius:var(--dsw-radius-md,12px);font-size:13px;line-height:18px}
+.bp-workspace .bp-library-level .bp-select-value{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.bp-workspace .bp-library-level .bp-select-chevron{color:var(--dsw-alias-label-tertiary,var(--bp-muted));font-size:14px;line-height:1}
+.bp-workspace .bp-library-status{display:inline-flex;align-items:center;gap:6px;flex:0 1 auto;min-width:0;max-width:180px;height:30px;padding:0 9px;overflow:hidden;white-space:nowrap;border:0.5px solid var(--dsw-alias-border-l4,color-mix(in srgb,var(--bp-muted) 24%,transparent));border-radius:var(--dsw-radius-md,12px);background:var(--dsw-alias-bg-layer-1,var(--bp-raised));color:var(--dsw-alias-label-secondary,var(--bp-muted));font-size:12px;line-height:16px;transition:color var(--ds-transition-duration-fast,.1s) var(--ds-ease-in-out,ease),border-color var(--ds-transition-duration-fast,.1s) var(--ds-ease-in-out,ease),opacity var(--ds-transition-duration-fast,.1s) var(--ds-ease-in-out,ease)}
+.bp-workspace .bp-library-status-text{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.bp-workspace .bp-library-status-count{flex:none;color:var(--dsw-alias-label-tertiary,var(--bp-muted));font-variant-numeric:tabular-nums}
+.bp-workspace .bp-library-status-count::before{content:'·';margin-right:4px;opacity:.7}
+.bp-workspace .bp-library-status-mark{display:grid;place-items:center;flex:none;width:8px;height:8px}
+.bp-workspace .bp-library-status-mark::before{content:'';display:block;box-sizing:border-box;width:6px;height:6px;border-radius:50%;background:currentColor}
+.bp-workspace .bp-library-status.is-ready .bp-library-status-mark{color:var(--dsw-alias-state-business-primary,var(--bp-accent))}
+.bp-workspace .bp-library-status.is-empty .bp-library-status-mark{color:var(--dsw-alias-label-secondary,var(--bp-muted))}
+.bp-workspace .bp-library-status.is-empty .bp-library-status-mark::before{border:1px solid currentColor;background:transparent}
+.bp-workspace .bp-library-status.is-absent .bp-library-status-mark{color:var(--dsw-alias-label-tertiary,var(--bp-muted))}
+.bp-workspace .bp-library-status.is-absent .bp-library-status-mark::before{width:6px;height:2px;border-radius:1px;background:currentColor}
+.bp-workspace .bp-library-status.is-unavailable{color:var(--dsw-alias-state-error-primary,var(--bp-danger,#c46b6b));border-color:color-mix(in srgb,currentColor 35%,transparent)}
+.bp-workspace .bp-library-status.is-unavailable .bp-library-status-mark{color:currentColor}
+.bp-workspace .bp-library-status.is-unavailable .bp-library-status-mark::before{content:'!';width:auto;height:auto;border:0;background:none;font-size:10px;font-weight:700;line-height:1}
+.bp-workspace .bp-library-cascade[data-bp-library-cascade=loading] .bp-library-status{opacity:.7}
+@container bp-workspace (max-width:1080px){.bp-workspace .bp-toolbar{flex-wrap:wrap}.bp-workspace .bp-library-cascade{flex:1 1 100%;order:-1}.bp-workspace .bp-library-level{flex:0 1 360px}}
+@container bp-workspace (max-width:780px){.bp-workspace .bp-library-cascade{flex-wrap:wrap;gap:8px}.bp-workspace .bp-library-level{flex-basis:100%}.bp-workspace .bp-library-status{max-width:100%}}
+@media(prefers-reduced-motion:reduce){.bp-workspace .bp-library-status{transition:none}}
+`
+
+export const panelCss = editorAffordanceCss + jsonEditorCss + nodeContentCss + hostControlsCss + resourceLibraryCss + styledControlsCss + libraryCascadeCss

@@ -5,6 +5,7 @@
  * never forwards skill paths, provider locators, MCP URLs/headers, or preset
  * composition documents to the client or a blueprint package.
  */
+import { withResourceScope } from './resource-context.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ResourceKind, ResourceRef } from '../definition/types.ts'
 import { createRequire } from 'node:module'
@@ -50,6 +51,8 @@ export type ResourceCatalogEntry = HostResourceEntry | BlueprintResourceCatalogE
 
 export interface ListHostResourcesOptions {
   cwd?: string
+  /** DSH agent/preset scope key. Global-only reads omit it. */
+  scope?: object
 }
 
 interface AgentPresetRow {
@@ -226,13 +229,16 @@ export async function listHostResources(ctx: Context, options: ListHostResources
 
   const skills = host.get('skills') as
     | {
-        list?: (options?: { cwd?: string }) => Promise<SkillSummaryRow[]>
-        get?: (name: string, options?: { cwd?: string }) => Promise<SkillSummaryRow | undefined>
+        list?: (options?: { cwd?: string; scope?: object }) => Promise<SkillSummaryRow[]>
+        get?: (name: string, options?: { cwd?: string; scope?: object }) => Promise<SkillSummaryRow | undefined>
       }
     | undefined
   if (typeof skills?.list === 'function') {
-    const lookup = options.cwd === undefined ? {} : { cwd: options.cwd }
-    const values = await skills.list(lookup)
+    const lookup = {
+      ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+      ...(options.scope === undefined ? {} : { scope: options.scope })
+    }
+    const values = await withResourceScope(host, options.scope, scope => skills.list!({ ...lookup, ...(scope === undefined ? {} : { scope }) }))
     for (const row of values) {
       const description = row.description ?? ''
       let metadata = row
@@ -244,7 +250,7 @@ export async function listHostResources(ctx: Context, options: ListHostResources
         typeof skills.get === 'function'
       ) {
         try {
-          const loaded = await skills.get(row.name, lookup)
+          const loaded = await withResourceScope(host, options.scope, scope => skills.get!(row.name, { ...lookup, ...(scope === undefined ? {} : { scope }) }))
           if (loaded?.name === row.name && loaded.source === row.source && loaded.provider === row.provider && loaded.resourceBase !== undefined) {
             metadata = { ...row, resourceBase: loaded.resourceBase }
           }

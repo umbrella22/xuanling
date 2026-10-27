@@ -4,7 +4,7 @@
 
 **为 DeepSeek Harness 提供三个按需 XuanLing 工作流 Skill 和严格 XuanLing
 overwrite policy。** 不注册 MCP server，也不带 binary。Package：
-`@xuanling-rs/xuanling-dsh-skills@0.8.1`。
+`@xuanling-rs/xuanling-dsh-skills@0.9.0`。
 
 ## 这是什么
 
@@ -43,11 +43,11 @@ overwrite policy。** 不注册 MCP server，也不带 binary。Package：
 
 ```sh
 dsh plugin --profile web add \
-  @xuanling-rs/xuanling-dsh-memory@0.8.1 \
-  @xuanling-rs/xuanling-dsh-skills@0.8.1
+  @xuanling-rs/xuanling-dsh-memory@0.9.0 \
+  @xuanling-rs/xuanling-dsh-skills@0.9.0
 ```
 
-完整 catalog 版本把 `xuanling-dsh-memory` 换成 `xuanling-dsh-tools@0.8.1`。
+完整 catalog 版本把 `xuanling-dsh-memory` 换成 `xuanling-dsh-tools@0.9.0`。
 内置 headless profile 使用 `--profile headless`；自定义的新 profile 名称只会从
 base bundle 起步。不需要全局 package。
 
@@ -71,12 +71,12 @@ base bundle 起步。不需要全局 package。
 
 ## 升级蓝图定义
 
-[蓝图迁移 Skill](skills/xuanling-blueprint-migrate/SKILL.md) 自 `0.7.0` 起提供，当前随 `0.8.1` 发布；旧版
+[蓝图迁移 Skill](skills/xuanling-blueprint-migrate/SKILL.md) 自 `0.7.0` 起提供，当前随 `0.9.0` 发布；旧版
 `0.6.1` 包不包含它。把 skills bundle 安装到运行目标 Blueprint 版本的 profile，
 然后重启该 profile：
 
 ```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-skills@0.8.1
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-skills@0.9.0
 ```
 
 在 DSH 对话中可以这样使用：
@@ -119,7 +119,7 @@ Skill 使用目标 Blueprint 插件提供的创建、校验工具和已有文件
 ## 排错
 
 - **Skill 没有出现。** 重启 profile，确认 `--dump-config` 中有
-  `xuanling-skills` provider，并重装精确的 `0.8.1` 版本。
+  `xuanling-skills` provider，并重装精确的 `0.9.0` 版本。
 - **overwrite 护栏不触发。** 检查精确的公开工具名；replacement bundle 暴露的是
   `write`，因此该护栏在那里不适用。
 - **覆盖被拒绝。** 用 `fs_read_text` 加 `include_sha256: true` 读取，或取

@@ -463,7 +463,7 @@ for (const options of [{ loaded: false }, { boundRuns: false }, { hostAvailable:
     assert.equal(action(f.tree, 'cancel-run').props.disabled, true)
     assert.equal(action(f.tree, 'retry-inspect').props.disabled, true)
     assert.equal(action(f.tree, 'save-layout').props.disabled, !f.workspace.definition)
-    assert.equal(action(f.tree, 'start-run').props.disabled, !f.workspace.definition)
+    assert.equal(action(f.tree, 'start-run').props.disabled, true, 'global library has no execution target')
     assert.deepEqual(f.calls, [])
     assert.deepEqual(mutations(f), [])
   })

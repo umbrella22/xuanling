@@ -4,7 +4,7 @@
 
 **完整 XuanLing MCP catalog 的增量式 DeepSeek Harness bundle：在 DSH 原生工具
 之外增加全部 43 个带类型工具。** Package：
-`@xuanling-rs/xuanling-dsh-tools@0.8.1`。
+`@xuanling-rs/xuanling-dsh-tools@0.9.0`。
 
 ## 这是什么
 
@@ -45,19 +45,19 @@ Server 使用默认的 `all` catalog；本 bundle 没有更小的 profile 开关
 
 ```sh
 export XUANLING_WORKSPACE_ROOT=/absolute/path/to/project
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-tools@0.8.1
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-tools@0.9.0
 dsh --profile web --dump-config
 ```
 
 请让启动 DSH 的每个进程都能看到该变量。内置 headless profile 使用
 `--profile headless`；自定义的新 profile 名称只会从 base bundle 起步。该命令会
-把 `@xuanling-rs/xuanling-mcp@0.8.1` 装进 profile；不需要全局 package 或 `npx`。
+把 `@xuanling-rs/xuanling-mcp@0.9.0` 装进 profile；不需要全局 package 或 `npx`。
 
 ## 快速开始
 
 1. 重启该 profile，然后刷新 DSH。
 2. 让模型检索 `mcp_catalog__xuanling` 中的 `system_info` 并激活它；调用
-   `mcp__xuanling__system_info`，确认 `xuanling_version` 为 `0.8.1`。
+   `mcp__xuanling__system_info`，确认 `xuanling_version` 为 `0.9.0`。
 3. 再激活一个文件系统工具，例如 `fs_stat`，读取 `XUANLING_WORKSPACE_ROOT` 内的
    路径。根目录之外的路径会被有意拒绝。
 
@@ -98,7 +98,7 @@ dsh --profile web --dump-config
   继续。
 - **`inherit_env: false` 下找不到程序。** 只有明确可接受继承登录环境时才用
   `inherit_env: true` 重试。
-- **launcher 或版本不一致。** 重装精确的 `0.8.1` 版本；不要在同一个 profile 内
+- **launcher 或版本不一致。** 重装精确的 `0.9.0` 版本；不要在同一个 profile 内
   混用版本，并移除其他 XuanLing runtime bundle。
 
 ## 链接

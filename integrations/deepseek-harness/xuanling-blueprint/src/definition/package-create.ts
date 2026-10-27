@@ -1,14 +1,21 @@
 import { closeSync, fsyncSync, mkdtempSync, openSync, renameSync, rmSync, writeFileSync, existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { BlueprintDefinition } from './types.ts'
-import type { AuthoringCandidate } from './authoring.ts'
+import { admitSnapshotPaths, isPackageReservedPath } from '../security/resource-admission.ts'
 import { appendRevisionHistory, loadDefinitionPackage, type DefinitionDocument } from './persist.ts'
 
 import { fsyncDirectory, mkdirDurable } from '../persistence/durable-fs.ts'
 
 /** Publish only a complete validated new package. A competing publisher is
  * resolved by the caller's document/operation lock and content comparison. */
-export function publishPackage(root: string, definition: BlueprintDefinition, files: AuthoringCandidate['files']): DefinitionDocument {
+export function publishPackage(root: string, definition: BlueprintDefinition, files: Array<{ path: string; text: string | Uint8Array }>): DefinitionDocument {
+  const paths = files.map(file => file.path)
+  if (
+    admitSnapshotPaths(paths).length ||
+    paths.some(path => path.includes('\\') || path.split('/').some(part => !part || part === '.') || isPackageReservedPath(path)) ||
+    new Set(paths.map(path => path.normalize('NFC').toLowerCase())).size !== paths.length
+  )
+    throw new Error('package-file-path-invalid')
   mkdirDurable(dirname(root))
   const stage = mkdtempSync(join(dirname(root), '.authoring-stage-'))
   try {

@@ -1,3 +1,5 @@
+import { conversationAuthoringHost } from './adapters/host/remote.ts'
+import type { AssetRef } from '../definition/library-ref.ts'
 /** Native contribution bootstrap; panel seats belong to a namespace-ready child fiber. */
 import React from 'react'
 import type { Context } from '@deepseek-ai/cordis'
@@ -79,6 +81,15 @@ function applyConversation(ctx: Context, navigation: NativeChatNavigation): void
   const controllers = new WeakMap<SessionBinding, ConversationController>()
   const sessions = ctx.get('sessions') as unknown as ISessions
   const managedHost = resolveBlueprintHost(ctx)
+  const createPlanEditor =
+    managedHost === undefined
+      ? undefined
+      : (sessionId: string, asset?: AssetRef) =>
+          createBlueprintPanel({
+            hostLink: conversationAuthoringHost(managedHost, sessionId),
+            storage: typeof localStorage === 'undefined' ? undefined : localStorage,
+            ...(asset === undefined ? {} : { initialAsset: asset })
+          })
   if (sessions.list && managedHost?.inspectNodeSession && managedHost.messageNode) {
     const { inspectNodeSession, messageNode } = managedHost
     ctx.effect(
@@ -106,6 +117,7 @@ function applyConversation(ctx: Context, navigation: NativeChatNavigation): void
               }
               return {
                 controller,
+                ...(createPlanEditor === undefined ? {} : { createPlanEditor }),
                 openSession: (target, owner = sessionId) => navigation.openSession(target, owner),
                 chatNavigation: navigation
               }

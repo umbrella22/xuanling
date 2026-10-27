@@ -96,7 +96,7 @@ export class BlueprintDefinitionUseCases {
       throw new RemoteError('blueprint/capability-unavailable', 'library root unavailable', {
         method: 'createDefinition',
         plugin: '@xuanling-rs/xuanling-dsh-blueprint',
-        version: '0.8.1'
+        version: '0.9.0'
       })
     const id = createdBlueprintId(args.requestId)
     const definition = decodeOrThrow(args.definitionJson)
@@ -137,7 +137,7 @@ export class BlueprintDefinitionUseCases {
       throw new RemoteError('blueprint/capability-unavailable', 'library unavailable', {
         method: 'deleteDefinition',
         plugin: '@xuanling-rs/xuanling-dsh-blueprint',
-        version: '0.8.1'
+        version: '0.9.0'
       })
     const replay = () => {
       const deleted = documents.readDeletion(args.blueprintId)
@@ -173,12 +173,19 @@ export class BlueprintDefinitionUseCases {
     )
   }
 
-  async listResources(): Promise<{ resources: HostResourceCatalogValue[] }> {
-    return hostResourceCatalogValue(await listHostResources(this.context.ctx, { cwd: process.cwd() }))
+  /** Resource catalog for an explicit workspace root. A missing root means
+   * "global only" and is never replaced with process.cwd. */
+  async listResources(cwd?: string, scope?: object): Promise<{ resources: HostResourceCatalogValue[] }> {
+    return hostResourceCatalogValue(
+      await listHostResources(this.context.ctx, {
+        ...(cwd === undefined ? {} : { cwd }),
+        ...(scope === undefined ? {} : { scope })
+      })
+    )
   }
 
-  async describeBlueprint(blueprintId?: string) {
-    const resourceCatalog = (await this.listResources()).resources
+  async describeBlueprint(blueprintId?: string, catalog = () => this.listResources()) {
+    const resourceCatalog = (await catalog()).resources
     if (blueprintId !== undefined) {
       const document = await this.loadDefinition({ blueprintId })
       const definition = this.context.decodeOrThrow(document.definitionJson)
@@ -216,7 +223,7 @@ export class BlueprintDefinitionUseCases {
       throw new RemoteError('blueprint/capability-unavailable', 'library unavailable', {
         method: 'createBlueprint',
         plugin: '@xuanling-rs/xuanling-dsh-blueprint',
-        version: '0.8.1'
+        version: '0.9.0'
       })
     const id = createdBlueprintId(JSON.stringify([source.sessionId, requestId]))
     const definition = { ...result.definition, id }

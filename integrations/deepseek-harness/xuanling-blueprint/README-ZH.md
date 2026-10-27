@@ -17,6 +17,10 @@ DSH 负责模型、原生会话和工具权限；蓝图负责画布、保存的�
 
 ## 功能概览
 
+- **全局与工作区蓝图库。** 通过同一个级联选择器浏览已注册项目和当前 profile 的全局库。
+  通用定义可以保存到全局；执行前必须选择工作区。发现过程不创建项目目录。
+- **会话内方案。** 在启动 Run 前创建、引用和编辑已保存的方案；刷新后仍显示方案卡片，
+  执行后关联实际 Run。
 - **类型化图编辑。** 数据连线要求两端端口类型一致，拒绝数据环；控制连线驱动条件、人工决策
   和汇合。布局、固定、分组和端口显示只影响展示，不改变执行。
 - **DSH 原生资源。** 绑定 profile 中已有的 Agent preset、Skill 和精确 MCP 工具身份。资源
@@ -30,6 +34,7 @@ DSH 负责模型、原生会话和工具权限；蓝图负责画布、保存的�
   接纳，Run 启动时会再次检查。模型路由和下游值在 Attempt 执行时检查。
 - **可移植工作流包。** 导出和导入的 ZIP 包含定义及其声明的自定义资源；凭据与机器专属配置
   转为目标环境的绑定要求。
+- **参数化模板。** 分享时携带包内文件，为选定工作区准备实例，并根据项目证据补齐运行输入。
 - **可选 TeamStage。** 把一个智能体任务作为原生 DSH Agent Teams 阶段执行，并记录持久的任务、
   成员和产物事实。
 
@@ -46,17 +51,17 @@ DSH 负责模型、原生会话和工具权限；蓝图负责画布、保存的�
 把已发布包安装到提供 DSH Web 界面的同一个 profile：
 
 ```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.8.1
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.9.0
 ```
 
 重启该 profile 并刷新 DSH 页面。把 `web` 换成实际使用的 profile；新建的自定义 profile 只包含
 基础 bundle，不会自动包含 Web 应用。
 
-`0.8.1` 面向 DSH `next` 能力频道，开发与测试依赖固定为 `0.2.1-rc.2`，公开运行时 peer 下限
+`0.9.0` 面向 DSH `next` 能力频道，开发与测试依赖固定为 `0.2.1-rc.2`，公开运行时 peer 下限
 为 `>=0.2.1-alpha.5`。同一 profile 内的 DSH 包应保持在同一频道。checkout 链接构建见
 [开发](#开发)。
 
-**自 0.7.0 起的不兼容变更。** `0.8.1` 使用定义 schema v2。已发布的 `0.6.1` 保存的定义（schema v1，包括已移除的
+**自 0.7.0 起的不兼容变更。** `0.9.0` 使用定义 schema v2。已发布的 `0.6.1` 保存的定义（schema v1，包括已移除的
 `toolCall`、`scriptCall`、`subflow`、`iteration` 节点）会被拒绝并返回 `blueprint/definition-invalid`，
 无法打开或运行。请使用[蓝图迁移 Skill](../xuanling-skills/skills/xuanling-blueprint-migrate/SKILL.md)
 准备并校验独立副本，或继续用 `0.6.1` 运行原工作流。迁移需要手动执行；安装新版不会改写定义或 Run 历史。
@@ -64,15 +69,19 @@ dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.8.1
 TeamStage 还需要显式启用原生 Agent Teams profile。
 
 
-默认空配置通过 DSH workspace controller 取得默认工作区。定义保存到
-`<workspace>/.xuanling/workflows`，Run 保存到 `<workspace>/.xuanling/runs`。没有该能力的
-headless profile 需要在插件配置中显式设置绝对路径 `workspaceRoot`；无法取得工作区时，定义
-操作返回 `blueprint/capability-unavailable`。`runtimeRoot` 可独立覆盖 Run 存储位置，不选择定义目录。
-对话工具和对话中的蓝图视图会跟随调用会话所在的工作区：Host 找到拥有该会话的已注册 DSH 工作区
-（子步骤会话则回退到包含其 cwd 的已注册工作区），读写那个工作区的 `.xuanling` 数据。未注册的
-cwd 不会成为定义目录。这里包括定义操作，以及对话创建的 Run 的历史分页、归档/恢复和 recovery 处理。
-Host 无法归属的调用（未注册 cwd，或没有 Workspace registry 的 profile）回退到 Host 默认工作区；
-侧栏编辑器不绑定会话，也仍使用 Host 默认工作区。显式配置 `workspaceRoot` 时，所有调用都固定到该根。
+侧栏按当前 profile 的全局库和已注册工作区分组。项目定义位于
+`<workspace>/.xuanling/workflows`，Run 默认位于 `<workspace>/.xuanling/runs`。
+发现过程只读；缺少项目库时在显式保存后创建，工作区不可用时单独显示原因。
+
+全局存储优先使用配置的 `globalLibraryRoot`，否则使用 Host profile 目录中的
+`data/xuanling-blueprint/library-v2`。无法取得可信 profile 根时返回
+`blueprint/library-unavailable`。保存或查看全局方案不会初始化默认工作区；执行必须有已注册的
+目标工作区，未选择时返回 `blueprint/workspace-required`。全局资产先准备为项目实例，再执行。
+
+对话工具和视图跟随调用会话所属的已注册工作区，包括 cwd 属于该工作区的子会话。
+无法归属工作区的调用在定义操作中使用全局库；单独的 cwd 不能授予执行权限。
+显式 `workspaceRoot` 把执行约束到该项目，也为 headless profile 提供默认项目库。
+`runtimeRoot` 独立覆盖 Run 存储位置，不改变执行 cwd 或蓝图库选择。
 
 对话 `workflow_apply`、`workflow_revert`、`blueprint_start`、`workflow_run` 跟随调用会话的 DSH
 权限模式：完全访问免人工确认；Auto 经过 DSH 原生审核器；其他模式经 Host 审批。不能仅凭
@@ -83,16 +92,27 @@ bytes；回滚会恢复这些内容并删除后加的包内文件。没有资源
 `revision-package-unavailable`。资源恢复中断后，读取先重放持久提交；恢复受阻返回
 `DEFINITION_COMMIT_PENDING`，不能读取半恢复的定义。
 
-新 Run record 使用 schema 2；合法无 marker、record-v1 且冻结定义为当前格式的记录继续可读，
-后续写入升级。冻结 definition-v1 的旧 Run 保留为 lazy archive。binding admission 中断会进入
+新 Run record 使用 schema 3，记录冻结的资产身份和目标工作区上下文；合法无 marker、
+record-v1、record-v2 且冻结定义为当前格式的记录继续可读，后续写入升级。
+冻结 definition-v1 的旧 Run 保留为 lazy archive。旧运行时不支持新记录；回退需要保留升级前的
+profile 数据、项目 `.xuanling` 目录和自定义存储根备份。binding admission 中断会进入
 恢复状态，不能使用新的 Host snapshot 自动执行。POSIX 写入会 fsync 文件和变动的父目录；
 Windows 的 Node 没有可移植的目录 fsync，文件内容仍会刷盘，但目录项不承诺相同的掉电保证。
 可读取文档的 Host Agent preset 会把内容 digest 纳入 binding facts；opaque preset 只固定身份，
 Host 端同名 preset 的 prompt/body 变化不会触发 binding-drift。
 
+工作区写入以真实项目根协调，包括使用不同 `runtimeRoot` 的 Run。业务工具保守串行，
+工具派发前检查发现文件冲突时拒绝执行。未决写 intent 阻止后续写入，直到恢复确认外部工作已停止。
+这是协作式协调，不提供对任意外部写入者的原子保护，也不承诺 TeamStage 内部每个工具的 preimage 检查。
+
+模板准备记录有界文件证据并替换显式参数，不会自动抽象任意项目文案，也不会自动选好全部
+Agent、Skill 与模型。分享前需检查参数和残留说明。大型蓝图库分页、完整原生桌面旅程与
+当前版本的真实 Provider 验收仍未验证。
+
 ## 第一个工作流
 
-1. 在 DSH 侧栏打开 **玄灵蓝图**，点击 **新建** 并填写名称。蓝图库为空时会自动打开新草稿；
+1. 在 DSH 侧栏打开 **玄灵蓝图**，选择一个已注册工作区，再点击 **新建** 并填写名称。
+   蓝图库为空时会自动打开新草稿；
    创建或保存蓝图都不会启动运行。
 2. 从节点库把 **输入**、**智能体任务** 和 **输出** 拖到画布。双击空白画布也可打开节点搜索。
 3. 逐个选择节点，在 **检查器** 中设置端口；修改后点击 **应用端口**。

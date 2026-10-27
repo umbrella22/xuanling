@@ -34,7 +34,7 @@ assert.match(relative(join(ROOT, 'docs/validation/blueprint/current/host-control
 parseCli(['--plan-id', PLAN_ID, '--report-dir', RECEIPTS])
 const HERE = join(ROOT, 'test/blueprint/capabilities')
 const iso = ms => new Date(ms).toISOString()
-test('collector catalog lookup serializes actual probe noarg envelope matching descriptor and preserves parameterized archive legacy envelopes', async () => {
+test('collector catalog lookup serializes the scoped argument envelope matching descriptor and preserves parameterized archive legacy envelopes', async () => {
   const source = readFileSync(join(HERE, 'comfy-interactions-ui.mjs'), 'utf8'),
     probe = readFileSync(join(HERE, 'probe.mjs'), 'utf8'),
     receipt = { rpc: [] },
@@ -68,7 +68,7 @@ test('collector catalog lookup serializes actual probe noarg envelope matching d
     `${source.slice(source.indexOf('const realApi = async'), source.indexOf('const doc = (id'))}; return realApi`
   )(api, receipt)
   await Function('realApi', `return async () => ${source.match(/await realApi\('listDefinitions'[^)\n]*\)/)[0]}`)(realApi)()
-  assert.deepEqual(envelopes[0].payload, { args: {} })
+  assert.deepEqual(envelopes[0].payload, { args: { args: {} } })
   assert.equal(receipt.rpc[0].method, 'listDefinitions')
   assert.equal(receipt.rpc[0].blueprintId, undefined)
   for (const [method, args] of [

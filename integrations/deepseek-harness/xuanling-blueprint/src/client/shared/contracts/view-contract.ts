@@ -16,6 +16,11 @@ export interface ViewMessageParams {
   'status.runAdmitted': { state: string }
   'status.recentRunUnavailable': undefined
   'status.draftUnavailable': undefined
+  'status.libraryAbsent': undefined
+  'status.libraryUnavailable': undefined
+  'status.libraryEmpty': undefined
+  'status.librarySwitched': { name: string }
+  'status.workspaceRequired': undefined
   'status.error': { code: string }
   'status.invalidRunInput': { code: string; issue: 'invalid-input-json' }
   'node.input.title': undefined

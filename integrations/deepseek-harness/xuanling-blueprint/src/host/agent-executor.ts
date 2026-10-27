@@ -37,6 +37,7 @@ export interface AgentExecutionSpec {
   signal?: AbortSignal
   /** Omitted means no business tools. Transport never grants business rights. */
   effectiveToolNames?: string[]
+  workspaceWrite?: { beforeTool(): string | undefined; afterTool(): void; readonly conflict: boolean }
   outputSchema?: ObjectJsonSchema
   interaction?: 'managed'
   bindManaged?: (agent: Agent, signal: AbortSignal, uncertain: () => void) => ManagedNodeBinding
@@ -55,7 +56,15 @@ export interface AgentExecutionEvidence {
     | { ok: true; kind: 'succeeded'; detail: string }
     | {
         ok: false
-        kind: 'provider-failed' | 'failed' | 'timeout' | 'cancelled' | 'recovery_required' | 'structured-output-missing' | 'output-invalid'
+        kind:
+          | 'provider-failed'
+          | 'failed'
+          | 'timeout'
+          | 'cancelled'
+          | 'recovery_required'
+          | 'structured-output-missing'
+          | 'output-invalid'
+          | 'workspace-conflict'
         detail: string
       }
 }
@@ -157,7 +166,16 @@ export class BlueprintAgentExecutor {
       // restrict controls model presentation; guard additionally covers tools
       // registered locally and runs AFTER extensible pre-execute listeners.
       tools.restrict({ allow: [...effectiveNames] })
+      const workspaceCalls = new WeakSet<ToolExecution>()
       tools.guard(exec => {
+        if (effectiveNames.has(exec.name) && spec.workspaceWrite !== undefined) {
+          const issue = spec.workspaceWrite.beforeTool()
+          if (issue !== undefined) {
+            denied.add(exec)
+            return issue
+          }
+          workspaceCalls.add(exec)
+        }
         if (exec.name === 'run_code' || effectiveNames.has(exec.name) || (schema !== undefined && exec.name === STRUCTURED_OUTPUT_TOOL)) return undefined
         denied.add(exec)
         return 'blueprint tool permission denied'
@@ -174,6 +192,7 @@ export class BlueprintAgentExecutor {
         })
       }
       agentCtx.on('tools/result', function (this: unknown, exec, result) {
+        if (workspaceCalls.delete(exec)) spec.workspaceWrite?.afterTool()
         if (structured?.captured() !== undefined) managed?.close()
         if (schema !== undefined && exec.name === STRUCTURED_OUTPUT_TOOL) {
           // Only a count from an authoritative INVALID_ARGS escapes DSH's
@@ -464,6 +483,8 @@ export class BlueprintAgentExecutor {
           /* unknown remains unknown */
         }
       }
+      if (spec.workspaceWrite?.conflict && evidence.outcome.kind !== 'recovery_required')
+        evidence.outcome = { ok: false, kind: 'workspace-conflict', detail: 'Project changed after observation; proposed write was not dispatched' }
       return evidence
     } finally {
       managed?.close()

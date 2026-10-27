@@ -3,7 +3,7 @@ import { BLUEPRINT_INVOCATIONS } from '../../../../../typert-descriptors.ts'
 import { definitionSemantics } from '../workspace/workspace-definition-semantics.ts'
 import { InvalidRunInputError, errorCode } from '../workspace/workspace-errors.ts'
 import { BlueprintRemoteError } from '../../../../adapters/host/remote.ts'
-import type { HostLink, PreflightRunValue, RunAdmission } from '../../../../adapters/host/remote.ts'
+import type { HostLink, LibraryRef, PreflightRunValue, RunAdmission } from '../../../../adapters/host/remote.ts'
 import type { RunAttemptView, RunSnapshotView } from './client-model.ts'
 import type { BlueprintDefinition } from '../../../../../definition/types.ts'
 
@@ -17,6 +17,11 @@ export interface WorkspaceRunBinding {
   code?: string
   epoch: number
   semantics: string
+}
+import { libraryKey } from '../../../../../definition/library-ref.ts'
+function selection(library: LibraryRef | undefined): { library: LibraryRef; workspaceId?: string } | undefined {
+  if (library === undefined) return undefined
+  return library.kind === 'workspace' ? { library, workspaceId: library.workspaceId } : { library }
 }
 interface PendingStart {
   signature: string
@@ -36,6 +41,7 @@ export interface WorkspaceRunContext {
     runId: string | null
     modelView: RunSnapshotView | null
     pendingStart: PendingStart | undefined
+    library: LibraryRef | undefined
   }
   assertActive(): void
   nextCheckRead(): number
@@ -99,7 +105,7 @@ export async function checkWorkspaceRun(context: WorkspaceRunContext): Promise<P
   context.emit()
   try {
     context.assertActive()
-    const value = await context.host.preflightRun(document.blueprintId, document.documentRevision, inputJson)
+    const value = await context.host.preflightRun(document.blueprintId, document.documentRevision, inputJson, selection(context.read().library))
     if (read !== context.read().checkRead || !context.checkCurrent(binding)) throw new BlueprintRemoteError('blueprint/preflight-stale')
     const parsed = BLUEPRINT_INVOCATIONS.find(item => item.method === 'preflightRun')!
       .result.create()
@@ -140,13 +146,14 @@ export async function runWorkspace(context: WorkspaceRunContext): Promise<void> 
     throw new BlueprintRemoteError('blueprint/preflight-stale')
   if (!report.canStart || report.checks.some(check => check.status === 'block')) throw new BlueprintRemoteError('blueprint/preflight-blocked')
   const { blueprintId, documentRevision, inputJson, generation } = binding
-  const signature = JSON.stringify([blueprintId, documentRevision, inputJson])
+  const scopeLibrary = context.read().library
+  const signature = JSON.stringify([blueprintId, documentRevision, inputJson, scopeLibrary === undefined ? null : libraryKey(scopeLibrary)])
   let pending = context.read().pendingStart
   if (pending?.signature !== signature) {
     pending = { signature, requestId: crypto.randomUUID() }
     context.setPendingStart(pending)
   }
-  const admission: RunAdmission = await context.host.startRun(blueprintId, documentRevision, inputJson, pending.requestId)
+  const admission: RunAdmission = await context.host.startRun(blueprintId, documentRevision, inputJson, pending.requestId, selection(context.read().library))
   context.persistRunBinding(blueprintId, admission.runId)
   if (context.read().pendingStart === pending) context.setPendingStart(undefined)
   if (generation !== context.read().generation) return

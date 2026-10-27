@@ -49,13 +49,14 @@ test('directory records preserve current and markerless Runs but fail closed on 
   const { runId } = await f.store.createRun(request('versions'), 'revision', '{"schemaVersion":2}', '{}')
   const path = join(f.root, 'runs', runId, 'run.json')
   const record = JSON.parse(readFileSync(path, 'utf8'))
-  assert.equal(record.schemaVersion, 2)
+  // Record schema 3 is the current writer format; older markers remain readable.
+  assert.equal(record.schemaVersion, 3)
   for (const marker of [undefined, 1, 2]) {
     const value = { ...record, schemaVersion: marker }
     writeFileSync(path, JSON.stringify(value))
     assert.equal((await f.store.get(runId)).runId, runId)
     await f.store.transition(runId, () => {})
-    assert.equal(JSON.parse(readFileSync(path, 'utf8')).schemaVersion, 2)
+    assert.equal(JSON.parse(readFileSync(path, 'utf8')).schemaVersion, 3)
   }
   for (const text of ['{', JSON.stringify({ ...record, state: 'broken' }), JSON.stringify({ ...record, schemaVersion: 999 })]) {
     writeFileSync(path, text)

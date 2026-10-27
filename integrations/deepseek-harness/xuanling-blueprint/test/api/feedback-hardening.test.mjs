@@ -8,13 +8,15 @@ import { definition, fixture } from '../feedback-fixtures.mjs'
 import { Context } from '@deepseek-ai/cordis'
 import { BlueprintService } from '../../src/index.ts'
 
-test('empty config uses the Host workspace, persists drafts, and reports an unavailable Host', async t => {
+test('empty config persists drafts in the profile-global library without initializing a workspace', async t => {
   const f = await fixture(t, { emptyConfig: true })
   const saved = await f.ctx.blueprint.createDefinition({ requestId: 'empty-config', definitionJson: JSON.stringify(definition()) })
-  assert.ok(existsSync(join(f.root, 'workspace', '.xuanling', 'workflows', saved.blueprintId, 'blueprint.json')))
+  assert.ok(existsSync(join(f.root, 'profile', 'data', 'xuanling-blueprint', 'library-v2', saved.blueprintId, 'blueprint.json')))
+  assert.equal(existsSync(join(f.root, 'workspace', '.xuanling')), false)
   assert.equal(existsSync(join(f.root, 'profile', '.xuanling')), false)
   assert.equal((await f.ctx.blueprint.listDefinitions()).definitions.length, 1)
   const reopened = new Context()
+  reopened.baseUrl = f.ctx.baseUrl
   reopened.provide('workspaceController', { initializeDefault: async () => ({ workspace: { path: join(f.root, 'workspace') } }) })
   try {
     await reopened.plugin(BlueprintService, {})
@@ -22,17 +24,28 @@ test('empty config uses the Host workspace, persists drafts, and reports an unav
   } finally {
     await reopened.fiber.dispose()
   }
+  // No Host workspace and no registry is no longer a capability failure: the
+  // global library is editable, while execution still requires a target (T02).
   const unavailable = await fixture(t, { emptyConfig: true, workspace: false })
-  await assert.rejects(() => unavailable.ctx.blueprint.listDefinitions(), { code: 'blueprint/capability-unavailable' })
+  assert.deepEqual(await unavailable.ctx.blueprint.listDefinitions(), { definitions: [] })
+  assert.equal((await unavailable.ctx.blueprint.listBlueprintLibraries()).libraries[0].library.kind, 'global')
 })
 
-test('one registered Host workspace is usable; ambiguous workspace selection requires configuration', async t => {
+test('one registered Host workspace is usable; several workspaces list instead of guessing a default', async t => {
   const f = await fixture(t, { emptyConfig: true, workspace: false })
   f.ctx.provide('workspaceRegistry', { list: () => [{ path: join(f.root, 'workspace') }] })
   assert.ok((await f.ctx.blueprint.createDefinition({ requestId: 'registered', definitionJson: JSON.stringify(definition()) })).blueprintId)
   const ambiguous = await fixture(t, { emptyConfig: true, workspace: false })
   ambiguous.ctx.provide('workspaceRegistry', { list: () => [{ path: join(ambiguous.root, 'one') }, { path: join(ambiguous.root, 'two') }] })
-  await assert.rejects(() => ambiguous.ctx.blueprint.listDefinitions(), { code: 'blueprint/capability-unavailable' })
+  // (C-01) Several registered workspaces are a cascade, not an error. The
+  // default library is the profile-global store, and no workspace is created.
+  assert.deepEqual(await ambiguous.ctx.blueprint.listDefinitions(), { definitions: [] })
+  const libraries = (await ambiguous.ctx.blueprint.listBlueprintLibraries()).libraries
+  assert.deepEqual(
+    libraries.map(library => library.library.kind),
+    ['global', 'workspace', 'workspace']
+  )
+  assert.equal(existsSync(join(ambiguous.root, 'one')), false)
 })
 
 test('public apply rejects model approval and missing CAS; origin cannot confer authority', async t => {

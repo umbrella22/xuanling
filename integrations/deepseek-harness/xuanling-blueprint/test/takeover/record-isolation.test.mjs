@@ -45,7 +45,7 @@ test('invalid JSON cannot masquerade as a legacy archive', async t => {
   const reopened = await openBlueprintDomain({ path })
   try {
     const store = new RunStore(reopened.domain)
-    assert.equal((await store.get(first)).schemaVersion, 2)
+    assert.equal((await store.get(first)).schemaVersion, 3)
     await assert.rejects(store.get(second), { code: 'DURABILITY_FAILED' })
     await assert.rejects(store.listRunIds(), { code: 'DURABILITY_FAILED' })
     assert.equal(existsSync(target), true)

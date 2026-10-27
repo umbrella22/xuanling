@@ -2,7 +2,7 @@
 import type { BlueprintDefinition } from '../../../../../definition/types.ts'
 import type { EditorNode, EditorEdge, EditorGroup } from '../graph/graph-editor.ts'
 import type { ConnectionState, RunSnapshotView } from '../run/client-model.ts'
-import type { CatalogValue, DefinitionDocument, HostResourceCatalogEntry } from '../../../../adapters/host/remote.ts'
+import type { CatalogValue, DefinitionDocument, HostResourceCatalogEntry, LibraryRef, LibrarySummary } from '../../../../adapters/host/remote.ts'
 import type { WorkspaceNotice } from '../../../../shared/contracts/view-contract.ts'
 import type { WorkspaceViewBinding } from '../../../../shared/contracts/view-contract.ts'
 import type { WorkspacePreflight } from './workspace-controller.ts'
@@ -21,6 +21,13 @@ export interface WorkspaceSnapshotData {
   definition: BlueprintDefinition | null
   editor: { nodes: EditorNode[]; edges: EditorEdge[]; groups: EditorGroup[]; selection: string[]; canUndo: boolean; canRedo: boolean }
   catalog: CatalogValue['definitions']
+  library: {
+    state: 'loading' | 'current' | 'unavailable'
+    libraries: LibrarySummary[]
+    selected: LibraryRef
+    title: string
+    status: 'absent' | 'empty' | 'ready' | 'unavailable'
+  }
   resources: { state: 'loading' | 'current' | 'unavailable'; entries: HostResourceCatalogEntry[] }
   inputJson: string
   notice: WorkspaceNotice

@@ -223,12 +223,14 @@ export function RunReportSection({ t, hostLink, workspace, snapshot, perform }: 
   const [report, setReport] = React.useState<ReportView | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [note, setNote] = React.useState('')
+  const [quiescent, setQuiescent] = React.useState(false)
   const [resolved, setResolved] = React.useState<string | null>(null)
   const runId = snapshot?.runId ?? null
   React.useEffect(() => {
     setReport(null)
     setError(null)
     setNote('')
+    setQuiescent(false)
     setResolved(null)
   }, [runId])
   if (hostLink === undefined || snapshot === null || snapshot === undefined) return null
@@ -251,7 +253,13 @@ export function RunReportSection({ t, hostLink, workspace, snapshot, perform }: 
       if (hostLink.resolveRecovery === undefined || snapshot.seq === undefined) return
       setError(null)
       try {
-        const value = await hostLink.resolveRecovery({ runId: snapshot.runId, resolution, note: note.trim(), expectedSeq: snapshot.seq })
+        const value = await hostLink.resolveRecovery({
+          runId: snapshot.runId,
+          resolution,
+          note: note.trim(),
+          ...(quiescent ? { workspaceQuiescent: true } : {}),
+          expectedSeq: snapshot.seq
+        })
         setResolved(value.state)
         await workspace.inspect()
         setReport(null)
@@ -284,6 +292,10 @@ export function RunReportSection({ t, hostLink, workspace, snapshot, perform }: 
         <fieldset data-bp-recovery={snapshot.runId}>
           <legend>{t('recovery.title')}</legend>
           <p className={'bp-help'}>{t('recovery.help')}</p>
+          <label className="bp-field">
+            <input type="checkbox" checked={quiescent} onChange={event => setQuiescent(event.currentTarget.checked)} />
+            {t('recovery.quiescent')}
+          </label>
           <label className={'bp-field'}>
             {t('recovery.note')}
             <textarea

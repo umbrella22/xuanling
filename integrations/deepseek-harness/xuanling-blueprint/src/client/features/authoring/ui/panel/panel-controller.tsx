@@ -23,6 +23,9 @@ import type { BlueprintLocaleKey, BlueprintLocaleProps } from '../../../../share
 import { BUILTIN_NODE_CATALOG, nodeKindTitle, searchBuiltinNodes } from '../../logic/graph/node-catalog.ts'
 import type { BuiltinNodeKind } from '../../logic/graph/node-catalog.ts'
 import { InspectorSidebar } from './inspector-sidebar.tsx'
+import { LibraryActions } from './library-actions.tsx'
+import type { AssetRef } from '../../../../../definition/library-ref.ts'
+import { LibraryCascadeView } from './library-cascade.tsx'
 import { executableNodeIds, presentationGroupFrames, resourceDisplayName, resourceKindTitle, runStateTitle } from '../../presenters/canvas-presentation.ts'
 import { flowEdgeEndpoints } from '../../logic/graph/flow-geometry.ts'
 import { CanvasInteractions } from '../../logic/graph/flow-interactions.ts'
@@ -89,6 +92,8 @@ interface PanelNotice {
   params?: Record<string, unknown>
 }
 export interface PanelEnvironment {
+  initialAsset?: AssetRef
+
   React?: typeof React
   hostLink: HostLink | undefined
   modelCatalog?: ModelCatalogLink | undefined
@@ -258,7 +263,16 @@ export function WorkspacePanel({
   const placementRef = React.useRef<{ editor: GraphEditor; reservations: Map<string, PaletteReservation> } | null>(null)
   React.useEffect(() => {
     installCanvasStyles()
-    void workspace.initialize(t('document.newName'))
+    let active = true
+    void workspace.initialize(t('document.newName')).then(async () => {
+      if (active && env.initialAsset) {
+        workspace.selectLibrary(env.initialAsset.library)
+        await workspace.load(env.initialAsset.blueprintId)
+      }
+    })
+    return () => {
+      active = false
+    }
   }, [workspace])
   React.useEffect(() => {
     return installRunObservation(
@@ -272,7 +286,7 @@ export function WorkspacePanel({
   }, [workspace, workspace.runId])
   const editor = workspace.editor
   if (preferences.current.id !== workspace.blueprintId) {
-    const binding = workspace.blueprintId ? viewportStore.bind(workspace.blueprintId) : null
+    const binding = workspace.blueprintId ? viewportStore.bind(workspace.blueprintId, workspace.libraryScope) : null
     if (!binding) viewportStore.invalidate()
     preferences.current = { id: workspace.blueprintId, binding, state: binding?.state ?? defaultViewportState() }
   }
@@ -1264,6 +1278,31 @@ export function WorkspacePanel({
     },
     children: [
       <header key={'toolbar'} className={'bp-toolbar'}>
+        <LibraryCascadeView
+          React={React}
+          t={t}
+          disabled={workspace.busy}
+          selected={workspace.library}
+          status={workspaceSnapshot.library.status}
+          state={workspaceSnapshot.library.state}
+          libraries={workspace.libraries}
+          onSelect={library => {
+            requestConfirmation(
+              t('dialog.discardTitle'),
+              t('document.discardConfirm'),
+              () => {
+                navigationEpoch.current++
+                setResourceDialog(null)
+                setSelected(null)
+                setSelectedEdges([])
+                workspaceLease.dispatch({ type: 'select-library', library })
+                setTick(n => n + 1)
+                void workspace.refreshLibraries()
+              },
+              workspace.needsNavigationConfirmation
+            )
+          }}
+        />
         <div className={'bp-blueprint-picker'}>
           <StyledSelect
             React={React}
@@ -1283,7 +1322,7 @@ export function WorkspacePanel({
                     await workspace.load(requestedId)
                     if (epoch !== navigationEpoch.current || workspace.blueprintId !== requestedId) return
                     const loadedEditor = workspace.editor,
-                      binding = viewportStore.bind(requestedId)
+                      binding = viewportStore.bind(requestedId, workspace.libraryScope)
                     const captured = { id: requestedId, binding, state: binding.state }
                     preferences.current = captured
                     setSelected(null)
@@ -1312,6 +1351,11 @@ export function WorkspacePanel({
               {t('library.chooseId')}
             </option>
             {workspace.isNewDraft && <option value={workspace.blueprintId!}>{t('document.newDraft')}</option>}
+            {!workspace.isNewDraft && !workspace.catalog.length && (
+              <option value={''} disabled={true}>
+                {t(workspace.library.kind === 'global' ? 'library.empty' : 'library.absent')}
+              </option>
+            )}
             {workspace.catalog.map(d => (
               <option value={d.blueprintId} key={d.blueprintId}>{`${d.name} · ${d.blueprintId}`}</option>
             ))}
@@ -1428,7 +1472,7 @@ export function WorkspacePanel({
               labelKey: 'action.run',
               icon: 'run',
               shortcut: 'Ctrl / ⌘ Enter',
-              reason: hostReason(),
+              reason: workspace.library?.kind === 'global' ? 'status.workspaceRequired' : hostReason(),
               onClick: () => perform(() => workspace.run())
             })}
             {chrome({
@@ -1473,6 +1517,7 @@ export function WorkspacePanel({
               />
             </label>
           )}
+          <LibraryActions workspace={workspace} t={t} />
           <h2>{t('palette.title')}</h2>
           <input
             data-bp-palette-search={true}

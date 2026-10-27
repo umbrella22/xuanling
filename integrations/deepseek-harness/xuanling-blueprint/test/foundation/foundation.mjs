@@ -91,21 +91,29 @@ export async function getCases(helpers) {
       const expected = [
         'acceptTeamStageOutput',
         'archiveRun',
+        'associateDefinition',
         'cancelRun',
         'cancelTeamStage',
         'createDefinition',
         'decide',
         'deleteDefinition',
         'exportDefinition',
+        'extractTemplate',
+        'importAgentDocument',
         'importDefinition',
         'inspectBlueprintReference',
         'inspectNodeSession',
         'inspectRun',
         'inspectRunView',
         'inspectSession',
+        'instantiateTemplate',
+        'listAgentDocuments',
+        'listBlueprintLibraries',
         'listDefinitions',
         'listResources',
+        'listTemplates',
         'loadDefinition',
+        'loadTemplate',
         'messageNode',
         'ping',
         'preflightRun',
@@ -114,6 +122,7 @@ export async function getCases(helpers) {
         'restoreDefinitionRevision',
         'restoreRun',
         'saveDefinition',
+        'saveTemplate',
         'startRun',
         'startSessionRun',
         'startTeamStage',
@@ -148,7 +157,7 @@ export async function getCases(helpers) {
       const mod = await import(libIndex)
       const service = new mod.default(new Context())
       const value = await service.ping()
-      return value?.status === 'ok' && value?.service === '@xuanling-rs/xuanling-dsh-blueprint' && value?.version === '0.8.1'
+      return value?.status === 'ok' && value?.service === '@xuanling-rs/xuanling-dsh-blueprint' && value?.version === '0.9.0'
     }
   })
 

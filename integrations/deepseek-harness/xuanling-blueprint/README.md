@@ -20,6 +20,11 @@ light/dark theme settings.*
 
 ## What Blueprint provides
 
+- **Global and workspace libraries.** Browse registered projects and the current profile's
+  global library in one selector. Save a reusable definition globally; select a workspace before
+  executing it. Discovery does not create project directories.
+- **Conversation plans.** Create, reference and edit a saved plan before starting a Run. Plan
+  cards persist across refresh and link to the actual Run when execution starts.
 - **Typed graph editing.** Data edges require matching port types, data cycles are rejected, and
   control edges drive conditions, approvals and joins. Layout, pinning, grouping and port
   visibility change presentation only; they never change execution.
@@ -36,6 +41,8 @@ light/dark theme settings.*
   Model routes and downstream values are checked when the Attempt runs.
 - **Portable workflow packages.** Export and import a ZIP with the definition and the custom
   resources it declares. Credentials and machine-specific settings become target bindings.
+- **Parameterized templates.** Share templates with package files, prepare an instance for a
+  selected workspace, and resolve missing inputs from project evidence before execution.
 - **Optional TeamStage.** Run one Agent task as a native DSH Agent Teams stage with durable task,
   member and artifact facts.
 
@@ -54,17 +61,17 @@ light/dark theme settings.*
 Install the published package into the same profile that serves your DSH Web UI:
 
 ```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.8.1
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.9.0
 ```
 
 Restart that profile and refresh the DSH page. Replace `web` with the profile you use. A new custom
 profile contains only the base bundle and does not include the Web application.
 
-Release `0.8.1` targets the DSH `next` capability channel, with development and harness dependencies
+Release `0.9.0` targets the DSH `next` capability channel, with development and harness dependencies
 pinned to `0.2.1-rc.2` and a public runtime peer floor of `>=0.2.1-alpha.5`. Keep DSH packages within
 one profile on the same channel. See [Development](#development) for a linked checkout build.
 
-**Compatibility break since 0.7.0.** Release `0.8.1` uses definition schema v2. Definitions saved by the
+**Compatibility break since 0.7.0.** Release `0.9.0` uses definition schema v2. Definitions saved by the
 published `0.6.1` package (schema v1, including the removed `toolCall`, `scriptCall`, `subflow` and
 `iteration` nodes) are rejected with `blueprint/definition-invalid` and cannot be opened or run.
 Use the [Blueprint migration Skill](../xuanling-skills/skills/xuanling-blueprint-migrate/SKILL.md)
@@ -74,21 +81,24 @@ Migration is manual; installing the new package does not rewrite definitions or 
 TeamStage additionally requires the native Agent Teams profile to be enabled explicitly.
 
 
-The default configuration resolves the default workspace through DSH's workspace controller.
-Definitions live in `<workspace>/.xuanling/workflows`; Run records live in
-`<workspace>/.xuanling/runs`. For a headless profile without that controller, set an absolute
-`workspaceRoot` in this plugin's configuration. Definition operations report
-`blueprint/capability-unavailable` when no workspace can be resolved. `runtimeRoot` can override
-Run storage independently; it does not select the definition library.
+The sidebar groups the current profile's global library and registered workspace libraries.
+Project definitions live in `<workspace>/.xuanling/workflows`; Run records normally live in
+`<workspace>/.xuanling/runs`. Discovery is read-only. A missing project library is created on an
+explicit save, and an unavailable workspace is reported separately.
 
-Conversation tools and conversation Blueprint views follow the calling session's workspace: the
-Host resolves the registered DSH workspace that owns the session (child step sessions fall back to
-the registered workspace containing their cwd) and reads or writes that workspace's `.xuanling`
-data. This covers definition operations, Run history pagination, archive/restore and recovery for
-conversation-created Runs. An unregistered cwd never becomes a definition root. Calls the Host
-cannot attribute (an unregistered cwd, or a profile without the Workspace registry) fall back to
-the Host default workspace. The sidebar editor, which is not tied to a session, still uses the Host
-default workspace. An explicit `workspaceRoot` pins every call to that root.
+Global storage uses `globalLibraryRoot` when configured, otherwise the Host profile directory
+at `data/xuanling-blueprint/library-v2`. Without a trusted profile root, global operations report
+`blueprint/library-unavailable`. Saving or inspecting a global plan never initializes a default
+workspace. Execution requires a registered target workspace and reports
+`blueprint/workspace-required` when none is selected. Global assets are prepared as project
+instances before they run.
+
+Conversation tools and views follow the calling session's registered workspace, including
+child sessions whose cwd belongs to that workspace. Calls without an attributable workspace
+default to the global library for definition operations; a raw cwd cannot grant execution access.
+An explicit `workspaceRoot` constrains execution to that project and supplies the default project
+library for headless profiles. `runtimeRoot` overrides Run storage independently and does not
+change the execution cwd or library selection.
 
 Conversation `workflow_apply`, `workflow_revert`, `blueprint_start` and `workflow_run` follow
 the calling Session's DSH permission preset. Full access skips human confirmation; Auto uses
@@ -101,8 +111,11 @@ subsequent package files. Old history without a captured closure returns
 `revision-package-unavailable`. If a resource restore is interrupted, reads replay its durable
 commit before exposing the document; a blocked replay reports `DEFINITION_COMMIT_PENDING`.
 
-New Run records use record schema 2. Valid markerless and record-v1 records with current frozen
+New Run records use record schema 3, including frozen asset and target-workspace context.
+Valid markerless, record-v1 and record-v2 records with current frozen
 definitions remain readable and upgrade on write; frozen definition-v1 Runs remain lazy archives.
+Older runtimes do not support the new records. Retain a pre-upgrade backup of the profile data,
+project `.xuanling` directories and any custom storage roots for rollback.
 Interrupted binding admission requires recovery and never dispatches with a new Host snapshot.
 On POSIX, durable writers fsync files and changed parent directories. On Windows, Node has no
 portable directory fsync: file contents are flushed, but power-loss persistence of directory
@@ -110,9 +123,21 @@ entries has no equivalent guarantee. Host Agent presets backed by readable docum
 content digest in binding facts; opaque presets are pinned by identity only, so Host-side prompt
 or body changes that keep the same preset id are not detected as binding drift.
 
+Workspace write coordination uses the real project root, including when Runs use different
+`runtimeRoot` values. Business tools are conservatively serialized, and pre-tool checks reject
+observed file conflicts. An unresolved write intent blocks later writes until recovery confirms
+that the external work has stopped. This is advisory coordination, with no atomic protection
+against arbitrary external writers or per-tool preimage guarantee inside TeamStage.
+
+Template preparation records bounded file evidence and substitutes explicit parameters. It does
+not automatically generalize arbitrary project prose or select every Agent, Skill and model.
+Review template parameters and residual notes before sharing. Large-library pagination, the
+complete native desktop journey and current real-provider acceptance remain unverified.
+
 ## First workflow
 
-1. Open **XuanLing Blueprint** in the DSH sidebar and click **New**. Name the draft. An empty
+1. Open **XuanLing Blueprint** in the DSH sidebar, select a registered workspace, and click
+   **New**. Name the draft. An empty
    library opens a draft automatically; creating or saving a blueprint does not run it.
 2. Drag **Input**, **Agent task** and **Output** from the node library onto the canvas.
    Double-clicking empty space also opens node search.

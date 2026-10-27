@@ -234,8 +234,8 @@ export async function runConversationBrowser({ page, gateway, fixture, profile, 
 
     await view(scene.plainSessionId)
     const emptyCopies = [
-      '当前对话未关联蓝图，暂无实时蓝图可显示。',
-      'This conversation has no linked blueprint. No live blueprint is available to display.',
+      '当前对话暂无蓝图运行。可以新建或引用蓝图，保存方案后开始运行。',
+      'This conversation has no blueprint runs. Create or use a blueprint, then run the saved plan.',
     ]
     const unavailableCopies = [
       '暂时无法加载实时蓝图，请稍后刷新。',

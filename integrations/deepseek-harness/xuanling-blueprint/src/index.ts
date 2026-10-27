@@ -1,3 +1,5 @@
+import { WorkspaceWriteLease, WorkspaceWriteError } from './service/workspace-write-lease.ts'
+import type { AssociateDefinitionArgs } from './conversation/association-contracts.ts'
 import { loadPackagedReference } from './portability/packaged-reference.ts'
 /** Host-owned document/catalog and durable runtime entry. Public DTOs contain
  * logical IDs only; machine roots are resolved exclusively from configuration.
@@ -64,7 +66,7 @@ import {
 import { freezeBlueprintClosure, type AdmissionPackage } from './service/composition-admission.ts'
 import type { HostResourceCatalogValue } from './host/resource-catalog.ts'
 import { RuntimeSnapshots, createHostResourceProvider } from './resources/runtime-snapshots.ts'
-import { type RunRecord } from './persistence/records.ts'
+import { TERMINAL_RUN_STATES, type RunRecord } from './persistence/records.ts'
 import {
   DecisionConflictError,
   RunNotFoundError,
@@ -85,11 +87,28 @@ import {
 import { TYPERT } from './typert.host.ts'
 import { admitResources } from './security/resource-admission.ts'
 import { decodeDefinition, validateDefinition } from './definition/index.ts'
-import { isLogicalWorkflowId } from './definition/library.ts'
+import { canonicalJson } from './definition/document.ts'
+import { createdBlueprintId, isLogicalWorkflowId } from './definition/library.ts'
 import { openBlueprintDomain, RunQuery, RunStore, WriterLease, DurabilityFailureError } from './persistence/index.ts'
 import { RunReadService } from './service/run-read-service.ts'
 import { BlueprintDocumentLibrary } from './service/document-library.ts'
 import { BlueprintDefinitionUseCases } from './service/definition-use-cases.ts'
+import { BlueprintLibraryResolver, workspaceEntries, type ExecutionTarget } from './service/library-resolver.ts'
+import {
+  associationIdFor,
+  associationView,
+  ConversationAssociationStore,
+  type AssociationIntent,
+  type AssociationView
+} from './conversation/association-store.ts'
+import { resourceContextFor, scopeForSession } from './host/resource-context.ts'
+import { importedAgentPath, listAgentDocuments, readAgentDocument, type AgentDocumentSummary } from './host/agent-documents.ts'
+import { assertStoragePath } from './persistence/durable-fs.ts'
+import { applyTemplateParameters, extractTemplate } from './templates/extraction.ts'
+import { discoverProject, preparationId } from './templates/preparation.ts'
+import { BlueprintTemplateStore } from './templates/store.ts'
+import { preparationManifestCodec, type BlueprintTemplate, type PreparationManifest, type TemplateSummary } from './templates/contracts.ts'
+import { libraryKey, type AssetRef, type LibraryRef, type ListBlueprintLibrariesValue } from './definition/library-ref.ts'
 import { ApplyService, WORKFLOW_HOST_APPROVAL, type WorkflowApplyResult, type WorkflowCandidate } from './service/apply-service.ts'
 import { BlueprintPortabilityUseCases } from './service/portability-use-cases.ts'
 import { RunExecutionService } from './service/run-execution.ts'
@@ -100,7 +119,7 @@ import { toolsetBindingDigest } from './service/binding-facts.ts'
 import { reconcile, reconcileOnStart, RecoveryStaleError } from './orchestration/index.ts'
 import { IllegalTransitionError } from './orchestration/state.ts'
 import { createHash, randomUUID } from 'node:crypto'
-import { existsSync, readFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, readFileSync, readdirSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { TeamNativeAdapter, TeamCapabilityUnavailableError, TeamIdentityUnavailableError, type LeadHandle } from './teamstage/native-adapter.ts'
@@ -118,7 +137,7 @@ export * from './teamstage/index.ts'
 
 /** Build metadata surfaced through `ping` for install diagnostics. */
 export const PLUGIN_NAME = '@xuanling-rs/xuanling-dsh-blueprint'
-export const PLUGIN_VERSION = '0.8.1'
+export const PLUGIN_VERSION = '0.9.0'
 const DEFAULT_MAX_QUEUED_TOOL_RUNS = 8
 
 export interface PingValue {
@@ -131,7 +150,7 @@ export interface ValidateArgs {
   definitionJson: string
 }
 
-export interface StartRunArgs {
+export interface StartRunArgs extends LibrarySelection {
   blueprintId: string
   expectedRevision: string
   inputJson: string
@@ -150,6 +169,12 @@ export interface BlueprintConfig {
    * `<workspaceRoot>/.xuanling/workflows/<blueprintId>/blueprint.json`.
    */
   workspaceRoot?: string
+  /** Profile-global blueprint library root. Resolved from the Host profile
+   * data root when absent; never from cwd or the install directory. */
+  globalLibraryRoot?: string
+  /** Profile-scoped conversation association namespace. Derived beside the
+   * global library root when absent. */
+  associationRoot?: string
   runtimeRoot?: string
   /** Maximum ordinary graph nodes in flight within one Run; defaults to 4. */
   maxConcurrentNodes?: number
@@ -165,19 +190,26 @@ export interface BlueprintConfig {
   /** Native subagent registry routes, separate from the LLM provider. */
   teamProviders?: TeamProviders
 }
-export interface DeleteDefinitionArgs {
+export interface DeleteDefinitionArgs extends LibrarySelection {
   blueprintId: string
   expectedRevision: string
   requestId: string
 }
-export interface LoadDefinitionArgs {
+export interface LibrarySelection {
+  /** Logical library. Omitted means the request's default library (Host
+   * constraint, caller Workspace, Host default or profile-global). */
+  library?: LibraryRef | undefined
+  /** Explicit execution target. Valid only where execution is allowed. */
+  workspaceId?: string | undefined
+}
+export interface LoadDefinitionArgs extends LibrarySelection {
   blueprintId: string
 }
-export interface CreateDefinitionArgs {
+export interface CreateDefinitionArgs extends LibrarySelection {
   requestId: string
   definitionJson: string
 }
-export interface SaveDefinitionArgs {
+export interface SaveDefinitionArgs extends LibrarySelection {
   blueprintId: string
   definitionJson: string
   expectedRevision: string | null
@@ -192,6 +224,11 @@ export interface InspectRunArgs {
 /** Workspace root of the conversation that issued the current call, when the
  * Host can attribute it. Explicit `workspaceRoot` config still wins. */
 const CALLER_WORKSPACE = new AsyncLocalStorage<string>()
+const CALLER_SESSION = new AsyncLocalStorage<string>()
+/** Library selected by the current logical request. It keeps nested document,
+ * preflight and runtime reads on the same library without re-deriving a
+ * default from the process or a stale selection. */
+const CALLER_LIBRARY = new AsyncLocalStorage<LibraryRef>()
 
 export interface CancelRunArgs {
   runId: string
@@ -199,6 +236,8 @@ export interface CancelRunArgs {
 
 /** Human resolution of a `recovery_required` Run. Never replays work. */
 export interface ResolveRecoveryArgs {
+  workspaceId?: string
+  workspaceQuiescent?: boolean
   runId: string
   /** Scopes a conversation-created Run to the caller's registered Workspace;
    * the canvas omits it and keeps the Host default Workspace. */
@@ -223,11 +262,11 @@ export interface DecideArgs {
   action: string
 }
 
-export interface ExportDefinitionArgs {
+export interface ExportDefinitionArgs extends LibrarySelection {
   blueprintId: string
 }
 
-export interface ImportDefinitionArgs {
+export interface ImportDefinitionArgs extends LibrarySelection {
   blueprintId: string
   archiveBase64: string
 }
@@ -244,6 +283,23 @@ interface InternalHostProbeArgs {
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap {
+    'blueprint/workspace-required': Record<string, never>
+    'blueprint/workspace-unavailable': { readonly workspaceId: string }
+    'blueprint/workspace-mismatch': { readonly workspaceId: string }
+    'blueprint/library-unavailable': { readonly kind: string }
+    'blueprint/library-invalid': { readonly reason: string }
+    'blueprint/asset-not-found': { readonly blueprintId: string }
+    'blueprint/instance-required': { readonly blueprintId: string }
+    'blueprint/association-pending': { readonly associationId: string }
+    'blueprint/association-unavailable': Record<string, never>
+    'blueprint/intent-invalid': Record<string, never>
+    'blueprint/template-invalid': { readonly reason: string }
+    'blueprint/preparation-stale': { readonly preparationId: string }
+    'blueprint/binding-required': { readonly bindingId: string }
+    'blueprint/discovery-incomplete': { readonly reason: string }
+    'blueprint/workspace-write-busy': { readonly workspaceId: string }
+    'blueprint/workspace-conflict': { readonly path: string }
+    'blueprint/unsupported-version': { readonly object: string; readonly version: string }
     'blueprint/capability-unavailable': {
       readonly method: string
       readonly plugin: string
@@ -400,18 +456,25 @@ export class BlueprintService extends TypertRemoteService {
   /** Handles whose writer lease was lost and that are settling before close. */
   private readonly retiring = new Set<Promise<void>>()
   private closing = false
+  private readonly libraries: BlueprintLibraryResolver
   private readonly documents: BlueprintDocumentLibrary
   private readonly definitions: BlueprintDefinitionUseCases
   private readonly portability: BlueprintPortabilityUseCases
   private readonly applyService: ApplyService
   private readonly teamObservations = new TeamStageObservations()
   private readonly execution: RunExecutionService
+  private associations: ConversationAssociationStore | undefined
+  private templateStoreInstance: BlueprintTemplateStore | undefined
 
   constructor(
     ctx: Context,
     private readonly config: BlueprintConfig = {}
   ) {
     super(ctx, 'blueprint', { namespace: 'blueprint' })
+    // Keep the live Host configuration object: existing Hosts and fixtures may
+    // change the configured root between requests, and the resolver must observe
+    // the same value as runtime/portability.
+    this.libraries = new BlueprintLibraryResolver({ ctx: this.ctx, config })
     this.documents = new BlueprintDocumentLibrary({
       managedRoot: () => this.workspaceWorkflowRoot(),
       decodeDefinition: definitionJson => this.decodeOrThrow(definitionJson),
@@ -449,6 +512,14 @@ export class BlueprintService extends TypertRemoteService {
       portabilityFailure: (method, error) => this.portabilityFailure(method, error)
     })
     this.execution = new RunExecutionService({
+      workspaceForRun: record => {
+        const identity = record.context?.targetWorkspace ?? undefined
+        const target = identity === undefined ? this.libraries.configuredTarget() : this.libraries.resolveTarget(identity.workspaceId)
+        if (target === undefined) return undefined
+        const root = realpathSync(target.root)
+        if (identity !== undefined && createHash('sha256').update(root).digest('hex') !== identity.rootFingerprint) throw new Error('workspace-mismatch')
+        return root
+      },
       ctx: this.ctx,
       config: {
         ...(config.maxConcurrentNodes === undefined ? {} : { maxConcurrentNodes: config.maxConcurrentNodes }),
@@ -680,9 +751,26 @@ export class BlueprintService extends TypertRemoteService {
   private hostWorkspaceRoot: string | undefined
   private resolvingWorkspace: Promise<void> | undefined
 
+  /** Root of the library selected for this logical request. */
+  private currentLibraryRoot(): string | undefined {
+    const selected = CALLER_LIBRARY.getStore()
+    if (selected !== undefined) {
+      try {
+        return this.libraries.resolveLibrary(selected).root
+      } catch {
+        return undefined
+      }
+    }
+    const configured = this.libraries.configuredTarget()
+    if (configured !== undefined) return resolve(configured.root, '.xuanling', 'workflows')
+    const caller = CALLER_WORKSPACE.getStore()
+    if (caller !== undefined) return resolve(caller, '.xuanling', 'workflows')
+    if (this.hostWorkspaceRoot !== undefined) return resolve(this.hostWorkspaceRoot, '.xuanling', 'workflows')
+    return this.libraries.globalRoot()
+  }
+
   private workspaceWorkflowRoot(): string | undefined {
-    const root = this.config.workspaceRoot ?? CALLER_WORKSPACE.getStore() ?? this.hostWorkspaceRoot
-    return root ? resolve(root, '.xuanling', 'workflows') : undefined
+    return this.currentLibraryRoot()
   }
 
   /**
@@ -736,13 +824,18 @@ export class BlueprintService extends TypertRemoteService {
   /** Run `action` against the Workspace of the calling conversation; falls
    * back to the Host default Workspace when it cannot be attributed. */
   async withSessionWorkspace<T>(sessionId: string | undefined, action: () => Promise<T>, cwd?: string): Promise<T> {
-    if (CALLER_WORKSPACE.getStore() !== undefined) return await action()
+    const scopedAction = () => (sessionId === undefined ? action() : CALLER_SESSION.run(sessionId, action))
+    if (CALLER_WORKSPACE.getStore() !== undefined) return await scopedAction()
     const root = this.sessionWorkspaceRoot(sessionId, cwd)
-    return root === undefined ? await action() : await CALLER_WORKSPACE.run(root, action)
+    return root === undefined ? await scopedAction() : await CALLER_WORKSPACE.run(root, scopedAction)
   }
 
-  private async ensureWorkspace(): Promise<void> {
-    if (this.workspaceWorkflowRoot() !== undefined) return
+  /** Resolve the Host default Workspace lazily. Unlike the old
+   * `ensureWorkspace`, an absent default is not an error: document operations
+   * fall back to the profile-global library, while execution requires an
+   * explicit target. */
+  private async resolveHostWorkspace(): Promise<string | undefined> {
+    if (this.hostWorkspaceRoot !== undefined) return this.hostWorkspaceRoot
     const controller = this.ctx.get('workspaceController' as never) as unknown as
       | {
           initializeDefault(signal: AbortSignal): Promise<{ workspace: { path: string } } | undefined>
@@ -764,12 +857,326 @@ export class BlueprintService extends TypertRemoteService {
       this.resolvingWorkspace = undefined
     })
     await this.resolvingWorkspace
-    if (this.workspaceWorkflowRoot() === undefined)
-      throw new RemoteError('blueprint/capability-unavailable', 'Host workspace unavailable; configure workspaceRoot.', {
-        method: 'workspace',
-        plugin: PLUGIN_NAME,
-        version: PLUGIN_VERSION
+    return this.hostWorkspaceRoot
+  }
+
+  private templateStore(): BlueprintTemplateStore {
+    this.templateStoreInstance ??= new BlueprintTemplateStore(this.libraries.globalRoot())
+    return this.templateStoreInstance
+  }
+
+  /** Extract a reusable template from the saved revision. The source package
+   * is only read; extraction never rewrites the asset. */
+  async extractTemplate(args: {
+    blueprintId: string
+    documentRevision?: string
+    requestId: string
+    library?: LibraryRef
+  }): Promise<{ template: BlueprintTemplate; portable: boolean; residual: string[]; sourceDigest: string; templateDigest: string }> {
+    return await this.withLibrary(args.library, async () => {
+      const library = (await this.defaultLibrary()) as LibraryRef
+      const root = this.blueprintRoot(args.blueprintId)
+      const current = this.documents.loadConfigured(args.blueprintId, root)
+      const revision = args.documentRevision ?? current.documentRevision
+      let snapshot
+      try {
+        snapshot =
+          revision === current.documentRevision
+            ? this.documents.loadConfiguredPackage(args.blueprintId, root)
+            : this.documents.loadRevisionPackage(args.blueprintId, root, revision)
+      } catch (error) {
+        if (error instanceof RemoteError) throw error
+        throw new RemoteError('blueprint/revision-not-found', 'revision not found', { blueprintId: args.blueprintId, revision })
+      }
+      const definition = this.decodeOrThrow(snapshot.document.definitionJson)
+      const hints: string[] = []
+      if (library.kind === 'workspace') {
+        const resolved = this.libraries.resolveLibrary(library)
+        hints.push(resolved.title)
+        const workspacePath = resolved.root === undefined ? undefined : resolve(resolved.root, '..', '..')
+        if (workspacePath !== undefined) {
+          hints.push(workspacePath)
+          // Manifest identities are observed project facts, not guesses. They
+          // catch names such as an npm/Cargo package that differ from the title.
+          for (const entry of discoverProject(workspacePath)) {
+            if (entry.kind !== 'manifest' || entry.status !== 'observed') continue
+            const name = /^(?:package|cargo):(.+)$/.exec(entry.value)?.[1]
+            if (name !== undefined && name !== 'unknown') hints.push(name)
+          }
+        }
+      }
+      const extracted = extractTemplate(definition, {
+        sourceAsset: { library, blueprintId: args.blueprintId },
+        sourceRevision: revision,
+        files: snapshot.files,
+        residualHints: hints,
+        extractedAt: new Date().toISOString()
       })
+      return extracted
+    })
+  }
+
+  listTemplates(): TemplateSummary[] {
+    return this.templateStore().list()
+  }
+
+  loadTemplate(args: { templateId: string }): BlueprintTemplate {
+    return this.templateStore().load(args.templateId)
+  }
+
+  saveTemplate(args: { template: BlueprintTemplate; requestId: string }): { template: BlueprintTemplate; updatedAt: string } {
+    const stored = this.templateStore().save(args.template, args.requestId)
+    return stored
+  }
+
+  /** Instantiate a template into a registered project. Missing required
+   * parameters return `needs_input` with a durable preparation manifest; a
+   * completed instantiation publishes a concrete v2 definition, never the
+   * template itself. */
+  async instantiateTemplate(args: { templateId: string; workspaceId: string; requestId: string; parameters: Record<string, string> }): Promise<{
+    status: 'needs_input' | 'ready'
+    manifest: PreparationManifest
+    instance: { asset: AssetRef; documentRevision: string; documentDigest: string } | null
+  }> {
+    const target = this.libraries.resolveTarget(args.workspaceId)
+    const library: LibraryRef = { kind: 'workspace', workspaceId: target.workspaceId }
+    return await this.withLibrary(
+      library,
+      async () =>
+        await this.withTarget(target, async () => {
+          const template = this.templateStore().load(args.templateId)
+          const facts = discoverProject(target.root)
+          const unresolved: string[] = []
+          const bindings: PreparationManifest['bindings'] = []
+          const values: Record<string, string> = {}
+          for (const parameter of template.parameters) {
+            const supplied = args.parameters[parameter.key]
+            if (supplied !== undefined && supplied.length > 0) {
+              values[parameter.key] = supplied
+              bindings.push({ key: parameter.key, value: supplied, status: 'resolved' })
+            } else if (parameter.default !== undefined) {
+              values[parameter.key] = parameter.default
+              bindings.push({ key: parameter.key, value: parameter.default, status: 'defaulted' })
+            } else if (parameter.required) {
+              unresolved.push(parameter.key)
+              bindings.push({ key: parameter.key, value: '', status: 'missing' })
+            }
+          }
+          const blueprintId = createdBlueprintId(JSON.stringify([args.requestId, args.templateId, target.workspaceId]))
+          values.id = blueprintId
+          const applied = applyTemplateParameters(template.pattern, values)
+          for (const key of applied.missing) if (!unresolved.includes(key)) unresolved.push(key)
+          const manifestId = preparationId(args.templateId, target.workspaceId, args.requestId)
+          const preparationRoot = join(target.root, '.xuanling', 'preparations')
+          if (unresolved.length > 0) {
+            const manifest = BlueprintTemplateStore.writeManifest(preparationRoot, {
+              schemaVersion: 1,
+              preparationId: manifestId,
+              target: { workspaceId: target.workspaceId },
+              templateId: args.templateId,
+              facts,
+              bindings,
+              unresolved: unresolved.sort(),
+              generated: null,
+              status: 'needs_input',
+              revision: 1
+            })
+            return { status: 'needs_input', manifest, instance: null }
+          }
+          const candidate = this.decodeOrThrow(JSON.stringify(applied.definition))
+          this.checkResources(candidate)
+          const missingFileParameters = new Set<string>()
+          const files = (template.files ?? []).map(file => {
+            const bytes = Buffer.from(file.base64, 'base64')
+            if (bytes.toString('base64') !== file.base64 || createHash('sha256').update(bytes).digest('hex') !== file.digest)
+              throw new RemoteError('blueprint/template-invalid', 'template file integrity failed', { reason: 'file-digest' })
+            const appliedPath = applyTemplateParameters(file.path, values)
+            for (const key of appliedPath.missing) missingFileParameters.add(key)
+            const text = bytes.toString('utf8')
+            const appliedText = Buffer.from(text).equals(bytes) ? applyTemplateParameters(text, values) : undefined
+            for (const key of appliedText?.missing ?? []) missingFileParameters.add(key)
+            return { path: appliedPath.definition as string, text: appliedText === undefined ? bytes : Buffer.from(appliedText.definition as string) }
+          })
+          const catalog = (await this.listResources({ library, workspaceId: target.workspaceId })).resources
+          const missingHost = Object.entries(candidate.resources)
+            .filter(
+              ([, ref]) =>
+                ref.source?.kind === 'host' &&
+                !catalog.some(item => item.kind === ref.kind && item.id === (ref.source as { id: string }).id && item.availability === 'available')
+            )
+            .map(([key]) => `host-resource:${key}`)
+          const missingClosure = Object.entries(candidate.resources)
+            .filter(([, ref]) => {
+              const path = ref.path ?? (ref.source?.kind === 'package' ? ref.source.path : undefined)
+              return path !== undefined && !files.some(file => file.path === path || file.path.startsWith(`${path}/`))
+            })
+            .map(([key]) => `package-file:${key}`)
+          const missingShared: string[] = []
+          for (const [key, ref] of Object.entries(candidate.resources)) {
+            if (ref.source?.kind !== 'shared') continue
+            try {
+              await resolveResource(key, { kind: ref.kind, source: ref.source }, { blueprintRoot: target.root, roots: this.config.skillRoots ?? [] })
+            } catch {
+              missingShared.push(`shared-resource:${key}`)
+            }
+          }
+          if (missingClosure.length || missingHost.length || missingShared.length || missingFileParameters.size) {
+            const manifest = BlueprintTemplateStore.writeManifest(preparationRoot, {
+              schemaVersion: 1,
+              preparationId: manifestId,
+              target: { workspaceId: target.workspaceId },
+              templateId: args.templateId,
+              facts,
+              bindings,
+              unresolved: [...missingClosure, ...missingHost, ...missingShared, ...missingFileParameters].sort(),
+              generated: null,
+              status: 'needs_input',
+              revision: 1
+            })
+            return { status: 'needs_input', manifest, instance: null }
+          }
+          const targetLibraryRoot = this.libraries.writableRoot(library, true)
+          const documentRoot = this.documents.libraryDocumentRoot(targetLibraryRoot, blueprintId)
+          if (documentRoot === undefined) throw new RemoteError('blueprint/library-invalid', 'template target escaped the library', { reason: 'path-escape' })
+          return await this.documents.withDocument(
+            documentRoot,
+            async () => {
+              // Idempotent retry: the target id is deterministic per request. An
+              // existing identical instance returns its receipt; changed parameters
+              // conflict instead of republishing or starting over.
+              const existingLibraryRoot = this.libraries.resolveLibrary(library).root
+              const existingDocumentRoot = existingLibraryRoot === undefined ? undefined : this.documents.libraryDocumentRoot(existingLibraryRoot, blueprintId)
+              if (existingDocumentRoot !== undefined && existsSync(join(existingDocumentRoot, 'blueprint.json'))) {
+                const existingPackage = this.documents.loadConfiguredPackage(blueprintId, existingDocumentRoot)
+                const existing = existingPackage.document
+                const existingDefinition = this.decodeOrThrow(existing.definitionJson)
+                if (
+                  canonicalJson(existingDefinition) !== canonicalJson(candidate) ||
+                  existingPackage.files.size !== files.length ||
+                  files.some(file => !existingPackage.files.get(file.path)?.equals(file.text))
+                ) {
+                  throw new RemoteError('blueprint/revision-conflict', 'template parameters conflict with the admitted instance', {
+                    blueprintId,
+                    expectedRevision: null,
+                    actualRevision: existing.documentRevision
+                  })
+                }
+                BlueprintTemplateStore.linkInstance(preparationRoot, blueprintId, manifestId)
+                const digest = createHash('sha256').update(existing.definitionJson).digest('hex')
+                const manifest = BlueprintTemplateStore.writeManifest(preparationRoot, {
+                  schemaVersion: 1,
+                  preparationId: manifestId,
+                  target: { workspaceId: target.workspaceId },
+                  templateId: args.templateId,
+                  facts,
+                  bindings,
+                  unresolved: [],
+                  generated: { definitionDigest: digest, instanceAsset: { library, blueprintId } },
+                  status: 'ready',
+                  revision: 1
+                })
+                return {
+                  status: 'ready',
+                  manifest,
+                  instance: { asset: { library, blueprintId }, documentRevision: existing.documentRevision, documentDigest: digest }
+                }
+              }
+              BlueprintTemplateStore.linkInstance(preparationRoot, blueprintId, manifestId)
+              const saved = this.documents.publishPackage(documentRoot, candidate, files)
+              const manifest = BlueprintTemplateStore.writeManifest(preparationRoot, {
+                schemaVersion: 1,
+                preparationId: manifestId,
+                target: { workspaceId: target.workspaceId },
+                templateId: args.templateId,
+                facts,
+                bindings,
+                unresolved: [],
+                generated: {
+                  definitionDigest: createHash('sha256').update(saved.definitionJson).digest('hex'),
+                  instanceAsset: { library, blueprintId: saved.blueprintId }
+                },
+                status: 'ready',
+                revision: 1
+              })
+              return {
+                status: 'ready',
+                manifest,
+                instance: {
+                  asset: { library, blueprintId: saved.blueprintId },
+                  documentRevision: saved.documentRevision,
+                  documentDigest: manifest.generated!.definitionDigest
+                }
+              }
+            },
+            true
+          )
+        })
+    )
+  }
+
+  /** Durable conversation plan store, rooted beside the global library. */
+  private associationStore(): ConversationAssociationStore {
+    if (this.associations !== undefined) return this.associations
+    // Direct prototype fixtures may omit constructor-owned fields.
+    const config = this.config as BlueprintConfig | undefined
+    let root = config?.associationRoot
+    if (root === undefined) {
+      const profile = this.libraries?.globalRoot()
+      if (profile !== undefined) root = resolve(dirname(profile), 'associations-v1')
+    }
+    this.associations = new ConversationAssociationStore(root === undefined ? undefined : resolve(root))
+    return this.associations
+  }
+
+  /** Default library for a logical request. Explicit Host configuration wins,
+   * then the caller session Workspace, then the Host default Workspace, then
+   * the profile-global library. A raw cwd never becomes a library root. */
+  private async defaultLibrary(): Promise<LibraryRef> {
+    const selected = CALLER_LIBRARY.getStore()
+    if (selected !== undefined) return selected
+    if (this.config.workspaceRoot !== undefined) return { kind: 'workspace', workspaceId: this.libraries.configuredTarget()!.workspaceId }
+    const caller = CALLER_WORKSPACE.getStore()
+    if (caller !== undefined) return this.libraries.defaultLibrary(caller)
+    return { kind: 'global' }
+  }
+
+  /** Run an action in the selected library. Unknown or mismatched workspace
+   * identities fail before any document or runtime effect. */
+  private async withLibrary<T>(library: LibraryRef | undefined, action: () => Promise<T>): Promise<T> {
+    const selected = library ?? (await this.defaultLibrary())
+    const resolved = this.libraries.resolveLibrary(selected)
+    if (resolved.root === undefined)
+      throw new RemoteError('blueprint/library-unavailable', 'library root is unavailable', {
+        kind: selected.kind === 'global' ? 'global' : 'workspace'
+      })
+    if (selected.kind === 'workspace' && resolved.root !== undefined) {
+      // Document reads/writes may create the library on an explicit save, but
+      // they never require the workspace directory to pre-exist. Execution
+      // separately requires a resolvable target.
+      const workspaceRoot = resolve(resolved.root, '..', '..')
+      return await CALLER_LIBRARY.run(selected, () => CALLER_WORKSPACE.run(workspaceRoot, action))
+    }
+    return await CALLER_LIBRARY.run(selected, action)
+  }
+
+  /** Run an action against an explicit execution target. Used by run admission
+   * so the runtime root and every read stay on the selected Workspace. */
+  private async withTarget<T>(target: ExecutionTarget, action: () => Promise<T>): Promise<T> {
+    return await CALLER_WORKSPACE.run(target.root, action)
+  }
+
+  /** Route a Run read or lifecycle action to an explicit workspace when one is
+   * selected, otherwise to the caller session's Workspace. */
+  private async withRunTarget<T>(
+    args: { workspaceId?: string | undefined; sessionId?: string | undefined },
+    action: () => Promise<T>,
+    cwd?: string
+  ): Promise<T> {
+    if (args.workspaceId !== undefined) {
+      const target = this.libraries.resolveTarget(args.workspaceId)
+      return await CALLER_LIBRARY.run({ kind: 'workspace', workspaceId: target.workspaceId }, () => CALLER_WORKSPACE.run(target.root, action))
+    }
+    return await this.withSessionWorkspace(args.sessionId, action, cwd)
   }
 
   /** In-process compatibility seam for existing document queue fixtures. The
@@ -819,9 +1226,19 @@ export class BlueprintService extends TypertRemoteService {
     // Canonical workspaces own their runtime beside `workflows`; this keeps
     // the workspace-native directory backend at `.xuanling/runs/<runId>/`.
     if (this.config.workspaceRoot) return resolve(this.config.workspaceRoot, '.xuanling')
-    const derivedWorkflowRoot = this.workspaceWorkflowRoot()
-    if (derivedWorkflowRoot !== undefined) return resolve(derivedWorkflowRoot, '..')
-    if (this.ctx.baseUrl?.startsWith('file:')) return fileURLToPath(new URL('data/xuanling-blueprint/runtime/', this.ctx.baseUrl))
+    const callerRoot = CALLER_WORKSPACE.getStore()
+    if (callerRoot !== undefined) return resolve(callerRoot, '.xuanling')
+    const selected = CALLER_LIBRARY.getStore()
+    if (selected?.kind === 'workspace') {
+      try {
+        return resolve(this.libraries.resolveTarget(selected.workspaceId).root, '.xuanling')
+      } catch {
+        /* fall through to the global/profile runtime */
+      }
+    }
+    const globalRoot = this.libraries.globalRoot()
+    if (globalRoot !== undefined) return resolve(dirname(globalRoot), 'runtime-v2')
+    if (this.ctx.baseUrl?.startsWith('file:')) return fileURLToPath(new URL('data/xuanling-blueprint/runtime-v2/', this.ctx.baseUrl))
     throw new RemoteError('blueprint/capability-unavailable', 'runtime location unavailable', {
       method: 'runtime',
       plugin: PLUGIN_NAME,
@@ -830,13 +1247,6 @@ export class BlueprintService extends TypertRemoteService {
   }
 
   private async configuredRuntime(internalRoot?: string): Promise<RuntimeHandle> {
-    if (
-      internalRoot === undefined &&
-      this.config.runtimeRoot === undefined &&
-      this.config.workspaceRoot === undefined &&
-      (this.ctx.get('workspaceController' as never) || this.ctx.get('workspaceRegistry' as never))
-    )
-      await this.ensureWorkspace()
     const root = internalRoot ?? this.configuredRuntimeRoot()
     try {
       return await this.runtimeFor(root)
@@ -846,87 +1256,233 @@ export class BlueprintService extends TypertRemoteService {
     }
   }
 
-  async listDefinitions(): Promise<{
+  /** Cascade projection of every visible library. Read-only and bounded. */
+  async listBlueprintLibraries(args: { sessionId?: string } = {}): Promise<ListBlueprintLibrariesValue> {
+    return this.withSessionWorkspace(args.sessionId, () => this.listLibrariesInScope())
+  }
+
+  private async listLibrariesInScope(): Promise<ListBlueprintLibrariesValue> {
+    const libraries = this.libraries.list(CALLER_WORKSPACE.getStore())
+    // Browsing is read-only: project the default from explicit context instead
+    // of calling `initializeDefault`, which may create a Host workspace record.
+    const caller = CALLER_WORKSPACE.getStore()
+    const defaultLibrary: LibraryRef =
+      CALLER_LIBRARY.getStore() ??
+      (this.config.workspaceRoot !== undefined
+        ? { kind: 'workspace', workspaceId: this.libraries.configuredTarget()!.workspaceId }
+        : caller !== undefined
+          ? this.libraries.defaultLibrary(caller)
+          : { kind: 'global' })
+    return { libraries, defaultLibrary }
+  }
+
+  async listDefinitions(args: { library?: LibraryRef } = {}): Promise<{
     definitions: Array<{ blueprintId: string; name: string; documentRevision: string | null; semanticRevision: string | null }>
   }> {
-    await this.ensureWorkspace()
-    return await this.definitions.listDefinitions()
+    return await this.withLibrary(args.library, async () => await this.definitions.listDefinitions())
   }
 
   async loadDefinition(args: LoadDefinitionArgs): Promise<DefinitionDocument> {
-    await this.ensureWorkspace()
-    return await this.definitions.loadDefinition(args)
+    return await this.withLibrary(args.library, async () => await this.definitions.loadDefinition(args))
   }
 
   async inspectBlueprintReference(args: BlueprintReferenceArgs): Promise<BlueprintReferenceView> {
     this.checkArgs('inspectBlueprintReference', args)
-    await this.ensureWorkspace()
-    try {
-      if (args.ownerBlueprintId && args.documentRevision) {
-        const ownerRoot = this.blueprintRoot(args.ownerBlueprintId)
-        if (existsSync(join(ownerRoot, 'blueprint.json'))) {
-          const owner = this.documents.loadConfiguredPackage(args.ownerBlueprintId, ownerRoot)
-          const embedded = loadPackagedReference(owner, { blueprintId: args.blueprintId, documentRevision: args.documentRevision })
-          if (embedded) {
-            const definition = this.decodeOrThrow(embedded.document.definitionJson)
-            return blueprintReferenceViewCodec().parse({
-              blueprintId: args.blueprintId,
-              name: definition.name,
-              documentRevision: args.documentRevision,
-              currentRevision: args.documentRevision,
-              revisions: [{ documentRevision: args.documentRevision, createdAt: 0 }],
-              ...blueprintInterface(definition),
-              graph: projectDefinitionGraph(definition),
-              ...(definition.presentation === undefined ? {} : { presentation: definition.presentation })
-            })
+    return await this.withLibrary(args.library, async () => {
+      try {
+        if (args.ownerBlueprintId && args.documentRevision) {
+          const ownerRoot = this.blueprintRoot(args.ownerBlueprintId)
+          if (existsSync(join(ownerRoot, 'blueprint.json'))) {
+            const owner = this.documents.loadConfiguredPackage(args.ownerBlueprintId, ownerRoot)
+            const embedded = loadPackagedReference(owner, { blueprintId: args.blueprintId, documentRevision: args.documentRevision })
+            if (embedded) {
+              const definition = this.decodeOrThrow(embedded.document.definitionJson)
+              return blueprintReferenceViewCodec().parse({
+                blueprintId: args.blueprintId,
+                name: definition.name,
+                documentRevision: args.documentRevision,
+                currentRevision: args.documentRevision,
+                revisions: [{ documentRevision: args.documentRevision, createdAt: 0 }],
+                ...blueprintInterface(definition),
+                graph: projectDefinitionGraph(definition),
+                ...(definition.presentation === undefined ? {} : { presentation: definition.presentation })
+              })
+            }
           }
         }
+        const root = this.blueprintRoot(args.blueprintId)
+        const current = this.documents.loadConfigured(args.blueprintId, root)
+        const documentRevision = args.documentRevision ?? current.documentRevision
+        const snapshot = this.documents.loadRevisionPackage(args.blueprintId, root, documentRevision)
+        const definition = this.decodeOrThrow(snapshot.document.definitionJson)
+        const history = await this.applyService.revisions(args.blueprintId)
+        return blueprintReferenceViewCodec().parse({
+          blueprintId: args.blueprintId,
+          name: definition.name,
+          documentRevision,
+          currentRevision: current.documentRevision,
+          revisions: history.revisions
+            .map(entry => ({ documentRevision: entry.revision, createdAt: entry.createdAt }))
+            .sort((a, b) => b.createdAt - a.createdAt),
+          ...blueprintInterface(definition),
+          graph: projectDefinitionGraph(definition),
+          ...(definition.presentation === undefined ? {} : { presentation: definition.presentation })
+        })
+      } catch (error) {
+        throw new RemoteError(
+          error instanceof BlueprintCompositionError && error.code === 'blueprint-interface-ambiguous'
+            ? 'blueprint/interface-ambiguous'
+            : 'blueprint/reference-unavailable',
+          'Blueprint reference unavailable',
+          { blueprintId: args.blueprintId }
+        )
       }
-      const root = this.blueprintRoot(args.blueprintId)
-      const current = this.documents.loadConfigured(args.blueprintId, root)
-      const documentRevision = args.documentRevision ?? current.documentRevision
-      const snapshot = this.documents.loadRevisionPackage(args.blueprintId, root, documentRevision)
-      const definition = this.decodeOrThrow(snapshot.document.definitionJson)
-      const history = await this.applyService.revisions(args.blueprintId)
-      return blueprintReferenceViewCodec().parse({
-        blueprintId: args.blueprintId,
-        name: definition.name,
-        documentRevision,
-        currentRevision: current.documentRevision,
-        revisions: history.revisions.map(entry => ({ documentRevision: entry.revision, createdAt: entry.createdAt })).sort((a, b) => b.createdAt - a.createdAt),
-        ...blueprintInterface(definition),
-        graph: projectDefinitionGraph(definition),
-        ...(definition.presentation === undefined ? {} : { presentation: definition.presentation })
+    })
+  }
+
+  async associateDefinition(args: AssociateDefinitionArgs): Promise<AssociationView> {
+    this.checkArgs('associateDefinition', args)
+    liveCaller(this.ctx, args.sessionId)
+    return await this.withLibrary(args.asset.library, async () => {
+      const root = this.blueprintRoot(args.asset.blueprintId)
+      return await this.documents.withDocument(root, () => {
+        const document = this.documents.loadConfigured(args.asset.blueprintId, root)
+        if (document.documentRevision !== args.documentRevision)
+          throw this.revisionConflict(args.asset.blueprintId, args.documentRevision, document.documentRevision)
+        const associationId = associationIdFor(args.sessionId, JSON.stringify(args.asset))
+        const current = this.associationStore().get(args.sessionId, associationId)
+        if (current?.documentRevision === document.documentRevision) return associationView(current)
+        return associationView(
+          this.associationStore().put({
+            schemaVersion: 1,
+            associationId,
+            sessionId: args.sessionId,
+            asset: args.asset,
+            name: this.decodeOrThrow(document.definitionJson).name,
+            documentRevision: document.documentRevision,
+            intent: 'design',
+            status: 'saved',
+            runId: null,
+            requestId: JSON.stringify(args.asset),
+            updatedAt: new Date().toISOString()
+          })
+        )
       })
-    } catch (error) {
-      throw new RemoteError(
-        error instanceof BlueprintCompositionError && error.code === 'blueprint-interface-ambiguous'
-          ? 'blueprint/interface-ambiguous'
-          : 'blueprint/reference-unavailable',
-        'Blueprint reference unavailable',
-        { blueprintId: args.blueprintId }
-      )
-    }
+    })
   }
 
   /** First save: request identity makes an uncertain response retryable after restart. */
   async createDefinition(args: CreateDefinitionArgs): Promise<DefinitionDocument> {
-    await this.ensureWorkspace()
-    return await this.definitions.createDefinition(args)
+    return await this.withLibrary(args.library, async () => await this.definitions.createDefinition(args))
   }
 
   async deleteDefinition(args: DeleteDefinitionArgs): Promise<{ blueprintId: string; deleted: true }> {
-    await this.ensureWorkspace()
-    return await this.definitions.deleteDefinition(args)
+    return await this.withLibrary(args.library, async () => await this.definitions.deleteDefinition(args))
   }
 
-  async listResources(): Promise<{ resources: HostResourceCatalogValue[] }> {
-    return await this.definitions.listResources()
+  async listResources(args: { library?: LibraryRef; workspaceId?: string; sessionId?: string } = {}): Promise<{ resources: HostResourceCatalogValue[] }> {
+    const library = args.library ?? (await this.defaultLibrary())
+    const context = resourceContextFor(this.ctx, {
+      ...(args.workspaceId === undefined ? {} : { workspaceId: args.workspaceId }),
+      ...((args.sessionId ?? CALLER_SESSION.getStore()) === undefined ? {} : { sessionId: (args.sessionId ?? CALLER_SESSION.getStore())! }),
+      library,
+      ...(this.config.workspaceRoot === undefined ? {} : { workspaceRoot: this.config.workspaceRoot })
+    })
+    return await this.withLibrary(args.library, async () => await this.definitions.listResources(context.cwd ?? undefined, context.scope ?? undefined))
   }
 
-  async describeBlueprint(blueprintId?: string) {
-    if (blueprintId !== undefined) await this.ensureWorkspace()
-    return await this.definitions.describeBlueprint(blueprintId)
+  /** Read-only Agent Markdown catalog. Paths and raw frontmatter never enter
+   * the response; importing copies bytes into the package. */
+  async listAgentDocuments(args: { library?: LibraryRef; workspaceId?: string; sessionId?: string } = {}): Promise<{ documents: AgentDocumentSummary[] }> {
+    const library = args.library ?? (await this.defaultLibrary())
+    const resolved = this.libraries.resolveLibrary(library)
+    const fallbackCwd = library.kind === 'workspace' && resolved.root !== undefined ? resolve(resolved.root, '..', '..') : undefined
+    const context = resourceContextFor(this.ctx, {
+      ...(args.workspaceId === undefined ? {} : { workspaceId: args.workspaceId }),
+      ...((args.sessionId ?? CALLER_SESSION.getStore()) === undefined ? {} : { sessionId: (args.sessionId ?? CALLER_SESSION.getStore())! }),
+      library,
+      ...(this.config.workspaceRoot === undefined ? {} : { workspaceRoot: this.config.workspaceRoot })
+    })
+    return { documents: listAgentDocuments(context.cwd ?? fallbackCwd ?? null) }
+  }
+
+  /** Copy one Agent Markdown document into the blueprint package as an ordinary
+   * package Agent resource. The source document is never modified. */
+  async importAgentDocument(args: {
+    documentId: string
+    blueprintId: string
+    expectedRevision: string
+    library?: LibraryRef
+    workspaceId?: string
+  }): Promise<{ blueprintId: string; documentRevision: string; resourceId: string; path: string; digest: string }> {
+    return await this.withLibrary(args.library, async () => {
+      const context = resourceContextFor(this.ctx, {
+        ...(args.workspaceId === undefined ? {} : { workspaceId: args.workspaceId }),
+        ...(args.library === undefined ? {} : { library: args.library }),
+        ...(this.config.workspaceRoot === undefined ? {} : { workspaceRoot: this.config.workspaceRoot })
+      })
+      const document = readAgentDocument(args.documentId, context.cwd)
+      if (document === undefined) throw new RemoteError('blueprint/asset-not-found', 'agent document not found', { blueprintId: args.documentId })
+      const root = this.blueprintRoot(args.blueprintId)
+      return await this.documents.withDocument(
+        root,
+        () => {
+          const snapshot = this.documents.loadConfiguredPackage(args.blueprintId, root)
+          const definition = this.decodeOrThrow(snapshot.document.definitionJson)
+          const targetPath = importedAgentPath(document.summary.name, args.documentId)
+          const existingKey = Object.entries(definition.resources).find(([, ref]) => ref.path === targetPath)?.[0]
+          if (existingKey !== undefined) {
+            const bytes = snapshot.files.get(targetPath)
+            const digest = bytes === undefined ? undefined : createHash('sha256').update(bytes).digest('hex')
+            if (digest === document.summary.digest) {
+              return {
+                blueprintId: args.blueprintId,
+                documentRevision: snapshot.document.documentRevision,
+                resourceId: existingKey,
+                path: targetPath,
+                digest
+              }
+            }
+            throw new RemoteError('blueprint/revision-conflict', 'agent document changed', {
+              blueprintId: args.blueprintId,
+              expectedRevision: args.expectedRevision,
+              actualRevision: snapshot.document.documentRevision
+            })
+          }
+          const baseKey = targetPath.slice('agents/'.length, -'.md'.length).replace(/[^A-Za-z0-9._-]+/g, '-')
+          let resourceId = baseKey
+          let suffix = 2
+          while (Object.hasOwn(definition.resources, resourceId)) resourceId = `${baseKey}-${suffix++}`
+          const next = {
+            ...definition,
+            resources: { ...definition.resources, [resourceId]: { kind: 'agent' as const, path: targetPath } }
+          }
+          const validated = this.decodeOrThrow(JSON.stringify(next))
+          this.checkResources(validated)
+          const files = new Map(snapshot.files)
+          files.set(targetPath, Buffer.from(document.content))
+          const saved = this.documents.saveDefinitionDocumentWithHistory(
+            root,
+            validated,
+            args.expectedRevision,
+            { origin: 'canvas', message: 'agent document import' },
+            files
+          )
+          return {
+            blueprintId: args.blueprintId,
+            documentRevision: saved.documentRevision,
+            resourceId,
+            path: targetPath,
+            digest: document.summary.digest
+          }
+        },
+        true
+      )
+    })
+  }
+
+  async describeBlueprint(blueprintId?: string, library?: LibraryRef) {
+    return await this.withLibrary(library, async () => this.definitions.describeBlueprint(blueprintId, () => this.listResources()))
   }
 
   async validateBlueprint(candidate: AuthoringCandidate) {
@@ -934,13 +1490,110 @@ export class BlueprintService extends TypertRemoteService {
   }
 
   async createBlueprint(candidate: AuthoringCandidate, requestId: string, source: RunSource, signal?: AbortSignal): Promise<DefinitionDocument> {
-    await this.ensureWorkspace()
-    return await this.definitions.createBlueprint(candidate, requestId, source, signal)
+    return await this.withLibrary(undefined, async () => await this.definitions.createBlueprint(candidate, requestId, source, signal))
+  }
+
+  /** Conversation authoring receipt (C-04/C-05). A design request stops at a
+   * durable saved plan; an execute request continues through admission or
+   * reports the typed blocker without pretending the plan is complete. */
+  async authorBlueprint(
+    candidate: AuthoringCandidate,
+    requestId: string,
+    source: RunSource,
+    intent: AssociationIntent,
+    workspaceId?: string,
+    signal?: AbortSignal,
+    input?: unknown
+  ): Promise<
+    DefinitionDocument & {
+      association: AssociationView | null
+      intent: AssociationIntent
+      status: string
+      code?: string
+      runId?: string
+      state?: string
+      replayed?: boolean
+    }
+  > {
+    const library = await this.defaultLibrary()
+    return await this.withLibrary(library, async () => {
+      const document = await this.createBlueprint(candidate, requestId, source, signal)
+      const associationId = associationIdFor(source.sessionId, requestId)
+      const existingAssociation = this.associationStore().get(source.sessionId, associationId)
+      let association: AssociationView | null = null
+      try {
+        association = associationView(
+          this.associationStore().put({
+            schemaVersion: 1,
+            associationId,
+            sessionId: source.sessionId,
+            asset: { library, blueprintId: document.blueprintId },
+            name: (() => {
+              try {
+                const parsed = JSON.parse(document.definitionJson) as { name?: unknown }
+                return typeof parsed.name === 'string' ? parsed.name : document.blueprintId
+              } catch {
+                return document.blueprintId
+              }
+            })(),
+            documentRevision: document.documentRevision,
+            intent: existingAssociation?.runId ? existingAssociation.intent : intent,
+            // A design retry must not erase an already linked Run.
+            status: existingAssociation?.runId ? existingAssociation.status : 'saved',
+            runId: existingAssociation?.runId ?? null,
+            requestId,
+            updatedAt: new Date().toISOString()
+          })
+        )
+      } catch {
+        // The document is already durable. A missing association is reported
+        // as a repairable state, not hidden behind a failed create.
+      }
+      if (association === null) return { ...document, association, intent, status: 'association-pending' }
+      if (intent === 'design') return { ...document, association, intent, status: association === null ? 'association-pending' : 'saved' }
+      try {
+        const target = this.resolveExecutionTarget(workspaceId, library)
+        const executionLibrary = this.executionLibrary(target, library)
+        const admitted = await this.startConfiguredRun(
+          {
+            blueprintId: document.blueprintId,
+            expectedRevision: document.documentRevision,
+            inputJson: JSON.stringify(input ?? {}),
+            requestId: `${requestId}-run`,
+            workspaceId: target.workspaceId,
+            library: executionLibrary
+          },
+          source
+        )
+        const stored = this.associationStore().get(source.sessionId, associationIdFor(source.sessionId, requestId))
+        return {
+          ...document,
+          association: stored === undefined ? association : associationView(stored),
+          intent,
+          status: admitted.state,
+          runId: admitted.runId,
+          state: admitted.state,
+          replayed: admitted.replayed
+        }
+      } catch (error) {
+        const code = typeof (error as { code?: unknown }).code === 'string' ? (error as { code: string }).code : 'blueprint/preflight-blocked'
+        try {
+          this.associationStore().setStatus(source.sessionId, associationId, 'blocked')
+        } catch {
+          /* the saved plan and the typed blocker are still returned */
+        }
+        const stored = this.associationStore().get(source.sessionId, associationId)
+        return { ...document, association: stored === undefined ? association : associationView(stored), intent, status: 'blocked', code }
+      }
+    })
   }
 
   async saveDefinition(args: SaveDefinitionArgs): Promise<DefinitionDocument> {
     this.checkArgs('saveDefinition', args)
-    await this.ensureWorkspace()
+    return await this.withLibrary(args.library, async () => this.saveDefinitionInLibrary(args))
+  }
+
+  private async saveDefinitionInLibrary(args: SaveDefinitionArgs): Promise<DefinitionDocument> {
     let result: WorkflowApplyResult
     try {
       result = await this.applyService.applyTrusted({
@@ -968,9 +1621,12 @@ export class BlueprintService extends TypertRemoteService {
    * package closure is restored with the document. Model tools keep using
    * `workflow_revert`, which requires Host approval.
    */
-  async restoreDefinitionRevision(args: { blueprintId: string; revision: string; expectedRevision: string }): Promise<DefinitionDocument> {
+  async restoreDefinitionRevision(args: { blueprintId: string; revision: string; expectedRevision: string } & LibrarySelection): Promise<DefinitionDocument> {
     this.checkArgs('restoreDefinitionRevision', args)
-    await this.ensureWorkspace()
+    return await this.withLibrary(args.library, async () => this.restoreDefinitionRevisionInLibrary(args))
+  }
+
+  private async restoreDefinitionRevisionInLibrary(args: { blueprintId: string; revision: string; expectedRevision: string }): Promise<DefinitionDocument> {
     let result: WorkflowApplyResult
     try {
       result = await this.mutateWorkflow(args.blueprintId, () =>
@@ -1007,28 +1663,27 @@ export class BlueprintService extends TypertRemoteService {
     })
   }
 
-  async workflowGet(args: { workflowId: string }): Promise<Awaited<ReturnType<ApplyService['get']>>> {
+  async workflowGet(args: { workflowId: string } & LibrarySelection): Promise<Awaited<ReturnType<ApplyService['get']>>> {
     this.checkArgs('workflowGet', args)
-    await this.ensureWorkspace()
-    return await this.applyService.get(args.workflowId)
+    return await this.withLibrary(args.library, async () => await this.applyService.get(args.workflowId))
   }
 
-  async workflowValidate(args: { workflowId: string; definitionJson: string }): Promise<Awaited<ReturnType<ApplyService['validate']>>> {
+  async workflowValidate(args: { workflowId: string; definitionJson: string } & LibrarySelection): Promise<Awaited<ReturnType<ApplyService['validate']>>> {
     this.checkArgs('workflowValidate', args)
-    await this.ensureWorkspace()
-    return await this.applyService.validate(args.workflowId, args.definitionJson)
+    return await this.withLibrary(args.library, async () => await this.applyService.validate(args.workflowId, args.definitionJson))
   }
 
-  async workflowPropose(args: {
-    workflowId: string
-    definitionJson: string
-    expectedRevision?: string | null
-    origin?: 'canvas' | 'conversation' | 'import'
-    message?: string
-  }): Promise<WorkflowCandidate> {
+  async workflowPropose(
+    args: {
+      workflowId: string
+      definitionJson: string
+      expectedRevision?: string | null
+      origin?: 'canvas' | 'conversation' | 'import'
+      message?: string
+    } & LibrarySelection
+  ): Promise<WorkflowCandidate> {
     this.checkArgs('workflowPropose', args)
-    await this.ensureWorkspace()
-    return await this.applyService.propose(args)
+    return await this.withLibrary(args.library, async () => await this.applyService.propose(args))
   }
 
   private async mutateWorkflow(workflowId: string, action: () => Promise<WorkflowApplyResult>): Promise<WorkflowApplyResult> {
@@ -1040,70 +1695,76 @@ export class BlueprintService extends TypertRemoteService {
     }
   }
 
-  async workflowApply(args: {
-    workflowId: string
-    definitionJson: string
-    expectedRevision: string
-    origin?: 'canvas' | 'conversation' | 'import'
-    message?: string
-  }): Promise<WorkflowApplyResult> {
+  async workflowApply(
+    args: {
+      workflowId: string
+      definitionJson: string
+      expectedRevision: string
+      origin?: 'canvas' | 'conversation' | 'import'
+      message?: string
+    } & LibrarySelection
+  ): Promise<WorkflowApplyResult> {
     this.checkArgs('workflowApply', args)
-    await this.ensureWorkspace()
-    const result = await this.mutateWorkflow(args.workflowId, () => this.applyService.apply(args))
-    if (result.status === 'rejected' && result.issues?.some(issue => issue.code === 'revision-conflict'))
-      throw this.revisionConflict(args.workflowId, args.expectedRevision ?? null, result.diff.from.documentRevision)
-    return result
+    return await this.withLibrary(args.library, async () => {
+      const result = await this.mutateWorkflow(args.workflowId, () => this.applyService.apply(args))
+      if (result.status === 'rejected' && result.issues?.some(issue => issue.code === 'revision-conflict'))
+        throw this.revisionConflict(args.workflowId, args.expectedRevision ?? null, result.diff.from.documentRevision)
+      return result
+    })
   }
 
   /** Internal conversation-tool seam. ToolRuntime invokes this only after
    * its `tools/pre-execute` approval waterfall has returned allowed-once. */
-  async workflowApplyFromHost(args: {
-    workflowId: string
-    definitionJson: string
-    expectedRevision: string
-    origin?: 'canvas' | 'conversation' | 'import'
-    message?: string
-    approval: typeof WORKFLOW_HOST_APPROVAL
-  }): Promise<WorkflowApplyResult> {
-    await this.ensureWorkspace()
+  async workflowApplyFromHost(
+    args: {
+      workflowId: string
+      definitionJson: string
+      expectedRevision: string
+      origin?: 'canvas' | 'conversation' | 'import'
+      message?: string
+      approval: typeof WORKFLOW_HOST_APPROVAL
+    } & LibrarySelection
+  ): Promise<WorkflowApplyResult> {
     const { approval, ...publicArgs } = args
     this.checkArgs('workflowApply', publicArgs)
     if (approval !== WORKFLOW_HOST_APPROVAL) return await this.workflowApply(publicArgs)
-    const result = await this.mutateWorkflow(args.workflowId, () => this.applyService.applyTrusted(publicArgs))
-    if (result.status === 'rejected' && result.issues?.some(issue => issue.code === 'revision-conflict'))
-      throw this.revisionConflict(args.workflowId, args.expectedRevision, result.diff.from.documentRevision)
-    return result
+    return await this.withLibrary(args.library, async () => {
+      const result = await this.mutateWorkflow(args.workflowId, () => this.applyService.applyTrusted(publicArgs))
+      if (result.status === 'rejected' && result.issues?.some(issue => issue.code === 'revision-conflict'))
+        throw this.revisionConflict(args.workflowId, args.expectedRevision, result.diff.from.documentRevision)
+      return result
+    })
   }
 
-  async workflowRevisions(args: { workflowId: string }): Promise<Awaited<ReturnType<ApplyService['revisions']>>> {
+  async workflowRevisions(args: { workflowId: string } & LibrarySelection): Promise<Awaited<ReturnType<ApplyService['revisions']>>> {
     this.checkArgs('workflowRevisions', args)
-    await this.ensureWorkspace()
-    return await this.applyService.revisions(args.workflowId)
+    return await this.withLibrary(args.library, async () => await this.applyService.revisions(args.workflowId))
   }
 
-  async workflowRevert(args: { workflowId: string; revision: string; expectedRevision: string; message?: string }): Promise<WorkflowApplyResult> {
+  async workflowRevert(
+    args: { workflowId: string; revision: string; expectedRevision: string; message?: string } & LibrarySelection
+  ): Promise<WorkflowApplyResult> {
     this.checkArgs('workflowRevert', args)
-    await this.ensureWorkspace()
-    return await this.mutateWorkflow(args.workflowId, () => this.applyService.revert(args))
+    return await this.withLibrary(args.library, async () => await this.mutateWorkflow(args.workflowId, () => this.applyService.revert(args)))
   }
 
-  async workflowRevertFromHost(args: {
-    workflowId: string
-    revision: string
-    expectedRevision: string
-    message?: string
-    approval: typeof WORKFLOW_HOST_APPROVAL
-  }): Promise<WorkflowApplyResult> {
-    await this.ensureWorkspace()
+  async workflowRevertFromHost(
+    args: {
+      workflowId: string
+      revision: string
+      expectedRevision: string
+      message?: string
+      approval: typeof WORKFLOW_HOST_APPROVAL
+    } & LibrarySelection
+  ): Promise<WorkflowApplyResult> {
     const { approval, ...publicArgs } = args
     this.checkArgs('workflowRevert', publicArgs)
     if (approval !== WORKFLOW_HOST_APPROVAL) return await this.workflowRevert(publicArgs)
-    return await this.mutateWorkflow(args.workflowId, () => this.applyService.revertTrusted(publicArgs))
+    return await this.withLibrary(args.library, async () => await this.mutateWorkflow(args.workflowId, () => this.applyService.revertTrusted(publicArgs)))
   }
 
-  async workflowList(): Promise<Awaited<ReturnType<BlueprintDefinitionUseCases['listDefinitions']>>> {
-    await this.ensureWorkspace()
-    return await this.applyService.list()
+  async workflowList(args: { library?: LibraryRef } = {}): Promise<Awaited<ReturnType<BlueprintDefinitionUseCases['listDefinitions']>>> {
+    return await this.withLibrary(args.library, async () => await this.applyService.list())
   }
 
   async workflowRun(args: StartRunArgs): Promise<RunAdmissionView> {
@@ -1117,7 +1778,7 @@ export class BlueprintService extends TypertRemoteService {
   }
 
   async workflowReport(args: InspectRunArgs): Promise<RunReport> {
-    return await this.withSessionWorkspace(typeof args?.sessionId === 'string' ? args.sessionId : undefined, () => this.workflowReportInScope(args))
+    return await this.withRunTarget(args, () => this.workflowReportInScope(args))
   }
 
   private async workflowReportInScope(args: InspectRunArgs): Promise<RunReport> {
@@ -1376,9 +2037,44 @@ export class BlueprintService extends TypertRemoteService {
     }
   }
 
-  async preflightRun(args: PreflightRunArgs): Promise<PreflightRunValue> {
+  /** Trusted execution target: explicit ID, then Host configuration, then the
+   * caller session's registered Workspace. No default/cwd guess. */
+  private resolveExecutionTarget(workspaceId?: string, library?: LibraryRef): ExecutionTarget {
+    if (workspaceId !== undefined) return this.libraries.resolveTarget(workspaceId)
+    if (library?.kind === 'workspace') return this.libraries.resolveTarget(library.workspaceId)
+    const configured = this.libraries.configuredTarget()
+    if (configured !== undefined) return configured
+    const caller = CALLER_WORKSPACE.getStore()
+    if (caller !== undefined) {
+      const registered = workspaceEntries(this.ctx).find(entry => resolve(entry.path) === resolve(caller))
+      if (registered !== undefined) return this.libraries.resolveTarget(registered.id)
+    }
+    throw new RemoteError('blueprint/workspace-required', 'select a workspace before executing', {})
+  }
+
+  private executionLibrary(target: ExecutionTarget, library: LibraryRef | undefined): LibraryRef {
+    const selected = library ?? { kind: 'workspace' as const, workspaceId: target.workspaceId }
+    if (selected.kind === 'global')
+      throw new RemoteError('blueprint/instance-required', 'save a project instance before executing a global blueprint', {
+        blueprintId: ''
+      })
+    if (selected.workspaceId !== target.workspaceId)
+      throw new RemoteError('blueprint/workspace-mismatch', 'selected library does not match the execution target', {
+        workspaceId: selected.workspaceId
+      })
+    return selected
+  }
+
+  async preflightRun(args: PreflightRunArgs & LibrarySelection): Promise<PreflightRunValue> {
     this.checkArgs('preflightRun', args)
-    await this.ensureWorkspace()
+    return await this.withSessionWorkspace(undefined, async () => {
+      const target = this.resolveExecutionTarget(args.workspaceId, args.library)
+      const library = this.executionLibrary(target, args.library)
+      return await this.withLibrary(library, async () => await this.withTarget(target, () => this.preflightRunInLibrary(args)))
+    })
+  }
+
+  private async preflightRunInLibrary(args: PreflightRunArgs): Promise<PreflightRunValue> {
     const root = this.blueprintRoot(args.blueprintId)
     return await this.documents.withDocument(root, async () => {
       const snapshot = this.documents.loadConfiguredPackage(args.blueprintId, root)
@@ -1394,7 +2090,9 @@ export class BlueprintService extends TypertRemoteService {
           input,
           ...(this.config.toolBindings === undefined ? {} : { toolBindings: this.config.toolBindings }),
           skillRoots: this.preflightSkillRoots(),
-          ...(this.config.teamProviders === undefined ? {} : { teamProviders: this.config.teamProviders })
+          ...(this.config.teamProviders === undefined ? {} : { teamProviders: this.config.teamProviders }),
+          ...(CALLER_WORKSPACE.getStore() === undefined ? {} : { cwd: CALLER_WORKSPACE.getStore()! }),
+          ...(scopeForSession(this.ctx, CALLER_SESSION.getStore()) === undefined ? {} : { scope: scopeForSession(this.ctx, CALLER_SESSION.getStore())! })
         }
       )
       return report
@@ -1413,13 +2111,11 @@ export class BlueprintService extends TypertRemoteService {
   async startRun(args: StartRunArgs | InternalStartRunArgs): Promise<{ runId: string; semanticRevision: string; state: string; replayed: boolean }> {
     if (!('blueprintId' in args)) return await this.admitRun(args)
     this.checkArgs('startRun', args)
-    await this.ensureWorkspace()
     return await this.startConfiguredRun(args)
   }
 
   async startSessionRun(args: StartSessionRunArgs) {
     this.checkArgs('startSessionRun', args)
-    await this.ensureWorkspace()
     let caller
     try {
       caller = liveCaller(this.ctx, args.sessionId)
@@ -1432,7 +2128,7 @@ export class BlueprintService extends TypertRemoteService {
         { sessionId: args.sessionId }
       )
     }
-    return await this.startConfiguredRun(args, { sessionId: caller.session.id, kind: 'ui' })
+    return await this.withSessionWorkspace(args.sessionId, async () => await this.startConfiguredRun(args, { sessionId: caller.session.id, kind: 'ui' }))
   }
 
   /** Admit one durable TeamStage task from an exact root Lead. The Team id is
@@ -1571,53 +2267,145 @@ export class BlueprintService extends TypertRemoteService {
     }
   }
 
+  /** New instances keep a durable preparation pointer before package publication.
+   * Legacy instances are discovered by a matching manifest. Missing/corrupt
+   * evidence for a linked instance blocks admission rather than becoming unmanaged. */
+  private preparationDigestFor(target: ExecutionTarget, blueprintId: string, document?: DefinitionDocument): string | null {
+    const directory = join(target.root, '.xuanling', 'preparations')
+    const pointer = join(directory, '.instances', `${blueprintId}.json`)
+    const stale = (preparationId: string) =>
+      new RemoteError('blueprint/preparation-stale', 'project evidence changed or unavailable; prepare the instance again', { preparationId })
+    let expected: string | undefined
+    let entries: string[]
+    try {
+      assertStoragePath(target.root, pointer)
+      if (existsSync(pointer)) {
+        const parsed = JSON.parse(readFileSync(pointer, 'utf8')) as { preparationId?: unknown }
+        if (typeof parsed.preparationId !== 'string' || !/^prep-[a-f0-9]{32}$/.test(parsed.preparationId)) throw stale('unavailable')
+        expected = parsed.preparationId
+      }
+      entries = expected === undefined ? readdirSync(directory).filter(name => name.endsWith('.json')) : [`${expected}.json`]
+    } catch (error) {
+      if (expected === undefined && !existsSync(pointer) && (error as NodeJS.ErrnoException).code === 'ENOENT') return null
+      throw stale(expected ?? 'unavailable')
+    }
+    let latest: { at: number; raw: string; manifest: PreparationManifest } | undefined
+    for (const entry of entries) {
+      try {
+        assertStoragePath(target.root, join(directory, entry))
+        const raw = readFileSync(join(directory, entry), 'utf8')
+        const preparation = preparationManifestCodec().parse(JSON.parse(raw))
+        if (preparation.generated?.instanceAsset.blueprintId !== blueprintId) {
+          if (expected !== undefined) throw stale(expected)
+          continue
+        }
+        const at = lstatSync(join(directory, entry)).mtimeMs
+        if (latest === undefined || at > latest.at) latest = { at, raw, manifest: preparation }
+      } catch {
+        if (expected !== undefined) throw stale(expected)
+      }
+    }
+    if (latest === undefined) return null
+    const preparation = latest.manifest
+    if (
+      document !== undefined &&
+      (preparation.status !== 'ready' ||
+        preparation.target.workspaceId !== target.workspaceId ||
+        preparation.generated?.instanceAsset.library.kind !== 'workspace' ||
+        preparation.generated.instanceAsset.library.workspaceId !== target.workspaceId ||
+        preparation.generated.definitionDigest !== createHash('sha256').update(document.definitionJson).digest('hex') ||
+        canonicalJson(preparation.facts) !== canonicalJson(discoverProject(target.root)))
+    )
+      throw stale(preparation.preparationId)
+    return createHash('sha256').update(latest.raw).digest('hex')
+  }
+
   private async startConfiguredRun(args: StartRunArgs, source?: RunSource) {
+    const target = this.resolveExecutionTarget(args.workspaceId, args.library)
+    const library = this.executionLibrary(target, args.library)
     const sourceParent = source === undefined ? undefined : captureNativeSourceParent(this.ctx, source.sessionId)
-    const root = this.blueprintRoot(args.blueprintId)
-    return await this.documents.withDocument(
-      root,
-      async () => {
-        const snapshot = this.documents.loadConfiguredPackage(args.blueprintId, root)
-        const { document } = snapshot
-        if (document.documentRevision !== args.expectedRevision) throw this.revisionConflict(args.blueprintId, args.expectedRevision, document.documentRevision)
-        this.parseInput(args.inputJson)
-        const runtimeRoot = this.configuredRuntimeRoot()
-        let staging: string | undefined
-        try {
-          return await this.admitRun(
-            { definitionJson: document.definitionJson, inputJson: args.inputJson, runtimeRoot, requestId: args.requestId },
-            document.semanticRevision,
+    return await this.withLibrary(
+      library,
+      async () =>
+        await this.withTarget(target, async () => {
+          const root = this.blueprintRoot(args.blueprintId)
+          return await this.documents.withDocument(
+            root,
             async () => {
-              // Called under admissionTail, ONLY after a matching command replay
-              // has returned. A changed Host/shared Skill cannot reinterpret it.
-              const { report, closure } = await collectCompositionPreflight(
-                this.ctx,
-                snapshot,
-                ref => this.documents.loadRevisionPackage(ref.blueprintId, this.blueprintRoot(ref.blueprintId), ref.documentRevision),
-                {
-                  input: this.parseInput(args.inputJson),
-                  ...(this.config.toolBindings === undefined ? {} : { toolBindings: this.config.toolBindings }),
-                  skillRoots: this.preflightSkillRoots(),
-                  ...(this.config.teamProviders === undefined ? {} : { teamProviders: this.config.teamProviders })
-                }
-              )
-              if (!report.canStart) throw new RemoteError('blueprint/preflight-blocked', 'new Run blocked by preflight', { checks: report.checks })
+              const snapshot = this.documents.loadConfiguredPackage(args.blueprintId, root)
+              const { document } = snapshot
+              if (document.documentRevision !== args.expectedRevision)
+                throw this.revisionConflict(args.blueprintId, args.expectedRevision, document.documentRevision)
+              this.parseInput(args.inputJson)
+              const runtimeRoot = this.configuredRuntimeRoot()
+              let staging: string | undefined
               try {
-                staging = mkdtempSync(join(tmpdir(), 'bp-admission-bytes-'))
-                this.materializePackage(snapshot, staging)
-                return { rootDir: staging, children: [...closure.values()] }
-              } catch (error) {
-                throw this.documentFailure(args.blueprintId, 'admission-stage', error)
+                const admittedRun = await this.admitRun(
+                  { definitionJson: document.definitionJson, inputJson: args.inputJson, runtimeRoot, requestId: args.requestId },
+                  document.semanticRevision,
+                  async () => {
+                    this.preparationDigestFor(target, args.blueprintId, document)
+                    // Called under admissionTail, ONLY after a matching command replay
+                    // has returned. A changed Host/shared Skill cannot reinterpret it.
+                    const { report, closure } = await collectCompositionPreflight(
+                      this.ctx,
+                      snapshot,
+                      ref => this.documents.loadRevisionPackage(ref.blueprintId, this.blueprintRoot(ref.blueprintId), ref.documentRevision),
+                      {
+                        input: this.parseInput(args.inputJson),
+                        ...(this.config.toolBindings === undefined ? {} : { toolBindings: this.config.toolBindings }),
+                        skillRoots: this.preflightSkillRoots(),
+                        ...(this.config.teamProviders === undefined ? {} : { teamProviders: this.config.teamProviders }),
+                        ...(CALLER_WORKSPACE.getStore() === undefined ? {} : { cwd: CALLER_WORKSPACE.getStore()! }),
+                        ...(source === undefined
+                          ? {}
+                          : (() => {
+                              const scope = scopeForSession(this.ctx, source.sessionId)
+                              return scope === undefined ? {} : { scope }
+                            })())
+                      }
+                    )
+                    if (!report.canStart) throw new RemoteError('blueprint/preflight-blocked', 'new Run blocked by preflight', { checks: report.checks })
+                    try {
+                      staging = mkdtempSync(join(tmpdir(), 'bp-admission-bytes-'))
+                      this.materializePackage(snapshot, staging)
+                      return { rootDir: staging, children: [...closure.values()] }
+                    } catch (error) {
+                      throw this.documentFailure(args.blueprintId, 'admission-stage', error)
+                    }
+                  },
+                  {
+                    blueprintId: args.blueprintId,
+                    documentRevision: document.documentRevision,
+                    ...(source === undefined ? {} : { source }),
+                    context: {
+                      instanceAssetRef: { library, blueprintId: args.blueprintId },
+                      originAssetRef: null,
+                      targetWorkspace: {
+                        workspaceId: target.workspaceId,
+                        rootFingerprint: createHash('sha256').update(realpathSync(target.root)).digest('hex')
+                      },
+                      preparationDigest: this.preparationDigestFor(target, args.blueprintId)
+                    }
+                  },
+                  sourceParent
+                )
+                if (source !== undefined) {
+                  try {
+                    this.associationStore().link(source.sessionId, { library, blueprintId: args.blueprintId }, document.documentRevision, admittedRun.runId)
+                  } catch {
+                    // The Run is durable; a missing link is repaired by the next
+                    // explicit start or by inspectSession's association list.
+                  }
+                }
+                return admittedRun
+              } finally {
+                if (staging !== undefined) rmSync(staging, { recursive: true, force: true })
               }
             },
-            { blueprintId: args.blueprintId, documentRevision: document.documentRevision, ...(source === undefined ? {} : { source }) },
-            sourceParent
+            true
           )
-        } finally {
-          if (staging !== undefined) rmSync(staging, { recursive: true, force: true })
-        }
-      },
-      true
+        })
     )
   }
 
@@ -1625,7 +2413,12 @@ export class BlueprintService extends TypertRemoteService {
     args: InternalStartRunArgs,
     savedSemanticRevision?: string,
     beforeNewAdmission?: () => Promise<string | AdmissionPackage | undefined>,
-    metadata: { blueprintId?: string; documentRevision?: string; source?: RunSource } = {},
+    metadata: {
+      blueprintId?: string
+      documentRevision?: string
+      source?: RunSource
+      context?: NonNullable<RunRecord['context']>
+    } = {},
     sourceParent?: NativeSourceParent
   ): Promise<{ runId: string; semanticRevision: string; state: string; replayed: boolean }> {
     const definition = this.decodeOrThrow(args.definitionJson)
@@ -1647,7 +2440,16 @@ export class BlueprintService extends TypertRemoteService {
       metadata.source === undefined
         ? ''
         : `\u0000${JSON.stringify([metadata.source.sessionId, metadata.source.kind, metadata.source.callId ?? null, metadata.source.turn ?? null])}`
-    const payloadFingerprint = createHash('sha256').update(`${args.definitionJson}\u0000${args.inputJson}${sourceFingerprint}`).digest('hex')
+    const targetFingerprint =
+      metadata.context === undefined
+        ? ''
+        : `\u0000${JSON.stringify([
+            metadata.context.instanceAssetRef === null ? null : libraryKey(metadata.context.instanceAssetRef.library),
+            metadata.context.targetWorkspace?.workspaceId ?? null
+          ])}`
+    const payloadFingerprint = createHash('sha256')
+      .update(`${args.definitionJson}\u0000${args.inputJson}${sourceFingerprint}${targetFingerprint}`)
+      .digest('hex')
     const request = { scope: 'run', requestId, payloadFingerprint }
     const admitted = handle.admissionTail.then(async () => {
       const replay = await handle.store.replayRun(request)
@@ -1687,13 +2489,13 @@ export class BlueprintService extends TypertRemoteService {
               handle,
               preparedAdmission.children,
               (snapshot, root) => this.materializePackage(snapshot, root),
-              (runtime, snapshotId, child) => this.captureBindingDigests(runtime, snapshotId, child)
+              (runtime, snapshotId, child) => this.captureBindingDigests(runtime, snapshotId, child, sourceParent?.agent)
             )
             await handle.store.transition(created.runId, draft => {
               draft.composition = composition
             })
           }
-          const bindingSnapshot = await this.captureBindingDigests(handle, created.runId, definition)
+          const bindingSnapshot = await this.captureBindingDigests(handle, created.runId, definition, sourceParent?.agent)
           await handle.store.setBindingDigests(created.runId, bindingSnapshot.digests, bindingSnapshot.modelSelections)
         } catch {
           await handle.store.settleTerminal(created.runId, 'failed', { reason: 'resource-freeze-failed' })
@@ -1720,7 +2522,8 @@ export class BlueprintService extends TypertRemoteService {
   private async captureBindingDigests(
     handle: RuntimeHandle,
     runId: string,
-    definition: ReturnType<typeof decodeDefinition>
+    definition: ReturnType<typeof decodeDefinition>,
+    scope?: object
   ): Promise<{ digests: Record<string, string>; modelSelections: Record<string, HostModelSelection | null> }> {
     const perNode: Array<Record<string, string>> = []
     const modelSelections: Record<string, HostModelSelection | null> = {}
@@ -1729,8 +2532,14 @@ export class BlueprintService extends TypertRemoteService {
       // Attempt path uses.  The ordinary Agent preparation omits member agent
       // bindings, which would make every native Team Attempt appear to drift
       // before the Team driver can establish its durable stage.
+      const preparation = {
+        ...(scope === undefined ? {} : { scope }),
+        ...(CALLER_WORKSPACE.getStore() === undefined ? {} : { cwd: CALLER_WORKSPACE.getStore()! })
+      }
       const prepared =
-        node.teamStage === undefined ? await handle.snapshots.prepare(runId, definition, node) : await handle.snapshots.prepareTeam(runId, definition, node)
+        node.teamStage === undefined
+          ? await handle.snapshots.prepare(runId, definition, node, preparation)
+          : await handle.snapshots.prepareTeam(runId, definition, node, preparation)
       const inheritedModelSelection = node.teamStage === undefined && node.modelSelection === undefined ? captureAgentModelSelection(this.ctx) : undefined
       const modelSelection =
         node.teamStage === undefined
@@ -1768,9 +2577,8 @@ export class BlueprintService extends TypertRemoteService {
   private readonly runReads = (handle: RuntimeHandle): RunReadService => handle.reads
 
   // wire method (descriptor in ./typert.host.ts): inspectRun
-  async inspectRun(args: InspectRunArgs & { runtimeRoot?: string }): Promise<RunSnapshotView> {
-    if (args?.runtimeRoot === undefined && typeof args?.sessionId === 'string')
-      return await this.withSessionWorkspace(args.sessionId, () => this.inspectRunInScope(args))
+  async inspectRun(args: InspectRunArgs & { runtimeRoot?: string; workspaceId?: string }): Promise<RunSnapshotView> {
+    if (args?.runtimeRoot === undefined) return await this.withRunTarget(args, () => this.inspectRunInScope(args))
     return await this.inspectRunInScope(args)
   }
 
@@ -1786,7 +2594,7 @@ export class BlueprintService extends TypertRemoteService {
   }
 
   async queryRuns(args: RunQueryArgs): Promise<RunQueryValue> {
-    return await this.withSessionWorkspace(typeof args?.sessionId === 'string' ? args.sessionId : undefined, () => this.queryRunsInScope(args))
+    return await this.withRunTarget(args, () => this.queryRunsInScope(args))
   }
 
   private async queryRunsInScope(args: RunQueryArgs): Promise<RunQueryValue> {
@@ -1801,7 +2609,7 @@ export class BlueprintService extends TypertRemoteService {
   }
 
   private async setRunArchived(args: RunLifecycleActionArgs, archived: boolean): Promise<RunLifecycleActionValue> {
-    return await this.withSessionWorkspace(typeof args?.sessionId === 'string' ? args.sessionId : undefined, async () => {
+    return await this.withRunTarget(args, async () => {
       this.checkArgs(archived ? 'archiveRun' : 'restoreRun', args)
       const handle = await this.configuredRuntime()
       return await this.runReads(handle).setArchived(args, archived)
@@ -1817,11 +2625,11 @@ export class BlueprintService extends TypertRemoteService {
   }
 
   async inspectSession(args: InspectSessionArgs): Promise<InspectSessionValue> {
-    return await this.withSessionWorkspace(args?.sessionId, () => this.inspectSessionInScope(args))
+    return await this.withRunTarget(args, () => this.inspectSessionInScope(args))
   }
 
   async inspectRunView(args: InspectRunViewArgs): Promise<InspectRunViewValue> {
-    return this.withSessionWorkspace(typeof args?.sessionId === 'string' ? args.sessionId : undefined, async () => {
+    return await this.withRunTarget(args, async () => {
       this.checkArgs('inspectRunView', args)
       try {
         const handle = await this.configuredRuntime()
@@ -1838,7 +2646,26 @@ export class BlueprintService extends TypertRemoteService {
     try {
       this.checkArgs('inspectSession', args)
       const handle = await this.configuredRuntime()
-      return await this.runReads(handle).inspectSession(args)
+      const value = await this.runReads(handle).inspectSession(args)
+      const store = this.associationStore()
+      const records = await Promise.all((await handle.store.listRunIds()).map(id => handle.store.get(id)))
+      for (const run of records.filter(run => run.source?.sessionId === args.sessionId && run.context?.instanceAssetRef && run.documentRevision)) {
+        const asset = run.context!.instanceAssetRef!
+        store.link(args.sessionId, asset, run.documentRevision!, run.runId, run.createdAt)
+      }
+      const associations = store.list(args.sessionId).map(association => {
+        const run = records.find(record => record.runId === association.runId)
+        const status =
+          run === undefined
+            ? association.status
+            : TERMINAL_RUN_STATES.includes(run.state)
+              ? 'settled'
+              : run.state === 'recovery_required'
+                ? 'blocked'
+                : 'running'
+        return associationView(status === association.status ? association : store.put({ ...association, status, updatedAt: new Date().toISOString() }))
+      })
+      return associations.length === 0 ? value : { ...value, associations }
     } catch (error) {
       if (error instanceof DurabilityFailureError)
         throw new RemoteError('blueprint/durability-failed', 'Run storage unavailable', { operation: 'inspectSession' })
@@ -1874,9 +2701,18 @@ export class BlueprintService extends TypertRemoteService {
     })
   }
 
-  async cancelRun(args: CancelRunArgs & { runtimeRoot?: string }): Promise<{ runId: string; state: string }> {
+  async cancelRun(args: CancelRunArgs & { runtimeRoot?: string; workspaceId?: string }): Promise<{ runId: string; state: string }> {
     try {
       if (args.runtimeRoot === undefined) this.checkArgs('cancelRun', args)
+      return await this.withRunTarget(args, () => this.cancelRunInScope(args))
+    } catch (error) {
+      if (error instanceof DurabilityFailureError) throw new RemoteError('blueprint/durability-failed', 'Run storage unavailable', { operation: 'cancelRun' })
+      throw error
+    }
+  }
+
+  private async cancelRunInScope(args: CancelRunArgs & { runtimeRoot?: string }): Promise<{ runId: string; state: string }> {
+    try {
       const handle = await this.configuredRuntime(args.runtimeRoot)
       const record = await handle.store.tryGet(args.runId)
       if (record === undefined) {
@@ -1906,7 +2742,33 @@ export class BlueprintService extends TypertRemoteService {
    * (`expectedSeq`) or a TeamStage with unknown native effects is rejected.
    */
   async resolveRecovery(args: ResolveRecoveryArgs): Promise<ResolveRecoveryValue> {
-    return await this.withSessionWorkspace(typeof args?.sessionId === 'string' ? args.sessionId : undefined, () => this.resolveRecoveryInScope(args))
+    return await this.withRunTarget(args, async () => {
+      this.checkArgs('resolveRecovery', args)
+      const handle = await this.configuredRuntime()
+      const record = await handle.store.tryGet(args.runId)
+      if (record === undefined) throw new RemoteError('blueprint/run-not-found', 'Run not found', { runId: args.runId })
+      const identity = record.context?.targetWorkspace
+      const target = identity == null ? this.libraries.configuredTarget() : this.libraries.resolveTarget(identity.workspaceId)
+      if (target === undefined) return await this.resolveRecoveryInScope(args)
+      const root = realpathSync(target.root)
+      if (identity != null && createHash('sha256').update(root).digest('hex') !== identity.rootFingerprint)
+        throw new RemoteError('blueprint/run-lifecycle-conflict', 'Workspace changed since admission', { runId: args.runId, detail: 'workspace-mismatch' })
+      try {
+        return await WorkspaceWriteLease.reconcile(
+          root,
+          { runId: record.runId, attemptIds: record.attempts.map(a => a.attemptId) },
+          { quiescent: args.workspaceQuiescent === true, note: args.note },
+          () => this.resolveRecoveryInScope(args)
+        )
+      } catch (error) {
+        if (error instanceof WorkspaceWriteError || (error as { code?: string }).code?.startsWith('COORDINATOR_'))
+          throw new RemoteError('blueprint/run-lifecycle-conflict', 'Workspace effects require confirmed quiescence', {
+            runId: args.runId,
+            detail: 'workspace-recovery-required'
+          })
+        throw error
+      }
+    })
   }
 
   /** Idempotent replay: the same operator resolution (terminal state,
@@ -1991,7 +2853,15 @@ export class BlueprintService extends TypertRemoteService {
     }
   }
 
-  async decide(args: DecideArgs & { runtimeRoot?: string }): Promise<{ runId: string; decisionId: string; state: string; applied: boolean }> {
+  async decide(
+    args: DecideArgs & { runtimeRoot?: string; workspaceId?: string; sessionId?: string }
+  ): Promise<{ runId: string; decisionId: string; state: string; applied: boolean }> {
+    return await this.withRunTarget(args, () => this.decideInScope(args))
+  }
+
+  private async decideInScope(
+    args: DecideArgs & { runtimeRoot?: string; workspaceId?: string; sessionId?: string }
+  ): Promise<{ runId: string; decisionId: string; state: string; applied: boolean }> {
     try {
       if (args.runtimeRoot === undefined) this.checkArgs('decide', args)
       const handle = await this.configuredRuntime(args.runtimeRoot)
@@ -2039,16 +2909,14 @@ export class BlueprintService extends TypertRemoteService {
   ): ReturnType<BlueprintPortabilityUseCases['exportInternal']>
   async exportDefinition(args: ExportDefinitionArgs & { rootDir?: string; runtimeRoot?: string; outPath?: string }) {
     if (args.rootDir !== undefined) return await this.portability.exportInternal({ ...args, rootDir: args.rootDir })
-    await this.ensureWorkspace()
-    return await this.portability.exportConfigured(args)
+    return await this.withLibrary(args.library, async () => await this.portability.exportConfigured(args))
   }
 
   async importDefinition(args: ImportDefinitionArgs): Promise<{ blueprintId: string; filesWritten: number; closureDigest: string }>
   async importDefinition(args: { archivePath: string; targetDir?: string }): ReturnType<BlueprintPortabilityUseCases['importInternal']>
   async importDefinition(args: ImportDefinitionArgs | { archivePath: string; targetDir?: string }) {
     if ('archivePath' in args) return await this.portability.importInternal(args)
-    await this.ensureWorkspace()
-    return await this.portability.importConfigured(args)
+    return await this.withLibrary(args.library, async () => await this.portability.importConfigured(args))
   }
 }
 

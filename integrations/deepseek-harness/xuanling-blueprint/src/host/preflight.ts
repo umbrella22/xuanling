@@ -19,7 +19,7 @@ export type ToolBindings = Record<string, ToolBinding>
  * resolves the same identity again before dispatch. */
 export interface HostResourceProbe {
   getAgentPreset?(id: string): Promise<unknown | undefined>
-  getSkill?(id: string, options: { cwd: string }): Promise<{ content?: unknown } | undefined>
+  getSkill?(id: string, options: { cwd?: string; scope?: object }): Promise<{ content?: unknown } | undefined>
 }
 export interface PreflightRunArgs {
   blueprintId: string
@@ -98,6 +98,9 @@ export async function collectPreflight(
     teamProviders?: TeamProviders
     input?: unknown
     hostResources?: HostResourceProbe
+    /** Workspace root and Host scope used for resource observations. */
+    cwd?: string
+    scope?: object
   }
 ): Promise<PreflightRunValue> {
   const checks: PreflightCheck[] = []
@@ -140,7 +143,15 @@ export async function collectPreflight(
           if (hostResources.getAgentPreset === undefined || (await hostResources.getAgentPreset(hostId)) === undefined)
             throw new Error('host-agent-unavailable')
         } else if (ref.kind === 'skill') {
-          if (hostResources.getSkill === undefined || typeof (await hostResources.getSkill(hostId, { cwd: process.cwd() }))?.content !== 'string')
+          if (
+            hostResources.getSkill === undefined ||
+            typeof (
+              await hostResources.getSkill(hostId, {
+                ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+                ...(options.scope === undefined ? {} : { scope: options.scope })
+              })
+            )?.content !== 'string'
+          )
             throw new Error('host-skill-unavailable')
         } else if (ref.kind === 'mcp') {
           const registry = ctx.get('tools')

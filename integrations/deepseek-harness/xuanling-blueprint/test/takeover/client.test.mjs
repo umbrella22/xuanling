@@ -123,7 +123,7 @@ function fixture(options = {}) {
       method,
       async function (args) {
         assert.equal(this, blueprint, 'namespace receiver must be preserved')
-        if (method === 'listDefinitions') assert.equal(args, undefined)
+        if (method === 'listDefinitions') assert.deepEqual(args, {})
         else assert.deepEqual(Object.keys(args).sort(), keys[method].sort(), `${method}: no browser locators or inline start definition`)
         calls.push([method, structuredClone(args)])
         const error = options.error?.(method, args)

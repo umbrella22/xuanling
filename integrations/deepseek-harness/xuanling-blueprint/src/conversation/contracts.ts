@@ -1,8 +1,10 @@
 /** Browser-safe conversation contracts. These views contain logical identities
  * and frozen layout only; resource locators and execution configuration stay host-owned. */
+import { libraryRefCodec } from '../definition/library-ref.ts'
 import { z } from 'zod'
 import { attemptDiagnosticsCodec } from '../host/runtime-diagnostics.ts'
 import { teamStageExecutionCodec, teamStageRuntimeCodec } from '../host/teamstage-diagnostics.ts'
+import { associationViewCodec } from './association-contracts.ts'
 
 export const runIdCodec = () => z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/, 'invalid run ID')
 
@@ -187,6 +189,8 @@ export const frozenPresentationCodec = () =>
 export type FrozenPresentationView = z.infer<ReturnType<typeof frozenPresentationCodec>>
 export const startSessionRunArgsCodec = () =>
   z.strictObject({
+    library: libraryRefCodec().optional(),
+    workspaceId: id().optional(),
     blueprintId: id(),
     expectedRevision: id(),
     inputJson: z.string(),
@@ -203,14 +207,15 @@ export const runQueryArgsCodec = () =>
     .strictObject({
       sessionId: id().optional(),
       blueprintId: id().optional(),
+      workspaceId: id().optional(),
       state: runHistoryStateCodec().optional(),
       cursor: id().optional(),
       limit: z.number().int().min(1).max(100).optional(),
       includeArchived: z.boolean().optional()
     })
     .superRefine((value, ctx) => {
-      if (value.sessionId === undefined && value.blueprintId === undefined) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [], message: 'sessionId or blueprintId is required' })
+      if (value.sessionId === undefined && value.blueprintId === undefined && value.workspaceId === undefined) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [], message: 'sessionId, blueprintId or workspaceId is required' })
       }
     })
 export type RunQueryArgs = z.infer<ReturnType<typeof runQueryArgsCodec>>
@@ -227,7 +232,7 @@ const runHistorySummaryCodec = () =>
   })
 export const runQueryCodec = () => z.strictObject({ runs: z.array(runHistorySummaryCodec()), nextCursor: id().optional() })
 export type RunQueryValue = z.infer<ReturnType<typeof runQueryCodec>>
-export const runLifecycleActionArgsCodec = () => z.strictObject({ runId: runIdCodec(), sessionId: id().optional() })
+export const runLifecycleActionArgsCodec = () => z.strictObject({ runId: runIdCodec(), sessionId: id().optional(), workspaceId: id().optional() })
 export type RunLifecycleActionArgs = z.infer<ReturnType<typeof runLifecycleActionArgsCodec>>
 export const runLifecycleActionCodec = () => z.strictObject({ runId: runIdCodec(), archived: z.boolean() })
 export type RunLifecycleActionValue = z.infer<ReturnType<typeof runLifecycleActionCodec>>
@@ -237,6 +242,8 @@ export const resolveRecoveryArgsCodec = () =>
   z.strictObject({
     runId: runIdCodec(),
     sessionId: id().optional(),
+    workspaceId: id().optional(),
+    workspaceQuiescent: z.boolean().optional(),
     resolution: z.enum(['failed', 'succeeded', 'cancelled']),
     note: z.string().min(1).max(500),
     expectedSeq: z.number().int().nonnegative()
@@ -292,7 +299,7 @@ export const runReportCodec = () =>
     markdown: z.string()
   })
 export type RunReportValue = z.infer<ReturnType<typeof runReportCodec>>
-export const inspectSessionArgsCodec = () => z.strictObject({ sessionId: id(), runId: runIdCodec().optional() })
+export const inspectSessionArgsCodec = () => z.strictObject({ sessionId: id(), runId: runIdCodec().optional(), workspaceId: id().optional() })
 export type InspectSessionArgs = z.infer<ReturnType<typeof inspectSessionArgsCodec>>
 export const runAncestorCodec = () =>
   z.strictObject({
@@ -301,7 +308,7 @@ export const runAncestorCodec = () =>
     definitionRevision: z.string(),
     documentRevision: z.string().optional()
   })
-export const inspectRunViewArgsCodec = () => z.strictObject({ runId: runIdCodec(), sessionId: id().optional() })
+export const inspectRunViewArgsCodec = () => z.strictObject({ runId: runIdCodec(), sessionId: id().optional(), workspaceId: id().optional() })
 export const inspectRunViewCodec = () =>
   z.strictObject({
     run: runSnapshotCodec(),
@@ -313,7 +320,7 @@ export type InspectRunViewArgs = z.infer<ReturnType<typeof inspectRunViewArgsCod
 export type InspectRunViewValue = z.infer<ReturnType<typeof inspectRunViewCodec>>
 export const inspectSessionCodec = () =>
   z.discriminatedUnion('status', [
-    z.strictObject({ status: z.literal('unbound'), sessionId: id() }),
+    z.strictObject({ status: z.literal('unbound'), sessionId: id(), associations: z.array(associationViewCodec()).optional() }),
     z.strictObject({
       status: z.literal('bound'),
       sessionId: id(),
@@ -321,6 +328,7 @@ export const inspectSessionCodec = () =>
         z.strictObject({ runId: runIdCodec(), blueprintId: id().optional(), state: z.string(), createdAt: z.number(), definitionRevision: z.string() })
       ),
       nextCursor: id().optional(),
+      associations: z.array(associationViewCodec()).optional(),
       selected: z.strictObject({
         run: runSnapshotCodec(),
         source: runSourceCodec().optional(),

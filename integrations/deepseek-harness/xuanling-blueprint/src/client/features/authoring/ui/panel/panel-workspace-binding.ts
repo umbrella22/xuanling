@@ -40,6 +40,9 @@ export function createPanelWorkspaceBinding(workspace: PanelWorkspace) {
           case 'initialize':
           case 'refresh-resources':
             return true
+          case 'refresh-libraries':
+          case 'select-library':
+            return current.capabilities.hostAvailable
           case 'import':
             return current.capabilities.canImport
           case 'export':

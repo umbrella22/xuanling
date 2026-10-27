@@ -6,7 +6,7 @@ import type { PreflightRunArgs, PreflightRunValue } from '../host/preflight.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import { HarnessError } from '@deepseek-ai/dsh-llm'
 import { SessionId, type Session } from '@deepseek-ai/dsh-session'
-import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
+import { defineTool, type ToolExecution, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import {
   inspectSessionCodec,
@@ -26,6 +26,15 @@ export interface ConversationToolService {
   describeBlueprint(blueprintId?: string): Promise<unknown>
   validateBlueprint(candidate: AuthoringCandidate): Promise<unknown>
   createBlueprint(candidate: AuthoringCandidate, requestId: string, source: RunSource, signal?: AbortSignal): Promise<unknown>
+  authorBlueprint(
+    candidate: AuthoringCandidate,
+    requestId: string,
+    source: RunSource,
+    intent: 'design' | 'execute',
+    workspaceId?: string,
+    signal?: AbortSignal,
+    input?: unknown
+  ): Promise<unknown>
   preflightRun(args: PreflightRunArgs): Promise<PreflightRunValue>
   workflowList(): Promise<unknown>
   workflowGet(args: { workflowId: string }): Promise<unknown>
@@ -209,14 +218,18 @@ export function installConversationTools(
         // this hook; the body consumes the registry token once.
         const grants = new Set<ToolRunContext['token']>()
         removers.push(() => grants.clear())
-        const requiresReview = (name: string) => ['workflow_apply', 'workflow_revert', 'blueprint_start', 'workflow_run'].includes(name)
+        const requiresReview = (exec: ToolExecution) =>
+          ['workflow_apply', 'workflow_revert', 'blueprint_start', 'workflow_run'].includes(exec.name) ||
+          // A design request only saves a plan; an execute request may admit a
+          // real Run and therefore needs the same Host approval as start.
+          (exec.name === 'blueprint_create' && (exec.arguments as { intent?: unknown } | null)?.intent === 'execute')
         const consumeApproval = (exec: ToolRunContext) => {
           if (!exec || !grants.delete(exec.token)) throw new HarnessError('Workflow requires Host approval', 'blueprint/approval-required')
           exec.signal.throwIfAborted()
         }
         removers.push(
           scoped.on('tools/pre-execute', async (exec, next) => {
-            if (!requiresReview(exec.name)) return next()
+            if (!requiresReview(exec)) return next()
             if (exec.agent === undefined)
               return { kind: 'deny' as const, reason: 'session-unavailable', info: { name: 'WorkflowCallerUnavailable', code: 'session-unavailable' } }
             if (exec.signal.aborted) return { kind: 'cancel' as const }
@@ -258,7 +271,7 @@ export function installConversationTools(
             grants.add(exec.token)
             return decision
           }),
-          scoped.tools.guard(exec => (requiresReview(exec.name) && !grants.has(exec.token) ? 'Workflow requires Host approval' : undefined)),
+          scoped.tools.guard(exec => (requiresReview(exec) && !grants.has(exec.token) ? 'Workflow requires Host approval' : undefined)),
           scoped.on('tools/result', exec => {
             grants.delete(exec.token)
           })
@@ -334,20 +347,37 @@ export function installConversationTools(
             defineTool({
               name: 'blueprint_create',
               description:
-                'Save a complete new blueprint and its declared resource text files atomically. Does not run it. Use a stable requestId for retries; changing the payload requires a new requestId. Validate first, then preflight the returned ID/revision.',
-              parameters: { ...candidateParameters, requestId: { type: 'string', required: true } },
+                'Save a complete new blueprint and its declared resource text files atomically, then record a durable conversation plan. intent="design" (default) stops at the saved plan; intent="execute" continues through target resolution and Run admission, or returns a typed blocker. Use a stable requestId for retries; changing the payload requires a new requestId.',
+              parameters: {
+                ...candidateParameters,
+                requestId: { type: 'string', required: true },
+                intent: { type: 'string', enum: ['design', 'execute'], description: 'design (default) saves only; execute may admit a Run.' },
+                workspaceId: { type: 'string', description: 'Explicit registered workspace target for execute.' },
+                input: { description: workflowInputParameter.description, oneOf: workflowInputParameter.oneOf }
+              },
               output: jsonOutput,
               execute: (args, exec) =>
                 toolResult(async () => {
                   exec.signal.throwIfAborted()
-                  const parsed = strictToolArgs(candidateCodec.extend({ requestId: z.string().min(1) }), args)
+                  const parsed = strictToolArgs(
+                    candidateCodec.extend({
+                      requestId: z.string().min(1),
+                      intent: z.enum(['design', 'execute']).optional(),
+                      workspaceId: z.string().min(1).optional(),
+                      input: z.json().optional()
+                    }),
+                    args
+                  )
                   return JSON.parse(
                     JSON.stringify(
-                      await service.createBlueprint(
+                      await service.authorBlueprint(
                         { definition: parsed.definition, files: parsed.files },
                         parsed.requestId,
                         callerSource(ctx, exec),
-                        exec.signal
+                        parsed.intent ?? 'design',
+                        parsed.workspaceId,
+                        exec.signal,
+                        parsed.input
                       )
                     )
                   )

@@ -1,10 +1,11 @@
+import { withResourceScope } from '../host/resource-context.ts'
 /** Internal durable byte closure, separate from the portable definition/domain schema.
  * Run package bytes are immutable; only a NEW Attempt resolves shared roots again.
  * Snapshots are committed before dispatch intent. Unknown effects retain their cwd.
  */
 import { createHash, randomUUID } from 'node:crypto'
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { assertObjectJsonSchema, type ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
 import type { BlueprintDefinition, GraphNode } from '../definition/types.ts'
 import { admitResources, admitSnapshotPaths } from '../security/resource-admission.ts'
@@ -37,6 +38,9 @@ export class FrozenPackageIntegrityError extends Error {
 }
 export interface Prepared {
   agentMd: string
+  /** Project checkout for ordinary nodes. Absent when the runtime is not
+   * workspace-native; callers then keep the isolated resource directory. */
+  projectCwd?: string
   /** Host-owned preset selected for this Attempt. The preset body is never
    * copied into the package; the Agent factory resolves this identity. */
   agentPreset?: string
@@ -55,7 +59,7 @@ export interface HostResourceProvider {
   getAgentPreset(id: string): Promise<{ composition?: HostAgentComposition; digest?: string } | undefined>
   getSkill(
     id: string,
-    options: { cwd: string }
+    options: { cwd?: string; scope?: object }
   ): Promise<
     | {
         content?: string
@@ -105,7 +109,7 @@ export function createHostResourceProvider(ownerCtx: { get(service: string): unk
         | {
             get?(
               id: string,
-              options: { cwd: string }
+              options: { cwd?: string; scope?: object }
             ): Promise<
               | {
                   content: string
@@ -122,7 +126,7 @@ export function createHostResourceProvider(ownerCtx: { get(service: string): unk
         return undefined
       }
       if (typeof registry?.get !== 'function') return undefined
-      const skill = await registry.get(id, options)
+      const skill = await withResourceScope(ownerCtx, options.scope, scope => registry!.get!(id, { ...options, ...(scope === undefined ? {} : { scope }) }))
       if (skill === undefined || typeof skill.content !== 'string') return undefined
       const base = skill.resourceBase
       if (base !== undefined && (base.kind !== 'directory' || typeof base.path !== 'string'))
@@ -133,6 +137,11 @@ export function createHostResourceProvider(ownerCtx: { get(service: string): unk
       return { content: skill.content, files: tree.files.map(file => ({ path: file.path, bytes: file.bytes })) }
     }
   }
+}
+export interface PreparationContext {
+  readonly cwd?: string
+  /** Optional live-agent scope; when absent only the global layer is read. */
+  readonly scope?: object
 }
 export interface PreparedTeam extends Prepared {
   members: Array<{ logicalName: string; agentMd: string; resourceDigests: Record<string, string> }>
@@ -213,6 +222,12 @@ export class RuntimeSnapshots {
     private readonly configuredRoots?: () => SkillRoot[],
     private readonly hostResources?: HostResourceProvider
   ) {}
+  /** Workspace root for resource lookups. A workspace-native runtime lives at
+   * `<workspace>/.xuanling`; other roots never fall back to process.cwd. */
+  private contextCwd(): string | undefined {
+    const root = resolve(this.runtimeRoot)
+    return basename(root) === '.xuanling' ? dirname(root) : undefined
+  }
   private packagePath(runId: string): string {
     return join(this.runtimeRoot, 'snapshots', runId, 'package.json')
   }
@@ -257,7 +272,7 @@ export class RuntimeSnapshots {
     durableWrite(this.packagePath(runId), bundle([...files.values()]))
   }
 
-  async prepare(runId: string, definition: BlueprintDefinition, node: GraphNode): Promise<Prepared> {
+  async prepare(runId: string, definition: BlueprintDefinition, node: GraphNode, context: PreparationContext = {}): Promise<Prepared> {
     const pkg = load(this.packagePath(runId))
     const agentRef = node.agentRef === undefined ? undefined : definition.resources[node.agentRef]
     const source = agentRef?.source
@@ -324,7 +339,11 @@ export class RuntimeSnapshots {
         if (typeof skillSource.id !== 'string' || this.hostResources === undefined) {
           throw new ResourceUnavailableError(id, 'Host Skill provider unavailable')
         }
-        const loaded = await this.hostResources.getSkill(skillSource.id, { cwd: process.cwd() })
+        const contextCwd = context.cwd ?? this.contextCwd()
+        const loaded = await this.hostResources.getSkill(skillSource.id, {
+          ...(contextCwd === undefined ? {} : { cwd: contextCwd }),
+          ...(context.scope === undefined ? {} : { scope: context.scope })
+        })
         if (loaded === undefined || typeof loaded.content !== 'string') {
           throw new ResourceUnavailableError(id, `Host Skill "${skillSource.id}" unavailable`)
         }
@@ -364,8 +383,10 @@ export class RuntimeSnapshots {
       trees.push({ value, prefix })
       skills.push({ name: id, content: `${content}\n[Full Skill directory: ${prefix}]`, digest: value.digest })
     }
+    const projectCwd = context.cwd ?? this.contextCwd()
     return {
       agentMd,
+      ...(projectCwd === undefined ? {} : { projectCwd }),
       ...(agentPreset === undefined ? {} : { agentPreset }),
       ...(agentComposition === undefined ? {} : { agentComposition }),
       ...(hostAgentComposition === undefined ? {} : { hostAgentComposition }),
@@ -384,14 +405,14 @@ export class RuntimeSnapshots {
 
   /** One common Skill closure for this Attempt; member agent bytes come from
    * the same immutable package, never from a second live Skill resolution. */
-  async prepareTeam(runId: string, definition: BlueprintDefinition, node: GraphNode): Promise<PreparedTeam> {
+  async prepareTeam(runId: string, definition: BlueprintDefinition, node: GraphNode, context: PreparationContext = {}): Promise<PreparedTeam> {
     if (node.teamStage === undefined) throw new Error('Team configuration required')
     if (node.modelSelection !== undefined) throw new Error('TeamStage node model selection is unavailable')
     const lead = node.agentRef === undefined ? undefined : definition.resources[node.agentRef]
     if (lead?.source?.kind === 'host') throw new ResourceUnavailableError(node.agentRef ?? 'agent', 'Host Agent presets are not supported for TeamStage lead')
     if (lead?.format === 'agent-preset')
       throw new ResourceUnavailableError(node.agentRef ?? 'agent', 'Packaged Agent presets are not supported for TeamStage lead')
-    const common = await this.prepare(runId, definition, node)
+    const common = await this.prepare(runId, definition, node, context)
     const pkg = load(this.packagePath(runId))
     const members = node.teamStage.members.map(member => {
       const ref = definition.resources[member.agentRef]

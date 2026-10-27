@@ -1,5 +1,5 @@
 /** Resource observations do not alter definition resources or their grants. */
-import type { HostLink, HostResourceCatalogEntry } from '../../../../adapters/host/remote.ts'
+import type { HostLink, HostResourceCatalogEntry, LibraryRef } from '../../../../adapters/host/remote.ts'
 
 export interface WorkspaceResourceContext {
   readonly host: Pick<HostLink, 'listResources'> | undefined
@@ -8,6 +8,7 @@ export interface WorkspaceResourceContext {
   readGeneration(): number
   navigationGeneration(): number
   isDisposed(): boolean
+  selection(): { library: LibraryRef; workspaceId?: string } | undefined
   setCatalogState(state: 'loading' | 'current' | 'unavailable', entries?: HostResourceCatalogEntry[]): void
   emit(): void
 }
@@ -25,7 +26,7 @@ export async function refreshWorkspaceResources(context: WorkspaceResourceContex
   context.emit()
   if (context.isDisposed()) return
   try {
-    const { resources } = await context.host.listResources()
+    const { resources } = await context.host.listResources(context.selection())
     if (readGeneration !== context.readGeneration() || navigationGeneration !== context.navigationGeneration()) return
     context.setCatalogState('current', resources)
   } catch {

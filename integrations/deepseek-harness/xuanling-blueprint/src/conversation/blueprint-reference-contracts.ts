@@ -1,4 +1,5 @@
 /** Read-only composition metadata. No resource bodies or package files cross this boundary. */
+import { libraryRefCodec } from '../definition/library-ref.ts'
 import { z } from 'zod'
 import { frozenGraphCodec, frozenPresentationCodec } from './contracts.ts'
 import type { BlueprintDefinition } from '../definition/types.ts'
@@ -12,7 +13,12 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
 
 const revision = () => z.string().regex(/^[a-f0-9]{64}$/)
 export const blueprintReferenceArgsCodec = () =>
-  z.strictObject({ blueprintId: z.string().min(1), documentRevision: revision().optional(), ownerBlueprintId: z.string().min(1).optional() })
+  z.strictObject({
+    library: libraryRefCodec().optional(),
+    blueprintId: z.string().min(1),
+    documentRevision: revision().optional(),
+    ownerBlueprintId: z.string().min(1).optional()
+  })
 export const blueprintReferenceViewCodec = () =>
   z.strictObject({
     blueprintId: z.string().min(1),

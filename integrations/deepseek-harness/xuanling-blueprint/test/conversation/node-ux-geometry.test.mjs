@@ -9,6 +9,9 @@ globalThis[key] = seat
 seat.react = {
   createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }),
   useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
+  useMemo(factory) {
+    return factory()
+  },
   useState(initial) {
     const f = seat.active,
       i = f.stateCursor++

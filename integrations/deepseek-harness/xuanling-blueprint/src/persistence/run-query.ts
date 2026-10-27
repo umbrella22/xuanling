@@ -4,6 +4,7 @@ import type { RunStore } from './run-store.ts'
 export interface RunQueryArgs {
   sessionId?: string | undefined
   blueprintId?: string | undefined
+  workspaceId?: string | undefined
   state?: RunState | undefined
   cursor?: string | undefined
   limit?: number | undefined
@@ -74,7 +75,9 @@ function decodeCursor(value: string | undefined): RunCursor | undefined {
 }
 
 function validateArgs(args: RunQueryArgs): { cursor?: RunCursor; limit: number } {
-  if (args.sessionId === undefined && args.blueprintId === undefined) throw new RunQueryError('SCOPE_REQUIRED')
+  // A workspace-scoped runtime is already filtered by its root; workspaceId is
+  // an explicit scope selector, not a filter inside one runtime.
+  if (args.sessionId === undefined && args.blueprintId === undefined && args.workspaceId === undefined) throw new RunQueryError('SCOPE_REQUIRED')
   const limit = args.limit ?? DEFAULT_LIMIT
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_LIMIT) throw new RunQueryError('INVALID_LIMIT')
   const cursor = decodeCursor(args.cursor)

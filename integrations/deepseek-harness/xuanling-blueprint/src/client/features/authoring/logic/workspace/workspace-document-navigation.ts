@@ -2,7 +2,7 @@
 import type { BlueprintDefinition } from '../../../../../definition/types.ts'
 import { readHostDefinition } from './document.ts'
 import { GraphEditor } from '../graph/graph-editor.ts'
-import type { CatalogValue, DefinitionDocument, HostLink } from '../../../../adapters/host/remote.ts'
+import type { CatalogValue, DefinitionDocument, HostLink, LibraryRef, LibrarySummary } from '../../../../adapters/host/remote.ts'
 import type { WorkspaceNotice } from '../../../../shared/contracts/view-contract.ts'
 import { errorNotice } from './workspace-errors.ts'
 
@@ -12,7 +12,16 @@ export interface WorkspaceDraftCreation {
 }
 export interface WorkspaceNavigationContext {
   readonly host: Pick<HostLink, 'listDefinitions' | 'loadDefinition' | 'validate'> | undefined
-  read(): { disposed: boolean; generation: number; blueprintId: string | null; catalog: CatalogValue['definitions']; runId: string | null }
+  read(): {
+    disposed: boolean
+    generation: number
+    blueprintId: string | null
+    catalog: CatalogValue['definitions']
+    runId: string | null
+    library: LibraryRef | undefined
+    libraries: LibrarySummary[]
+  }
+  refreshLibraries(): Promise<void>
   assertActive(): void
   batch(action: () => void): void
   beginDraft(requestId: string): string
@@ -53,9 +62,34 @@ export async function initializeWorkspace(context: WorkspaceNavigationContext, d
   }
   const generation = context.read().generation
   try {
+    // Resolve the library cascade first: resource scope and the catalog both
+    // depend on the selected workspace.
+    await context.refreshLibraries()
+    if (context.read().disposed || generation !== context.read().generation) return
     await context.refreshResources()
     if (context.read().disposed || generation !== context.read().generation) return
-    const catalog = (await context.host.listDefinitions()).definitions
+    // The cascade already carries each library's assets. Only an older Host
+    // without the cascade falls back to the legacy single-library catalog read.
+    const current = context.read().library
+    const selected =
+      current === undefined
+        ? undefined
+        : context
+            .read()
+            .libraries.find(entry =>
+              entry.library.kind === 'global' ? current.kind === 'global' : entry.library.workspaceId === (current as { workspaceId?: string }).workspaceId
+            )
+    const catalog =
+      selected === undefined
+        ? (await context.host.listDefinitions()).definitions
+        : selected.assets
+            .filter(asset => asset.status === 'ready')
+            .map(asset => ({
+              blueprintId: asset.blueprintId,
+              name: asset.name,
+              documentRevision: asset.documentRevision,
+              semanticRevision: asset.semanticRevision
+            }))
     if (generation !== context.read().generation) return
     context.setCatalog(catalog)
     if (!context.read().blueprintId) {
@@ -111,7 +145,7 @@ export async function loadWorkspaceDocument(context: WorkspaceNavigationContext,
     context.emit()
   })
   if (context.read().disposed || generation !== context.read().generation) return
-  const document = catalog.documentRevision === null ? null : await context.host.loadDefinition(blueprintId)
+  const document = catalog.documentRevision === null ? null : await context.host.loadDefinition(blueprintId, context.read().library)
   if (generation !== context.read().generation) return
   const definition: BlueprintDefinition = document
     ? readHostDefinition(document.definitionJson, blueprintId)

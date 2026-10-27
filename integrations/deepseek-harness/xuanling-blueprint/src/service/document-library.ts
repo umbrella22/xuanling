@@ -154,7 +154,7 @@ export class BlueprintDocumentLibrary {
     restorePackageFiles(root, packageFiles, cleanupPaths)
   }
 
-  publishPackage(root: string, definition: BlueprintDefinition, files: Array<{ path: string; text: string }>): DefinitionDocument {
+  publishPackage(root: string, definition: BlueprintDefinition, files: Array<{ path: string; text: string | Uint8Array }>): DefinitionDocument {
     return publishPackage(root, definition, files)
   }
 

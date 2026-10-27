@@ -44,7 +44,7 @@ test('L01/L02: local draft deletion never calls host; dirty document deletion ne
     false
   )
   assert.equal(data.get(draftKey('a')), '')
-  assert.ok(data.get(newDraftKey))
+  assert.ok(data.get(newDraftKey()))
 })
 
 test('L02: failed delete retains buffer and retry id; late completion never switches documents', async () => {

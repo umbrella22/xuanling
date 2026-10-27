@@ -19,15 +19,33 @@ import { BlueprintClientModel } from '../run/client-model.ts'
 import type { PreflightRunValue } from '../../../../adapters/host/remote.ts'
 import type { CatalogValue, DefinitionDocument, HostLink, HostResourceCatalogEntry } from '../../../../adapters/host/remote.ts'
 import type { WorkspaceNotice, WorkspaceViewBinding } from '../../../../shared/contracts/view-contract.ts'
+import type { LibraryRef, LibrarySummary } from '../../../../adapters/host/remote.ts'
+import { scopeBlueprintHost } from '../../../../adapters/host/remote.ts'
+import { libraryKey } from '../../../../../definition/library-ref.ts'
+import { refreshWorkspaceLibraries } from './workspace-library-use-cases.ts'
 import { isWorkspaceViewBinding, sameWorkspaceViewBinding } from '../../../../shared/contracts/view-contract.ts'
 
 export interface DraftStorage {
   getItem(key: string): string | null
   setItem(key: string, value: string): void
 }
-export const draftKey = (blueprintId: string): string => `xuanling-blueprint:draft:${encodeURIComponent(blueprintId)}`
-export const newDraftKey = 'xuanling-blueprint:new-draft'
-export const runBindingKey = (blueprintId: string): string => `xuanling-blueprint:recent-run:${encodeURIComponent(blueprintId)}`
+const keyScope = (library: LibraryRef | undefined): string => (library === undefined ? '' : `${libraryKey(library)}:`)
+export const draftKey = (blueprintId: string, library?: LibraryRef): string => `xuanling-blueprint:draft:${keyScope(library)}${encodeURIComponent(blueprintId)}`
+export const newDraftKey = (library?: LibraryRef): string => `xuanling-blueprint:new-draft${library === undefined ? '' : `:${libraryKey(library)}`}`
+export const runBindingKey = (blueprintId: string, library?: LibraryRef): string =>
+  `xuanling-blueprint:recent-run:${keyScope(library)}${encodeURIComponent(blueprintId)}`
+export function sameLibrary(a: LibraryRef, b: LibraryRef): boolean {
+  if (a.kind !== b.kind) return false
+  return a.kind === 'global' || a.workspaceId === (b as { workspaceId?: string }).workspaceId
+}
+function assetToCatalog(asset: LibrarySummary['assets'][number]): CatalogValue['definitions'][number] {
+  return {
+    blueprintId: asset.blueprintId,
+    name: asset.name,
+    documentRevision: asset.documentRevision,
+    semanticRevision: asset.semanticRevision
+  }
+}
 export function isEditingTarget(target: unknown): boolean {
   const element = target as { tagName?: string; isContentEditable?: boolean; closest?: (selector: string) => unknown } | null
   return (
@@ -72,6 +90,10 @@ export class BlueprintWorkspace {
         return this.initialize(intent.draftName)
       case 'refresh-resources':
         return this.refreshResources()
+      case 'refresh-libraries':
+        return this.refreshLibraries()
+      case 'select-library':
+        return this.selectLibrary(intent.library)
       case 'load':
         return this.load(intent.blueprintId)
       case 'save':
@@ -97,6 +119,10 @@ export class BlueprintWorkspace {
   readonly model = new BlueprintClientModel()
   editor = new GraphEditor()
   catalog: CatalogValue['definitions'] = []
+  /** Cascade projection. `catalog` is always the selected library's assets. */
+  libraries: LibrarySummary[] = []
+  library: LibraryRef = { kind: 'global' }
+  libraryState: 'loading' | 'current' | 'unavailable' = 'loading'
   resourceCatalog: HostResourceCatalogEntry[] = []
   resourceCatalogState: 'loading' | 'current' | 'unavailable' = 'loading'
   document: DefinitionDocument | null = null
@@ -147,6 +173,7 @@ export class BlueprintWorkspace {
   private readonly instanceId = `workspace-${Math.random().toString(36).slice(2)}`
   private editorEpoch = 0
   private resourceReadGeneration = 0
+  private libraryReadGeneration = 0
   private restoring = false
   private disposed = false
   private batchDepth = 0
@@ -255,6 +282,18 @@ export class BlueprintWorkspace {
       definition: this.blueprintId ? this.definitionSnapshot : null,
       editor: this.editorSnapshot,
       catalog: snapshotValue(this.catalog, previous?.catalog),
+      library: snapshotValue(
+        {
+          state: this.libraryState,
+          libraries: this.libraries,
+          selected: this.library,
+          title:
+            this.libraries.find(entry => sameLibrary(entry.library, this.library))?.title ??
+            (this.library.kind === 'global' ? 'Global' : this.library.workspaceId),
+          status: this.libraries.find(entry => sameLibrary(entry.library, this.library))?.status ?? 'unavailable'
+        },
+        previous?.library
+      ),
       resources: snapshotValue({ state: this.resourceCatalogState, entries: this.resourceCatalog }, previous?.resources),
       inputJson: this.inputJson,
       notice: snapshotValue(this.notice, previous?.notice),
@@ -294,10 +333,12 @@ export class BlueprintWorkspace {
       editorEpoch: this.editorEpoch,
       documentRevision: this.document?.documentRevision ?? null
     })
+  readonly host: HostLink | undefined
   constructor(
-    readonly host: HostLink | undefined,
+    host: HostLink | undefined,
     readonly storage?: DraftStorage
   ) {
+    this.host = host?.listBlueprintLibraries === undefined ? host : scopeBlueprintHost(host, () => this.libraryScope)
     this.dispatch = this.dispatch.bind(this)
     this.captureEditor(false)
     this.publish()
@@ -336,14 +377,14 @@ export class BlueprintWorkspace {
   }
   private persistRunBinding(blueprintId: string, runId: string): void {
     try {
-      this.storage?.setItem(runBindingKey(blueprintId), JSON.stringify({ blueprintId, runId }))
+      this.storage?.setItem(runBindingKey(blueprintId, this.libraryScope), JSON.stringify({ blueprintId, runId }))
     } catch {
       if (!this.disposed) this.notice = { key: 'status.recentRunUnavailable' }
     }
   }
   private readRunBinding(blueprintId: string): string | null {
     try {
-      const stored = this.storage?.getItem(runBindingKey(blueprintId))
+      const stored = this.storage?.getItem(runBindingKey(blueprintId, this.libraryScope))
       if (!stored) return null
       const binding = JSON.parse(stored) as { blueprintId?: unknown; runId?: unknown }
       return binding.blueprintId === blueprintId && typeof binding.runId === 'string' && binding.runId.length > 0 ? binding.runId : null
@@ -393,6 +434,16 @@ export class BlueprintWorkspace {
         return notice.params.code
       case 'status.invalidRunInput':
         return `${notice.params.code} · ${notice.params.issue}`
+      case 'status.libraryAbsent':
+        return 'This project has no blueprint library yet.'
+      case 'status.libraryUnavailable':
+        return 'This blueprint library is unavailable.'
+      case 'status.libraryEmpty':
+        return 'No blueprints in this library.'
+      case 'status.librarySwitched':
+        return `Library selected: ${notice.params.name}`
+      case 'status.workspaceRequired':
+        return 'Select a workspace before running.'
     }
   }
   /** Run details remain intact even when attempts cannot decorate the edit graph. */
@@ -443,10 +494,14 @@ export class BlueprintWorkspace {
     if (this.disposed) return
     if (!this.blueprintId || !this.storage || this.restoring) return
     try {
-      if (this.creation) this.storage.setItem(newDraftKey, JSON.stringify({ ...this.creation, definitionJson: JSON.stringify(this.editor.exportDefinition()) }))
+      if (this.creation)
+        this.storage.setItem(
+          newDraftKey(this.libraryScope),
+          JSON.stringify({ ...this.creation, definitionJson: JSON.stringify(this.editor.exportDefinition()) })
+        )
       else
         this.storage.setItem(
-          draftKey(this.blueprintId),
+          draftKey(this.blueprintId, this.libraryScope),
           JSON.stringify({
             documentRevision: this.document?.documentRevision ?? null,
             definitionJson: JSON.stringify(this.editor.exportDefinition()),
@@ -472,6 +527,10 @@ export class BlueprintWorkspace {
       readGeneration: () => this.resourceReadGeneration,
       navigationGeneration: () => this.generation,
       isDisposed: () => this.disposed,
+      selection: () =>
+        this.libraries.length === 0
+          ? undefined
+          : { library: this.library, ...(this.library.kind === 'workspace' ? { workspaceId: this.library.workspaceId } : {}) },
       setCatalogState: (state, entries) => {
         if (entries !== undefined) this.resourceCatalog = entries
         this.resourceCatalogState = state
@@ -479,13 +538,82 @@ export class BlueprintWorkspace {
       emit: () => this.emit()
     })
   }
+  /** Only a Host that exposed the cascade may receive explicit library IDs.
+   * Older Hosts keep their legacy default-library wire shape. The same scope
+   * separates browser draft/viewport/run-binding keys across libraries. */
+  get libraryScope(): LibraryRef | undefined {
+    return this.libraries.length > 0 ? this.library : undefined
+  }
+
+  private explicitLibrary(): LibraryRef | undefined {
+    return this.libraryScope
+  }
+
+  /** Refresh the cascade. Selection is preserved when still visible; otherwise
+   * the Host default library becomes current. */
+  refreshLibraries(): Promise<void> {
+    return refreshWorkspaceLibraries({
+      host: this.host,
+      assertActive: () => this.assertActive(),
+      nextReadGeneration: () => ++this.libraryReadGeneration,
+      readGeneration: () => this.libraryReadGeneration,
+      navigationGeneration: () => this.generation,
+      isDisposed: () => this.disposed,
+      current: () => this.library,
+      applyLibraries: (libraries, selected, state) => {
+        const firstProjection = this.libraries.length === 0
+        this.libraries = libraries
+        this.libraryState = state
+        const announced = selected === undefined ? undefined : libraries.find(entry => sameLibrary(entry.library, selected))
+        const existing = libraries.find(entry => sameLibrary(entry.library, this.library))
+        // The first projection adopts the Host default; later refreshes keep the
+        // user's explicit selection even if the Host default is different.
+        const next = (firstProjection ? announced : undefined) ?? existing ?? announced ?? libraries[0]
+        if (next !== undefined) {
+          this.library = next.library
+          // Only a resolved library may replace the catalog. An unavailable
+          // cascade (older Host) leaves the legacy catalog read untouched, so a
+          // concurrent initialize cannot transiently empty it.
+          this.catalog = next.status === 'ready' ? next.assets.filter(asset => asset.status === 'ready').map(assetToCatalog) : []
+        }
+      },
+      emit: () => this.emit()
+    })
+  }
+
+  /** Select one library level. A document from another library is replaced by
+   * a fresh draft; the panel confirms dirty edits before dispatching this. */
+  selectLibrary(library: LibraryRef): void {
+    if (this.disposed || sameLibrary(this.library, library)) return
+    const summary = this.libraries.find(entry => sameLibrary(entry.library, library))
+    this.batch(() => {
+      this.library = library
+      this.catalog = summary?.status === 'ready' ? summary.assets.filter(asset => asset.status === 'ready').map(assetToCatalog) : []
+      this.newDraft(library.kind === 'global' ? 'Global draft' : `${summary?.title ?? 'Project'} draft`)
+      if (summary?.status === 'empty') this.notice = { key: 'status.noDefinitions' }
+      else if (summary?.status === 'unavailable') this.notice = { key: 'status.libraryUnavailable' }
+      else if (summary?.status === 'absent') this.notice = { key: 'status.libraryAbsent' }
+      this.emit()
+    })
+    void this.refreshResources()
+  }
+
   load(blueprintId: string): Promise<void> {
     return loadWorkspaceDocument(this.navigationContext(), blueprintId)
   }
   private navigationContext(): WorkspaceNavigationContext {
     return {
       host: this.host,
-      read: () => ({ disposed: this.disposed, generation: this.generation, blueprintId: this.blueprintId, catalog: this.catalog, runId: this.runId }),
+      read: () => ({
+        disposed: this.disposed,
+        generation: this.generation,
+        blueprintId: this.blueprintId,
+        catalog: this.catalog,
+        runId: this.runId,
+        library: this.explicitLibrary(),
+        libraries: this.libraries
+      }),
+      refreshLibraries: () => this.refreshLibraries(),
       assertActive: () => this.assertActive(),
       batch: action => this.batch(action),
       beginDraft: requestId => {
@@ -556,8 +684,8 @@ export class BlueprintWorkspace {
       setNotice: notice => {
         this.notice = notice
       },
-      readNewDraft: () => this.storage?.getItem(newDraftKey),
-      readDocumentDraft: blueprintId => this.storage?.getItem(draftKey(blueprintId)),
+      readNewDraft: () => this.storage?.getItem(newDraftKey(this.libraryScope)),
+      readDocumentDraft: blueprintId => this.storage?.getItem(draftKey(blueprintId, this.libraryScope)),
       restoreRunBinding: blueprintId => {
         this.runId = this.readRunBinding(blueprintId)
       },
@@ -591,7 +719,9 @@ export class BlueprintWorkspace {
         document: this.document,
         creation: this.creation,
         deletion: this.deletion,
-        nodeCount: this.editor.nodes.length
+        nodeCount: this.editor.nodes.length,
+        library: this.explicitLibrary(),
+        libraries: this.libraries
       }),
       assertActive: () => this.assertActive(),
       isDirty: () => this.dirty,
@@ -619,9 +749,14 @@ export class BlueprintWorkspace {
       setDeletion: deletion => {
         this.deletion = deletion
       },
-      clearNewDraftStorage: () => this.storage?.setItem(newDraftKey, 'null'),
+      clearNewDraftStorage: () => this.storage?.setItem(newDraftKey(this.libraryScope), 'null'),
       clearIdentityStorage: blueprintId => {
-        for (const key of [draftKey(blueprintId), viewportKey(blueprintId), runBindingKey(blueprintId)]) this.storage?.setItem(key, '')
+        for (const key of [
+          draftKey(blueprintId, this.libraryScope),
+          viewportKey(blueprintId, this.libraryScope),
+          runBindingKey(blueprintId, this.libraryScope)
+        ])
+          this.storage?.setItem(key, '')
       },
       persistDraft: () => this.persistDraft(),
       setNotice: notice => {
@@ -664,7 +799,8 @@ export class BlueprintWorkspace {
         checkBinding: this.checkBinding,
         runId: this.runId,
         modelView: this.model.view,
-        pendingStart: this.pendingStart
+        pendingStart: this.pendingStart,
+        library: this.explicitLibrary()
       }),
       assertActive: () => this.assertActive(),
       nextCheckRead: () => ++this.checkRead,

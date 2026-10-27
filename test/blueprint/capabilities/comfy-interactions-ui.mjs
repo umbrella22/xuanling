@@ -1328,7 +1328,7 @@ export async function runCanvasJourney(page, assert, api) {
     // same-ID fixture to backup. Import never changes the downloaded archive ID.
     const fixture = JSON.parse(readFileSync(join(dir, 'comfy-fixtures.json'), 'utf8'))
     assertEmptyImportFixture(fixture)
-    const emptyCatalog = value(await realApi('listDefinitions'), 'configured empty import target').definitions.find(d => d.blueprintId === 'comfy-empty')
+    const emptyCatalog = value(await realApi('listDefinitions', {}), 'configured empty import target').definitions.find(d => d.blueprintId === 'comfy-empty')
     ensure(emptyCatalog?.documentRevision === null && fixture.seed.id === 'comfy-empty', 'same-ID empty configured target missing')
     value(await realApi('saveDefinition', { blueprintId: 'comfy-empty', definitionJson: JSON.stringify(fixture.seed), expectedRevision: null }), 'seed same-ID export fixture through Host')
     await preparePublicAction(page, 'refresh-library')

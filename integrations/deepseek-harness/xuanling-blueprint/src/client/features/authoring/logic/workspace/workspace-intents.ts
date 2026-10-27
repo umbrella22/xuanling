@@ -1,5 +1,6 @@
 /** Client command payloads contain data only; browser effects stay at their adapter. */
 import type { BlueprintWorkspace } from './workspace-controller.ts'
+import type { LibraryRef } from '../../../../adapters/host/remote.ts'
 
 export type WorkspaceIntent =
   | { type: 'set-input'; inputJson: string }
@@ -7,6 +8,8 @@ export type WorkspaceIntent =
   | { type: 'new-draft'; name?: string }
   | { type: 'initialize'; draftName?: string }
   | { type: 'refresh-resources' }
+  | { type: 'refresh-libraries' }
+  | { type: 'select-library'; library: LibraryRef }
   | { type: 'load'; blueprintId: string }
   | { type: 'save' }
   | { type: 'delete'; draftName?: string }
@@ -24,6 +27,8 @@ export interface WorkspaceIntentResults {
   'new-draft': void
   initialize: ReturnType<BlueprintWorkspace['initialize']>
   'refresh-resources': ReturnType<BlueprintWorkspace['refreshResources']>
+  'refresh-libraries': ReturnType<BlueprintWorkspace['refreshLibraries']>
+  'select-library': void
   load: ReturnType<BlueprintWorkspace['load']>
   save: ReturnType<BlueprintWorkspace['save']>
   delete: ReturnType<BlueprintWorkspace['deleteCurrent']>
@@ -49,6 +54,8 @@ const fields: Record<WorkspaceIntent['type'], readonly string[]> = {
   'new-draft': ['name'],
   initialize: ['draftName'],
   'refresh-resources': [],
+  'refresh-libraries': [],
+  'select-library': ['library'],
   load: ['blueprintId'],
   save: [],
   delete: ['draftName'],
@@ -79,6 +86,16 @@ export function assertWorkspaceIntent(value: unknown): asserts value is Workspac
       if (item !== undefined && typeof item !== 'string') invalid()
     } else if (field === 'runId') {
       if (item !== null && typeof item !== 'string') invalid()
+    } else if (field === 'library') {
+      // The library selector carries a discriminated logical identity only.
+      if (item === null || typeof item !== 'object') invalid()
+      const library = item as { kind?: unknown; workspaceId?: unknown }
+      if (library.kind === 'global') {
+        if (Object.getOwnPropertyNames(library).some(key => key !== 'kind')) invalid()
+      } else if (library.kind === 'workspace') {
+        if (Object.getOwnPropertyNames(library).some(key => key !== 'kind' && key !== 'workspaceId')) invalid()
+        if (typeof library.workspaceId !== 'string' || library.workspaceId.length === 0) invalid()
+      } else invalid()
     } else if (field === 'action') {
       if (item !== 'approve' && item !== 'reject') invalid()
     } else if (typeof item !== 'string') invalid()

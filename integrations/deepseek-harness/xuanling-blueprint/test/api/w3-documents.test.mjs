@@ -1,7 +1,7 @@
 /** W3 configured-ID/document-CAS source regressions. Isolated fixtures, no profile/key/build. */
 import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -468,7 +468,7 @@ test('catalog IDs and strict service codecs: no prototype lookup, no untrusted l
     false,
     'diagnostic probes are internal-only, not public wire methods'
   )
-  assert.equal(TYPERT.invocations.find(i => i.method === 'listDefinitions').parameters.length, 0)
+  assert.equal(TYPERT.invocations.find(i => i.method === 'listDefinitions').parameters.length, 1)
 })
 
 test('document failure: file-shaped root and unreadable document are not treated as absent first save', async t => {
@@ -665,8 +665,12 @@ test('hostProbe logical configured Skill: real public Agent/session contract and
 
 test('configured roots: admission-bound Skill drift fails closed, package remains frozen, old Attempt digest immutable', async t => {
   const host = hostRegistry(call => {
-    call.packageText = readFileSync(join(call.options.meta.cwd, 'lib', 'agent.md'), 'utf8')
-    call.skillFile = readFileSync(join(call.options.meta.cwd, '.blueprint-skills', '0', 'helpers', 'data.txt'), 'utf8')
+    // T11a: the session cwd is the project checkout; frozen package and Skill
+    // bytes live at the isolated Attempt resource directory.
+    const runRoot = join(h.runtimeRoot, 'attempts', readdirSync(join(h.runtimeRoot, 'attempts'))[0])
+    const resourceDir = join(runRoot, readdirSync(runRoot).sort().at(-1))
+    call.packageText = readFileSync(join(resourceDir, 'lib', 'agent.md'), 'utf8')
+    call.skillFile = readFileSync(join(resourceDir, '.blueprint-skills', '0', 'helpers', 'data.txt'), 'utf8')
     call.finish({ kind: 'completed' }, 'OUTPUT_' + host.calls.length)
   })
   const h = await fixture(t, { host })

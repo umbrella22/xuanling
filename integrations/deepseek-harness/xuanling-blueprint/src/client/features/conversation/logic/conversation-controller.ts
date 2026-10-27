@@ -2,6 +2,8 @@
 import {
   inspectSessionArgsCodec,
   inspectSessionCodec,
+  startSessionRunArgsCodec,
+  runAdmissionCodec,
   resolveRecoveryArgsCodec,
   resolveRecoveryValueCodec,
   runLifecycleActionArgsCodec,
@@ -18,13 +20,16 @@ import type {
   RunLifecycleActionArgs,
   RunQueryArgs,
   RunLifecycleActionValue,
-  TeamStageProjection
+  TeamStageProjection,
+  StartSessionRunArgs
 } from '../../../../conversation/contracts.ts'
+import type { AssociationView } from '../../../../conversation/association-contracts.ts'
 import { BlueprintRemoteError } from '../../../adapters/host/remote.ts'
 import type { RemoteNamespace } from '../../../adapters/host/remote.ts'
 
 export interface ConversationHost {
   inspectSession(args: InspectSessionArgs): Promise<unknown>
+  startSessionRun?(args: StartSessionRunArgs): Promise<unknown>
   queryRuns?(args: RunQueryArgs): Promise<unknown>
   archiveRun?(args: RunLifecycleActionArgs): Promise<RunLifecycleActionValue>
   restoreRun?(args: RunLifecycleActionArgs): Promise<RunLifecycleActionValue>
@@ -47,6 +52,20 @@ export function resolveConversationHost(ctx: { get(key: string): unknown }): Con
       }
       if (!result.ok) throw new BlueprintRemoteError(typeof result.error?.code === 'string' ? result.error.code : 'blueprint/remote-failed')
       return result.value
+    }
+  }
+  if (typeof namespace.startSessionRun === 'function') {
+    host.startSessionRun = async args => {
+      const request = startSessionRunArgsCodec().safeParse(args)
+      if (!request.success) throw new BlueprintRemoteError('blueprint/bad-request')
+      const result = await namespace.startSessionRun!.call(namespace, request.data)
+      if (!result || typeof result !== 'object' || Array.isArray(result) || typeof result.ok !== 'boolean') {
+        throw new BlueprintRemoteError('blueprint/dto-invalid')
+      }
+      if (!result.ok) throw new BlueprintRemoteError(typeof result.error?.code === 'string' ? result.error.code : 'blueprint/remote-failed')
+      const parsed = runAdmissionCodec().safeParse(result.value)
+      if (!parsed.success) throw new BlueprintRemoteError('blueprint/dto-invalid')
+      return parsed.data
     }
   }
   if (typeof namespace.queryRuns === 'function') {
@@ -220,6 +239,25 @@ export class ConversationController {
     await this.refresh()
   }
 
+  /** Explicit user action on a saved plan. The request id is stable per plan so
+   * a double click replays the same admission instead of starting twice. */
+  async runPlan(association: AssociationView, inputJson = '{}'): Promise<void> {
+    const startSessionRun = this.host?.startSessionRun
+    if (!startSessionRun) throw new BlueprintRemoteError('blueprint/capability-unavailable')
+    const epoch = ++this.epoch
+    await startSessionRun({
+      blueprintId: association.asset.blueprintId,
+      expectedRevision: association.documentRevision,
+      inputJson,
+      requestId: `plan-${association.associationId}-${association.documentRevision}`,
+      library: association.asset.library,
+      ...(association.asset.library.kind === 'workspace' ? { workspaceId: association.asset.library.workspaceId } : {}),
+      sessionId: this.snapshot.sessionId
+    })
+    if (epoch !== this.epoch) return
+    await this.refresh()
+  }
+
   async loadMoreRuns(): Promise<void> {
     const value = this.snapshot.value
     const queryRuns = this.host?.queryRuns
@@ -284,7 +322,7 @@ export class ConversationController {
    * unknown effect is never replayed: the note becomes the durable audit
    * evidence. Typed failures publish the existing static error code and return
    * false; a successful call refreshes the bound Session facts. */
-  async resolveRecovery(resolution: 'failed' | 'succeeded', note: string): Promise<boolean> {
+  async resolveRecovery(resolution: 'failed' | 'succeeded', note: string, workspaceQuiescent = false): Promise<boolean> {
     const value = this.snapshot.value
     const resolve = this.host?.resolveRecovery
     if (!this.connected || !resolve || value?.status !== 'bound') return false
@@ -296,6 +334,7 @@ export class ConversationController {
         sessionId: this.snapshot.sessionId,
         resolution,
         note: note.trim(),
+        ...(workspaceQuiescent ? { workspaceQuiescent: true } : {}),
         expectedSeq: value.selected.run.seq
       })
       if (epoch !== this.epoch || !this.connected) return false

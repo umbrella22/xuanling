@@ -32,7 +32,9 @@ export const BROWSER_ASSERTIONS = [
   'B-BINDING-ASYNC',
   'B-DECISION',
   'B-CANCEL',
-  'B-STALE'
+  'B-STALE',
+  'B-TEMPLATE',
+  'B-GLOBAL-LIBRARY'
 ]
 export const PERFORMANCE_ASSERTIONS = ['P6d', 'B-CSS', 'PERF-FIXTURE', 'PERF-LOAD', 'PERF-PAINT', 'PERF-UNCHANGED']
 export const PERFORMANCE_BUDGET = Object.freeze({
@@ -203,7 +205,7 @@ async function runBindingJourney(page, assert, api, succeeded, alphaNodeCount) {
     await choose(page, 'canvas-beta', 2)
     await waitRun(page, 'succeeded')
     const restored = await currentRun(page, api)
-    const binding = await page.evaluate(() => JSON.parse(localStorage.getItem('xuanling-blueprint:recent-run:canvas-beta')))
+    const binding = await page.evaluate(() => {const key = Object.keys(localStorage).find(key => key.startsWith('xuanling-blueprint:recent-run:workspace:') && key.endsWith(':canvas-beta')); return key ? JSON.parse(localStorage.getItem(key)) : null})
     switchEvidence = { requests: switching.requests, unbound, binding, restored }
     assert(
       'B-BINDING-SWITCH',
@@ -562,7 +564,7 @@ export async function runCanvasJourney(page, assert, api) {
       savedDefinition.metadata?.retained?.note === 'Keep all existing document fields',
     JSON.stringify(savedAgent)
   )
-  const localDraft = await page.evaluate(id => JSON.parse(localStorage.getItem(`xuanling-blueprint:draft:${encodeURIComponent(id)}`)), 'canvas-alpha')
+  const localDraft = await page.evaluate(id => {const key = Object.keys(localStorage).find(key => key.startsWith('xuanling-blueprint:draft:workspace:') && key.endsWith(`:${encodeURIComponent(id)}`)); return key ? JSON.parse(localStorage.getItem(key)) : null}, 'canvas-alpha')
   assert(
     'P6j',
     'Save persists the host document and an ID-scoped draft with the exact document revision',
@@ -596,7 +598,7 @@ export async function runCanvasJourney(page, assert, api) {
   const restoredNoUndo = await action(page, 'undo').isDisabled()
   await choose(page, 'canvas-beta', 2)
   const betaDoc = value(await api('loadDefinition', { blueprintId: 'canvas-beta' }), 'load beta')
-  const betaDraft = await page.evaluate(() => localStorage.getItem('xuanling-blueprint:draft:canvas-beta'))
+  const betaDraft = await page.evaluate(() => {const key = Object.keys(localStorage).find(key => key.startsWith('xuanling-blueprint:draft:workspace:') && key.endsWith(':canvas-beta')); return key ? localStorage.getItem(key) : null})
   await choose(page, 'canvas-alpha', savedDefinition.graph.nodes.length)
   assert(
     'B-DRAFT',
@@ -720,6 +722,44 @@ export async function runCanvasJourney(page, assert, api) {
     approved: approved.runId,
     cancelled: cancelled.runId
   })
+  // Exercise the new public sharing controls using this isolated profile only.
+  await choose(page, 'canvas-beta', 2)
+  const reuse = page.locator('[data-bp-library-actions]')
+  await reuse.locator('summary').click()
+  await reuse.getByRole('button', {name: 'Extract reusable template', exact: true}).click()
+  const templateText = reuse.getByRole('textbox', {name: 'Template content (JSON)', exact: true})
+  await templateText.waitFor({state:'visible'})
+  const extracted = JSON.parse(await templateText.inputValue())
+  const download = page.waitForEvent('download')
+  await reuse.getByRole('button', {name:'Save and export template', exact:true}).click()
+  const exported = await download
+  await exported.saveAs(`${process.env.TMPDIR ?? '/tmp'}/blueprint-browser-template-${extracted.templateId}.json`)
+  await reuse.getByRole('textbox', {name:'Blueprint name', exact:true}).fill('Prepared browser fixture')
+  await reuse.getByRole('button', {name:'Prepare for selected workspace', exact:true}).click()
+  await reuse.locator('[data-bp-preparation="ready"]').waitFor({state:'visible'})
+  const libraries = value(await api('listBlueprintLibraries', {}), 'template library read')
+  const workspace = libraries.libraries.find(entry => entry.library.kind === 'workspace' && entry.assets.some(asset => asset.name === 'Prepared browser fixture'))
+  const instance = workspace?.assets.find(asset => asset.name === 'Prepared browser fixture')
+  assert('B-TEMPLATE', 'mounted UI extracts, saves, exports and prepares a template into the selected project', !!instance && extracted.pattern.id === '{{id}}', JSON.stringify({instance, templateId:extracted.templateId}))
+  const globalDocument = value(await api('createDefinition', {requestId:'browser-global-plan', library:{kind:'global'}, definitionJson:JSON.stringify({schemaVersion:2,id:'global-design',name:'Global editable design',resources:{},graph:{nodes:[{id:'in',kind:'input'}],edges:[]}})}), 'global create')
+  await selectStyledOption(page, page.locator('[data-bp-select="library"]'), 'global')
+  await preparePublicAction(page, 'refresh-library')
+  await action(page, 'refresh-library').click()
+  await closePublicMore(page)
+  try {
+    await choose(page, globalDocument.blueprintId, 1)
+  } catch (error) {
+    const state = await page.evaluate(() => ({
+      library: document.querySelector('[data-bp-select="library"]')?.getAttribute('data-bp-value'),
+      status: document.querySelector('[data-bp-library-status]')?.getAttribute('data-bp-library-status'),
+      options: [...document.querySelectorAll('[role="option"]')].map(el => el.getAttribute('data-bp-option-value')),
+      notices: [...document.querySelectorAll('[role="status"]')].map(el => el.textContent?.slice(0, 250))
+    }))
+    const observed = value(await api('listBlueprintLibraries', {}), 'global library read')
+    throw new Error(`${error.message}; library state: ${JSON.stringify(state)}; catalog: ${JSON.stringify(observed)}`)
+  }
+  assert('B-GLOBAL-LIBRARY', 'global library is editable and has no Run execution without a target project', await action(page, 'start-run').isDisabled(), globalDocument.blueprintId)
+  trace.push({action:'template-and-global-library', templateId:extracted.templateId, instance:instance?.blueprintId, global:globalDocument.blueprintId})
   return {
     provenance: 'real DSH boot graph + system Edge; Playwright mouse/keyboard, no DOM-native clicks',
     css,

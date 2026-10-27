@@ -45,7 +45,7 @@ export const TEAM_ACCEPTANCE_CODES = ['accepted', 'rejected'] as const
 export type TeamAcceptanceCode = (typeof TEAM_ACCEPTANCE_CODES)[number]
 export const TEAM_STAGE_SCHEMA_VERSION = 1 as const
 export const TEAM_OUTPUT_ACCEPTANCE_SCHEMA_VERSION = 1 as const
-export const RUN_RECORD_SCHEMA_VERSION = 2 as const
+export const RUN_RECORD_SCHEMA_VERSION = 3 as const
 export const TEAM_EFFECT_STATES = ['pending', 'succeeded', 'failed', 'recovery_required'] as const
 export type TeamEffectState = (typeof TEAM_EFFECT_STATES)[number]
 export const TEAM_KNOWN_CHECKS = ['schema', 'digest', 'artifact-digest', 'agreement'] as const
@@ -66,6 +66,22 @@ export const modelSelectionSchema = z
   })
   .strict()
 export const bindingSelectionsSchema = z.record(z.string().min(1), modelSelectionSchema.nullable())
+
+/** Execution context frozen into record schema 3 (C-06/C-12). */
+export const runAssetRefSchema = z.strictObject({
+  library: z.discriminatedUnion('kind', [
+    z.strictObject({ kind: z.literal('global') }),
+    z.strictObject({ kind: z.literal('workspace'), workspaceId: z.string().min(1) })
+  ]),
+  blueprintId: z.string().min(1)
+})
+export const runContextSchema = z.strictObject({
+  instanceAssetRef: runAssetRefSchema.nullable(),
+  originAssetRef: runAssetRefSchema.nullable(),
+  targetWorkspace: z.strictObject({ workspaceId: z.string().min(1), rootFingerprint: z.string().min(1).nullable() }).nullable(),
+  preparationDigest: z.string().min(1).nullable()
+})
+export type RunContext = z.infer<typeof runContextSchema>
 
 export const frozenBlueprintSchema = z.strictObject({
   blueprintId: z.string().min(1),
@@ -528,6 +544,8 @@ export interface RunRecord {
   bindingAdmission?: 'pending' | 'captured'
   /** Admission-frozen model routes, including null for an absent Host default. */
   bindingSelections?: Record<string, HostModelSelection | null>
+  /** Record schema 3 execution context. Older records omit this field. */
+  context?: RunContext
   commandKey: string
   state: RunState
   attempts: AttemptRecord[]
@@ -564,7 +582,7 @@ export const runRecordSchema = z
     // shape stable while exposing the effective current marker to code that needs
     // to branch on the record format. New/updated directory records are written with
     // an explicit enumerable schemaVersion by RunStore.createRun().
-    schemaVersion: z.union([z.literal(1), z.literal(RUN_RECORD_SCHEMA_VERSION)]).optional(),
+    schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(RUN_RECORD_SCHEMA_VERSION)]).optional(),
     blueprintId: z.string().min(1).optional(),
     source: runSourceCodec().optional(),
     runId: runIdSchema,
@@ -577,6 +595,7 @@ export const runRecordSchema = z
     bindingDigests: z.record(z.string(), sha256).optional(),
     bindingSelections: bindingSelectionsSchema.optional(),
     bindingAdmission: z.enum(['pending', 'captured']).optional(),
+    context: runContextSchema.optional(),
     commandKey: z.string().min(1),
     state: z.enum(RUN_STATES),
     attempts: z.array(

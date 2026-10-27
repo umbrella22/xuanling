@@ -187,9 +187,9 @@ test('first-save check and export bind the assigned identity and never dispatch 
 test('untrusted new draft is validated before adoption; rejected bytes are retained', async t => {
   const f = await fixture(t)
   const raw = JSON.stringify({ requestId: 'bad', definitionJson: JSON.stringify({ schemaVersion: 2, id: 'draft-bad', graph: { nodes: [] } }) })
-  f.storage.setItem(newDraftKey, raw)
+  f.storage.setItem(newDraftKey(), raw)
   await f.workspace.initialize()
   assert.equal(f.workspace.definition, null)
   assert.equal(f.workspace.notice.key, 'status.draftInvalid')
-  assert.equal(f.storage.getItem(newDraftKey), raw)
+  assert.equal(f.storage.getItem(newDraftKey()), raw)
 })

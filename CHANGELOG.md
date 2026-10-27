@@ -4,6 +4,51 @@ All notable release changes are recorded here. XuanLing uses immutable release
 tags and publishes the launcher, native packages, DeepSeek Harness bundles, and
 ZCode projection from the same source commit.
 
+## 0.9.0 - 2026-10-27
+
+### Added
+
+- Browse profile-global and registered workspace Blueprint libraries from a
+  cascading selector. Discovery checks each workspace's `.xuanling` directory
+  without creating it. Global definitions can be edited and saved without an
+  execution target; running requires a selected workspace.
+- Create, reference and edit Blueprint plans inside a conversation before a Run
+  exists. Saved plans retain their asset identity and revision, and Run progress
+  is reconciled from durable records after refresh or restart.
+- Share the current workflow ZIP or extract a parameterized template containing
+  its package files. Template preparation records bounded project evidence and
+  required inputs; startup rejects stale, missing or invalid preparation facts.
+- Coordinate business-tool writes by the real project root across Runs,
+  processes and custom runtime directories. Durable write intents, pre-tool
+  conflict checks and explicit recovery protect unresolved workspace effects.
+
+### Fixed
+
+- Resolve Agent and Skill catalogs in the caller's DSH scope, including globally
+  installed filesystem skills. Selecting the global library clears project
+  context and isolates library storage by profile.
+- Preserve library and workspace selection through Run inspection, cancellation,
+  decisions, archive/restore and recovery. Correct native RPC argument handling
+  and actual panel routing for library selection and refresh.
+- Preserve template file bytes and digests, enforce storage containment and
+  writer locking, and make retries compare the complete package contents.
+
+### Compatibility and limits
+
+- Definition schema remains v2. New Run records use schema 3; valid older
+  records remain readable and upgrade on write. Downgrading a runtime over new
+  records is not supported; retain a pre-upgrade data backup for rollback.
+- Workspace write coordination is advisory. Business tools are conservatively
+  serialized; arbitrary external writers and per-tool checks inside TeamStage
+  are outside the current guarantee.
+- Template adaptation provides explicit parameters and bounded file evidence.
+  Automatic semantic generalization and role/Agent/Skill/model matching remain
+  incomplete. Large-library pagination and the complete native desktop journey
+  also remain outside this release's verified scope.
+- Real provider acceptance, including the DeepSeek connectivity retest, remains
+  deferred. Deterministic, package and browser checks do not establish provider
+  acceptance or completion of the broader Blueprint implementation plan.
+
 ## 0.8.1 - 2026-10-23
 
 ### Changed

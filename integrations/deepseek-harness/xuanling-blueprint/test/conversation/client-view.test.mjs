@@ -12,6 +12,9 @@ globalThis[key] = seat
 seat.react = {
   createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }),
   useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
+  useMemo(factory) {
+    return factory()
+  },
   useState(initial) {
     const f = seat.active,
       i = f.stateCursor++
@@ -153,12 +156,17 @@ function fixture(dict = en) {
   let response = data()
   const reads = [],
     inspections = [],
-    fits = []
+    fits = [],
+    starts = []
   const controller = new ConversationController(
     {
       async inspectSession(args) {
         reads.push(args)
         return typeof response === 'function' ? response(args) : response
+      },
+      async startSessionRun(args) {
+        starts.push(args)
+        return { runId: 'r-plan', semanticRevision: 's', state: 'queued', replayed: false }
       }
     },
     'source'
@@ -168,6 +176,7 @@ function fixture(dict = en) {
     controller,
     props,
     reads,
+    starts,
     inspections,
     fits,
     setResponse(value) {
@@ -650,8 +659,8 @@ test('unbound has no synthetic nodes; unavailable reads retain an explicit refre
 
 test('ordinary conversation empty state is neutral in both locales before and after a normal tab remount', async () => {
   for (const [dict, expected] of [
-    [zh, '当前对话未关联蓝图，暂无实时蓝图可显示。'],
-    [en, 'This conversation has no linked blueprint. No live blueprint is available to display.']
+    [zh, '当前对话暂无蓝图运行。可以新建或引用蓝图，保存方案后开始运行。'],
+    [en, 'This conversation has no blueprint runs. Create or use a blueprint, then run the saved plan.']
   ]) {
     const f = fixture(dict)
     f.setResponse({ status: 'unbound', sessionId: 'source' })
@@ -791,4 +800,67 @@ test('legal humanDecision without branches renders every frozen approve/reject/c
     flow.props.nodes.every(node => !node.connectable && !node.draggable),
     true
   )
+})
+
+const planResponse = () => ({
+  status: 'unbound',
+  sessionId: 'source',
+  associations: [
+    {
+      associationId: 'assoc-1',
+      sessionId: 'source',
+      asset: { library: { kind: 'workspace', workspaceId: 'ws-a' }, blueprintId: 'bp-plan' },
+      name: 'Documentation plan',
+      documentRevision: 'rev-1',
+      intent: 'design',
+      status: 'saved',
+      runId: null,
+      updatedAt: '2026-10-27T00:00:00.000Z'
+    }
+  ]
+})
+
+test('C-04: an unbound session renders saved plans instead of the empty state', async () => {
+  const f = fixture(en)
+  f.setResponse(planResponse())
+  await f.controller.refresh()
+  const tree = f.render()
+  const section = one(tree, node => node.props['data-bp-conversation-plans'] === '1')
+  const card = one(section, node => node.props['data-bp-plan'] === 'assoc-1')
+  assert.equal(card.props['data-bp-plan-status'], 'saved')
+  const text = JSON.stringify(section.children)
+  assert.ok(text.includes('Documentation plan'))
+  assert.ok(text.includes('Saved · not run'))
+  assert.ok(text.includes('Design only'))
+  assert.equal(all(tree, node => node.props.className === 'bp-conversation-empty').length, 0)
+})
+
+test('C-04: the plan Run button starts the saved revision for this session once', async () => {
+  const f = fixture(en)
+  f.setResponse(planResponse())
+  await f.controller.refresh()
+  const tree = f.render()
+  const button = one(tree, node => node.props['data-bp-plan-run'] === 'assoc-1')
+  await button.props.onClick()
+  assert.equal(f.starts.length, 1)
+  assert.deepEqual(f.starts[0], {
+    blueprintId: 'bp-plan',
+    expectedRevision: 'rev-1',
+    inputJson: '{}',
+    requestId: 'plan-assoc-1-rev-1',
+    library: { kind: 'workspace', workspaceId: 'ws-a' },
+    workspaceId: 'ws-a',
+    sessionId: 'source'
+  })
+})
+
+test('C-04: a bound session still shows newly saved plans', async () => {
+  const f = fixture(en)
+  const bound = data()
+  bound.associations = planResponse().associations
+  f.setResponse(bound)
+  await f.controller.refresh()
+  const tree = f.render()
+  const section = one(tree, node => node.props['data-bp-conversation-plans'] === '1')
+  assert.equal(one(section, node => node.props['data-bp-plan'] === 'assoc-1').props['data-bp-plan-status'], 'saved')
 })
