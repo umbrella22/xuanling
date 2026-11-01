@@ -1,1 +1,2 @@
 crates/xuanling-memory/tests/fixtures/retrieval-corpus-v1.jsonl text eol=lf
+crates/xuanling-harness-bridge/tests/fixtures/** -text
