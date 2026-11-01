@@ -14,6 +14,8 @@ on:
     paths:
       - "crates/xuanling-harness-bridge/**"
       - "crates/xuanling-toolkit/**"
+      - "scripts/harness-bridge/**"
+      - ".gitattributes"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/harness-bridge.yml"
@@ -22,6 +24,8 @@ on:
     paths:
       - "crates/xuanling-harness-bridge/**"
       - "crates/xuanling-toolkit/**"
+      - "scripts/harness-bridge/**"
+      - ".gitattributes"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/harness-bridge.yml"

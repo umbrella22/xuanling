@@ -13,6 +13,8 @@ on:
       - "crates/xuanling-memory/**"
       - "crates/xuanling-mcp/**"
       - "crates/xuanling-harness-bridge/**"
+      - "scripts/harness-bridge/**"
+      - ".gitattributes"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/xuanling-portability.yml"
