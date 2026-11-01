@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::process::{Child, Command};
 
 /// Configure a command before spawn so its descendants can be contained.
-pub(crate) fn configure(command: &mut Command) {
+pub fn configure(command: &mut Command) {
     #[cfg(unix)]
     {
         command.process_group(0);
@@ -27,7 +27,7 @@ pub(crate) fn configure(command: &mut Command) {
 
 /// An OS-owned process tree. Clones refer to the same containment object.
 #[derive(Clone, Debug)]
-pub(crate) struct ProcessTree {
+pub struct ProcessTree {
     key: u64,
     id: i64,
     #[cfg(unix)]
@@ -38,7 +38,12 @@ pub(crate) struct ProcessTree {
 
 impl ProcessTree {
     /// Attach a freshly spawned direct child to a descendant-containment unit.
-    pub(crate) fn attach(child: &Child) -> io::Result<Self> {
+    ///
+    /// The command must have been spawned after [`configure`], which makes the
+    /// child a process-group leader on Unix. `attach` verifies that invariant so
+    /// a caller cannot silently get a non-contained child whose cleanup appears
+    /// confirmed.
+    pub fn attach(child: &Child) -> io::Result<Self> {
         let pid = child
             .id()
             .ok_or_else(|| io::Error::other("spawned process id unavailable"))?;
@@ -47,6 +52,20 @@ impl ProcessTree {
         {
             let process_group = libc::pid_t::try_from(pid)
                 .map_err(|_| io::Error::other("spawned process id exceeds pid_t"))?;
+            // SAFETY: `getpgid` is a read-only syscall on the spawned pid.
+            let observed = unsafe { libc::getpgid(process_group) };
+            if observed == -1 {
+                let error = io::Error::last_os_error();
+                // The child may already be gone; there is no live group to
+                // confirm and no containment work left.
+                if error.raw_os_error() != Some(libc::ESRCH) {
+                    return Err(error);
+                }
+            } else if observed != process_group {
+                return Err(io::Error::other(
+                    "child is not in its own process group; call configure before spawn",
+                ));
+            }
             Ok(Self {
                 key: next_key(),
                 id: i64::from(process_group),
@@ -84,8 +103,41 @@ impl ProcessTree {
         self.id
     }
 
+    /// Report whether the containment unit still owns any live process.
+    ///
+    /// Termination is asynchronous at the OS boundary, so a caller that must
+    /// confirm cleanup polls this after [`Self::terminate`].
+    pub fn is_alive(&self) -> io::Result<bool> {
+        #[cfg(unix)]
+        {
+            // SAFETY: a negative PID addresses only the isolated process group
+            // created by `configure`; signal 0 performs an existence check.
+            let rc = unsafe { libc::kill(-self.process_group, 0) };
+            if rc == 0 {
+                return Ok(true);
+            }
+            let error = io::Error::last_os_error();
+            match error.raw_os_error() {
+                Some(libc::ESRCH) => Ok(false),
+                // A live group we may not signal still exists.
+                Some(libc::EPERM) => Ok(true),
+                _ => Err(error),
+            }
+        }
+
+        #[cfg(windows)]
+        {
+            self.job.is_alive()
+        }
+
+        #[cfg(not(any(unix, windows)))]
+        {
+            Ok(false)
+        }
+    }
+
     /// Terminate the complete contained tree. Already-exited trees are success.
-    pub(crate) fn terminate(&self) -> io::Result<()> {
+    pub fn terminate(&self) -> io::Result<()> {
         #[cfg(unix)]
         {
             // SAFETY: `configure` created an isolated process group whose PGID
@@ -250,6 +302,32 @@ impl JobHandle {
         } else {
             Ok(())
         }
+    }
+
+    fn is_alive(&self) -> io::Result<bool> {
+        use std::mem::size_of;
+        use windows_sys::Win32::System::JobObjects::{
+            JOBOBJECT_BASIC_ACCOUNTING_INFORMATION, JobObjectBasicAccountingInformation,
+            QueryInformationJobObject,
+        };
+
+        let mut info: JOBOBJECT_BASIC_ACCOUNTING_INFORMATION = unsafe { std::mem::zeroed() };
+        let mut returned = 0_u32;
+        // SAFETY: `info` is the exact structure and byte size requested by the
+        // JobObjectBasicAccountingInformation information class.
+        let queried = unsafe {
+            QueryInformationJobObject(
+                self.0,
+                JobObjectBasicAccountingInformation,
+                (&raw mut info).cast(),
+                size_of::<JOBOBJECT_BASIC_ACCOUNTING_INFORMATION>() as u32,
+                &raw mut returned,
+            )
+        };
+        if queried == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(info.ActiveProcesses > 0)
     }
 }
 

@@ -14,6 +14,13 @@ pub mod session;
 mod tree;
 pub mod which;
 
+/// Narrow public view of descendant containment for host processes that manage
+/// a long-lived child themselves. The behavior is the same containment unit
+/// used by `process_run`; nothing else from the internal module is exposed.
+pub mod containment {
+    pub use super::tree::{ProcessTree, configure};
+}
+
 pub use artifact::{
     ArtifactCleanupRequest, ArtifactCleanupResult, ArtifactReadRequest, ArtifactReadResult,
     ArtifactRef, ArtifactWriter, cleanup as artifact_cleanup, read as artifact_read,

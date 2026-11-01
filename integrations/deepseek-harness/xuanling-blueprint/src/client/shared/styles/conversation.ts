@@ -49,7 +49,7 @@ export const conversationCss = `
 .bp-conversation-plan-identity code{font-family:var(--ds-font-family-code,ui-monospace,monospace);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 .bp-conversation-plan-actions{display:flex;gap:6px;flex:0 0 auto;align-items:center}
 .bp-conversation-plan-actions button{min-height:32px;padding:5px 12px;border-radius:var(--dsw-radius-sm,8px);border:1px solid var(--dsw-alias-border-l3,#80808040);background:var(--dsw-alias-bg-layer-1,var(--bp-raised));color:var(--dsw-alias-label-primary,var(--bp-text));font-size:12px;line-height:1.2;cursor:pointer;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bp-conversation-plan-actions button[data-bp-plan-run]{background:var(--dsw-alias-button-primary-bg,var(--bp-accent));border-color:transparent;color:var(--dsw-alias-button-primary-label,var(--bp-bg));font-weight:600}
+.bp-conversation-plan-actions button[data-bp-plan-run]{background:var(--dsw-alias-button-primary-fill,var(--bp-accent));border-color:transparent;color:var(--dsw-alias-label-primary-foreground,var(--bp-bg));font-weight:600}
 .bp-conversation-plan-actions button:disabled{opacity:.55;cursor:default}
 .bp-conversation-plan-actions button:focus-visible{outline:2px solid var(--bp-accent);outline-offset:2px}
 .bp-conversation-plan-error{margin:0;font-size:11px;color:var(--dsw-alias-state-error-primary,#c4473a);overflow-wrap:anywhere}

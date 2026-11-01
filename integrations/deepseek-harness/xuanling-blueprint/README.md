@@ -61,17 +61,17 @@ light/dark theme settings.*
 Install the published package into the same profile that serves your DSH Web UI:
 
 ```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.9.0
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.10.0
 ```
 
 Restart that profile and refresh the DSH page. Replace `web` with the profile you use. A new custom
 profile contains only the base bundle and does not include the Web application.
 
-Release `0.9.0` targets the DSH `next` capability channel, with development and harness dependencies
+Release `0.10.0` targets the DSH `next` capability channel, with development and harness dependencies
 pinned to `0.2.1-rc.2` and a public runtime peer floor of `>=0.2.1-alpha.5`. Keep DSH packages within
 one profile on the same channel. See [Development](#development) for a linked checkout build.
 
-**Compatibility break since 0.7.0.** Release `0.9.0` uses definition schema v2. Definitions saved by the
+**Compatibility break since 0.7.0.** Release `0.10.0` uses definition schema v2. Definitions saved by the
 published `0.6.1` package (schema v1, including the removed `toolCall`, `scriptCall`, `subflow` and
 `iteration` nodes) are rejected with `blueprint/definition-invalid` and cannot be opened or run.
 Use the [Blueprint migration Skill](../xuanling-skills/skills/xuanling-blueprint-migrate/SKILL.md)
@@ -292,6 +292,11 @@ unavailable instead of being silently replaced.
 | --- | --- |
 | Sidebar **XuanLing Blueprint** | Create and edit graphs, select resources, save, check, run and inspect results. |
 | **Blueprint** view in a native conversation | Read the frozen graph and Attempts linked to that conversation. |
+
+On the macOS desktop client the panel keeps the window-chrome strip above its toolbar, and the
+toolbar row doubles as a window-drag surface: blank runs move the DSH window while every control
+stays clickable. The same blueprint opened in an ordinary browser tab keeps the compact toolbar
+without the extra strip.
 
 An ordinary conversation shows **This conversation has no linked blueprint**. That is a normal
 empty view. Ask the Agent in that conversation to start a blueprint explicitly to create a Run

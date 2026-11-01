@@ -1,0 +1,50 @@
+[package]
+name = "xuanling-harness-bridge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Result-only MCP bridge that runs a native worker harness and returns its final answer"
+
+[[bin]]
+name = "harness-bridge"
+path = "src/main.rs"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+cap-std = "3.4.5"
+clap.workspace = true
+regex.workspace = true
+rmcp = { version = "3.1.2", features = ["server", "macros", "schemars", "transport-io"] }
+schemars = "1"
+same-file = "1"
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true }
+tokio-util = "0.7"
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt", "std"] }
+uuid = { workspace = true, features = ["v4"] }
+xuanling-toolkit = { path = "../xuanling-toolkit" }
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+
+[target.'cfg(unix)'.dev-dependencies]
+libc = { workspace = true }
+
+[[bin]]
+name = "harness-bridge-fake-worker"
+path = "tests/fixtures/fake_worker.rs"
+test = false
+bench = false
+
+[lints]
+workspace = true

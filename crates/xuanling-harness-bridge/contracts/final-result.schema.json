@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Harness Bridge FinalResult",
+  "description": "Terminal result returned inside harness_wait and harness_cancel responses. Field names, optionality and the status enum match crates/xuanling-harness-bridge/src/jobs.rs FinalResult exactly. Optional fields are omitted when absent, as in the Rust serialization.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "job_id",
+    "instance_id",
+    "request_id",
+    "harness",
+    "adapter_version",
+    "status",
+    "output_complete",
+    "redacted",
+    "cleanup",
+    "started_at",
+    "finished_at"
+  ],
+  "properties": {
+    "job_id": {
+      "type": "string",
+      "description": "Instance-scoped job identity returned by harness_submit."
+    },
+    "instance_id": {
+      "type": "string",
+      "description": "Bridge instance that accepted the job."
+    },
+    "request_id": {
+      "type": "string",
+      "description": "Caller-chosen request identity used for instance-local deduplication."
+    },
+    "harness": {
+      "type": "string",
+      "description": "Worker adapter id: codex, claude, dsh or zcode."
+    },
+    "adapter_version": {
+      "type": "string",
+      "description": "Configured adapter CLI version string."
+    },
+    "status": {
+      "type": "string",
+      "description": "Terminal status. completed means the native run succeeded; it is not an acceptance verdict by the controller.",
+      "enum": [
+        "completed",
+        "failed",
+        "cancelled",
+        "timed_out",
+        "needs_input",
+        "interrupted"
+      ]
+    },
+    "worker_final_output": {
+      "type": "string",
+      "description": "Bounded worker final answer. Omitted when no final answer was produced. Redaction or truncation is reported by redacted and output_complete, never by presenting altered text as complete."
+    },
+    "output_complete": {
+      "type": "boolean",
+      "description": "False when the final answer was truncated, redacted, or the native stream was incomplete."
+    },
+    "redacted": {
+      "type": "boolean",
+      "description": "True when known secret patterns or configured secret values were replaced in the final output."
+    },
+    "exit_code": {
+      "type": "integer",
+      "description": "Native worker exit code when it was observed."
+    },
+    "error": {
+      "$ref": "#/$defs/result_error",
+      "description": "Native or execution failure attached to the terminal state."
+    },
+    "delivery_error": {
+      "$ref": "#/$defs/result_error",
+      "description": "Capture or delivery problem that does not rewrite the worker terminal state (for example RESULT_TOO_LARGE)."
+    },
+    "cleanup": {
+      "$ref": "#/$defs/cleanup",
+      "description": "Process containment snapshot taken when the result was formed."
+    },
+    "report_path": {
+      "type": "string",
+      "description": "Published Markdown result path; present only when save_result was true and publication succeeded."
+    },
+    "report_error": {
+      "type": "string",
+      "description": "REPORT_WRITE_FAILED when the optional Markdown result could not be published; the worker result is preserved."
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC3339 UTC timestamp when the worker started."
+    },
+    "finished_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC3339 UTC timestamp when the result was formed."
+    }
+  },
+  "$defs": {
+    "result_error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Stable error code from contracts/tools.json error_codes, or a native classification code."
+        },
+        "message": {
+          "type": "string",
+          "description": "Safe, bounded diagnostic. Never a full raw stdout/stderr stream, raw environment or credential value."
+        }
+      }
+    },
+    "cleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["confirmed"],
+      "properties": {
+        "confirmed": {
+          "type": "boolean",
+          "description": "True only after process-tree termination has been confirmed, not merely signalled."
+        },
+        "detail": {
+          "type": "string",
+          "description": "Optional bounded explanation, typically present when confirmed is false."
+        }
+      }
+    }
+  }
+}

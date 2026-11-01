@@ -12,6 +12,7 @@ on:
       - "crates/xuanling-toolkit/**"
       - "crates/xuanling-memory/**"
       - "crates/xuanling-mcp/**"
+      - "crates/xuanling-harness-bridge/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/xuanling-portability.yml"
@@ -55,6 +56,32 @@ jobs:
         run: cargo test -p xuanling-mcp --test protocol
       - name: cargo test (mcp golden fixtures)
         run: cargo test -p xuanling-mcp --test golden
+      - name: cargo fmt --check (harness bridge)
+        run: cargo fmt -p xuanling-harness-bridge -- --check
+      - name: cargo clippy (harness bridge)
+        run: cargo clippy -p xuanling-harness-bridge --all-targets -- -D warnings
+      - name: cargo test (harness bridge lib)
+        run: cargo test -p xuanling-harness-bridge --lib
+      - name: cargo test (harness bridge contract)
+        run: cargo test -p xuanling-harness-bridge --test contract
+      - name: cargo test (harness bridge protocol)
+        run: cargo test -p xuanling-harness-bridge --test protocol
+      - name: cargo test (harness bridge lifecycle)
+        run: cargo test -p xuanling-harness-bridge --test lifecycle
+      - name: cargo test (harness bridge report)
+        run: cargo test -p xuanling-harness-bridge --test report
+      - name: cargo test (harness bridge host protocol)
+        run: cargo test -p xuanling-harness-bridge --test host_protocol
+      - name: Set up Python (harness bridge scripts)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: harness bridge boundary guard
+        shell: bash
+        run: python scripts/harness-bridge/check-bridge-boundary.py
+      - name: harness bridge fixture integrity
+        shell: bash
+        run: python scripts/harness-bridge/verify-fixtures.py
       - name: dependency island guard
         shell: bash
         run: |

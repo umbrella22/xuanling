@@ -4,6 +4,42 @@ All notable release changes are recorded here. XuanLing uses immutable release
 tags and publishes the launcher, native packages, DeepSeek Harness bundles, and
 ZCode projection from the same source commit.
 
+## 0.10.0 - 2026-11-01
+
+### Added
+
+- Keep the macOS desktop client's window chrome strip above the Blueprint
+  toolbar and make that toolbar row a window-drag surface: dragging a blank run
+  moves the DSH window while every control stays clickable. A plain browser tab
+  keeps the compact toolbar without the extra strip.
+- Refine the Blueprint panel chrome: one-row library cascade, status chips with
+  semantic state beads, concentric toolbar capsules, inspector disclosure and
+  dialog grammar, theme-correct React Flow controls, minimap and attribution,
+  and readable placeholders in light and dark themes.
+- Add the result-only harness bridge source and its CI gates: a stdio MCP host
+  surface that submits work to a worker harness and returns only its final
+  result and terminal status.
+
+### Fixed
+
+- Resolve Blueprint state colours through the published DSH alert and warning
+  tokens, so failed, waiting and dirty states follow the active theme instead of
+  hard-coded fallbacks.
+- Verify process-group ownership before a long-lived child joins a containment
+  unit, and expose that check for hosts that manage the child themselves.
+
+### Compatibility and limits
+
+- The harness bridge is source-only in this release. Its npm packages stay
+  unpublished until the plan's live worker, host and native-platform gates
+  close; `crates/xuanling-harness-bridge/RELEASE-BOUNDARY.md` remains
+  "not published".
+- Definition schema remains v2 and this release requires no data migration.
+  Blueprint desktop dragging needs a DSH macOS client that publishes
+  `--dsh-frame-top-clearance`; browser documents keep the previous layout.
+- Real provider, live worker and Windows/Linux native acceptance for the bridge
+  remain deferred.
+
 ## 0.9.0 - 2026-10-27
 
 ### Added

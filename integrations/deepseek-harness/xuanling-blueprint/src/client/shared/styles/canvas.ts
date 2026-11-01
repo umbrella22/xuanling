@@ -56,8 +56,8 @@ export const compactCss = `
 .bp-workspace [data-bp-disclosure-toggle]{padding:8px 0;min-height:40px}
 [data-bp-disclosure-toggle] strong{font-size:11px;color:var(--bp-muted)}
 [data-bp-disclosure-toggle] span,[data-bp-disclosure-toggle] small{display:block;margin-left:14px;overflow-wrap:anywhere}
-[data-bp-summary-state=failed],[data-bp-summary-state=timed_out],[data-bp-summary-state=blocked]{color:var(--dsw-alias-error-primary,#c46b6b)}
-[data-bp-summary-state=waiting_input],[data-bp-summary-state=recovery_required]{color:var(--dsw-alias-warning-primary,#bd944c)}
+[data-bp-summary-state=failed],[data-bp-summary-state=timed_out],[data-bp-summary-state=blocked]{color:var(--bp-danger,#c46b6b)}
+[data-bp-summary-state=waiting_input],[data-bp-summary-state=recovery_required]{color:var(--bp-warn,#bd944c)}
 @container bp-workspace (max-width:780px){.bp-toolbar{flex-wrap:wrap}.bp-blueprint-picker{max-width:none}.bp-toolbar-actions{margin-left:0;flex-wrap:wrap}.bp-library{flex-basis:25%;padding:8px}.bp-inspector{flex-basis:30%;padding:8px}.bp-canvas{min-width:0}}
 @container bp-workspace (max-width:480px){.bp-toolbar-actions{width:100%}.bp-library{flex-basis:28%}.bp-inspector{flex-basis:34%}.bp-revision{max-width:90px;overflow-wrap:anywhere}}
 `
@@ -68,8 +68,8 @@ export const motionCss = `
 .bp-node[data-bp-relation=anchor]{outline:2px solid var(--bp-accent);outline-offset:3px}
 .bp-node[data-bp-relation=neighbor]{outline:1px solid color-mix(in srgb,var(--bp-accent) 65%,transparent);outline-offset:3px}
 .bp-node[data-bp-raw-state=running] .bp-node-state,.bp-node[data-bp-raw-state=preparing] .bp-node-state{color:var(--bp-accent)}
-.bp-node[data-bp-raw-state=failed] .bp-node-state,.bp-node[data-bp-raw-state=timed_out] .bp-node-state{color:var(--dsw-alias-error-primary,#c46b6b)}
-.bp-node[data-bp-raw-state=waiting_input] .bp-node-state,.bp-node[data-bp-raw-state=recovery_required] .bp-node-state{color:var(--dsw-alias-warning-primary,#bd944c)}
+.bp-node[data-bp-raw-state=failed] .bp-node-state,.bp-node[data-bp-raw-state=timed_out] .bp-node-state{color:var(--bp-danger,#c46b6b)}
+.bp-node[data-bp-raw-state=waiting_input] .bp-node-state,.bp-node[data-bp-raw-state=recovery_required] .bp-node-state{color:var(--bp-warn,#bd944c)}
 .bp-node-emphasis{position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 0 0 2px var(--bp-accent),0 0 12px color-mix(in srgb,var(--bp-accent) 35%,transparent);pointer-events:none;animation:bp-node-emphasis 1.8s ease-in-out infinite}
 .bp-workspace [data-bp-related=true]>.react-flow__edge-path{stroke:var(--bp-accent);stroke-width:3}
 /* One round zero-length dash on a normalized path: offset 0 -> -1 travels source -> target. */
@@ -84,4 +84,26 @@ export const collisionControlsCss = `
 .bp-layout-apply{min-height:40px}.bp-layout-error{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:8px}.bp-layout-error button{min-height:40px}
 `
 
-export const canvasCss = collisionControlsCss + presentationCss + interactionCss + compactCss + motionCss
+/** Flow furniture (zoom controls, minimap, attribution, empty state) painted with
+ * the same host tokens as the workspace. Vendor geometry and the executable-node
+ * styles above stay authoritative; only edges, surfaces and states move here. */
+export const canvasChromeCss = `
+.bp-workspace .react-flow__panel{margin:16px}
+.bp-workspace .react-flow__controls{border-radius:var(--dsw-radius-md,12px);overflow:hidden;box-shadow:inset 0 0 0 .5px color-mix(in srgb,var(--bp-muted) 32%,transparent),0 8px 24px #00000030}
+.bp-workspace .react-flow__controls-button{width:40px;height:40px;min-width:40px;min-height:40px;padding:0;border:0;border-bottom:.5px solid color-mix(in srgb,var(--bp-muted) 20%,transparent);background:var(--bp-raised);color:var(--bp-text);transition:background-color var(--ds-transition-duration-fast,.12s) var(--ds-ease-in-out,ease),color var(--ds-transition-duration-fast,.12s) var(--ds-ease-in-out,ease),transform var(--ds-transition-duration-fast,.12s) var(--ds-ease-in-out,ease)}
+.bp-workspace .react-flow__controls-button:last-child{border-bottom:0}
+.bp-workspace .react-flow__controls-button:hover:not(:disabled){background:color-mix(in srgb,var(--bp-text) 8%,var(--bp-raised));color:var(--bp-text)}
+.bp-workspace .react-flow__controls-button:active:not(:disabled){transform:scale(.96)}
+.bp-workspace .react-flow__controls-button svg{width:14px;height:14px;max-width:14px;max-height:14px}
+.bp-workspace .react-flow__minimap{--xy-minimap-background-color:var(--bp-raised);--xy-minimap-mask-background-color:color-mix(in srgb,var(--bp-bg) 58%,transparent);--xy-minimap-mask-stroke-color:color-mix(in srgb,var(--bp-muted) 38%,transparent);border-radius:var(--dsw-radius-lg,16px);overflow:hidden;box-shadow:inset 0 0 0 .5px color-mix(in srgb,var(--bp-muted) 32%,transparent),0 8px 24px #00000030}
+.bp-workspace .react-flow__minimap-svg{display:block}
+.bp-workspace .react-flow__attribution{right:auto;bottom:0;left:50%;transform:translateX(-50%);margin:0 0 10px;padding:2px 6px;border-radius:6px;background:color-mix(in srgb,var(--bp-bg) 82%,transparent);color:var(--bp-muted);font-size:10px;line-height:15px;opacity:.7;transition:opacity var(--ds-transition-duration-fast,.12s) var(--ds-ease-in-out,ease)}
+.bp-workspace .react-flow__attribution:hover{opacity:1}
+.bp-workspace .react-flow__attribution a{color:inherit}
+.bp-workspace .bp-empty{gap:6px;padding:24px;text-align:center}
+.bp-workspace .bp-empty strong{max-width:34ch;font-size:15px;font-weight:600;line-height:22px;color:var(--bp-text);text-wrap:balance}
+.bp-workspace .bp-empty p{margin:0;max-width:46ch;color:var(--bp-muted);font-size:12px;line-height:1.6;text-wrap:pretty}
+@media(prefers-reduced-motion:reduce){.bp-workspace .react-flow__controls-button,.bp-workspace .react-flow__attribution{transition:none}.bp-workspace .react-flow__controls-button:active:not(:disabled){transform:none}}
+`
+
+export const canvasCss = collisionControlsCss + presentationCss + interactionCss + compactCss + motionCss + canvasChromeCss

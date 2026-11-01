@@ -1,0 +1,38 @@
+{
+  "name": "@xuanling-rs/harness-bridge",
+  "version": "0.10.0",
+  "description": "Launcher for the XuanLing result-only harness bridge (MCP stdio).",
+  "license": "MIT",
+  "author": "umbrella22 and XuanLing contributors",
+  "type": "module",
+  "bin": {
+    "harness-bridge": "bin/harness-bridge.js"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "LICENSE",
+    "README.md",
+    "README-ZH.md"
+  ],
+  "engines": {
+    "node": ">=18.17.0"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "xuanling",
+    "harness",
+    "bridge",
+    "stdio"
+  ],
+  "homepage": "https://github.com/umbrella22/xuanling#readme",
+  "bugs": {
+    "url": "https://github.com/umbrella22/xuanling/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/umbrella22/xuanling.git",
+    "directory": "npm/packages/harness-bridge"
+  }
+}

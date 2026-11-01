@@ -1,0 +1,3 @@
+{"type":"thread.started","thread_id":"01a18064-28a5-7010-be0c-86652da8b931"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"OK"}}

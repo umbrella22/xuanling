@@ -35,6 +35,25 @@ assert.deepEqual(
   "npm platform aliases must match the release version and target map",
 );
 
+const harnessBridgePackage = await readJson(
+  path.join(REPO_ROOT, "npm/packages/harness-bridge/package.json"),
+);
+assert.equal(
+  harnessBridgePackage.license,
+  workspaceLicense,
+  "harness-bridge npm package license must match the Cargo workspace",
+);
+assert.equal(
+  harnessBridgePackage.version,
+  workspaceVersion,
+  "harness-bridge npm package version must match the Cargo workspace",
+);
+assert.equal(
+  harnessBridgePackage.optionalDependencies,
+  undefined,
+  "harness-bridge platform packages are not published yet",
+);
+
 for (const directory of [
   "npm",
   ...["xuanling-memory", "xuanling-skills", "xuanling-tools", "xuanling-tools-replace", "xuanling-blueprint"]

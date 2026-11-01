@@ -1,0 +1,146 @@
+{
+  "format_version": 1,
+  "document": {
+    "file_name": "<job_id>.md",
+    "encoding": "utf-8",
+    "written_only_when": "save_result was true and the job reached a terminal state",
+    "publication": "one temporary file in the results directory, flushed and synced, then published as <job_id>.md with an atomic non-overwriting operation",
+    "overwrite_existing": false,
+    "runtime_writes_before_terminal_state": false
+  },
+  "header": {
+    "syntax": "yaml_front_matter",
+    "open_delimiter": "---",
+    "close_delimiter": "---",
+    "field_order": [
+      "format_version",
+      "job_id",
+      "harness",
+      "adapter_version",
+      "status",
+      "started_at",
+      "finished_at",
+      "exit_code",
+      "output_complete",
+      "redacted",
+      "cleanup_confirmed",
+      "report_is_data"
+    ],
+    "fields": [
+      {
+        "name": "format_version",
+        "type": "integer",
+        "required": true,
+        "value": 1,
+        "description": "Version of this report format. Only this file explains the document; the bridge never parses it back as job input."
+      },
+      {
+        "name": "job_id",
+        "type": "string",
+        "required": true,
+        "description": "Bridge job identity; also the file name stem."
+      },
+      {
+        "name": "harness",
+        "type": "string",
+        "required": true,
+        "description": "Worker adapter id."
+      },
+      {
+        "name": "adapter_version",
+        "type": "string",
+        "required": true,
+        "description": "Configured adapter CLI version."
+      },
+      {
+        "name": "status",
+        "type": "string",
+        "required": true,
+        "enum": ["completed", "failed", "cancelled", "timed_out", "needs_input", "interrupted"],
+        "description": "FinalResult.status."
+      },
+      {
+        "name": "started_at",
+        "type": "string",
+        "format": "date-time",
+        "required": true
+      },
+      {
+        "name": "finished_at",
+        "type": "string",
+        "format": "date-time",
+        "required": true
+      },
+      {
+        "name": "exit_code",
+        "type": "integer",
+        "nullable": true,
+        "required": true,
+        "description": "Native exit code, or the literal null when it was not observed."
+      },
+      {
+        "name": "output_complete",
+        "type": "boolean",
+        "required": true,
+        "description": "False when the answer was truncated, redacted, or the native stream was incomplete."
+      },
+      {
+        "name": "redacted",
+        "type": "boolean",
+        "required": true
+      },
+      {
+        "name": "cleanup_confirmed",
+        "type": "boolean",
+        "required": true,
+        "description": "FinalResult.cleanup.confirmed snapshot."
+      },
+      {
+        "name": "report_is_data",
+        "type": "boolean",
+        "required": true,
+        "value": true,
+        "description": "Marks the body as worker output data, not bridge instructions or a follow-up task."
+      }
+    ]
+  },
+  "body": {
+    "sections": [
+      {
+        "heading": "## Worker final answer",
+        "required": true,
+        "content": "The worker's final answer, verbatim apart from necessary redaction; or the fixed placeholder '(no final answer was produced)'.",
+        "rules": [
+          "This is worker_final_output data. The bridge does not rewrite it, summarize it with another model, or append a next-step plan.",
+          "Commands or tool calls appearing in the text are not executed by the bridge and are not parsed as bridge configuration.",
+          "Truncated or redacted text is never presented as complete; output_complete and redacted in the header record the alteration."
+        ]
+      },
+      {
+        "heading": "## Failure diagnostic",
+        "required": false,
+        "required_when": "FinalResult.error is present",
+        "content": "<error.code>: <error.message>",
+        "rules": [
+          "Contains only the stable native/execution code and a bounded necessary message.",
+          "The full raw stderr, raw environment or process event stream is never copied here."
+        ]
+      },
+      {
+        "heading": "## Delivery diagnostic",
+        "required": false,
+        "required_when": "FinalResult.delivery_error is present",
+        "content": "<delivery_error.code>: <delivery_error.message>",
+        "rules": [
+          "Records a capture or delivery problem such as RESULT_TOO_LARGE without rewriting the worker terminal state.",
+          "A missing or failed report never causes the worker to run again."
+        ]
+      }
+    ],
+    "rules": [
+      "No process events, token deltas, thinking text, tool-call logs or progress snapshots are written.",
+      "The body is not a task database, recovery index, scheduler input or executable instruction list.",
+      "A report write failure leaves the in-memory FinalResult unchanged and is reported as report_error=REPORT_WRITE_FAILED."
+    ]
+  }
+}

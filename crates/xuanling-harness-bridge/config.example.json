@@ -1,0 +1,52 @@
+{
+  "max_active_jobs": 1,
+  "max_retained_jobs": 512,
+  "max_final_bytes": 1048576,
+  "max_diagnostic_bytes": 8192,
+  "max_protocol_line_bytes": 4194304,
+  "max_protocol_bytes": 8388608,
+  "max_prompt_bytes": 1048576,
+  "results_dir": "/absolute/path/to/bridge-results",
+  "workspaces": {
+    "default": "/absolute/path/to/workspace"
+  },
+  "env_allowlist": [
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "DEEPSEEK_API_KEY",
+    "ZCODE_BUILTIN_PROVIDER_CONFIG_FILE",
+    "ZCODE_PERSONAL_PROVIDER_CONFIG_FILE"
+  ],
+  "secret_env": [
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "DEEPSEEK_API_KEY",
+    "ZCODE_BUILTIN_PROVIDER_CONFIG_FILE",
+    "ZCODE_PERSONAL_PROVIDER_CONFIG_FILE"
+  ],
+  "adapters": {
+    "codex": {
+      "program": "/absolute/path/to/codex",
+      "version": "0.165.0",
+      "sandbox": "read-only",
+      "skip_git_repo_check": true
+    },
+    "claude": {
+      "program": "/absolute/path/to/claude",
+      "version": "2.1.311",
+      "permission_mode": "manual",
+      "allowed_tools": []
+    },
+    "dsh": {
+      "program": "/absolute/path/to/dsh",
+      "version": "0.2.1",
+      "profile": "headless"
+    },
+    "zcode": {
+      "runner": "/absolute/path/to/node",
+      "script": "/absolute/path/to/zcode.cjs",
+      "version": "0.17.0",
+      "mode": "plan"
+    }
+  }
+}

@@ -1277,7 +1277,10 @@ export function WorkspacePanel({
       tabIndex: -1
     },
     children: [
-      <header key={'toolbar'} className={'bp-toolbar'}>
+      // The toolbar row doubles as the macOS desktop window-drag surface; the
+      // shell's [data-window-drag] rule makes blank runs draggable while the DSH
+      // interactive-element rule keeps every control clickable. Inert in a browser.
+      <header key={'toolbar'} className={'bp-toolbar'} data-window-drag={true}>
         <LibraryCascadeView
           React={React}
           t={t}
@@ -1658,6 +1661,7 @@ export function WorkspacePanel({
                             key={row.key}
                             className={'bp-resource-row'}
                             data-bp-resource-row={row.key}
+                            data-bp-availability={row.availability}
                             aria-label={`${title} · ${description}`}
                             aria-describedby={`bp-tooltip-${tooltipAction}`}
                             onClick={(event?: React.MouseEvent<HTMLButtonElement>) => {

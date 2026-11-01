@@ -1,0 +1,283 @@
+{
+  "contract_version": 1,
+  "transport": "mcp_stdio",
+  "notes": [
+    "This is the complete public tool surface: exactly four tools returned by tools/list, each answering with an ordinary MCP tool response.",
+    "There is no harness_events, harness_status, harness_list, worker report/ask/wait, reply/approve/continue or process-log tool.",
+    "The harness_wait tool response is the result delivery channel. Ending the wait window or cancelling that tool call never stops the worker.",
+    "Domain failures are returned as structured tool errors carrying {\"code\": <stable code>, \"message\": <safe text>}. Unknown tools and malformed arguments are MCP protocol errors.",
+    "A repo-wide check: tools.json lists exactly [harness_health, harness_submit, harness_wait, harness_cancel].",
+    "UNKNOWN_TOOL is surfaced as a JSON-RPC -32602 protocol error (unknown tool), not as a structured tool error; malformed arguments and unknown fields use the same -32602 path."
+  ],
+  "tools": [
+    {
+      "name": "harness_health",
+      "description": "Return this instance_id, the configured adapter versions, declared capabilities and limits. Read-only: no credential probe and no worker spawn.",
+      "annotations": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "parameters": [],
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [],
+        "properties": {}
+      },
+      "response_fields": {
+        "instance_id": "string; required by every harness_submit call and invalidated when the bridge process changes",
+        "bridge_version": "string",
+        "contract_version": "integer; 1",
+        "adapters": "array of {id, configured, compatible, version?, minimum_version?, non_interactive, needs_input}",
+        "limits": "object {max_active_jobs, max_retained_jobs, max_final_bytes, max_protocol_bytes, default_deadline_at: null, consumption_budget: null}",
+        "capabilities": "object {persistent_state: false, cross_instance_dedupe: false, restart_recovery: false, wait_cancel_keeps_job: true, optional_markdown_result: true, process_logs_exposed: false}"
+      }
+    },
+    {
+      "name": "harness_submit",
+      "description": "Freeze one task and accept it for a configured worker adapter. Returns job_id, accepted and whether an identical request_id payload was reused. Runs no process log and writes no task file.",
+      "annotations": {
+        "read_only": false,
+        "destructive": true,
+        "idempotent": false,
+        "open_world": true
+      },
+      "parameters": [
+        {
+          "name": "instance_id",
+          "required": true,
+          "type": "string",
+          "description": "Current bridge instance_id from harness_health. A stale id fails with INSTANCE_CHANGED."
+        },
+        {
+          "name": "request_id",
+          "required": true,
+          "type": "string",
+          "minLength": 1,
+          "description": "Caller-chosen request identity, scoped to this bridge instance. The same id with the same payload reuses the accepted job; a different payload fails with REQUEST_CONFLICT.",
+          "maxLength": 128
+        },
+        {
+          "name": "adapter",
+          "required": true,
+          "type": "string",
+          "enum": [
+            "codex",
+            "claude",
+            "dsh",
+            "zcode"
+          ],
+          "description": "Configured worker adapter id."
+        },
+        {
+          "name": "workspace_id",
+          "required": true,
+          "type": "string",
+          "description": "Configured workspace id; task_file inputs resolve under this root."
+        },
+        {
+          "name": "prompt",
+          "required": false,
+          "type": "string",
+          "description": "Task text. Exactly one of prompt or task_file must be supplied."
+        },
+        {
+          "name": "task_file",
+          "required": false,
+          "type": "string",
+          "description": "Task file resolved under the workspace root. Exactly one of prompt or task_file must be supplied."
+        },
+        {
+          "name": "save_result",
+          "required": false,
+          "type": "boolean",
+          "default": false,
+          "description": "Publish one final Markdown result after the terminal state. Default false; true requires a configured results_dir."
+        },
+        {
+          "name": "deadline_at",
+          "required": false,
+          "type": "string",
+          "format": "date-time",
+          "description": "Explicit RFC3339 task deadline in the future. There is no default task deadline."
+        }
+      ],
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "instance_id",
+          "request_id",
+          "adapter",
+          "workspace_id"
+        ],
+        "properties": {
+          "instance_id": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "adapter": {
+            "type": "string",
+            "enum": [
+              "codex",
+              "claude",
+              "dsh",
+              "zcode"
+            ]
+          },
+          "workspace_id": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "task_file": {
+            "type": "string"
+          },
+          "save_result": {
+            "type": "boolean",
+            "default": false
+          },
+          "deadline_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "prompt"
+            ]
+          },
+          {
+            "required": [
+              "task_file"
+            ]
+          }
+        ]
+      },
+      "response_fields": {
+        "job_id": "string; unique within the bridge instance",
+        "instance_id": "string",
+        "status": "string; accepted, running or a terminal status",
+        "accepted": "boolean; always true on success",
+        "reused": "boolean; true when an identical request_id payload reused the existing job"
+      }
+    },
+    {
+      "name": "harness_wait",
+      "description": "Wait for a job's terminal result or for this call's wait window. A pending response is minimal. Ending or cancelling this call does not stop the worker.",
+      "annotations": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "parameters": [
+        {
+          "name": "job_id",
+          "required": true,
+          "type": "string",
+          "description": "job_id returned by harness_submit."
+        },
+        {
+          "name": "wait_ms",
+          "required": false,
+          "type": "integer",
+          "minimum": 0,
+          "description": "Wait window for this single tool call in milliseconds. Omit to wait until the worker reaches a terminal state. This is not a task timeout and expiry never stops the worker."
+        }
+      ],
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "job_id"
+        ],
+        "properties": {
+          "job_id": {
+            "type": "string"
+          },
+          "wait_ms": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "response_fields": {
+        "state": "string; pending or final",
+        "job_id": "string",
+        "status": "string; present when state is pending (accepted or running) and when state is final",
+        "elapsed_ms": "integer; present when state is pending; duration of this wait call only, not job age",
+        "result": "FinalResult (contracts/final-result.schema.json); present when state is final"
+      }
+    },
+    {
+      "name": "harness_cancel",
+      "description": "Explicitly cancel a job and return its terminal result plus process cleanup evidence. Repeated calls are idempotent.",
+      "annotations": {
+        "read_only": false,
+        "destructive": true,
+        "idempotent": true,
+        "open_world": false
+      },
+      "parameters": [
+        {
+          "name": "job_id",
+          "required": true,
+          "type": "string",
+          "description": "job_id returned by harness_submit."
+        }
+      ],
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "job_id"
+        ],
+        "properties": {
+          "job_id": {
+            "type": "string"
+          }
+        }
+      },
+      "response_fields": {
+        "job_id": "string",
+        "cancelled": "boolean; true when the terminal status is cancelled",
+        "result": "FinalResult (contracts/final-result.schema.json), including cleanup.confirmed"
+      }
+    }
+  ],
+  "error_codes": {
+    "INVALID_REQUEST": "Malformed request or invalid parameter combination; rejected before any job is accepted or process spawned.",
+    "UNKNOWN_TOOL": "The requested tool name is not one of the four tools above.",
+    "INSTANCE_CHANGED": "instance_id does not belong to this bridge process (stale or previous instance); the request is not converted into a new job.",
+    "REQUEST_CONFLICT": "request_id was already used with a different payload; the original job and frozen input are unchanged.",
+    "BUSY": "The instance already has max_active_jobs active jobs; new submissions are refused, not queued, and existing jobs keep running.",
+    "MEMORY_CAPACITY": "The instance job table is at max_retained_jobs; records needed for deduplication are not evicted.",
+    "PATH_OUTSIDE_ROOT": "task_file resolves outside the configured workspace root after canonicalization.",
+    "TASK_READ_FAILED": "task_file cannot be resolved, is not a regular file, is not UTF-8, or exceeds max_prompt_bytes.",
+    "ADAPTER_UNAVAILABLE": "The requested adapter id is not configured in this bridge instance.",
+    "INCOMPATIBLE_CLI": "The configured adapter version is below the adapter's supported minimum.",
+    "AUTH_REQUIRED": "Native authentication, credential or provider-business failure (for example a 403 insufficient-balance result); no credential file is read and no retry is attempted.",
+    "RATE_LIMIT": "Native provider rate-limit or 429 failure.",
+    "WORKER_FAILED": "Native turn failure or execution failure not classified as auth, rate-limit or needs-input.",
+    "NEEDS_INPUT": "The worker natively requested approval or human input; the bridge neither approves nor proxies a prompt.",
+    "STREAM_INCOMPLETE": "The native terminal success frame is missing, conflicting or unparseable; a partial answer may be returned with output_complete=false.",
+    "SPAWN_FAILED": "The worker process could not be started.",
+    "CLEANUP_UNCONFIRMED": "Process-tree cleanup could not be confirmed; the active slot stays occupied and no false release is reported.",
+    "JOB_NOT_FOUND": "job_id is unknown in this bridge instance.",
+    "JOB_CONTEXT_LOST": "The job belongs to a different or ended bridge instance; the bridge does not recover or replay it.",
+    "RESULT_TOO_LARGE": "The final answer or protocol frame exceeded the configured receive limit; reported as a delivery_error and output_complete=false.",
+    "REPORT_WRITE_FAILED": "The optional final Markdown result could not be published; the worker result is unchanged and the worker is not re-run.",
+    "SENSITIVE_PAYLOAD": "A result or error payload cannot be delivered safely after redaction.",
+    "CONFIG_INVALID": "The trusted bridge configuration is invalid.",
+    "DEADLINE_EXCEEDED": "An explicitly configured task deadline was reached; the terminal status is timed_out.",
+    "INTERRUPTED": "Bridge shutdown or stdio EOF stopped the job before a native terminal state."
+  }
+}

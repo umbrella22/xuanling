@@ -1,0 +1,249 @@
+{
+  "contract_version": 1,
+  "common_rules": [
+    "Every worker program path is a configured absolute path. The bridge never guesses a worker through PATH.",
+    "The bridge injects no consumption budget, no default task deadline, no automatic model fallback and no automatic retry.",
+    "The bridge never approves or proxies a worker approval prompt. An adapter that cannot recognize an explicit input/approval signal declares needs_input=false.",
+    "Only the configured environment allowlist is forwarded to the worker; credential files are never opened.",
+    "required_env lists worker environment variables that must be present in addition to the bridge baseline and explicit env_allowlist. The bridge never auto-forwards them; a missing required variable surfaces as a native worker failure, not a credential read or a silent fallback.",
+    "A configured version below minimum_version is rejected with INCOMPATIBLE_CLI."
+  ],
+  "adapters": [
+    {
+      "id": "codex",
+      "program": "configured absolute path to the codex binary",
+      "observed_version": "codex-cli 0.165.0-alpha.1.2",
+      "success_verified_version": "codex-cli 0.165.0-alpha.1.2",
+      "required_env": [],
+      "minimum_version": "0.160.0",
+      "observed_argv": [
+        "codex",
+        "exec",
+        "--json",
+        "-s",
+        "read-only",
+        "--skip-git-repo-check",
+        "-"
+      ],
+      "argv_template": [
+        "exec",
+        "--json",
+        "-s",
+        "read-only",
+        "--skip-git-repo-check",
+        "-"
+      ],
+      "argv_notes": "The -s value is the configured sandbox (read-only, workspace-write or danger-full-access). --skip-git-repo-check is included only when configured true (default true). -m <model> is inserted before the final - only when a model is configured. The final - means the task is read from stdin.",
+      "prompt_transport": "stdin",
+      "terminal_success": {
+        "rule": "exit code 0 AND a turn.completed event AND a non-empty item.completed agent_message text. A turn.failed event or a stream error event is a failure even when a partial agent message was printed. Exit 0 alone, or a final-looking message alone, is never success.",
+        "required_signals": [
+          "exit_code == 0",
+          "event type == turn.completed",
+          "event item.completed with item.type == agent_message and non-empty text"
+        ],
+        "failure_signals": [
+          "event type == turn.failed",
+          "stream event type == error",
+          "non-zero exit code",
+          "missing turn.completed (STREAM_INCOMPLETE)",
+          "missing or empty agent_message (STREAM_INCOMPLETE)"
+        ]
+      },
+      "capabilities": {
+        "non_interactive": true,
+        "needs_input": false
+      },
+      "needs_input_signal": null,
+      "live_success": "verified",
+      "live_success_evidence": {
+        "evidence_fixture": "tests/fixtures/captured/codex-0.165.0-success.ndjson",
+        "observed_exit_code": 0,
+        "observed_final_text": "OK"
+      }
+    },
+    {
+      "id": "claude",
+      "program": "configured absolute path to the claude binary",
+      "observed_version": "2.1.311",
+      "success_verified_version": null,
+      "required_env": [],
+      "minimum_version": "2.1.0",
+      "observed_argv": [
+        "claude",
+        "-p",
+        "--output-format",
+        "json"
+      ],
+      "argv_template": [
+        "-p",
+        "--output-format",
+        "json",
+        "--permission-prompts",
+        "none",
+        "--permission-mode",
+        "manual"
+      ],
+      "argv_notes": "The configured permission_mode must be one of acceptEdits, auto, manual, dontAsk or plan; bypassPermissions is rejected. Optional --allowedTools <comma-separated> and --model <model> are appended when configured. The task is written to stdin. The observed live failure used only -p --output-format json and a prompt on stdin.",
+      "prompt_transport": "stdin",
+      "terminal_success": {
+        "rule": "exit code 0 AND a single result object with type=result, subtype=success, is_error=false and a non-empty result string. subtype=success together with is_error=true is a native failure (observed trap), not a success. A success object with an empty result is STREAM_INCOMPLETE.",
+        "required_signals": [
+          "exit_code == 0",
+          "type == result",
+          "subtype == success",
+          "is_error == false",
+          "non-empty result text"
+        ],
+        "failure_signals": [
+          "is_error == true",
+          "non-zero exit code",
+          "subtype != success",
+          "non-JSON or truncated stdout (STREAM_INCOMPLETE)",
+          "success result with empty text (STREAM_INCOMPLETE)"
+        ]
+      },
+      "capabilities": {
+        "non_interactive": true,
+        "needs_input": true
+      },
+      "needs_input_signal": "A result object with is_error=true, a non-empty permission_denials array and an empty result maps to NEEDS_INPUT. With --permission-prompts none the CLI denies instead of prompting; the bridge does not approve or queue a prompt.",
+      "live_success": "blocked_missing_credentials",
+      "live_success_evidence": {
+        "evidence_fixture": "tests/fixtures/captured/claude-2.1.311-auth-failure.json",
+        "observed_exit_code": 1,
+        "observed_error": "type=result subtype=success is_error=true terminal_reason=api_error api_error_status=403 result=\"Failed to authenticate. API Error: 403 Insufficient account balance\"",
+        "blocker": "No live Claude success was obtainable in this environment; the provider returned 403 insufficient account balance."
+      }
+    },
+    {
+      "id": "dsh",
+      "program": "configured absolute path to the dsh binary",
+      "observed_version": "0.2.1-rc.3",
+      "success_verified_version": null,
+      "required_env": [],
+      "minimum_version": "0.2.0",
+      "observed_argv": [
+        "dsh",
+        "--profile",
+        "headless",
+        "--json",
+        "-"
+      ],
+      "argv_template": [
+        "--profile",
+        "headless",
+        "--json",
+        "-"
+      ],
+      "argv_notes": "The profile must be headless; the task is read from stdin because the final argument is -. The JSON projection writes session, status, text/thinking, tool_call/tool_result, final and run-level error events.",
+      "prompt_transport": "stdin",
+      "terminal_success": {
+        "rule": "exit code 0 AND status phase=turn_end with reason.kind=completed AND a non-empty final event text AND no run-level error event. A final event alone, or exit 0 alone, is never success.",
+        "required_signals": [
+          "exit_code == 0",
+          "status phase == turn_end",
+          "reason.kind == completed",
+          "non-empty final text",
+          "no run-level error event"
+        ],
+        "failure_signals": [
+          "reason.kind == error (classified by native code/message)",
+          "reason.kind == aborted",
+          "run-level error event",
+          "non-zero exit code",
+          "missing turn_end (STREAM_INCOMPLETE)",
+          "completed turn_end with empty final text (STREAM_INCOMPLETE)"
+        ]
+      },
+      "capabilities": {
+        "non_interactive": true,
+        "needs_input": true
+      },
+      "needs_input_signal": "status phase=turn_end with reason.kind=blocked maps to NEEDS_INPUT.",
+      "live_success": "blocked_missing_credentials",
+      "live_success_evidence": {
+        "evidence_fixture": "tests/fixtures/captured/dsh-0.2.1-missing-credential.ndjson",
+        "observed_exit_code": 1,
+        "observed_error": "turn_end reason kind=error code=MISSING_CREDENTIAL message=\"llm-deepseek: no API key for provider route \\\"deepseek-official\\\"; store DEEPSEEK_API_KEY through the credentials service (the web Models page writes it), or export DEEPSEEK_API_KEY in the launching environment\"",
+        "blocker": "No live DSH success was obtainable in this environment; the headless runner reported MISSING_CREDENTIAL."
+      }
+    },
+    {
+      "id": "zcode",
+      "program": "configured absolute node runner plus configured absolute path to zcode.cjs",
+      "observed_version": "0.17.0",
+      "success_verified_version": "0.17.0",
+      "required_env": [
+        "ZCODE_BUILTIN_PROVIDER_CONFIG_FILE",
+        "ZCODE_PERSONAL_PROVIDER_CONFIG_FILE"
+      ],
+      "minimum_version": "0.17.0",
+      "observed_argv": [
+        "node",
+        "zcode.cjs",
+        "--prompt",
+        "<prompt>",
+        "--json",
+        "--mode",
+        "plan",
+        "--cwd",
+        "<workspace>"
+      ],
+      "argv_template": [
+        "<zcode.cjs>",
+        "--prompt",
+        "<prompt>",
+        "--json",
+        "--mode",
+        "<mode>",
+        "--cwd",
+        "<workspace_root>"
+      ],
+      "argv_notes": "The program is the configured node runner and the first argument is the configured zcode.cjs path. mode must be one of build, edit, plan or guarded; yolo is rejected because it bypasses approvals. The task travels in argv, not stdin. --prompt otherwise defaults to --mode yolo, so a mode is always explicit. Model/provider selection is owned by the ZCode CLI configuration; the bridge does not override it (there is no verified headless --model flag). The headless CLI has no --model flag; model/provider selection comes from the ZCode provider configuration. The headless path does not resolve the account-provider defaultModelSelection (account:bigmodel-individual-coding-plan) and falls back to the first personal provider. For the BigModel coding plan, configure a personal API-key provider (api=anthropic-messages, baseUrl=https://open.bigmodel.cn/api/anthropic, model=GLM-5.3-Flash) and select it as the default.",
+      "prompt_transport": "argv",
+      "terminal_success": {
+        "rule": "exit code 0 AND stdout parses as one JSON object with a non-empty response string. The installed headless CLI omits the type field in the ordinary path; type=result is also accepted, but any other explicit type is a native failure. Empty stdout with a non-zero exit is classified from stderr. Empty stdout with exit 0, or an object without response text, is STREAM_INCOMPLETE.",
+        "required_signals": [
+          "exit_code == 0",
+          "one JSON object",
+          "non-empty response text"
+        ],
+        "failure_signals": [
+          "non-zero exit code",
+          "empty stdout with non-zero exit (native failure from stderr)",
+          "explicit type other than result",
+          "empty stdout with exit 0 (STREAM_INCOMPLETE)",
+          "object with empty response (STREAM_INCOMPLETE)"
+        ]
+      },
+      "capabilities": {
+        "non_interactive": true,
+        "needs_input": false
+      },
+      "needs_input_signal": null,
+      "live_success": "verified",
+      "live_success_evidence": {
+        "observed_exit_code": 0,
+        "observed_final_text": "OK",
+        "observed_provider": "personal API-key provider (BigModel coding plan, GLM-5.3-Flash)",
+        "note": "Verified on 2026-10-28. The account-provider default returned no headless resolution; the personal API-key provider completed with response OK. The bridge did not select or override the model/provider.",
+        "additional_observed_errors": [
+          {
+            "context": "bridge-like environment (env_clear + allowlist) without ZCODE_BUILTIN_PROVIDER_CONFIG_FILE and ZCODE_PERSONAL_PROVIDER_CONFIG_FILE",
+            "observed_exit_code": 1,
+            "observed_stdout": "empty",
+            "observed_error": "无法定位 CLI ZCode Built-in Provider Config: /Applications/ZCode.app/Contents/Resources/glm/provider/zcode-builtin.json, /config/provider/zcode-builtin.json"
+          }
+        ]
+      },
+      "model_selection": "worker_cli_configuration_only",
+      "provider_selection": {
+        "owned_by": "zcode_cli_configuration",
+        "bridge_override": false,
+        "headless_account_provider_supported": false,
+        "verified_route": "personal API-key provider for the BigModel coding plan"
+      }
+    }
+  ]
+}

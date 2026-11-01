@@ -1,0 +1,85 @@
+{
+  "contract_version": 1,
+  "transport": {
+    "type": "mcp_stdio",
+    "direction": "controller_host_to_bridge",
+    "server_binary": "harness-bridge",
+    "server_tools": ["harness_health", "harness_submit", "harness_wait", "harness_cancel"],
+    "announced_protocol_version": "2025-11-25",
+    "reference_spec": "https://modelcontextprotocol.io/specification/2025-06-18/server/tools",
+    "result_delivery": "ordinary MCP tool response"
+  },
+  "wait_semantics": {
+    "call": "harness_wait(job_id, wait_ms?)",
+    "long_call": "When the host permits a long-running tool call, the call may stay open until the worker reaches a terminal state; the final result is delivered in that response.",
+    "short_window": "wait_ms bounds only this one RPC. Expiry returns a minimal pending response; the job, its frozen input and its eventual result remain available, and the controller calls harness_wait again.",
+    "wait_cancel": "Cancelling this tool call removes only this waiter. The worker keeps running and its final result is not discarded.",
+    "wait_end_does_not_stop_worker": true,
+    "wait_cancel_keeps_job": true,
+    "default_task_deadline": null,
+    "host_wakeup_on_completion": false,
+    "host_wakeup_reason": "A generic MCP tool response does not demonstrate that the host can wake the model after the call ends. No notification-based completion, background wake-up or notification replay is promised.",
+    "completion_notification": false,
+    "notification_replay": false,
+    "durable_job_recovery": false
+  },
+  "w3_journey_requirement": "Each controller host must use a temporary independent profile, call harness_health for instance_id, submit one non-sensitive task, and obtain the worker's final answer through harness_wait. Each journey also covers one wait-window end or wait cancellation followed by another wait proving the same job still runs, and one optional Markdown result. A host that can only mount the bridge by changing the user's active profile is recorded as blocked.",
+  "hosts": [
+    {
+      "id": "codex",
+      "name": "Codex",
+      "role": "controller",
+      "worker_adapter": "codex",
+      "journey": {
+        "verified": false,
+        "status": "not_run",
+        "reason": "W3 requires an independent host profile; not executed in this environment"
+      }
+    },
+    {
+      "id": "claude-code",
+      "name": "Claude Code",
+      "role": "controller",
+      "worker_adapter": "claude",
+      "journey": {
+        "verified": false,
+        "status": "not_run",
+        "reason": "W3 requires an independent host profile; not executed in this environment"
+      }
+    },
+    {
+      "id": "dsh",
+      "name": "DSH",
+      "role": "controller",
+      "worker_adapter": "dsh",
+      "journey": {
+        "verified": false,
+        "status": "not_run",
+        "reason": "W3 requires an independent host profile; not executed in this environment"
+      }
+    },
+    {
+      "id": "zcode",
+      "name": "ZCode",
+      "role": "controller",
+      "worker_adapter": "zcode",
+      "journey": {
+        "verified": false,
+        "status": "not_run",
+        "reason": "W3 requires an independent host profile; not executed in this environment"
+      }
+    },
+    {
+      "id": "trae",
+      "name": "Trae",
+      "role": "controller",
+      "worker_adapter": null,
+      "notes": "Trae is controller-only: no verified non-interactive worker entry point was found; the IDE launcher and agent-tool-host are not task execution entry points.",
+      "journey": {
+        "verified": false,
+        "status": "not_run",
+        "reason": "W3 requires an independent host profile; not executed in this environment"
+      }
+    }
+  ]
+}

@@ -1,0 +1,358 @@
+{
+  "schema_version": 1,
+  "fixture_root": "crates/xuanling-harness-bridge/tests/fixtures",
+  "path_base": "manifest",
+  "entries": [
+    {
+      "id": "captured-claude-2.1.311-auth-failure",
+      "adapter": "claude",
+      "kind": "failure",
+      "derived": false,
+      "provenance": "live capture (claude 2.1.311, argv: claude -p --output-format json with prompt on stdin; exit 1) stored at tests/fixtures/captured/claude-2.1.311-auth-failure.json",
+      "cli_version": "2.1.311",
+      "argv": [
+        "claude",
+        "-p",
+        "--output-format",
+        "json"
+      ],
+      "exit_code": 1,
+      "stdout": {
+        "path": "captured/claude-2.1.311-auth-failure.json",
+        "sha256": "003fa1b9bdb6fc0ca61e0cc0b6b4fe91b297a225e4000fe4b69a2f0084384a32",
+        "format": "json"
+      },
+      "stderr": null,
+      "expected_status": "failed",
+      "expected_error_code": "AUTH_REQUIRED"
+    },
+    {
+      "id": "captured-codex-0.165.0-failure",
+      "adapter": "codex",
+      "kind": "failure",
+      "derived": false,
+      "provenance": "live capture (codex-cli 0.165.0-alpha.1.2, argv: codex exec --json -s read-only --skip-git-repo-check -m definitely-not-a-real-model-xyz - with prompt on stdin; exit 1) stored at tests/fixtures/captured/codex-0.165.0-failure.ndjson",
+      "cli_version": "codex-cli 0.165.0-alpha.1.2",
+      "argv": [
+        "codex",
+        "exec",
+        "--json",
+        "-s",
+        "read-only",
+        "--skip-git-repo-check",
+        "-m",
+        "definitely-not-a-real-model-xyz",
+        "-"
+      ],
+      "exit_code": 1,
+      "stdout": {
+        "path": "captured/codex-0.165.0-failure.ndjson",
+        "sha256": "5d4672f32d5f7ea30bc16f018a3125b70b8175a6830f6b1a7804ee078c08eed9",
+        "format": "ndjson"
+      },
+      "stderr": null,
+      "expected_status": "failed",
+      "expected_error_code": "WORKER_FAILED"
+    },
+    {
+      "id": "captured-codex-0.165.0-success",
+      "adapter": "codex",
+      "kind": "success",
+      "derived": false,
+      "provenance": "live capture (codex-cli 0.165.0-alpha.1.2, argv: codex exec --json -s read-only --skip-git-repo-check - with prompt on stdin; exit 0) stored at tests/fixtures/captured/codex-0.165.0-success.ndjson",
+      "cli_version": "codex-cli 0.165.0-alpha.1.2",
+      "argv": [
+        "codex",
+        "exec",
+        "--json",
+        "-s",
+        "read-only",
+        "--skip-git-repo-check",
+        "-"
+      ],
+      "exit_code": 0,
+      "stdout": {
+        "path": "captured/codex-0.165.0-success.ndjson",
+        "sha256": "416b1a0e06e28dbf39c3951dbf02f811f672ecab6960a2a6f04fc647d2a638b9",
+        "format": "ndjson"
+      },
+      "stderr": null,
+      "expected_status": "completed",
+      "expected_error_code": null
+    },
+    {
+      "id": "captured-dsh-0.2.1-missing-credential",
+      "adapter": "dsh",
+      "kind": "failure",
+      "derived": false,
+      "provenance": "live capture (dsh 0.2.1-rc.3, argv: dsh --profile headless --json - with prompt on stdin; exit 1) stored at tests/fixtures/captured/dsh-0.2.1-missing-credential.ndjson",
+      "cli_version": "0.2.1-rc.3",
+      "argv": [
+        "dsh",
+        "--profile",
+        "headless",
+        "--json",
+        "-"
+      ],
+      "exit_code": 1,
+      "stdout": {
+        "path": "captured/dsh-0.2.1-missing-credential.ndjson",
+        "sha256": "e6e0a893c85a6458eaa151dcf4565ed7f7fcc27b2b7f45f1648191033501654b",
+        "format": "ndjson"
+      },
+      "stderr": null,
+      "expected_status": "failed",
+      "expected_error_code": "AUTH_REQUIRED"
+    },
+    {
+      "id": "captured-zcode-0.17.0-business-error",
+      "adapter": "zcode",
+      "kind": "failure",
+      "derived": false,
+      "provenance": "live capture (zcode 0.17.0 via node zcode.cjs, argv: node zcode.cjs --prompt <prompt> --json --mode plan --cwd <workspace>; stdout empty, exit 1) stderr stored at tests/fixtures/captured/zcode-0.17.0-business-error.stderr; direct CLI invocation with the inherited ZCode host environment hit 403 insufficient account balance, and the installed zcode.cjs also requires ZCODE_BUILTIN_PROVIDER_CONFIG_FILE plus ZCODE_PERSONAL_PROVIDER_CONFIG_FILE under a bridge-like env_clear+allowlist",
+      "cli_version": "0.17.0",
+      "argv": [
+        "node",
+        "zcode.cjs",
+        "--prompt",
+        "<prompt>",
+        "--json",
+        "--mode",
+        "plan",
+        "--cwd",
+        "<workspace>"
+      ],
+      "exit_code": 1,
+      "stdout": {
+        "path": "data/zcode-0.17.0-business-error.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "format": "empty"
+      },
+      "stderr": {
+        "path": "captured/zcode-0.17.0-business-error.stderr",
+        "sha256": "4272b9d7d5b65231a2282a870a8c8a27b7527b11b7ad0403d715d815c01712b9",
+        "format": "text"
+      },
+      "expected_status": "failed",
+      "expected_error_code": "AUTH_REQUIRED"
+    },
+    {
+      "id": "derived-claude-2.1.311-error-empty-result",
+      "adapter": "claude",
+      "kind": "missing_frame",
+      "derived": true,
+      "provenance": "derived (not a live capture): captured claude result-object shape with is_error kept true and result replaced by an empty string; models a terminal error frame that carries no success answer",
+      "cli_version": "2.1.311",
+      "argv": [
+        "claude",
+        "-p",
+        "--output-format",
+        "json"
+      ],
+      "exit_code": 1,
+      "stdout": {
+        "path": "data/claude-2.1.311-error-empty-result.json",
+        "sha256": "6d993bbdbe89af5aee54446e1c7ad4036dbce060ac0ac076b7c67dc77152b03f",
+        "format": "json"
+      },
+      "stderr": null,
+      "expected_status": "failed",
+      "expected_error_code": "WORKER_FAILED"
+    },
+    {
+      "id": "derived-claude-2.1.311-malformed",
+      "adapter": "claude",
+      "kind": "malformed",
+      "derived": true,
+      "provenance": "derived (not a live capture): synthetic non-JSON stdout used to exercise the STREAM_INCOMPLETE path",
+      "cli_version": "2.1.311",
+      "argv": [
+        "claude",
+        "-p",
+        "--output-format",
+        "json"
+      ],
+      "exit_code": 0,
+      "stdout": {
+        "path": "data/claude-2.1.311-malformed.json",
+        "sha256": "d4a8885f883e05326fb53bbf4a49ba3806e7e57d25ea683026f76928956f552f",
+        "format": "json"
+      },
+      "stderr": null,
+      "expected_status": "failed",
+      "expected_error_code": "STREAM_INCOMPLETE"
+    },
+    {
+      "id": "derived-claude-2.1.311-permission-denied",
+      "adapter": "claude",
+      "kind": "needs_input",
+      "derived": true,
+      "provenance": "derived (not a live capture): claude result object with is_error=true, one permission_denials entry and an empty result, modeling the native denial signal; no live denial sample was captured",
+      "cli_version": "2.1.311",
+      "argv": [
+        "claude",
+        "-p",
+        "--output-format",
+        "json"
+      ],
+      "exit_code": 1,
+      "stdout": {
+        "path": "data/claude-2.1.311-permission-denied.json",
+        "sha256": "367294b2644b1ff6c4d11c3d0231ddebb1f1b6de2968496ee3f030e7b9f583f0",
+        "format": "json"
+      },
+      "stderr": null,
+      "expected_status": "needs_input",
+      "expected_error_code": "NEEDS_INPUT"
+    },
+    {
+      "id": "derived-claude-2.1.311-success",
+      "adapter": "claude",
+      "kind": "success",
+      "derived": true,
+      "provenance": "derived (not a live capture): same result-object schema as tests/fixtures/captured/claude-2.1.311-auth-failure.json with is_error flipped to false, empty permission_denials, a synthetic session_id and exit 0; live success is blocked by the provider 403 insufficient balance",
+      "cli_version": "2.1.311",
+      "argv": [
+        "claude",
+        "-p",
+        "--output-format",
+        "json"
+      ],
+      "exit_code": 0,
+      "stdout": {
+        "path": "data/claude-2.1.311-success.json",
+        "sha256": "984e7b1a53f4ee71f72bcdb927e6dc122b743f6f5899f51cccb9b4e69d0cfb59",
+        "format": "json"
+      },
+      "stderr": null,
+      "expected_status": "completed",
+      "expected_error_code": null
+    },
+    {
+      "id": "derived-codex-0.165.0-missing-turn-completed",
+      "adapter": "codex",
+      "kind": "missing_frame",
+      "derived": true,
+      "provenance": "derived (not a live capture): captured codex success stream with the terminal turn.completed event removed; thread.started, turn.started and the agent_message item are unchanged",
+      "cli_version": "codex-cli 0.165.0-alpha.1.2",
+      "argv": [
+        "codex",
+        "exec",
+        "--json",
+        "-s",
+        "read-only",
+        "--skip-git-repo-check",
+        "-"
+      ],
+      "exit_code": 0,
+      "stdout": {
+        "path": "data/codex-0.165.0-missing-turn-completed.ndjson",
+        "sha256": "468d617b7703d64474a03fd348029e4b7f06c30751362b6362ff26fdda8e5e09",
+        "format": "ndjson"
+      },
+      "stderr": null,
+      "expected_status": "failed",
+      "expected_error_code": "STREAM_INCOMPLETE"
+    },
+    {
+      "id": "derived-dsh-0.2.1-blocked",
+      "adapter": "dsh",
+      "kind": "needs_input",
+      "derived": true,
+      "provenance": "derived (not a live capture): DSH JSON projection shape (session, status, final) with turn_end reason.kind=blocked and an empty final text",
+      "cli_version": "0.2.1-rc.3",
+      "argv": [
+        "dsh",
+        "--profile",
+        "headless",
+        "--json",
+        "-"
+      ],
+      "exit_code": 0,
+      "stdout": {
+        "path": "data/dsh-0.2.1-blocked.ndjson",
+        "sha256": "2557530c363b4d4fa181afb2661357583ccf70fbdff6c1aa51aa9475e517c331",
+        "format": "ndjson"
+      },
+      "stderr": null,
+      "expected_status": "needs_input",
+      "expected_error_code": "NEEDS_INPUT"
+    },
+    {
+      "id": "derived-dsh-0.2.1-completed-empty-final",
+      "adapter": "dsh",
+      "kind": "missing_frame",
+      "derived": true,
+      "provenance": "derived (not a live capture): DSH stream with turn_end reason.kind=completed but an empty final text, modeling a missing final answer despite a successful turn_end",
+      "cli_version": "0.2.1-rc.3",
+      "argv": [
+        "dsh",
+        "--profile",
+        "headless",
+        "--json",
+        "-"
+      ],
+      "exit_code": 0,
+      "stdout": {
+        "path": "data/dsh-0.2.1-completed-empty-final.ndjson",
+        "sha256": "8d3c4c8089a62330c7a174853e3c0dc68f09493689188a30a7fa89bd175d3bd1",
+        "format": "ndjson"
+      },
+      "stderr": null,
+      "expected_status": "failed",
+      "expected_error_code": "STREAM_INCOMPLETE"
+    },
+    {
+      "id": "derived-dsh-0.2.1-success",
+      "adapter": "dsh",
+      "kind": "success",
+      "derived": true,
+      "provenance": "derived (not a live capture): follows the installed DSH headless runner JSON projection (session/status/text/final; turn_end reason kinds completed|blocked|aborted|error); live success is blocked by MISSING_CREDENTIAL",
+      "cli_version": "0.2.1-rc.3",
+      "argv": [
+        "dsh",
+        "--profile",
+        "headless",
+        "--json",
+        "-"
+      ],
+      "exit_code": 0,
+      "stdout": {
+        "path": "data/dsh-0.2.1-success.ndjson",
+        "sha256": "d87102ec05d93ee69616e79a33a7babf6244f579b2816e63f00921355a78f14e",
+        "format": "ndjson"
+      },
+      "stderr": null,
+      "expected_status": "completed",
+      "expected_error_code": null
+    },
+    {
+      "id": "derived-zcode-0.17.0-success",
+      "adapter": "zcode",
+      "kind": "success",
+      "derived": true,
+      "provenance": "derived (not a live capture): the installed zcode.cjs headless path emits one JSON object with sessionId, traceId, turnId, response, usage, eventCount and projection, and no type field; a type=result variant is also accepted. Live success was verified on 2026-10-28 with a personal BigModel coding-plan API-key provider (GLM-5.3-Flash). IDs are sanitized.",
+      "cli_version": "0.17.0",
+      "argv": [
+        "node",
+        "zcode.cjs",
+        "--prompt",
+        "<prompt>",
+        "--json",
+        "--mode",
+        "plan",
+        "--cwd",
+        "<workspace>"
+      ],
+      "exit_code": 0,
+      "stdout": {
+        "path": "data/zcode-0.17.0-success.json",
+        "sha256": "57513ef917f23e5d4083ca9a26c6c5784ba8af4d5822811288d2d3dd55095d3d",
+        "format": "json"
+      },
+      "stderr": null,
+      "expected_status": "completed",
+      "expected_error_code": null
+    }
+  ]
+}

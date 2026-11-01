@@ -1,0 +1,6 @@
+{"type":"session","sessionId":"session-00000000-0000-0000-0000-000000000000","cwd":"/tmp/workspace"}
+{"type":"status","phase":"turn_start","turn":1}
+{"type":"status","phase":"step_start","turn":1,"step":1}
+{"type":"status","phase":"step_end","turn":1,"step":1}
+{"type":"status","phase":"turn_end","turn":1,"reason":{"kind":"completed"}}
+{"type":"final","text":""}

@@ -1,0 +1,48 @@
+ProviderBusinessError: Insufficient account balance
+    at detectProviderBusinessError (/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs:2132:14232)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async Object.fetch (/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs:2132:13728)
+    at async /Applications/ZCode.app/Contents/Resources/glm/zcode.cjs:2112:21545
+    at async postToApi (/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs:2085:22186)
+    at async _6s.doStream (/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs:2086:51208)
+    at async fn (/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs:2164:15517)
+    at async /Applications/ZCode.app/Contents/Resources/glm/zcode.cjs:2159:964
+    at async _retryWithExponentialBackoff (/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs:2159:5143)
+    at async streamStep (/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs:2164:14640) {
+  code: 'PROVIDER_BUSINESS_ERROR',
+  isProviderBusinessError: true,
+  providerCode: 'INSUFFICIENT_BALANCE',
+  providerId: 'c07e4545-dfec-42f5-ab57-9a31eb2ea041',
+  providerKind: 'anthropic',
+  providerMessage: 'Insufficient account balance',
+  providerRequestId: undefined,
+  responseBodySummary: {
+    keys: [ 'code', 'message' ],
+    success: undefined,
+    code: 'INSUFFICIENT_BALANCE',
+    error_code: undefined,
+    msg: undefined,
+    message: 'Insufficient account balance',
+    request_id: undefined,
+    requestId: undefined
+  },
+  responseHeaders: {
+    'access-control-allow-credentials': 'true',
+    'access-control-allow-headers': 'DNT,X-Mx-ReqToken,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization,Accept,token,x-requested-with',
+    'access-control-allow-methods': 'GET, POST, OPTIONS, PUT, DELETE',
+    'access-control-allow-origin': '*',
+    connection: 'keep-alive',
+    'content-length': '72',
+    'content-type': 'application/json; charset=utf-8',
+    date: 'Wed, 28 Oct 2026 02:44:07 GMT',
+    'referrer-policy': 'strict-origin-when-cross-origin',
+    server: 'nginx',
+    'x-client-request-id': '560b70bb-6afa-4983-9f0d-dae669b9bf6d',
+    'x-content-type-options': 'nosniff',
+    'x-frame-options': 'DENY',
+    'x-request-id': 'de96b0ab-b98a-4672-9053-647279f42132'
+  },
+  responseStatus: 403,
+  statusCode: undefined
+}
+Error: Turn execution failed (traceId: afe33e92-5ffa-417a-a8e2-796a86fd3600)

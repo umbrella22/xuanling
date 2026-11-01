@@ -1,0 +1,71 @@
+name: harness-bridge
+
+# Gates for the result-only xuanling-harness-bridge crate.
+#
+# Live worker targets (live_codex / live_claude / live_dsh / live_zcode) are
+# deliberately NOT run here: they need local CLI binaries and provider
+# credentials. A green run only proves static, unit/contract, protocol,
+# lifecycle, report and boundary checks on the three native runners; it does
+# not claim that any live worker or controller journey succeeded.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/xuanling-harness-bridge/**"
+      - "crates/xuanling-toolkit/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/harness-bridge.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "crates/xuanling-harness-bridge/**"
+      - "crates/xuanling-toolkit/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/harness-bridge.yml"
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  gate:
+    name: bridge gate (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Rust 1.98
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.98"
+          components: rustfmt, clippy
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: cargo fmt --check
+        run: cargo fmt -p xuanling-harness-bridge -- --check
+      - name: cargo clippy
+        run: cargo clippy -p xuanling-harness-bridge --all-targets -- -D warnings
+      - name: cargo test (lib)
+        run: cargo test -p xuanling-harness-bridge --lib
+      - name: cargo test (contract)
+        run: cargo test -p xuanling-harness-bridge --test contract
+      - name: cargo test (protocol)
+        run: cargo test -p xuanling-harness-bridge --test protocol
+      - name: cargo test (lifecycle)
+        run: cargo test -p xuanling-harness-bridge --test lifecycle
+      - name: cargo test (report)
+        run: cargo test -p xuanling-harness-bridge --test report
+      - name: cargo test (host protocol)
+        run: cargo test -p xuanling-harness-bridge --test host_protocol
+      - name: boundary guard
+        run: python scripts/harness-bridge/check-bridge-boundary.py
+      - name: fixture integrity
+        run: python scripts/harness-bridge/verify-fixtures.py
