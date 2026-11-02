@@ -1152,7 +1152,7 @@ test('C06 actual NodeResizer callback reads D3 sourceEvent and cancels outside r
 
 test('compact C01 actual toolbar exposes accessible SVG controls and keeps low-frequency actions out of the header', async () => {
   const f = await fixture(),
-    header = one(f.render(), n => n.type === 'header' && n.props.className === 'bp-toolbar')
+    header = one(f.render(), n => n.type === 'header' && n.props.className?.split(/\s+/).includes('bp-toolbar'))
   for (const id of ['undo', 'redo', 'save-layout', 'mode-pan', 'mode-select', 'start-run', 'more-actions']) {
     const control = one(header, n => n.props['data-bp-action'] === id)
     assert.ok(control.props['aria-label'], `C01_ACCESSIBLE_NAME:${id}`)
@@ -1235,13 +1235,13 @@ test('host controls C01 both panes stay mounted in empty, busy, locked and mode-
   assert.equal(preferences.left, undefined)
   assert.equal(preferences.right, undefined)
 })
-test('host controls C02 actual toolbar groups history, mode and run/tools while keeping native picker', async () => {
+test('host controls C02 actual toolbar groups controls, keeps the native picker and shows cancel only for an associated Run', async () => {
   const f = await fixture(),
-    header = one(f.render(), n => n.props.className === 'bp-toolbar')
+    header = one(f.render(), n => n.type === 'header' && n.props.className?.split(/\s+/).includes('bp-toolbar'))
   for (const [group, actions] of [
     ['history', ['undo', 'redo', 'save-layout']],
     ['mode', ['mode-pan', 'mode-select']],
-    ['run-tools', ['start-run', 'cancel-run', 'more-actions']]
+    ['run-tools', ['start-run', 'more-actions']]
   ]) {
     const section = one(header, n => n.props['data-bp-toolbar-group'] === group)
     assert.equal(section.props.role, 'group')
@@ -1260,6 +1260,16 @@ test('host controls C02 actual toolbar groups history, mode and run/tools while 
     all(picker, n => n.type === 'option').map(n => n.props.value),
     ['', 'flow', 'flow-b']
   )
+  assert.equal(all(header, n => n.props['data-bp-action'] === 'cancel-run').length, 0)
+  f.workspace.runId = 'run-visible'
+  const runTools = one(f.render(), n => n.props['data-bp-toolbar-group'] === 'run-tools')
+  assert.deepEqual(
+    all(runTools, n => n.type === 'button').map(n => n.props['data-bp-action']),
+    ['start-run', 'cancel-run', 'more-actions']
+  )
+  const cancel = one(runTools, n => n.props['data-bp-action'] === 'cancel-run')
+  assert.ok(cancel.props['aria-label'])
+  assert.equal(all(cancel, n => n.type === 'svg' && n.props['aria-hidden'] === true).length, 1)
 })
 test('compact C06 actual disclosures keep form children mounted and expose state summaries and cancel outside the fold', async () => {
   const f = await fixture(),
