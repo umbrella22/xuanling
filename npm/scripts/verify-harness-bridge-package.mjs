@@ -6,6 +6,7 @@ import {
   PACKAGE_BASENAME,
   PACKAGE_NAME,
   TARGETS,
+  expectedOptionalDependencies,
   platformVersion,
 } from "../packages/harness-bridge/lib/targets.js";
 import {
@@ -27,10 +28,10 @@ assert.equal(packageJson.license, workspaceLicense);
 assert.equal(packageJson.version, workspaceVersion);
 assert.equal(packageJson.bin?.[PACKAGE_BASENAME], "bin/harness-bridge.js");
 assert.equal(packageJson.repository?.directory, "npm/packages/harness-bridge");
-assert.equal(
+assert.deepEqual(
   packageJson.optionalDependencies,
-  undefined,
-  "platform packages are not published yet; keep optionalDependencies absent",
+  expectedOptionalDependencies(workspaceVersion),
+  "platform dependencies must match the bridge release",
 );
 for (const script of ["preinstall", "install", "postinstall", "prepublish", "prepare"]) {
   assert.equal(packageJson.scripts?.[script], undefined, `${script} must not run on install`);

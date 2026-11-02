@@ -15,6 +15,7 @@ on:
       - "crates/xuanling-harness-bridge/**"
       - "crates/xuanling-toolkit/**"
       - "scripts/harness-bridge/**"
+      - "integrations/deepseek-harness/xuanling-harness/**"
       - ".gitattributes"
       - "Cargo.toml"
       - "Cargo.lock"
@@ -25,6 +26,7 @@ on:
       - "crates/xuanling-harness-bridge/**"
       - "crates/xuanling-toolkit/**"
       - "scripts/harness-bridge/**"
+      - "integrations/deepseek-harness/xuanling-harness/**"
       - ".gitattributes"
       - "Cargo.toml"
       - "Cargo.lock"
@@ -61,6 +63,8 @@ jobs:
         run: cargo test -p xuanling-harness-bridge --lib
       - name: cargo test (contract)
         run: cargo test -p xuanling-harness-bridge --test contract
+      - name: cargo test (native session policy)
+        run: cargo test -p xuanling-harness-bridge --test native_sessions
       - name: cargo test (protocol)
         run: cargo test -p xuanling-harness-bridge --test protocol
       - name: cargo test (lifecycle)
@@ -73,3 +77,14 @@ jobs:
         run: python scripts/harness-bridge/check-bridge-boundary.py
       - name: fixture integrity
         run: python scripts/harness-bridge/verify-fixtures.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Build adapter test executables
+        run: cargo build -p xuanling-harness-bridge --bins
+      - name: Install local DSH adapter dependencies
+        working-directory: integrations/deepseek-harness/xuanling-harness
+        run: npm ci --ignore-scripts --legacy-peer-deps
+      - name: DSH adapter unit and stdio lifecycle tests
+        working-directory: integrations/deepseek-harness/xuanling-harness
+        run: npm test

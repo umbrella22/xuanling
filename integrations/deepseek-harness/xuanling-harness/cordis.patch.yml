@@ -1,0 +1,12 @@
+# Local/private bundle; no registry release is advertised.
+- insert:
+    - id: xuanling-harness
+      name: '@xuanling-rs/xuanling-dsh-harness'
+      config:
+        command: !!js process.env.XUANLING_HARNESS_BRIDGE
+        configPath: !!js process.env.XUANLING_HARNESS_CONFIG
+        adapter: codex
+        workspaceId: default
+        providerName: harness-bridge
+        toolName: harness_run
+        saveResult: false

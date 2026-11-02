@@ -13,6 +13,7 @@ export interface SelectMarkupProps {
   unavailable: boolean
   open: boolean
   selected: number
+  selectedLabel?: React.ReactNode
   activeIndex: number
   options: readonly { value: string; label: React.ReactNode; disabled: boolean }[]
   attributes: React.ButtonHTMLAttributes<HTMLButtonElement> & { [attribute: `data-${string}`]: string | boolean | undefined }
@@ -40,7 +41,7 @@ export function styledSelectView(React: ReactSeat, props: SelectMarkupProps): Re
         onKeyDown={props.onKeyDown}
         onClick={() => onIntent({ type: 'toggle' })}
       >
-        <span className="bp-select-value">{options[selected]?.label ?? ''}</span>
+        <span className="bp-select-value">{props.selectedLabel ?? options[selected]?.label ?? ''}</span>
         <span className="bp-select-chevron" aria-hidden="true">
           ⌄
         </span>

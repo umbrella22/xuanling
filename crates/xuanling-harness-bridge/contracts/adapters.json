@@ -6,7 +6,8 @@
     "The bridge never approves or proxies a worker approval prompt. An adapter that cannot recognize an explicit input/approval signal declares needs_input=false.",
     "Only the configured environment allowlist is forwarded to the worker; credential files are never opened.",
     "required_env lists worker environment variables that must be present in addition to the bridge baseline and explicit env_allowlist. The bridge never auto-forwards them; a missing required variable surfaces as a native worker failure, not a credential read or a silent fallback.",
-    "A configured version below minimum_version is rejected with INCOMPATIBLE_CLI."
+    "A configured version below minimum_version is rejected with INCOMPATIBLE_CLI.",
+    "Native worker session/transcript persistence must be disabled by the fixed invocation. Otherwise submission rejects with NATIVE_SESSION_PERSISTENCE_UNSUPPORTED before acceptance/spawn. Optional final Markdown does not enable native sessions."
   ],
   "adapters": [
     {
@@ -28,12 +29,13 @@
       "argv_template": [
         "exec",
         "--json",
+        "--ephemeral",
         "-s",
         "read-only",
         "--skip-git-repo-check",
         "-"
       ],
-      "argv_notes": "The -s value is the configured sandbox (read-only, workspace-write or danger-full-access). --skip-git-repo-check is included only when configured true (default true). -m <model> is inserted before the final - only when a model is configured. The final - means the task is read from stdin.",
+      "argv_notes": "The -s value is the configured sandbox (read-only, workspace-write or danger-full-access). --skip-git-repo-check is included only when configured true (default true). -m <model> is inserted before the final - only when a model is configured. The final - means the task is read from stdin. Native session persistence is disabled by --ephemeral. observed_argv and live_success_evidence describe historical captures before this policy.",
       "prompt_transport": "stdin",
       "terminal_success": {
         "rule": "exit code 0 AND a turn.completed event AND a non-empty item.completed agent_message text. A turn.failed event or a stream error event is a failure even when a partial agent message was printed. Exit 0 alone, or a final-looking message alone, is never success.",
@@ -52,7 +54,8 @@
       },
       "capabilities": {
         "non_interactive": true,
-        "needs_input": false
+        "needs_input": false,
+        "native_session_persistence_disabled": true
       },
       "needs_input_signal": null,
       "live_success": "verified",
@@ -60,6 +63,11 @@
         "evidence_fixture": "tests/fixtures/captured/codex-0.165.0-success.ndjson",
         "observed_exit_code": 0,
         "observed_final_text": "OK"
+      },
+      "native_session_policy": {
+        "launch_allowed": true,
+        "suppression_flag": "--ephemeral",
+        "evidence": "CLI help and offline argv/admission tests; live session IO is unverified"
       }
     },
     {
@@ -77,6 +85,7 @@
       ],
       "argv_template": [
         "-p",
+        "--no-session-persistence",
         "--output-format",
         "json",
         "--permission-prompts",
@@ -84,7 +93,7 @@
         "--permission-mode",
         "manual"
       ],
-      "argv_notes": "The configured permission_mode must be one of acceptEdits, auto, manual, dontAsk or plan; bypassPermissions is rejected. Optional --allowedTools <comma-separated> and --model <model> are appended when configured. The task is written to stdin. The observed live failure used only -p --output-format json and a prompt on stdin.",
+      "argv_notes": "The configured permission_mode must be one of acceptEdits, auto, manual, dontAsk or plan; bypassPermissions is rejected. Optional --allowedTools <comma-separated> and --model <model> are appended when configured. The task is written to stdin. The observed live failure used only -p --output-format json and a prompt on stdin. Native session persistence is disabled by --no-session-persistence. observed_argv and live_success_evidence describe historical captures before this policy.",
       "prompt_transport": "stdin",
       "terminal_success": {
         "rule": "exit code 0 AND a single result object with type=result, subtype=success, is_error=false and a non-empty result string. subtype=success together with is_error=true is a native failure (observed trap), not a success. A success object with an empty result is STREAM_INCOMPLETE.",
@@ -105,7 +114,8 @@
       },
       "capabilities": {
         "non_interactive": true,
-        "needs_input": true
+        "needs_input": true,
+        "native_session_persistence_disabled": true
       },
       "needs_input_signal": "A result object with is_error=true, a non-empty permission_denials array and an empty result maps to NEEDS_INPUT. With --permission-prompts none the CLI denies instead of prompting; the bridge does not approve or queue a prompt.",
       "live_success": "blocked_missing_credentials",
@@ -114,6 +124,11 @@
         "observed_exit_code": 1,
         "observed_error": "type=result subtype=success is_error=true terminal_reason=api_error api_error_status=403 result=\"Failed to authenticate. API Error: 403 Insufficient account balance\"",
         "blocker": "No live Claude success was obtainable in this environment; the provider returned 403 insufficient account balance."
+      },
+      "native_session_policy": {
+        "launch_allowed": true,
+        "suppression_flag": "--no-session-persistence",
+        "evidence": "CLI help and offline argv/admission tests; live session IO is unverified"
       }
     },
     {
@@ -136,7 +151,7 @@
         "--json",
         "-"
       ],
-      "argv_notes": "The profile must be headless; the task is read from stdin because the final argument is -. The JSON projection writes session, status, text/thinking, tool_call/tool_result, final and run-level error events.",
+      "argv_notes": "The profile must be headless; the task is read from stdin because the final argument is -. The JSON projection writes session, status, text/thinking, tool_call/tool_result, final and run-level error events. This historical argv is not currently launchable: native session suppression is unverified.",
       "prompt_transport": "stdin",
       "terminal_success": {
         "rule": "exit code 0 AND status phase=turn_end with reason.kind=completed AND a non-empty final event text AND no run-level error event. A final event alone, or exit 0 alone, is never success.",
@@ -158,7 +173,8 @@
       },
       "capabilities": {
         "non_interactive": true,
-        "needs_input": true
+        "needs_input": true,
+        "native_session_persistence_disabled": false
       },
       "needs_input_signal": "status phase=turn_end with reason.kind=blocked maps to NEEDS_INPUT.",
       "live_success": "blocked_missing_credentials",
@@ -167,6 +183,11 @@
         "observed_exit_code": 1,
         "observed_error": "turn_end reason kind=error code=MISSING_CREDENTIAL message=\"llm-deepseek: no API key for provider route \\\"deepseek-official\\\"; store DEEPSEEK_API_KEY through the credentials service (the web Models page writes it), or export DEEPSEEK_API_KEY in the launching environment\"",
         "blocker": "No live DSH success was obtainable in this environment; the headless runner reported MISSING_CREDENTIAL."
+      },
+      "native_session_policy": {
+        "launch_allowed": false,
+        "suppression_flag": null,
+        "evidence": "No verified suppression in the adapter invocation; submission is blocked"
       }
     },
     {
@@ -200,7 +221,7 @@
         "--cwd",
         "<workspace_root>"
       ],
-      "argv_notes": "The program is the configured node runner and the first argument is the configured zcode.cjs path. mode must be one of build, edit, plan or guarded; yolo is rejected because it bypasses approvals. The task travels in argv, not stdin. --prompt otherwise defaults to --mode yolo, so a mode is always explicit. Model/provider selection is owned by the ZCode CLI configuration; the bridge does not override it (there is no verified headless --model flag). The headless CLI has no --model flag; model/provider selection comes from the ZCode provider configuration. The headless path does not resolve the account-provider defaultModelSelection (account:bigmodel-individual-coding-plan) and falls back to the first personal provider. For the BigModel coding plan, configure a personal API-key provider (api=anthropic-messages, baseUrl=https://open.bigmodel.cn/api/anthropic, model=GLM-5.3-Flash) and select it as the default.",
+      "argv_notes": "The program is the configured node runner and the first argument is the configured zcode.cjs path. mode must be one of build, edit, plan or guarded; yolo is rejected because it bypasses approvals. The task travels in argv, not stdin. --prompt otherwise defaults to --mode yolo, so a mode is always explicit. Model/provider selection is owned by the ZCode CLI configuration; the bridge does not override it (there is no verified headless --model flag). The headless CLI has no --model flag; model/provider selection comes from the ZCode provider configuration. The headless path does not resolve the account-provider defaultModelSelection (account:bigmodel-individual-coding-plan) and falls back to the first personal provider. For the BigModel coding plan, configure a personal API-key provider (api=anthropic-messages, baseUrl=https://open.bigmodel.cn/api/anthropic, model=GLM-5.3-Flash) and select it as the default. This historical argv is not currently launchable: native session suppression is unverified.",
       "prompt_transport": "argv",
       "terminal_success": {
         "rule": "exit code 0 AND stdout parses as one JSON object with a non-empty response string. The installed headless CLI omits the type field in the ordinary path; type=result is also accepted, but any other explicit type is a native failure. Empty stdout with a non-zero exit is classified from stderr. Empty stdout with exit 0, or an object without response text, is STREAM_INCOMPLETE.",
@@ -219,7 +240,8 @@
       },
       "capabilities": {
         "non_interactive": true,
-        "needs_input": false
+        "needs_input": false,
+        "native_session_persistence_disabled": false
       },
       "needs_input_signal": null,
       "live_success": "verified",
@@ -243,6 +265,11 @@
         "bridge_override": false,
         "headless_account_provider_supported": false,
         "verified_route": "personal API-key provider for the BigModel coding plan"
+      },
+      "native_session_policy": {
+        "launch_allowed": false,
+        "suppression_flag": null,
+        "evidence": "No verified suppression in the adapter invocation; submission is blocked"
       }
     }
   ]

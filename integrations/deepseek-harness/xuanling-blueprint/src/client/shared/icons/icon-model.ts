@@ -1,5 +1,6 @@
 /** Pure icon artwork and presentation facts; no React or host dependency. */
 const paths: Record<string, string> = {
+  new: 'M12 5v14M5 12h14',
   undo: 'M9 4 4 9l5 5M4 9h9a6 6 0 0 1 6 6',
   redo: 'm15 4 5 5-5 5m5-5h-9a6 6 0 0 0-6 6',
   save: 'M5 3h12l3 3v15H4V3h1m3 0v6h8V3M8 21v-8h8v8',

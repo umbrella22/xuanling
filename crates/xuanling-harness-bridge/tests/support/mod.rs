@@ -103,6 +103,7 @@ impl Adapter for TestAdapter {
 
     fn capabilities(&self) -> AdapterCapabilities {
         AdapterCapabilities {
+            native_session_persistence_disabled: true,
             non_interactive: true,
             needs_input: false,
         }

@@ -2299,7 +2299,7 @@ checksum = "1ffae5123b2d3fc086436f8834ae3ab053a283cfac8fe0a0b8eaae044768a4c4"
 
 [[package]]
 name = "xuanling-harness-bridge"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "cap-std",
  "clap",
@@ -2323,7 +2323,7 @@ dependencies = [
 
 [[package]]
 name = "xuanling-mcp"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -2346,7 +2346,7 @@ dependencies = [
 
 [[package]]
 name = "xuanling-memory"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "schemars",
  "serde",
@@ -2362,7 +2362,7 @@ dependencies = [
 
 [[package]]
 name = "xuanling-toolkit"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "base64 0.22.1",
  "globset",

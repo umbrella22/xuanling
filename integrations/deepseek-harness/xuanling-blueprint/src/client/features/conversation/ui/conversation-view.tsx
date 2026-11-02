@@ -285,9 +285,10 @@ export function ConversationBlueprintView({
   )
   return (
     <section
-      className={'bp-workspace bp-conversation'}
+      className={`bp-workspace bp-conversation${bound ? ' is-bound' : ' is-unbound'}${plans.length > 0 ? ' has-plans' : ''}${Editor ? ' is-editing' : ''}`}
       aria-label={t('conversation.ariaLabel')}
       data-bp-conversation={'root'}
+      data-bp-conversation-state={bound ? 'bound' : plans.length > 0 ? 'plans' : 'empty'}
       data-bp-session={sessionId}
       data-bp-run-id={bound?.selected.run.runId ?? ''}
       data-bp-frozen-revision={bound?.selected.run.definitionRevision ?? ''}
@@ -295,7 +296,7 @@ export function ConversationBlueprintView({
       data-bp-layout-ready={String(layoutReady)}
       data-bp-fit-ready={String(fittedIdentity.current === identity)}
     >
-      <header className={'bp-toolbar'}>
+      <header className={'bp-toolbar bp-conversation-toolbar'}>
         <StyledSelect
           React={React}
           className={'bp-conversation-run'}
@@ -366,14 +367,12 @@ export function ConversationBlueprintView({
       <p className={'bp-conversation-status'} role={'status'}>
         {t(status)}
       </p>
-      {createPlanEditor && (
-        <div className="bp-conversation-plan-actions">
-          <button type="button" onClick={() => setEditing({})}>
-            {t('conversation.managePlans')}
-          </button>
-          {Editor && (
+      {Editor ? (
+        <div className={'bp-conversation-editor'} data-bp-conversation-editor>
+          <div className={'bp-conversation-editor-head'}>
             <button
-              type="button"
+              type={'button'}
+              className={'bp-button bp-button-quiet'}
               onClick={() => {
                 setEditing(null)
                 void controller.refresh()
@@ -381,93 +380,139 @@ export function ConversationBlueprintView({
             >
               {t('conversation.closeEditor')}
             </button>
+          </div>
+          <div className={'bp-conversation-editor-body'}>
+            <Editor t={t} />
+          </div>
+        </div>
+      ) : !bound && plans.length === 0 ? (
+        <div className={'bp-conversation-empty'}>
+          {t(status === 'conversation.unbound' ? 'conversation.unboundHelp' : status)}
+          <span className={'bp-conversation-empty-icon'} aria-hidden={'true'}>
+            {blueprintIcon(React, 'library')}
+          </span>
+          {createPlanEditor && (
+            <button type={'button'} className={'bp-button bp-button-primary'} onClick={() => setEditing({})}>
+              {t('conversation.managePlans')}
+            </button>
+          )}
+          {(connection === 'unavailable' || connection === 'stale') && (
+            <button
+              type={'button'}
+              className={'bp-button bp-button-quiet'}
+              onClick={() => {
+                void controller.refresh()
+              }}
+            >
+              {t('conversation.refresh')}
+            </button>
           )}
         </div>
-      )}
-      {Editor && (
-        <div style={{ height: '70vh' }} data-bp-conversation-editor>
-          <Editor t={t} />
-        </div>
-      )}
-      {plans.length > 0 ? (
-        <section className={'bp-conversation-plans'} data-bp-conversation-plans={String(plans.length)}>
-          <h3 className={'bp-conversation-plans-title'}>{t('conversation.plans')}</h3>
-          <p className={'bp-conversation-plans-help'}>{t('conversation.plansHelp')}</p>
-          <ul className={'bp-conversation-plan-list'}>
-            {plans.map(association => (
-              <li
-                key={association.associationId}
-                className={`bp-conversation-plan is-${association.status}`}
-                data-bp-plan={association.associationId}
-                data-bp-plan-status={association.status}
-              >
-                <div className={'bp-conversation-plan-main'}>
-                  <span className={'bp-conversation-plan-name'}>{association.name}</span>
-                  <span className={'bp-conversation-plan-meta'}>
-                    {t(planStatusKey(association.status))} · {t(planIntentKey(association.intent))}
-                  </span>
-                  <span className={'bp-conversation-plan-identity'}>
-                    <code>{association.asset.blueprintId}</code>
+      ) : plans.length > 0 ? (
+        <div className={'bp-conversation-scroll'}>
+          <section className={'bp-conversation-plans'} data-bp-conversation-plans={String(plans.length)}>
+            <div className={'bp-conversation-section-head'}>
+              <div className={'bp-conversation-section-copy'}>
+                <h3 className={'bp-conversation-plans-title'}>{t('conversation.plans')}</h3>
+                {!bound && <p className={'bp-conversation-plans-help'}>{t('conversation.plansHelp')}</p>}
+              </div>
+              {createPlanEditor && (
+                <button type={'button'} className={'bp-button bp-button-secondary bp-button-sm'} onClick={() => setEditing({})}>
+                  {t('conversation.managePlans')}
+                </button>
+              )}
+            </div>
+            <ul className={'bp-conversation-plan-list'}>
+              {plans.map(association => (
+                <li
+                  key={association.associationId}
+                  className={`bp-conversation-plan is-${association.status}`}
+                  data-bp-plan={association.associationId}
+                  data-bp-plan-status={association.status}
+                >
+                  <div className={'bp-conversation-plan-head'}>
+                    <div className={'bp-conversation-plan-title'}>
+                      <span className={'bp-conversation-plan-name'}>{association.name}</span>
+                      <span className={`bp-conversation-plan-status is-${association.status}`}>
+                        <span className={'bp-conversation-plan-status-dot'} aria-hidden={'true'} />
+                        {t(planStatusKey(association.status))}
+                      </span>
+                    </div>
+                    <div className={'bp-conversation-plan-actions'}>
+                      {createPlanEditor && (
+                        <button type={'button'} className={'bp-button bp-button-quiet bp-button-sm'} onClick={() => setEditing({ asset: association.asset })}>
+                          {t('conversation.editPlan')}
+                        </button>
+                      )}
+                      {association.runId ? (
+                        <button
+                          type={'button'}
+                          className={'bp-button bp-button-secondary bp-button-sm bp-conversation-plan-open'}
+                          title={association.runId}
+                          onClick={() => {
+                            void controller.selectRun(association.runId!)
+                          }}
+                        >
+                          <span className={'bp-conversation-plan-open-label'}>{association.runId}</span>
+                        </button>
+                      ) : null}
+                      {!association.runId && (association.status === 'saved' || association.status === 'blocked') ? (
+                        <button
+                          type={'button'}
+                          className={'bp-button bp-button-primary bp-conversation-plan-run-button bp-conversation-plan-run'}
+                          disabled={planBusy === association.associationId}
+                          data-bp-plan-run={association.associationId}
+                          onClick={() => {
+                            setPlanBusy(association.associationId)
+                            setPlanError(null)
+                            void controller
+                              .runPlan(association, planInputs[association.associationId] ?? '{}')
+                              .finally(() => setPlanBusy(null))
+                              .catch(error => {
+                                const code =
+                                  typeof (error as { code?: unknown })?.code === 'string' ? (error as { code: string }).code : 'blueprint/remote-failed'
+                                setPlanError({ associationId: association.associationId, code })
+                              })
+                          }}
+                        >
+                          {t('conversation.runPlan')}
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className={'bp-conversation-plan-meta'}>
+                    <span>{t(planIntentKey(association.intent))}</span>
+                    <span className={'bp-conversation-plan-meta-dot'} aria-hidden={'true'} />
                     <span>{t('conversation.planRevision', { revision: association.documentRevision.slice(0, 12) })}</span>
-                  </span>
-                </div>
-                <div className={'bp-conversation-plan-actions'}>
-                  {createPlanEditor && (
-                    <button type="button" onClick={() => setEditing({ asset: association.asset })}>
-                      {t('conversation.editPlan')}
-                    </button>
-                  )}
-                  {!association.runId && (
-                    <label>
-                      {t('conversation.planInput')}
-                      <textarea
-                        aria-label={t('conversation.planInput')}
-                        value={planInputs[association.associationId] ?? '{}'}
-                        onChange={event => setPlanInputs({ ...planInputs, [association.associationId]: event.target.value })}
-                      />
-                    </label>
-                  )}
-                  {association.runId ? (
-                    <button
-                      type={'button'}
-                      className={'bp-conversation-plan-open'}
-                      onClick={() => {
-                        void controller.selectRun(association.runId!)
-                      }}
-                    >
-                      {association.runId}
-                    </button>
-                  ) : association.status === 'saved' || association.status === 'blocked' ? (
-                    <button
-                      type={'button'}
-                      className={'bp-conversation-plan-run'}
-                      disabled={planBusy === association.associationId}
-                      data-bp-plan-run={association.associationId}
-                      onClick={() => {
-                        setPlanBusy(association.associationId)
-                        setPlanError(null)
-                        void controller
-                          .runPlan(association, planInputs[association.associationId] ?? '{}')
-                          .finally(() => setPlanBusy(null))
-                          .catch(error => {
-                            const code = typeof (error as { code?: unknown })?.code === 'string' ? (error as { code: string }).code : 'blueprint/remote-failed'
-                            setPlanError({ associationId: association.associationId, code })
-                          })
-                      }}
-                    >
-                      {t('conversation.runPlan')}
-                    </button>
+                    <span className={'bp-conversation-plan-meta-dot'} aria-hidden={'true'} />
+                    <code className={'bp-conversation-plan-identity'} title={association.asset.blueprintId}>
+                      {association.asset.blueprintId}
+                    </code>
+                  </div>
+                  {!association.runId && createPlanEditor ? (
+                    <details className={'bp-conversation-plan-input'}>
+                      <summary>{t('conversation.planInput')}</summary>
+                      <label className={'bp-conversation-plan-field'}>
+                        <textarea
+                          aria-label={t('conversation.planInput')}
+                          rows={2}
+                          spellCheck={false}
+                          value={planInputs[association.associationId] ?? '{}'}
+                          onChange={event => setPlanInputs({ ...planInputs, [association.associationId]: event.target.value })}
+                        />
+                      </label>
+                    </details>
                   ) : null}
-                </div>
-                {planError?.associationId === association.associationId ? (
-                  <p className={'bp-conversation-plan-error'} role={'alert'}>
-                    {t('conversation.planRunFailed', { code: planError.code })}
-                  </p>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </section>
+                  {planError?.associationId === association.associationId ? (
+                    <p className={'bp-conversation-plan-error'} role={'alert'}>
+                      {t('conversation.planRunFailed', { code: planError.code })}
+                    </p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
       ) : null}
       {bound && bound.nextCursor && controller.hasRunQuery() ? (
         <button
@@ -513,7 +558,7 @@ export function ConversationBlueprintView({
           </button>
         </p>
       ) : null}
-      {bound ? (
+      {bound && !Editor ? (
         <div className={'bp-conversation-body'}>
           <div className={'bp-conversation-canvas'}>
             <ReactFlow<DisplayFlowNode, FrozenFlowEdge>
@@ -587,9 +632,7 @@ export function ConversationBlueprintView({
             openChat
           })}
         </div>
-      ) : snapshot.value?.status === 'unbound' && (snapshot.value.associations?.length ?? 0) > 0 ? null : (
-        <div className={'bp-conversation-empty'}>{t(status === 'conversation.unbound' ? 'conversation.unboundHelp' : status)}</div>
-      )}
+      ) : null}
     </section>
   )
 }

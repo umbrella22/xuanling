@@ -90,11 +90,16 @@ export function RunHierarchyPreview({
   const edges = view?.graph.edges.map((edge, index) => ({ id: String(index), source: edge.from.split(/[.@]/)[0]!, target: edge.to.split(/[.@]/)[0]! })) ?? []
   return (
     <dialog ref={dialog} className="bp-runtime-preview bp-workspace" aria-label={t('conversation.graph')} onCancel={onClose}>
-      <button type="button" data-bp-preview-close onClick={onClose}>
-        {t('composition.back')}
-      </button>
-      <p className="bp-help">{t('conversation.runtimeReadonly')}</p>
-      <p role="status">
+      <header className={'bp-runtime-preview-head'}>
+        <div className={'bp-runtime-preview-title'}>
+          <strong>{t('conversation.graph')}</strong>
+          <p className="bp-help">{t('conversation.runtimeReadonly')}</p>
+        </div>
+        <button type="button" data-bp-preview-close onClick={onClose}>
+          {t('composition.back')}
+        </button>
+      </header>
+      <p role="status" className={'bp-runtime-preview-status'}>
         {status === 'ready' && view ? displayState(view.run.state, t) : t(status === 'loading' ? 'conversation.loading' : 'conversation.unavailable')}
       </p>
       {status === 'unavailable' && (
@@ -130,7 +135,7 @@ export function RunHierarchyPreview({
               <Controls showInteractive={false} />
             </ReactFlow>
           </div>
-          <ol>
+          <ul className={'bp-runtime-attempts'}>
             {view.run.attempts.map((attempt, index) => (
               <li key={attempt.attemptId ?? index}>
                 <span>
@@ -148,7 +153,7 @@ export function RunHierarchyPreview({
                 )}
               </li>
             ))}
-          </ol>
+          </ul>
         </section>
       )}
     </dialog>

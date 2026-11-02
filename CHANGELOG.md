@@ -4,6 +4,30 @@ All notable release changes are recorded here. XuanLing uses immutable release
 tags and publishes the launcher, native packages, DeepSeek Harness bundles, and
 ZCode projection from the same source commit.
 
+## 0.10.1 - 2026-11-02
+
+### Changed
+
+- Give the Blueprint desktop toolbar a dedicated window-drag area, group the
+  library/workspace and plan/run controls, and move secondary details out of the
+  crowded top row. Show run status only when a real Run exists; keep selection,
+  busy navigation and narrow layouts usable.
+- Publish the experimental Harness Bridge launcher with macOS Apple Silicon,
+  Linux x64 glibc and Windows x64 native packages from one source commit.
+- Disable native worker transcript persistence for Codex and Claude. Reject
+  DSH/ZCode worker execution until a verified suppression mode is available;
+  DSH remains usable as a controller.
+- Include the local DSH Harness Bridge provider/tool integration in the source
+  checkout. It remains private and is not an additional public npm bundle.
+
+### Compatibility and limits
+
+- Blueprint definition schema remains v2; no data migration is required.
+- Bridge publication proves distribution and protocol smoke only. Deferred
+  live-provider and controller-host acceptance is not implied. Initial Bridge
+  uploads use browser-authenticated CLI publishing; npm OIDC configuration is
+  a separate maintainer step for all four packages.
+
 ## 0.10.0 - 2026-11-01
 
 ### Added

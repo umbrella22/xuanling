@@ -40,6 +40,14 @@ bridge is a sandbox or a complete security product. The contract source is
 
 ## Environment allowlist
 
+The fixed Codex argv includes `--ephemeral` and the fixed Claude argv includes
+`--no-session-persistence`. An adapter without a verified native session
+suppression rejects with `NATIVE_SESSION_PERSISTENCE_UNSUPPORTED` before job
+acceptance and again during command planning. This currently prevents DSH
+and ZCode worker execution. Optional final Markdown does not enable native
+sessions. Authentication, product caches and task file writes are separate
+from this transcript policy; the bridge does not prohibit all worker IO.
+
 The child environment is cleared and rebuilt from names, never from a captured
 environment map. Values are read at spawn time and only when they are valid
 UTF-8.

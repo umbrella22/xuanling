@@ -1,5 +1,10 @@
 # XuanLing for DeepSeek Harness
 
+The local, unpublished [Harness Bridge adapter](xuanling-harness/README.md)
+adds a one-shot DSH subagent provider and blocking Blueprint tool, with native
+worker session persistence disabled. It is separate from the published bundle
+set below.
+
 English | [简体中文](README-ZH.md)
 
 XuanLing for DeepSeek Harness adds XuanLing's proposal-first Memory and typed tool catalog to a DSH
@@ -65,8 +70,8 @@ Replace `web` with the profile you use.
 
 ```sh
 dsh plugin --profile web add \
-  @xuanling-rs/xuanling-dsh-memory@0.10.0 \
-  @xuanling-rs/xuanling-dsh-skills@0.10.0
+  @xuanling-rs/xuanling-dsh-memory@0.10.1 \
+  @xuanling-rs/xuanling-dsh-skills@0.10.1
 dsh --profile web --dump-config
 dsh web
 ```
@@ -81,8 +86,8 @@ fails startup when it is missing and never falls back to DSH's working directory
 
 ```sh
 dsh plugin --profile web add \
-  @xuanling-rs/xuanling-dsh-tools@0.10.0 \
-  @xuanling-rs/xuanling-dsh-skills@0.10.0
+  @xuanling-rs/xuanling-dsh-tools@0.10.1 \
+  @xuanling-rs/xuanling-dsh-skills@0.10.1
 export XUANLING_WORKSPACE_ROOT=/absolute/path/to/project
 dsh web
 ```
@@ -94,8 +99,8 @@ Same workspace-root requirement. This bundle disables the native `tool-fs` row; 
 
 ```sh
 dsh plugin --profile web add \
-  @xuanling-rs/xuanling-dsh-tools-replace@0.10.0 \
-  @xuanling-rs/xuanling-dsh-skills@0.10.0
+  @xuanling-rs/xuanling-dsh-tools-replace@0.10.1 \
+  @xuanling-rs/xuanling-dsh-skills@0.10.1
 export XUANLING_WORKSPACE_ROOT=/absolute/path/to/project
 dsh web
 ```
@@ -103,8 +108,8 @@ dsh web
 ### Blueprint (optional)
 
 ```sh
-pnpm add --save-exact @xuanling-rs/xuanling-dsh-blueprint@0.10.0
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.10.0
+pnpm add --save-exact @xuanling-rs/xuanling-dsh-blueprint@0.10.1
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.10.1
 ```
 
 TeamStage needs the native Agent Teams profile enabled separately.
@@ -138,7 +143,7 @@ Install into the profile that serves the UI you use. `web` and `headless` are th
 and each keeps its own package set. Use `dsh plugin --profile <profile> list` to inspect installed
 plugins and `dsh plugin --profile <profile> remove <package>` to remove one; restart after a change.
 
-Profile-local `@xuanling-rs/xuanling-mcp@0.10.0` is installed by the selected runtime bundle and
+Profile-local `@xuanling-rs/xuanling-mcp@0.10.1` is installed by the selected runtime bundle and
 resolved from that profile's dependencies.
 
 ### Memory, files and Skills
@@ -174,7 +179,7 @@ replacement facade are described in the [bundle READMEs](#links).
 - The bundles are developed and tested against DSH `0.2.1-rc.2` from the `next` channel.
 - The public runtime peer floor is `@deepseek-ai/dsh-* >=0.2.1-alpha.5`, with prereleases included in
   range checks.
-- Release `0.10.0` targets this capability channel. The earlier `0.6.1` packages declare an older DSH
+- Release `0.10.1` targets this capability channel. The earlier `0.6.1` packages declare an older DSH
   range. Install a version whose declared range matches your profile, and keep every
   `@deepseek-ai/dsh-*` package in one profile on the same channel. DSH can disable an incompatible
   plugin instead of starting it.

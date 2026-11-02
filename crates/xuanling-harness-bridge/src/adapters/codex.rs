@@ -1,7 +1,7 @@
 //! Codex CLI adapter.
 //!
 //! Verified invocation (codex-cli 0.165.0-alpha.1.2):
-//! `codex exec --json -s read-only --skip-git-repo-check -` with the task on
+//! `codex exec --json --ephemeral -s read-only --skip-git-repo-check -` with the task on
 //! stdin. Success requires a `turn.completed` event, an `agent_message` item
 //! and exit 0. `turn.failed` is a native failure even when a partial answer was
 //! printed.
@@ -77,6 +77,7 @@ impl Adapter for CodexAdapter {
 
     fn capabilities(&self) -> AdapterCapabilities {
         AdapterCapabilities {
+            native_session_persistence_disabled: true,
             non_interactive: true,
             needs_input: false,
         }
@@ -86,6 +87,7 @@ impl Adapter for CodexAdapter {
         let mut args = vec![
             "exec".to_string(),
             "--json".to_string(),
+            "--ephemeral".to_string(),
             "-s".to_string(),
             self.sandbox.clone(),
         ];

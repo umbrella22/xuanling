@@ -1,10 +1,16 @@
 # Release boundary
 
-This crate is **not published, signed or released** by the current plan. It
-exists as a workspace member (`xuanling-harness-bridge`, binary
-`harness-bridge`) for implementation and verification. No crates.io package, npm
-package, GitHub release, installer, binary artifact, signing step, attestation
-or marketplace entry is part of this plan.
+The bridge is distributed experimentally through
+`@xuanling-rs/harness-bridge` and its three native npm packages. Distribution
+follows the workspace release version; each package records its source commit
+and the native packages include dependency notices. The initial npm upload
+uses browser-authenticated CLI publishing. GitHub Actions Trusted Publishing
+is available after a maintainer configures all four package identities.
+
+The Rust crate is not published to crates.io. Native binaries have no Developer
+ID or Authenticode signatures. Public package availability is a distribution
+claim; it does not close the development plan's live-worker, controller-host or
+full native acceptance gates. Those gates retain their own evidence status.
 
 ## Not included
 
@@ -19,7 +25,7 @@ or marketplace entry is part of this plan.
 | User-data migration, schema migration, backup/restore | Not applicable; no product data or runtime store exists |
 | Approval proxying, interactive steering or worker message queue | Not implemented; a worker that needs input yields `NEEDS_INPUT` (when recognized) or a native failure |
 | Process logs, raw stdout/stderr, thinking text or tool-call timeline | Not returned and not persisted |
-| Publishing, signing, installers or release artifacts | Outside this plan's authorization |
+| Platform publisher signing, installers or marketplace entry | Not provided by this npm distribution |
 
 ## What the bridge returns
 
@@ -36,14 +42,14 @@ acceptance.
 
 ## Version and compatibility
 
-- The crate version follows the workspace version and is a development
-  placeholder, not a published compatibility promise.
+- The crate and npm versions follow the workspace version. The bridge is
+  experimental; pin an exact version when configuring a controller.
 - The controller-facing contract is the four-tool MCP surface described in
   [`README.md`](README.md). There is no compatibility guarantee for the retired
   pre-plan five/ten-tool surface, any SQLite schema or any old bridge file.
 - The optional Markdown result carries `format_version: 1` in its header. That
   version describes the file layout only; the file is never used as a job
   database or an instruction source.
-- No release claim may be made while live worker/controller and native-platform
-  gates from the plan are unexecuted or failing. Current evidence status is
-  recorded in the plan and must be checked before any release statement.
+- Package build, registry and clean-consumer evidence must be recorded for the
+  exact release commit. Unexecuted live worker/controller gates must remain
+  explicit and cannot be inferred from package publication or synthetic tests.

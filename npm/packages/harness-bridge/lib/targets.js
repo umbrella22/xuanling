@@ -45,6 +45,15 @@ export function platformVersion(releaseVersion, targetId) {
   return `${releaseVersion}-${targetId}`;
 }
 
+export function expectedOptionalDependencies(releaseVersion) {
+  return Object.fromEntries(
+    Object.values(TARGETS).map((target) => [
+      target.alias,
+      `npm:${target.packageName}@${platformVersion(releaseVersion, target.id)}`,
+    ]),
+  );
+}
+
 export function detectTarget({ platform = process.platform, arch = process.arch } = {}) {
   if (platform === "darwin" && arch === "arm64") {
     return TARGETS["darwin-arm64"];

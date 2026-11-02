@@ -1176,6 +1176,31 @@ export function WorkspacePanel({
         })
     ),
     moreAction(
+      'delete-blueprint',
+      'files',
+      'action.deleteBlueprint',
+      'delete',
+      () => hostReason() ?? (!workspace.isNewDraft && !workspace.document ? 'interaction.disabled.no-definition' : null),
+      () => {
+        requestConfirmation(
+          t('action.deleteBlueprint'),
+          t(workspace.isNewDraft ? 'document.deleteDraftConfirm' : 'document.deleteConfirm', { name: workspace.definition?.name ?? '' }),
+          () => {
+            const epoch = ++navigationEpoch.current
+            setResourceDialog(null)
+            closeOverlay()
+            perform(async () => {
+              await workspace.deleteCurrent(t('document.newName'))
+              if (epoch !== navigationEpoch.current) return
+              setNotice(null)
+              setSelected(null)
+              setSelectedEdges([])
+            })
+          }
+        )
+      }
+    ),
+    moreAction(
       'motion-toggle',
       'view',
       'interaction.motion-toggle',
@@ -1277,144 +1302,121 @@ export function WorkspacePanel({
       tabIndex: -1
     },
     children: [
-      // The toolbar row doubles as the macOS desktop window-drag surface; the
-      // shell's [data-window-drag] rule makes blank runs draggable while the DSH
-      // interactive-element rule keeps every control clickable. Inert in a browser.
-      <header key={'toolbar'} className={'bp-toolbar'} data-window-drag={true}>
-        <LibraryCascadeView
-          React={React}
-          t={t}
-          disabled={workspace.busy}
-          selected={workspace.library}
-          status={workspaceSnapshot.library.status}
-          state={workspaceSnapshot.library.state}
-          libraries={workspace.libraries}
-          onSelect={library => {
-            requestConfirmation(
-              t('dialog.discardTitle'),
-              t('document.discardConfirm'),
-              () => {
-                navigationEpoch.current++
-                setResourceDialog(null)
-                setSelected(null)
-                setSelectedEdges([])
-                workspaceLease.dispatch({ type: 'select-library', library })
-                setTick(n => n + 1)
-                void workspace.refreshLibraries()
-              },
-              workspace.needsNavigationConfirmation
-            )
-          }}
-        />
-        <div className={'bp-blueprint-picker'}>
-          <StyledSelect
+      // DSH owns native drag behavior; keep its reserved strip free of controls.
+      <div key={'window-drag'} className={'bp-window-drag'} data-window-drag={true} aria-hidden={true} />,
+      <header key={'toolbar'} className={'bp-toolbar bp-editor-toolbar'}>
+        <div className={'bp-toolbar-context'}>
+          <LibraryCascadeView
             React={React}
-            data-bp-select={'blueprint'}
-            aria-label={t('library.configuredBlueprint')}
+            t={t}
             disabled={workspace.busy}
-            value={workspace.blueprintId ?? ''}
-            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
-              const requestedId = e.target.value
+            selected={workspace.library}
+            status={workspaceSnapshot.library.status}
+            state={workspaceSnapshot.library.state}
+            libraries={workspace.libraries}
+            onSelect={library => {
               requestConfirmation(
                 t('dialog.discardTitle'),
                 t('document.discardConfirm'),
                 () => {
-                  const epoch = ++navigationEpoch.current
+                  navigationEpoch.current++
                   setResourceDialog(null)
-                  perform(async () => {
-                    await workspace.load(requestedId)
-                    if (epoch !== navigationEpoch.current || workspace.blueprintId !== requestedId) return
-                    const loadedEditor = workspace.editor,
-                      binding = viewportStore.bind(requestedId, workspace.libraryScope)
-                    const captured = { id: requestedId, binding, state: binding.state }
-                    preferences.current = captured
-                    setSelected(null)
-                    setSelectedEdges([])
-                    setTick(n => n + 1)
-                    requestAnimationFrame(() => {
-                      if (
-                        epoch !== navigationEpoch.current ||
-                        workspace.editor !== loadedEditor ||
-                        workspace.blueprintId !== requestedId ||
-                        preferences.current !== captured
-                      )
-                        return
-                      const currentFlow = flowRef.current
-                      if (!currentFlow) return
-                      if (binding.readStatus === 'restored') void currentFlow.setViewport(binding.state.viewport, { duration: 0 })
-                      else void currentFlow.fitView({ duration: 0, padding: 0.2 })
-                    })
-                  })
+                  setSelected(null)
+                  setSelectedEdges([])
+                  workspaceLease.dispatch({ type: 'select-library', library })
+                  setTick(n => n + 1)
+                  void workspace.refreshLibraries()
                 },
                 workspace.needsNavigationConfirmation
               )
             }}
-          >
-            <option value={''} disabled={true}>
-              {t('library.chooseId')}
-            </option>
-            {workspace.isNewDraft && <option value={workspace.blueprintId!}>{t('document.newDraft')}</option>}
-            {!workspace.isNewDraft && !workspace.catalog.length && (
+          />
+          <div className={'bp-blueprint-picker'}>
+            <StyledSelect
+              React={React}
+              data-bp-select={'blueprint'}
+              aria-label={t('library.configuredBlueprint')}
+              disabled={workspace.busy}
+              value={workspace.blueprintId ?? ''}
+              selectedLabel={
+                workspace.definition?.name ??
+                (workspace.isNewDraft ? t('document.newDraft') : workspace.catalog.find(d => d.blueprintId === workspace.blueprintId)?.name)
+              }
+              title={workspace.blueprintId ? `${workspace.definition?.name ?? ''} · ${workspace.blueprintId}` : undefined}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                const requestedId = e.target.value
+                requestConfirmation(
+                  t('dialog.discardTitle'),
+                  t('document.discardConfirm'),
+                  () => {
+                    const epoch = ++navigationEpoch.current
+                    setResourceDialog(null)
+                    perform(async () => {
+                      await workspace.load(requestedId)
+                      if (epoch !== navigationEpoch.current || workspace.blueprintId !== requestedId) return
+                      const loadedEditor = workspace.editor,
+                        binding = viewportStore.bind(requestedId, workspace.libraryScope)
+                      const captured = { id: requestedId, binding, state: binding.state }
+                      preferences.current = captured
+                      setSelected(null)
+                      setSelectedEdges([])
+                      setTick(n => n + 1)
+                      requestAnimationFrame(() => {
+                        if (
+                          epoch !== navigationEpoch.current ||
+                          workspace.editor !== loadedEditor ||
+                          workspace.blueprintId !== requestedId ||
+                          preferences.current !== captured
+                        )
+                          return
+                        const currentFlow = flowRef.current
+                        if (!currentFlow) return
+                        if (binding.readStatus === 'restored') void currentFlow.setViewport(binding.state.viewport, { duration: 0 })
+                        else void currentFlow.fitView({ duration: 0, padding: 0.2 })
+                      })
+                    })
+                  },
+                  workspace.needsNavigationConfirmation
+                )
+              }}
+            >
               <option value={''} disabled={true}>
-                {t(workspace.library.kind === 'global' ? 'library.empty' : 'library.absent')}
+                {t('library.chooseId')}
               </option>
-            )}
-            {workspace.catalog.map(d => (
-              <option value={d.blueprintId} key={d.blueprintId}>{`${d.name} · ${d.blueprintId}`}</option>
-            ))}
-          </StyledSelect>
-        </div>
-        <button
-          type={'button'}
-          data-bp-action={'new-blueprint'}
-          disabled={workspace.busy}
-          onClick={() => {
-            requestConfirmation(
-              t('action.newBlueprint'),
-              t('document.newConfirm'),
-              () => {
-                navigationEpoch.current++
-                setResourceDialog(null)
-                closeOverlay()
-                setNotice(null)
-                setSelected(null)
-                setSelectedEdges([])
-                workspaceLease.dispatch({ type: 'new-draft', name: t('document.newName') })
-              },
-              workspace.needsNavigationConfirmation
-            )
-          }}
-        >
-          {t('action.newBlueprint')}
-        </button>
-        <button
-          type={'button'}
-          data-bp-action={'delete-blueprint'}
-          disabled={workspace.busy || !workspace.blueprintId || (!workspace.isNewDraft && !workspace.document)}
-          onClick={() => {
-            requestConfirmation(
-              t('action.deleteBlueprint'),
-              t(workspace.isNewDraft ? 'document.deleteDraftConfirm' : 'document.deleteConfirm', { name: workspace.definition?.name ?? '' }),
-              () => {
-                const epoch = ++navigationEpoch.current
-                setResourceDialog(null)
-                closeOverlay()
-                perform(async () => {
-                  await workspace.deleteCurrent(t('document.newName'))
-                  if (epoch !== navigationEpoch.current) return
+              {workspace.isNewDraft && <option value={workspace.blueprintId!}>{t('document.newDraft')}</option>}
+              {!workspace.isNewDraft && !workspace.catalog.length && (
+                <option value={''} disabled={true}>
+                  {t(workspace.library.kind === 'global' ? 'library.empty' : 'library.absent')}
+                </option>
+              )}
+              {workspace.catalog.map(d => (
+                <option value={d.blueprintId} key={d.blueprintId}>{`${d.name} · ${d.blueprintId}`}</option>
+              ))}
+            </StyledSelect>
+          </div>
+          {chrome({
+            action: 'new-blueprint',
+            labelKey: 'action.newBlueprint',
+            icon: 'new',
+            reason: workspace.busy ? 'interaction.disabled.busy' : null,
+            onClick: () => {
+              requestConfirmation(
+                t('action.newBlueprint'),
+                t('document.newConfirm'),
+                () => {
+                  navigationEpoch.current++
+                  setResourceDialog(null)
+                  closeOverlay()
                   setNotice(null)
                   setSelected(null)
                   setSelectedEdges([])
-                })
-              }
-            )
-          }}
-        >
-          {t('action.deleteBlueprint')}
-        </button>
-        <span className={'bp-revision'} data-bp-dirty={String(workspace.dirty)}>
-          {t(workspace.dirty ? 'document.unsaved' : workspace.isNewDraft ? 'document.newDraft' : workspace.document ? 'document.saved' : 'document.none')}
-        </span>
+                  workspaceLease.dispatch({ type: 'new-draft', name: t('document.newName') })
+                },
+                workspace.needsNavigationConfirmation
+              )
+            }
+          })}
+        </div>
         <div className={'bp-toolbar-actions'}>
           <div
             className={'bp-toolbar-group'}
@@ -1478,14 +1480,15 @@ export function WorkspacePanel({
               reason: workspace.library?.kind === 'global' ? 'status.workspaceRequired' : hostReason(),
               onClick: () => perform(() => workspace.run())
             })}
-            {chrome({
-              action: 'cancel-run',
-              labelKey: 'run.cancel',
-              icon: 'cancel',
-              shortcut: 'Ctrl / ⌘ Alt Enter',
-              reason: workspace.busy ? 'interaction.disabled.busy' : !workspace.runId ? 'interaction.disabled.cancel-unavailable' : null,
-              onClick: () => perform(() => workspace.cancel())
-            })}
+            {workspace.runId &&
+              chrome({
+                action: 'cancel-run',
+                labelKey: 'run.cancel',
+                icon: 'cancel',
+                shortcut: 'Ctrl / ⌘ Alt Enter',
+                reason: workspace.busy ? 'interaction.disabled.busy' : !workspace.runId ? 'interaction.disabled.cancel-unavailable' : null,
+                onClick: () => perform(() => workspace.cancel())
+              })}
             {chrome({
               action: 'more-actions',
               labelKey: 'compact.more',
@@ -1846,8 +1849,13 @@ export function WorkspacePanel({
       currentTooltip && !overlay && (
         <WorkspaceTooltip key={'tooltip'} React={React} root={rootRef} content={currentTooltip} t={t} onClose={() => setTooltip(null)} />
       ),
-      <footer key={'status'} className={'bp-status'} role={'status'} data-bp-status={'message'} data-bp-status-key={feedback.key}>
-        {message}
+      <footer key={'status'} className={'bp-status'}>
+        <span className={'bp-status-message'} role={'status'} data-bp-status={'message'} data-bp-status-key={feedback.key}>
+          {message}
+        </span>
+        <span className={'bp-revision'} role={'status'} data-bp-dirty={String(workspace.dirty)}>
+          {t(workspace.dirty ? 'document.unsaved' : workspace.isNewDraft ? 'document.newDraft' : workspace.document ? 'document.saved' : 'document.none')}
+        </span>
       </footer>
     ]
   })

@@ -7,12 +7,16 @@ import { REPO_ROOT, parseArgs, requiredArg, run } from "./shared.mjs";
 const args = parseArgs(process.argv.slice(2));
 const target = requiredArg(args, "target");
 const output = path.resolve(requiredArg(args, "output"));
+const packageName = args.package ?? "xuanling-mcp";
+if (!["xuanling-mcp", "xuanling-harness-bridge"].includes(packageName)) {
+  throw new Error(`Unsupported notice package: ${packageName}`);
+}
 
 const { stdout: treeOutput } = await run("cargo", [
   "tree",
   "--locked",
   "-p",
-  "xuanling-mcp",
+  packageName,
   "--target",
   target,
   "-e",
@@ -72,7 +76,7 @@ const thirdPartyPackages = [...dependencyKeys]
   );
 
 const sections = [
-  "XuanLing MCP third-party software notices",
+  `${packageName === "xuanling-mcp" ? "XuanLing MCP" : "XuanLing Harness Bridge"} third-party software notices`,
   `Rust target: ${target}`,
   "",
   "Generated from the target's Cargo normal dependency tree and Cargo metadata.",

@@ -128,6 +128,25 @@ fn main() {
 fn codex_failure() -> ! {
     let request: serde_json::Value =
         serde_json::from_reader(std::io::stdin()).expect("synthetic Codex request");
+    if matches!(request["scenario"].as_str(), Some("success" | "silent")) {
+        if !std::env::args().any(|arg| arg == "--ephemeral") {
+            eprintln!("synthetic Codex refuses native session persistence");
+            std::process::exit(2);
+        }
+        if let Some(path) = request["pid_file"].as_str() {
+            std::fs::write(path, std::process::id().to_string()).expect("synthetic pid");
+        }
+        if request["scenario"] == "silent" {
+            std::thread::sleep(Duration::from_secs(60));
+        }
+        emit(
+            r#"{"type":"item.completed","item":{"type":"reasoning","text":"PROCESS-ONLY-MARKER"}}"#,
+        );
+        let text = request["text"].as_str().unwrap_or("OK");
+        emit(&serde_json::json!({"type":"item.completed","item":{"type":"agent_message","text":text}}).to_string());
+        emit(r#"{"type":"turn.completed"}"#);
+        std::process::exit(0);
+    }
     if let Some(stderr) = request.get("stderr").and_then(serde_json::Value::as_str) {
         eprint!("{stderr}");
         std::io::stderr().flush().expect("flush synthetic stderr");

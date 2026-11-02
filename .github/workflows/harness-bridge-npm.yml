@@ -1,0 +1,131 @@
+name: package-and-publish-harness-bridge
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish with npm Trusted Publishing (configure all four packages first)"
+        type: boolean
+        default: false
+  push:
+    tags: ["xuanling-mcp-v*"]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  launcher:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - run: npm install --global npm@11.6.2
+      - run: node npm/scripts/check-version.mjs
+      - name: Verify release tag and merged source before publication
+        env:
+          PUBLISH_REQUESTED: ${{ inputs.publish || false }}
+        run: |
+          VERSION=$(node -p "require('./npm/packages/harness-bridge/package.json').version")
+          if [ "$GITHUB_EVENT_NAME" = "push" ] || [ "$PUBLISH_REQUESTED" = "true" ]; then
+            test "$GITHUB_REF" = "refs/tags/xuanling-mcp-v$VERSION"
+            git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          fi
+      - run: node npm/scripts/verify-harness-bridge-package.mjs
+      - run: npm test --prefix npm
+      - run: node npm/scripts/pack-harness-bridge.mjs --out npm/dist/bridge-main --commit "$GITHUB_SHA"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bridge-main
+          path: npm/dist/bridge-main/pack
+          if-no-files-found: error
+          retention-days: 14
+
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target_id: darwin-arm64
+            rust_target: aarch64-apple-darwin
+            binary: harness-bridge
+          - os: ubuntu-22.04
+            target_id: linux-x64-gnu
+            rust_target: x86_64-unknown-linux-gnu
+            binary: harness-bridge
+          - os: windows-latest
+            target_id: win32-x64-msvc
+            rust_target: x86_64-pc-windows-msvc
+            binary: harness-bridge.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.98"
+          targets: ${{ matrix.rust_target }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - run: npm install --global npm@11.6.2
+      - name: Run deterministic Bridge contracts on the native runner
+        run: cargo test --locked -p xuanling-harness-bridge --lib --test contract --test native_sessions --test protocol --test lifecycle --test report --test host_protocol
+      - run: cargo build --locked --release --target ${{ matrix.rust_target }} -p xuanling-harness-bridge --bin harness-bridge
+      - name: Package the native executable and its dependency notices
+        run: |
+          mkdir -p npm/dist/bridge-${{ matrix.target_id }}
+          node npm/scripts/generate-third-party-licenses.mjs \
+            --package xuanling-harness-bridge \
+            --target ${{ matrix.rust_target }} \
+            --output npm/dist/bridge-${{ matrix.target_id }}/THIRD_PARTY_LICENSES.txt
+          node npm/scripts/pack-harness-bridge.mjs \
+            --target ${{ matrix.target_id }} \
+            --binary target/${{ matrix.rust_target }}/release/${{ matrix.binary }} \
+            --notices npm/dist/bridge-${{ matrix.target_id }}/THIRD_PARTY_LICENSES.txt \
+            --out npm/dist/bridge-${{ matrix.target_id }} \
+            --commit "$GITHUB_SHA"
+      - name: Smoke the packaged native executable
+        run: npm/dist/bridge-${{ matrix.target_id }}/package/bin/${{ matrix.binary }} --version
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bridge-${{ matrix.target_id }}
+          path: npm/dist/bridge-${{ matrix.target_id }}/pack
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish
+    needs: [launcher, native]
+    runs-on: ubuntu-latest
+    environment: npmjs
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+      - run: npm install --global npm@11.6.2
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: bridge-*
+          path: npm/bridge-release
+      - name: Publish immutable native packages before the launcher
+        run: |
+          for TARGET in darwin-arm64 linux-x64-gnu win32-x64-msvc; do
+            node npm/scripts/publish-idempotent.mjs \
+              --manifest "npm/bridge-release/bridge-$TARGET/$TARGET.pack.json" \
+              --tag "platform-$TARGET"
+          done
+          node npm/scripts/publish-idempotent.mjs \
+            --manifest npm/bridge-release/bridge-main/main.pack.json --tag latest

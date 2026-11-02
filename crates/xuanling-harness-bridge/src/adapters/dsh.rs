@@ -3,6 +3,8 @@
 //! Verified invocation: `dsh --profile headless --json -` with the task on
 //! stdin. The JSON projection writes `session`, `status`, `text`/`thinking`,
 //! `tool_call`/`tool_result`, `final`, and run-level `error` events.
+//! Execution is blocked until native session suppression is verified. The
+//! collector below continues to decode historical and synthetic fixtures.
 //!
 //! According to the installed headless runner, a failed turn still ends with a
 //! `final` event (often empty) and exit code 1; the `turn_end` reason is the
@@ -78,12 +80,14 @@ impl Adapter for DshAdapter {
 
     fn capabilities(&self) -> AdapterCapabilities {
         AdapterCapabilities {
+            native_session_persistence_disabled: false,
             non_interactive: true,
             needs_input: true,
         }
     }
 
     fn plan(&self, task: &FrozenTask) -> Result<CommandPlan, BridgeError> {
+        super::require_no_native_sessions(self)?;
         Ok(CommandPlan {
             program: self.program.clone(),
             args: vec![

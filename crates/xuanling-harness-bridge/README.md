@@ -13,10 +13,11 @@ bridge process. See
 [`docs/plans/harness-bridge-development-plan.md`](../../docs/plans/harness-bridge-development-plan.md)
 for the full contract and current evidence status.
 
-> Status: workspace member only. This crate is not published, signed or
-> released by the current plan. The examples in
-> [`integrations/`](integrations/) are configuration syntax, not verified live
-> host journeys.
+> Status: experimental. The npm distribution provides the launcher and native
+> binaries; the Rust crate remains unpublished on crates.io, and binaries have
+> no platform publisher signatures. The examples in [`integrations/`](integrations/)
+> are configuration syntax, not verified live host journeys. See the
+> [release boundary](RELEASE-BOUNDARY.md) for the acceptance limits.
 
 ## Build and run
 
@@ -237,6 +238,26 @@ file:
   a task queue or a recovery index. Running tasks produce no Markdown, no
   progress file and no event log.
 
+## Native worker sessions
+
+Native worker session/transcript persistence is disabled independently of
+`save_result`. Codex receives `--ephemeral`; Claude Code receives
+`--no-session-persistence`. Neither flag is configurable through a task.
+`harness_health.adapters[].native_session_persistence_disabled` describes
+this policy for each invocation. DSH and ZCode currently report false and
+reject task submission with `NATIVE_SESSION_PERSISTENCE_UNSUPPORTED` before
+acceptance/spawn, because no verified suppression exists in their current
+adapter invocation. Their protocol collectors remain available for fixtures.
+
+The policy covers native sessions/transcripts. Worker authentication,
+product caches and legitimate task source/output writes retain their native
+behavior. The policy does not claim zero disk writes. Older native captures
+below predate this policy and do not prove its live behavior.
+
+The local [DSH adapter](../../integrations/deepseek-harness/xuanling-harness/README.md)
+provides a standard one-shot subagent provider and blocking `harness_run`
+tool for Blueprint tool bindings. It adds no runtime store or scheduler.
+
 ## Verified CLI versions and current evidence
 
 Adapter contracts were written against these captured versions in this
@@ -249,16 +270,18 @@ checkout:
 | DSH | `0.2.1` | `0.2.0` | Captured missing-credential turn only |
 | ZCode | `0.17.0` | `0.17.0` | Captured business-error stderr; live success verified with a personal BigModel coding-plan API-key provider |
 
-Codex and ZCode have live success in this checkout. ZCode needs both
+Historical Codex and ZCode captures show successful runs before the native
+session policy above. They are not fresh acceptance of the current invocation.
+The historical ZCode route needs both
 provider-config variables above forwarded, and the headless CLI must resolve a
 **personal API-key provider** for the BigModel coding plan (for example
 `api=anthropic-messages`, `baseUrl=https://open.bigmodel.cn/api/anthropic`,
 model `GLM-5.3-Flash`). The account-provider `defaultModelSelection`
 (`account:bigmodel-individual-coding-plan`) is not resolved by the headless
 path and falls back to the first personal provider. The bridge does not select
-or override the model/provider. Live success for Claude Code and DSH is still
-blocked on this machine by account/credential availability; no live success is
-claimed for them. Controller-host journeys (Codex, Claude Code, DSH, ZCode,
+or override the model/provider. Current DSH and ZCode launches are blocked by
+the native session policy. Claude live execution is not included in the
+current acceptance. Controller-host journeys (Codex, Claude Code, DSH, ZCode,
 Trae) are W3 work and have not been executed; the files under
 [`integrations/`](integrations/) are configuration syntax only.
 

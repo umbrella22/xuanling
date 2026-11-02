@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { expectedOptionalDependencies } from "../packages/xuanling-mcp/lib/targets.js";
+import { expectedOptionalDependencies as bridgeOptionalDependencies } from "../packages/harness-bridge/lib/targets.js";
 import {
   MAIN_PACKAGE_DIR,
   REPO_ROOT,
@@ -48,15 +49,15 @@ assert.equal(
   workspaceVersion,
   "harness-bridge npm package version must match the Cargo workspace",
 );
-assert.equal(
+assert.deepEqual(
   harnessBridgePackage.optionalDependencies,
-  undefined,
-  "harness-bridge platform packages are not published yet",
+  bridgeOptionalDependencies(workspaceVersion),
+  "harness-bridge platform aliases must match the release version",
 );
 
 for (const directory of [
   "npm",
-  ...["xuanling-memory", "xuanling-skills", "xuanling-tools", "xuanling-tools-replace", "xuanling-blueprint"]
+  ...["xuanling-memory", "xuanling-skills", "xuanling-tools", "xuanling-tools-replace", "xuanling-blueprint", "xuanling-harness"]
     .map((name) => `integrations/deepseek-harness/${name}`),
   ...["xuanling-mcp", "xuanling-mcp-replace"]
     .map((name) => `integrations/zcode-plugin/plugins/${name}/.zcode-plugin`),

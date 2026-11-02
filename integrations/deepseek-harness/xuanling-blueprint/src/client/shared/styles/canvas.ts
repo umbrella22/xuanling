@@ -100,9 +100,9 @@ export const canvasChromeCss = `
 .bp-workspace .react-flow__attribution{right:auto;bottom:0;left:50%;transform:translateX(-50%);margin:0 0 10px;padding:2px 6px;border-radius:6px;background:color-mix(in srgb,var(--bp-bg) 82%,transparent);color:var(--bp-muted);font-size:10px;line-height:15px;opacity:.7;transition:opacity var(--ds-transition-duration-fast,.12s) var(--ds-ease-in-out,ease)}
 .bp-workspace .react-flow__attribution:hover{opacity:1}
 .bp-workspace .react-flow__attribution a{color:inherit}
-.bp-workspace .bp-empty{gap:6px;padding:24px;text-align:center}
-.bp-workspace .bp-empty strong{max-width:34ch;font-size:15px;font-weight:600;line-height:22px;color:var(--bp-text);text-wrap:balance}
-.bp-workspace .bp-empty p{margin:0;max-width:46ch;color:var(--bp-muted);font-size:12px;line-height:1.6;text-wrap:pretty}
+.bp-workspace .bp-empty{gap:12px;padding:40px 24px;text-align:center;color:var(--dsw-alias-label-tertiary,var(--bp-muted))}
+.bp-workspace .bp-empty strong{max-width:34ch;font-size:13px;font-weight:500;line-height:20px;color:var(--dsw-alias-label-secondary,var(--bp-muted));text-wrap:balance}
+.bp-workspace .bp-empty p{margin:0;max-width:46ch;color:var(--dsw-alias-label-tertiary,var(--bp-muted));font-size:12px;line-height:18px;text-wrap:pretty}
 @media(prefers-reduced-motion:reduce){.bp-workspace .react-flow__controls-button,.bp-workspace .react-flow__attribution{transition:none}.bp-workspace .react-flow__controls-button:active:not(:disabled){transform:none}}
 `
 

@@ -22,9 +22,20 @@ import type { ConfirmationIntent, ConfirmationViewState, SelectChangeIntent, Sel
 /** Options keep their original values and ReactNode labels; no domain normalization happens here. */
 export interface StyledSelectProps extends Omit<React.SelectHTMLAttributes<HTMLSelectElement>, 'multiple' | 'size'> {
   React?: typeof ReactSeat
+  /** Trigger-only label; option labels and values retain their full identity. */
+  selectedLabel?: React.ReactNode
   [attribute: `data-${string}`]: string | boolean | undefined
 }
-export function StyledSelect({ React = ReactSeat, children, value, disabled, onChange, className = '', ...attributes }: StyledSelectProps): React.ReactElement {
+export function StyledSelect({
+  React = ReactSeat,
+  children,
+  value,
+  disabled,
+  onChange,
+  className = '',
+  selectedLabel,
+  ...attributes
+}: StyledSelectProps): React.ReactElement {
   const root = React.useRef<HTMLDivElement>(null),
     trigger = React.useRef<HTMLButtonElement>(null),
     list = React.useRef<HTMLDivElement>(null)
@@ -71,6 +82,7 @@ export function StyledSelect({ React = ReactSeat, children, value, disabled, onC
     unavailable: !!unavailable,
     open: state.open,
     selected,
+    selectedLabel,
     activeIndex,
     options,
     attributes: rest as SelectMarkupProps['attributes'],

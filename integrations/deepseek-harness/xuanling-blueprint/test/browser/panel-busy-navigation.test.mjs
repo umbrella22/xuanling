@@ -135,7 +135,11 @@ function publicTree(f, id) {
     one(current, n => n.props['data-bp-action'] === 'more-actions').props.onClick()
     entry = one(f.render(), n => n.props.overlay?.kind === 'more-menu')
   }
-  const group = ['export-blueprint', 'import-blueprint'].includes(id) ? 'files' : ['motion-toggle', 'toggle-minimap'].includes(id) ? 'view' : 'tools'
+  const group = ['export-blueprint', 'import-blueprint', 'delete-blueprint'].includes(id)
+    ? 'files'
+    : ['motion-toggle', 'toggle-minimap'].includes(id)
+      ? 'view'
+      : 'tools'
   if (f.publicMenu?.key !== entry.props.key) f.publicMenu = { key: entry.props.key, states: [], refs: [], cursor: 0, refCursor: 0 }
   const state = f.publicMenu
   const React = {
@@ -460,7 +464,7 @@ for (const options of [{ loaded: false }, { boundRuns: false }, { hostAvailable:
     assertActionability(f, false)
     assert.equal(f.workspace.runId, null)
     assert.equal(f.workspace.model.view, null)
-    assert.equal(action(f.tree, 'cancel-run').props.disabled, true)
+    assert.equal(findAll(f.tree, n => n.props['data-bp-action'] === 'cancel-run').length, 0, 'no stop action without a bound Run')
     assert.equal(action(f.tree, 'retry-inspect').props.disabled, true)
     assert.equal(action(f.tree, 'save-layout').props.disabled, !f.workspace.definition)
     assert.equal(action(f.tree, 'start-run').props.disabled, true, 'global library has no execution target')
@@ -537,7 +541,7 @@ test('new/delete in-app confirmations preserve the draft on cancel and never inv
   f.workspace.editor.addNode({ id: 'dirty-delete', kind: 'input', x: 40, y: 40, inputs: {}, outputs: { value: 'string' } })
   const original = f.workspace.editor
   for (const id of ['new-blueprint', 'delete-blueprint']) {
-    action(f.render(), id).props.onClick()
+    publicAction(f.render(), id).props.onClick()
     const dialog = one(f.render(), node => node.type?.name === 'ConfirmationDialog')
     assert.ok(dialog.props.description.length > 10)
     dialog.props.onCancel()

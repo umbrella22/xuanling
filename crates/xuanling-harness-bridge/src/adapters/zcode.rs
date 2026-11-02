@@ -3,6 +3,8 @@
 //! Verified invocation: `node <zcode.cjs> --prompt <task> --json --mode <mode>
 //! --cwd <workspace>`. `--prompt` defaults to `yolo`, so a mode is always
 //! explicit and `yolo` is rejected at configuration time.
+//! Execution is blocked until native session suppression is verified. The
+//! collector below continues to decode historical and synthetic fixtures.
 //!
 //! `--json` prints one result object:
 //! `{type:"result", sessionId, traceId, turnId?, response, usage?, eventCount,
@@ -81,6 +83,7 @@ impl Adapter for ZcodeAdapter {
 
     fn capabilities(&self) -> AdapterCapabilities {
         AdapterCapabilities {
+            native_session_persistence_disabled: false,
             non_interactive: true,
             // The headless result object has no verified approval/input signal.
             needs_input: false,
@@ -88,6 +91,7 @@ impl Adapter for ZcodeAdapter {
     }
 
     fn plan(&self, task: &FrozenTask) -> Result<CommandPlan, BridgeError> {
+        super::require_no_native_sessions(self)?;
         if task.prompt.len() > MAX_ARGV_PROMPT_BYTES {
             return Err(BridgeError::invalid_request(format!(
                 "zcode passes the task on the command line; prompt exceeds the                  {MAX_ARGV_PROMPT_BYTES}-byte argv-safe limit"
@@ -369,7 +373,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_prompts_above_the_argv_safe_limit() {
+    fn native_session_policy_precedes_the_argv_limit() {
         let temp = tempfile::tempdir().expect("temp dir");
         let runner = temp.path().join("node");
         let script = temp.path().join("zcode.cjs");
@@ -394,7 +398,7 @@ mod tests {
             payload_fingerprint: String::new(),
         };
         let error = adapter.plan(&task).expect_err("oversized argv prompt");
-        assert_eq!(error.code, ErrorCode::InvalidRequest);
+        assert_eq!(error.code, ErrorCode::NativeSessionPersistenceUnsupported);
     }
 
     #[test]

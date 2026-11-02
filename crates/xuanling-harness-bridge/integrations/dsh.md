@@ -5,7 +5,11 @@
 DeepSeek Harness (DSH) is a controller here. DSH does not use an `mcpServers`
 JSON file; it mounts MCP servers as `@deepseek-ai/dsh-mcp-client` rows in the
 selected Cordis profile. A worker is selected by `harness_submit.adapter` (for
-example `dsh`). Build the bridge first with
+example `codex`). DSH and ZCode worker submission currently rejects because
+their native session persistence cannot be disabled by a verified invocation.
+DSH as controller can use the local
+[thin adapter](../../../integrations/deepseek-harness/xuanling-harness/README.md)
+for standard subagents and a blocking Blueprint tool. Build the bridge with
 `cargo build -p xuanling-harness-bridge`.
 
 ## MCP server entry
@@ -47,7 +51,7 @@ Persistent profile patch:
    {
      "instance_id": "<instance_id from health>",
      "request_id": "dsh-journey-1",
-     "adapter": "dsh",
+     "adapter": "codex",
      "workspace_id": "default",
      "prompt": "Reply with exactly: OK",
      "save_result": false

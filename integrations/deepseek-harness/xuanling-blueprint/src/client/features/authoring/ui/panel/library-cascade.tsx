@@ -12,7 +12,14 @@ import type { LibraryRef, LibrarySummary } from '../../../../adapters/host/remot
 import { libraryKey } from '../../../../../definition/library-ref.ts'
 import { sameLibrary } from '../../logic/workspace/workspace-controller.ts'
 
-export type LibraryLabelKey = 'library.selectLibrary' | 'library.global' | 'library.ready' | 'library.empty' | 'library.absent' | 'library.unavailable'
+export type LibraryLabelKey =
+  | 'library.selectLibrary'
+  | 'library.global'
+  | 'library.ready'
+  | 'library.empty'
+  | 'library.absent'
+  | 'library.unavailable'
+  | 'status.loading'
 
 export interface LibraryCascadeViewProps {
   React: typeof React
@@ -36,17 +43,15 @@ const STATUS_KEY: Record<LibrarySummary['status'], LibraryLabelKey> = {
 }
 const statusKey = (status: LibrarySummary['status']): LibraryLabelKey => STATUS_KEY[status]
 
-/** One labeled level with a status chip. The blueprint picker beside it is the
+/** One labeled level with feedback for loading and unavailable libraries. The blueprint picker beside it is the
  * second level and keeps the existing accessible combobox contract. */
 export function LibraryCascadeView({ React, t, disabled, selected, status, state, libraries, onSelect }: LibraryCascadeViewProps): React.ReactElement {
   const globalLibrary = libraries.find(entry => entry.library.kind === 'global')
   const workspaces = libraries.filter(entry => entry.library.kind === 'workspace')
   const current = libraries.find(entry => sameLibrary(entry.library, selected))
   const currentStatus: LibrarySummary['status'] = state === 'unavailable' ? 'unavailable' : (current?.status ?? status)
-  const workspaceCount = workspaces.filter(entry => entry.status === 'ready' || entry.status === 'empty').length
-  const statusText = t(statusKey(currentStatus))
-  const statusDetail = `${workspaceCount}/${workspaces.length}`
-  const statusLabel = currentStatus === 'ready' ? `${statusText} · ${statusDetail}` : statusText
+  const statusText = t(state === 'loading' ? 'status.loading' : statusKey(currentStatus))
+  const showStatus = state === 'loading' || currentStatus === 'unavailable'
   return React.createElement(
     'div',
     {
@@ -86,13 +91,13 @@ export function LibraryCascadeView({ React, t, disabled, selected, status, state
       {
         className: `bp-library-status is-${currentStatus}`,
         'data-bp-library-status': currentStatus,
+        hidden: !showStatus,
         role: 'status',
-        title: statusLabel,
-        'aria-label': statusLabel
+        title: statusText,
+        'aria-label': statusText
       },
       React.createElement('span', { className: 'bp-library-status-mark', 'aria-hidden': 'true' }),
-      React.createElement('span', { className: 'bp-library-status-text' }, statusText),
-      currentStatus === 'ready' && React.createElement('span', { className: 'bp-library-status-count', 'aria-hidden': 'true' }, statusDetail)
+      React.createElement('span', { className: 'bp-library-status-text' }, statusText)
     )
   )
 }

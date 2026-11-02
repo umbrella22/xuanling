@@ -74,7 +74,7 @@ const apiFor = async authUrl => {
         type: 'client-request',
         rpcId: crypto.randomUUID(),
         method: `blueprint/${method}`,
-        payload: { args: args === undefined ? {} : { args } }
+        payload: { args: { args: args ?? {} } }
       })
     })
     const body = await response.json()
@@ -325,7 +325,7 @@ try {
   )
   await setNativeTheme(page, 'light', true)
   await page.screenshot({ path: join(reportDir, 'editor.png'), fullPage: true })
-  await page.locator('[data-bp-action="delete-blueprint"]').click()
+  await (await preparePublicAction(page, 'delete-blueprint')).click()
   await page.locator('[data-bp-confirm-cancel]').click()
   check('delete cancel preserves document', (await styledSelectValue(select)) === a.blueprintId)
   const current = await api('loadDefinition', { blueprintId: a.blueprintId })
@@ -341,7 +341,7 @@ try {
     inputJson: '{}',
     requestId: 'before-delete'
   })
-  await page.locator('[data-bp-action="delete-blueprint"]').click()
+  await (await preparePublicAction(page, 'delete-blueprint')).click()
   await page.locator('[data-bp-confirm-accept]').click()
   await page.waitForFunction(id => document.querySelector('[data-bp-canvas="root"]')?.getAttribute('data-bp-blueprint') !== id, a.blueprintId)
   check('delete removes host catalog identity', !(await api('listDefinitions')).definitions.some(d => d.blueprintId === a.blueprintId))

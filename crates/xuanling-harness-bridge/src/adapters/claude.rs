@@ -1,6 +1,6 @@
 //! Claude Code adapter.
 //!
-//! Verified invocation shape: `claude -p --output-format json
+//! Invocation shape: `claude -p --no-session-persistence --output-format json
 //! --permission-prompts none --permission-mode <mode>` with the task on stdin.
 //! `is_error` is authoritative: a real failure sample reported
 //! `"subtype":"success"` together with `"is_error":true` and exit 1.
@@ -79,6 +79,7 @@ impl Adapter for ClaudeAdapter {
 
     fn capabilities(&self) -> AdapterCapabilities {
         AdapterCapabilities {
+            native_session_persistence_disabled: true,
             non_interactive: true,
             needs_input: true,
         }
@@ -87,6 +88,7 @@ impl Adapter for ClaudeAdapter {
     fn plan(&self, task: &FrozenTask) -> Result<CommandPlan, BridgeError> {
         let mut args = vec![
             "-p".to_string(),
+            "--no-session-persistence".to_string(),
             "--output-format".to_string(),
             "json".to_string(),
             "--permission-prompts".to_string(),

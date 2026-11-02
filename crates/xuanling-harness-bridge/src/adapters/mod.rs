@@ -16,17 +16,34 @@ use std::sync::Arc;
 
 use crate::collector::{Collector, Limits};
 use crate::config::AdapterConfigs;
-use crate::error::BridgeError;
+use crate::error::{BridgeError, ErrorCode};
 use crate::task::FrozenTask;
 
 /// Declared capabilities shown by `harness_health`.
 #[derive(Clone, Copy, Debug)]
 pub struct AdapterCapabilities {
+    /// The fixed invocation disables native session/transcript persistence.
+    /// Unverified invocations must be rejected before task acceptance/spawn.
+    pub native_session_persistence_disabled: bool,
     /// The supported invocation is a one-shot non-interactive CLI mode.
     pub non_interactive: bool,
     /// The adapter can recognize an explicit native request for approval/input.
     /// `false` means the bridge does not claim `NEEDS_INPUT` detection for it.
     pub needs_input: bool,
+}
+
+pub(crate) fn require_no_native_sessions(adapter: &dyn Adapter) -> Result<(), BridgeError> {
+    if adapter.capabilities().native_session_persistence_disabled {
+        Ok(())
+    } else {
+        Err(BridgeError::new(
+            ErrorCode::NativeSessionPersistenceUnsupported,
+            format!(
+                "adapter {} has no verified invocation that disables native session persistence",
+                adapter.id()
+            ),
+        ))
+    }
 }
 
 /// Fully resolved spawn plan for one accepted task.

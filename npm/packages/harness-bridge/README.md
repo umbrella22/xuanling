@@ -4,13 +4,15 @@ Launcher for the result-only XuanLing harness bridge. The bridge is a plain
 stdio MCP server; this package resolves the native `harness-bridge` executable
 and starts it without a shell.
 
-> Status: local workspace packaging only. This package and its platform binary
-> packages are **not published** yet. Use the local Cargo build for now.
+The npm distribution includes native packages for macOS Apple Silicon,
+Linux x64 (glibc 2.35+) and Windows x64. The launcher installs the matching
+platform package automatically. The bridge remains experimental; publishing
+these packages does not imply acceptance of every worker or controller host.
 
 ## Usage
 
 ```sh
-npx @xuanling-rs/harness-bridge --config /absolute/path/to/bridge-config.json
+npx @xuanling-rs/harness-bridge@0.10.1 --config /absolute/path/to/bridge-config.json
 ```
 
 From a checkout, build the binary first:
@@ -45,9 +47,23 @@ the crate documentation:
 - `crates/xuanling-harness-bridge/SECURITY.md`
 - `crates/xuanling-harness-bridge/RELEASE-BOUNDARY.md`
 
-The crate is not published, signed or released by the current plan. Platform
-binary packages are future release work; this launcher intentionally has no
-`optionalDependencies` until those packages exist.
+The Rust crate is not published to crates.io. Native executables do not carry
+Developer ID or Authenticode signatures. Codex workers use `--ephemeral` and
+Claude workers use `--no-session-persistence`. DSH and ZCode worker execution
+currently returns `NATIVE_SESSION_PERSISTENCE_UNSUPPORTED`; DSH may still act
+as a controller. The separate local DSH integration package is not part of
+this npm release.
+
+## Maintainer publishing
+
+`.github/workflows/harness-bridge-npm.yml` builds the four release packages on
+native runners. Tag pushes build artifacts without uploading to npm. The
+first upload uses npm's browser-authenticated CLI flow. For future releases,
+configure a GitHub Actions trusted publisher on **all four** npm packages:
+owner `umbrella22`, repository `xuanling`, workflow `harness-bridge-npm.yml`,
+environment `npmjs`. Then dispatch that workflow at the release tag with
+`publish: true` to publish with provenance. Platform packages are uploaded
+before the launcher, using the `platform-<target>` tags.
 
 ## License
 

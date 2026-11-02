@@ -126,6 +126,7 @@ impl From<SubmitRequest> for SubmitInput {
 
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct AdapterHealth {
+    pub native_session_persistence_disabled: bool,
     pub id: String,
     pub configured: bool,
     pub compatible: bool,
@@ -152,6 +153,8 @@ impl AdapterHealth {
                     minimum_version: Some(adapter.minimum_version().to_string()),
                     non_interactive: capabilities.non_interactive,
                     needs_input: capabilities.needs_input,
+                    native_session_persistence_disabled: capabilities
+                        .native_session_persistence_disabled,
                 }
             }
             None => Self {
@@ -162,6 +165,7 @@ impl AdapterHealth {
                 minimum_version: None,
                 non_interactive: false,
                 needs_input: false,
+                native_session_persistence_disabled: false,
             },
         }
     }

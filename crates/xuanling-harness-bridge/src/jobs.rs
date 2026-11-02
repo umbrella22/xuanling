@@ -398,6 +398,8 @@ impl Registry {
             ));
         }
 
+        crate::adapters::require_no_native_sessions(adapter.as_ref())?;
+
         let fingerprint = payload_fingerprint(&self.config, &input);
 
         {

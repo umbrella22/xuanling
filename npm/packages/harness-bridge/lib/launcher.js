@@ -56,7 +56,7 @@ export function resolveBinary({
     throw new Error(`HARNESS_BRIDGE_BIN does not exist: ${resolved}`);
   }
 
-  // A future platform package may ship the binary with target metadata.
+  // Published platform packages ship the binary with target metadata.
   try {
     const packageJsonPath = resolvePackageJson(`${target.alias}/package.json`);
     const packageJson = JSON.parse(read(packageJsonPath, "utf8"));
