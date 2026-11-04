@@ -102,7 +102,9 @@ jobs:
           retention-days: 14
 
   publish:
-    if: github.event_name == 'workflow_dispatch' && inputs.publish
+    # Release tags publish automatically; workflow_dispatch stays available for
+    # an explicit retry against the same immutable tag and artifacts.
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish)
     needs: [launcher, native]
     runs-on: ubuntu-latest
     environment: npmjs
