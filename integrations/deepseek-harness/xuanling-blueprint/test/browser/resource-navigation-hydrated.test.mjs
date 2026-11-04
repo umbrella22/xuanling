@@ -74,7 +74,14 @@ async function choose(value) {
 }
 const dialog = () => page.locator('[data-bp-resource-dialog]')
 const toggle = kind => page.locator(`[data-bp-resource-toggle="${kind}"]`)
-const dirty = () => page.locator('[data-bp-dirty]').getAttribute('data-bp-dirty')
+const dirty = () => page.locator('.bp-revision[data-bp-dirty]').getAttribute('data-bp-dirty')
+const name = () => page.locator('.bp-doc-name')
+async function rename(value) {
+  await page.locator('[data-bp-doc-identity] [data-bp-action="rename-blueprint"]').click()
+  await page.locator('[data-bp-rename-input]').fill(value)
+  await page.locator('[data-bp-rename-confirm]').click()
+  await page.locator('[data-bp-rename-dialog]').waitFor({ state: 'detached' })
+}
 const snapshotStorage = () => page.evaluate(() => JSON.stringify(Object.entries(localStorage).sort()))
 
 test('C-03 production resource fields pair at 720px and stack in narrow viewport and narrow parent; editors/actions remain bounded', async t => {
@@ -193,8 +200,7 @@ test('C-04 four production category buttons independently collapse by pointer/ke
 
 test('C-05 mounted production navigation requires semantic edits, supports undo/redo/cancel and restores nonempty draft across reload', async () => {
   await page.setViewportSize({ width: 1600, height: 1000 })
-  const name = () => page.getByRole('textbox', { name: 'Blueprint name', exact: true })
-  await name().fill('Meaningful unsaved edit')
+  await rename('Meaningful unsaved edit')
   await choose('beta')
   assert.equal(await page.locator('[data-bp-confirm-dialog]').count(), 1)
   await page.locator('[data-bp-confirm-cancel]').click()
@@ -203,23 +209,23 @@ test('C-05 mounted production navigation requires semantic edits, supports undo/
   await choose('beta')
   assert.equal(await page.locator('[data-bp-confirm-dialog]').count(), 0)
   await page.waitForFunction(() => document.querySelector('[data-bp-select="blueprint"]')?.getAttribute('data-bp-value') === 'beta')
-  await name().fill('Restored semantic edit')
+  await rename('Restored semantic edit')
   await page.reload()
   await select().waitFor()
   await choose('beta')
   await name().waitFor()
-  assert.equal(await name().inputValue(), 'Restored semantic edit')
+  assert.equal((await name().textContent())?.trim(), 'Restored semantic edit')
   await page.locator('[data-bp-action="new-blueprint"]').click()
   assert.equal(await page.locator('[data-bp-confirm-dialog]').count(), 1)
   await page.keyboard.press('Escape')
-  assert.equal(await name().inputValue(), 'Restored semantic edit')
+  assert.equal((await name().textContent())?.trim(), 'Restored semantic edit')
 })
 
 test('C-05 mounted empty draft, renamed/resources empty draft and restored empty draft leave without a dialog and keep draft bytes', async () => {
   await page.setViewportSize({ width: 1600, height: 1000 })
   await page.locator('[data-bp-action="new-blueprint"]').click()
   assert.equal(await page.locator('[data-bp-confirm-dialog]').count(), 0, 'saved unchanged leaves directly')
-  await page.getByRole('textbox', { name: 'Blueprint name', exact: true }).fill('Empty renamed draft')
+  await rename('Empty renamed draft')
   await page.locator('[data-bp-action="add-resource"]').click()
   await dialog().getByRole('textbox', { name: 'New resource ID', exact: true }).fill('unsaved-agent')
   await page.locator('[data-bp-action="resource-apply"]').click()

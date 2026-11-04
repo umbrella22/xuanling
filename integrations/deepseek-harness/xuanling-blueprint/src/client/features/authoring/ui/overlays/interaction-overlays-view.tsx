@@ -39,6 +39,9 @@ export interface OverlayMarkupProps {
   onClose: () => void
   onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => void
   onFileChange: (event: React.ChangeEvent<HTMLInputElement>) => void
+  importFileRef?: React.RefObject<HTMLInputElement | null> | undefined
+  onChooseImportFile?: (() => void) | undefined
+  importFileName?: string | undefined
 }
 export function interactionOverlaysView(React: ReactSeat, props: OverlayMarkupProps): React.ReactElement {
   const { overlay, position, t, onIntent, onClose, onKeyDown: keyDown, elementRef: ref, hasFile, candidates } = props
@@ -146,7 +149,7 @@ export function interactionOverlaysView(React: ReactSeat, props: OverlayMarkupPr
         <header>
           <strong>{t(`interaction.${overlay.kind}`)}</strong>
           <button type="button" onClick={onClose} aria-label={t('interaction.close')}>
-            ×
+            {blueprintIcon(React, 'close')}
           </button>
         </header>
       )}
@@ -257,7 +260,23 @@ export function interactionOverlaysView(React: ReactSeat, props: OverlayMarkupPr
               </option>
             ))}
           </StyledSelect>
-          <input type="file" accept=".zip,application/zip" data-bp-import-file={true} aria-label={t('interaction.chooseFile')} onChange={props.onFileChange} />
+          <div className={'bp-import-file'}>
+            <input
+              ref={props.importFileRef}
+              type="file"
+              hidden={true}
+              accept=".zip,application/zip"
+              data-bp-import-file={true}
+              aria-label={t('interaction.chooseFile')}
+              onChange={props.onFileChange}
+            />
+            <button type="button" className={'bp-dialog-button bp-import-file-label'} onClick={() => props.onChooseImportFile?.()}>
+              {t('interaction.chooseFile')}
+            </button>
+            <span className={'bp-dialog-file-name'} title={props.importFileName || undefined}>
+              {props.importFileName || ''}
+            </span>
+          </div>
           <label className="bp-checkbox">
             <input
               type="checkbox"

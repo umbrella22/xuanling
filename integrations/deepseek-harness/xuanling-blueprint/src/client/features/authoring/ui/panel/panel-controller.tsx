@@ -23,9 +23,9 @@ import type { BlueprintLocaleKey, BlueprintLocaleProps } from '../../../../share
 import { BUILTIN_NODE_CATALOG, nodeKindTitle, searchBuiltinNodes } from '../../logic/graph/node-catalog.ts'
 import type { BuiltinNodeKind } from '../../logic/graph/node-catalog.ts'
 import { InspectorSidebar } from './inspector-sidebar.tsx'
-import { LibraryActions } from './library-actions.tsx'
-import type { AssetRef } from '../../../../../definition/library-ref.ts'
-import { LibraryCascadeView } from './library-cascade.tsx'
+import type { AssetRef, LibraryRef } from '../../../../../definition/library-ref.ts'
+import { libraryKey } from '../../../../../definition/library-ref.ts'
+import { blueprintCascadeProjection } from './blueprint-cascade.ts'
 import { executableNodeIds, presentationGroupFrames, resourceDisplayName, resourceKindTitle, runStateTitle } from '../../presenters/canvas-presentation.ts'
 import { flowEdgeEndpoints } from '../../logic/graph/flow-geometry.ts'
 import { CanvasInteractions } from '../../logic/graph/flow-interactions.ts'
@@ -57,6 +57,7 @@ import { presentWorkspace } from '../../presenters/workspace-presenter.ts'
 import { panelView } from './panel-view.tsx'
 import type { CanvasNode, FlowNode, GroupNode, RouteEdge } from '../canvas/canvas-renderers.tsx'
 import { ResourceDialog, type ResourceDialogState } from './resource-dialog.tsx'
+import { LibraryReuseDialog, RenameBlueprintDialog } from './library-dialogs.tsx'
 export { BlueprintEdge, BlueprintNode, PresentationGroup } from '../canvas/canvas-renderers.tsx'
 import { CanvasSurface, PALETTE_DRAG_TYPE } from '../canvas/canvas-surface.tsx'
 import type { PaletteDragState } from '../canvas/canvas-surface.tsx'
@@ -242,6 +243,8 @@ export function WorkspacePanel({
   }))
   const [hovered, setHovered] = React.useState<{ editor: GraphEditor; id: string } | null>(null)
   const [focused, setFocused] = React.useState<{ editor: GraphEditor; id: string } | null>(null)
+  const [libraryDialogOpen, setLibraryDialogOpen] = React.useState(false)
+  const [renameValue, setRenameValue] = React.useState<string | null>(null)
   React.useEffect(() => {
     return installMotionEnvironment(value =>
       setMotionEnvironment(previous => (previous.visible === value.visible && previous.reduced === value.reduced ? previous : value))
@@ -710,6 +713,76 @@ export function WorkspacePanel({
     if (!workspaceLease.isCurrent()) return
     setNotice(null)
     void workspaceLease.perform(() => action())
+  }
+  /** One cascade entry: switch the library when needed, then load the chosen blueprint. */
+  const selectBlueprint = (target: { library: LibraryRef; blueprintId: string }) => {
+    requestConfirmation(
+      t('dialog.discardTitle'),
+      t('document.discardConfirm'),
+      () => {
+        const epoch = ++navigationEpoch.current
+        setResourceDialog(null)
+        setSelected(null)
+        setSelectedEdges([])
+        if (!workspaceLease.isCurrent()) return
+        setNotice(null)
+        // This callback runs inside workspace.perform(), so the lease already reports
+        // busy; foreground dispatch from the perform seat is the only admitted path.
+        void workspaceLease.perform(async dispatch => {
+          if (libraryKey(target.library) !== libraryKey(workspace.library)) {
+            dispatch({ type: 'select-library', library: target.library })
+            await workspace.refreshLibraries()
+          }
+          try {
+            await workspace.load(target.blueprintId)
+          } catch (error) {
+            // A stale catalog projection can hide a ready asset that the cascade sees.
+            if (!(error instanceof Error) || error.message !== 'Blueprint not in configured catalog') throw error
+            await workspace.refreshLibraries()
+            await workspace.load(target.blueprintId)
+          }
+          if (epoch !== navigationEpoch.current || workspace.blueprintId !== target.blueprintId) return
+          const loadedEditor = workspace.editor,
+            binding = viewportStore.bind(target.blueprintId, workspace.libraryScope)
+          const captured = { id: target.blueprintId, binding, state: binding.state }
+          preferences.current = captured
+          setSelected(null)
+          setSelectedEdges([])
+          setTick(n => n + 1)
+          requestAnimationFrame(() => {
+            if (
+              epoch !== navigationEpoch.current ||
+              workspace.editor !== loadedEditor ||
+              workspace.blueprintId !== target.blueprintId ||
+              preferences.current !== captured
+            )
+              return
+            const currentFlow = flowRef.current
+            if (!currentFlow) return
+            if (binding.readStatus === 'restored') void currentFlow.setViewport(binding.state.viewport, { duration: 0 })
+            else void currentFlow.fitView({ duration: 0, padding: 0.2 })
+          })
+        })
+      },
+      workspace.needsNavigationConfirmation
+    )
+  }
+  /** Switch library from the cascade while keeping the current document binding intact. */
+  const selectLibrary = (library: LibraryRef) => {
+    requestConfirmation(
+      t('dialog.discardTitle'),
+      t('document.discardConfirm'),
+      () => {
+        navigationEpoch.current++
+        setResourceDialog(null)
+        setSelected(null)
+        setSelectedEdges([])
+        workspaceLease.dispatch({ type: 'select-library', library })
+        setTick(n => n + 1)
+        void workspace.refreshLibraries()
+      },
+      workspace.needsNavigationConfirmation
+    )
   }
   const button = (key: BlueprintLocaleKey, action: string, onClick: () => void, disabled = false, pressed?: boolean) => (
     <button type={'button'} data-bp-action={action} onClick={onClick} disabled={disabled} aria-pressed={pressed} title={t(key)}>
@@ -1201,6 +1274,14 @@ export function WorkspacePanel({
       }
     ),
     moreAction(
+      'rename-blueprint',
+      'files',
+      'interaction.rename',
+      'edit',
+      () => (!definition ? 'interaction.disabled.no-definition' : workspace.busy ? 'interaction.disabled.busy' : null),
+      () => setRenameValue(definition?.name ?? '')
+    ),
+    moreAction(
       'motion-toggle',
       'view',
       'interaction.motion-toggle',
@@ -1263,6 +1344,15 @@ export function WorkspacePanel({
     }
   }
   const activeResourceConfiguration = resourceDialog ? resourceConfiguration(activeResourceRef, resourceDialog.id) : undefined
+  const cascade = blueprintCascadeProjection({
+    t,
+    library: workspace.library,
+    libraries: workspace.libraries,
+    catalog: workspace.catalog,
+    blueprintId: workspace.blueprintId,
+    definitionName: workspace.definition?.name,
+    isNewDraft: workspace.isNewDraft
+  })
   return panelView(React, {
     rootProps: {
       ref: rootRef,
@@ -1298,101 +1388,62 @@ export function WorkspacePanel({
       },
       onCompositionEnd: () => {
         composing.current = false
-      },
-      tabIndex: -1
+      }
     },
     children: [
-      // DSH owns native drag behavior; keep its reserved strip free of controls.
-      <div key={'window-drag'} className={'bp-window-drag'} data-window-drag={true} aria-hidden={true} />,
-      <header key={'toolbar'} className={'bp-toolbar bp-editor-toolbar'}>
+      // The toolbar row itself is the macOS window drag surface; the reserved
+      // top-clearance band lives inside its padding so every blank run drags.
+      <header key={'toolbar'} className={'bp-toolbar bp-editor-toolbar'} data-window-drag={true}>
         <div className={'bp-toolbar-context'}>
-          <LibraryCascadeView
-            React={React}
-            t={t}
-            disabled={workspace.busy}
-            selected={workspace.library}
-            status={workspaceSnapshot.library.status}
-            state={workspaceSnapshot.library.state}
-            libraries={workspace.libraries}
-            onSelect={library => {
-              requestConfirmation(
-                t('dialog.discardTitle'),
-                t('document.discardConfirm'),
-                () => {
-                  navigationEpoch.current++
-                  setResourceDialog(null)
-                  setSelected(null)
-                  setSelectedEdges([])
-                  workspaceLease.dispatch({ type: 'select-library', library })
-                  setTick(n => n + 1)
-                  void workspace.refreshLibraries()
-                },
-                workspace.needsNavigationConfirmation
-              )
-            }}
-          />
-          <div className={'bp-blueprint-picker'}>
+          <div className={'bp-blueprint-cascade'} data-bp-library-state={workspaceSnapshot.library.state}>
             <StyledSelect
               React={React}
               data-bp-select={'blueprint'}
+              className={'bp-blueprint-picker'}
               aria-label={t('library.configuredBlueprint')}
+              title={`${cascade.libraryTitle} / ${cascade.selectedName}`}
               disabled={workspace.busy}
-              value={workspace.blueprintId ?? ''}
+              filterable={true}
+              searchPlaceholder={t('library.searchBlueprints')}
+              noMatchesLabel={t('library.noMatches')}
+              value={cascade.value}
               selectedLabel={
-                workspace.definition?.name ??
-                (workspace.isNewDraft ? t('document.newDraft') : workspace.catalog.find(d => d.blueprintId === workspace.blueprintId)?.name)
+                <span className={'bp-cascade-label'}>
+                  <span className={'bp-cascade-library'} title={cascade.libraryTitle}>
+                    {cascade.libraryTitle}
+                  </span>
+                  <span className={'bp-cascade-separator'} aria-hidden={'true'}>
+                    /
+                  </span>
+                  <span className={'bp-cascade-name'}>{cascade.selectedName}</span>
+                </span>
               }
-              title={workspace.blueprintId ? `${workspace.definition?.name ?? ''} · ${workspace.blueprintId}` : undefined}
-              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
-                const requestedId = e.target.value
-                requestConfirmation(
-                  t('dialog.discardTitle'),
-                  t('document.discardConfirm'),
-                  () => {
-                    const epoch = ++navigationEpoch.current
-                    setResourceDialog(null)
-                    perform(async () => {
-                      await workspace.load(requestedId)
-                      if (epoch !== navigationEpoch.current || workspace.blueprintId !== requestedId) return
-                      const loadedEditor = workspace.editor,
-                        binding = viewportStore.bind(requestedId, workspace.libraryScope)
-                      const captured = { id: requestedId, binding, state: binding.state }
-                      preferences.current = captured
-                      setSelected(null)
-                      setSelectedEdges([])
-                      setTick(n => n + 1)
-                      requestAnimationFrame(() => {
-                        if (
-                          epoch !== navigationEpoch.current ||
-                          workspace.editor !== loadedEditor ||
-                          workspace.blueprintId !== requestedId ||
-                          preferences.current !== captured
-                        )
-                          return
-                        const currentFlow = flowRef.current
-                        if (!currentFlow) return
-                        if (binding.readStatus === 'restored') void currentFlow.setViewport(binding.state.viewport, { duration: 0 })
-                        else void currentFlow.fitView({ duration: 0, padding: 0.2 })
-                      })
-                    })
-                  },
-                  workspace.needsNavigationConfirmation
-                )
+              onChange={(event: React.ChangeEvent<HTMLSelectElement>) => {
+                const target = cascade.resolve(event.target.value)
+                if (!target) return
+                if (target.blueprintId === '') {
+                  if (libraryKey(target.library) !== libraryKey(workspace.library)) selectLibrary(target.library)
+                  return
+                }
+                selectBlueprint(target)
               }}
             >
-              <option value={''} disabled={true}>
-                {t('library.chooseId')}
-              </option>
-              {workspace.isNewDraft && <option value={workspace.blueprintId!}>{t('document.newDraft')}</option>}
-              {!workspace.isNewDraft && !workspace.catalog.length && (
-                <option value={''} disabled={true}>
-                  {t(workspace.library.kind === 'global' ? 'library.empty' : 'library.absent')}
+              {cascade.options.map(option => (
+                <option
+                  key={option.value}
+                  value={option.value}
+                  disabled={option.disabled === true}
+                  {...(option.group === undefined ? {} : { 'data-bp-group': option.group })}
+                >
+                  {option.label}
                 </option>
-              )}
-              {workspace.catalog.map(d => (
-                <option value={d.blueprintId} key={d.blueprintId}>{`${d.name} · ${d.blueprintId}`}</option>
               ))}
             </StyledSelect>
+            {workspaceSnapshot.library.state === 'unavailable' && (
+              <span className={'bp-library-status is-unavailable'} role={'status'}>
+                {t('library.unavailable')}
+              </span>
+            )}
           </div>
           {chrome({
             action: 'new-blueprint',
@@ -1415,6 +1466,13 @@ export function WorkspacePanel({
                 workspace.needsNavigationConfirmation
               )
             }
+          })}
+          {chrome({
+            action: 'share-reuse',
+            labelKey: 'library.reuse',
+            icon: 'files',
+            reason: workspace.busy ? 'interaction.disabled.busy' : workspace.host?.extractTemplate === undefined ? 'library.unavailable' : null,
+            onClick: () => setLibraryDialogOpen(true)
           })}
         </div>
         <div className={'bp-toolbar-actions'}>
@@ -1512,18 +1570,27 @@ export function WorkspacePanel({
       </header>,
       <div key={'body'} className={'bp-body'}>
         <aside className={'bp-library'} id={`${sidebarId}-library`} hidden={libraryCollapsed} aria-label={t('library.ariaLabel')}>
-          {definition && (
-            <label className={'bp-field'}>
-              {t('document.name')}
-              <input
-                aria-label={t('document.name')}
-                value={definition.name}
-                disabled={!editable}
-                onChange={(event: React.ChangeEvent<HTMLInputElement>) => guarded(() => editor.renameDefinition(event.target.value))}
-              />
-            </label>
-          )}
-          <LibraryActions workspace={workspace} t={t} />
+          <div className={'bp-doc-identity'} data-bp-doc-identity={true}>
+            <div className={'bp-doc-copy'}>
+              <span className={'bp-doc-name'} title={definition?.name ?? t('document.none')}>
+                {definition?.name ?? t(workspace.isNewDraft ? 'document.newDraft' : 'document.none')}
+              </span>
+              <span className={'bp-doc-state'} data-bp-doc-dirty={String(workspace.dirty)}>
+                {t(workspace.dirty ? 'document.unsaved' : workspace.isNewDraft ? 'document.newDraft' : workspace.document ? 'document.saved' : 'document.none')}
+              </span>
+            </div>
+            <button
+              type={'button'}
+              className={'bp-doc-edit'}
+              data-bp-action={'rename-blueprint'}
+              disabled={!editable}
+              aria-label={t('interaction.rename')}
+              title={t('interaction.rename')}
+              onClick={() => setRenameValue(definition?.name ?? '')}
+            >
+              {blueprintIcon(React, 'edit')}
+            </button>
+          </div>
           <h2>{t('palette.title')}</h2>
           <input
             data-bp-palette-search={true}
@@ -1609,7 +1676,7 @@ export function WorkspacePanel({
                   })
                 }}
               >
-                {'+'}
+                {blueprintIcon(React, 'new')}
               </button>
             </div>
             {(['agent', 'skill', 'mcp', 'other'] as const).map(category => {
@@ -1782,6 +1849,18 @@ export function WorkspacePanel({
           onConfirm={confirmation.current.accept}
         />
       ),
+      libraryDialogOpen && LibraryReuseDialog({ React, t, workspace, onClose: () => setLibraryDialogOpen(false) }),
+      renameValue !== null &&
+        RenameBlueprintDialog({
+          React,
+          t,
+          initialValue: renameValue,
+          onCancel: () => setRenameValue(null),
+          onConfirm: value => {
+            setRenameValue(null)
+            guarded(() => editor.renameDefinition(value))
+          }
+        }),
       resourceDialog &&
         ResourceDialog({
           React,

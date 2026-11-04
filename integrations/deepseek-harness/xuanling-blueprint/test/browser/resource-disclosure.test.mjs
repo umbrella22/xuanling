@@ -52,6 +52,7 @@ async function assertSinglePlusEntrypoint() {
     await addButton().evaluate(element => ({
       tag: element.tagName,
       text: element.textContent,
+      svg: element.querySelectorAll('svg').length,
       type: element.type,
       className: element.className,
       disabled: element.disabled,
@@ -59,7 +60,8 @@ async function assertSinglePlusEntrypoint() {
     })),
     {
       tag: 'BUTTON',
-      text: '+',
+      text: '',
+      svg: 1,
       type: 'button',
       className: 'bp-resource-add',
       disabled: true,
@@ -79,7 +81,7 @@ test('C-09 actual production panel exposes one accessible + resource entrypoint 
     JSON.stringify({
       browser: browser.version(),
       resourceEntryPoint: 'button[data-bp-action="add-resource"]',
-      text: '+',
+      text: 'svg-icon',
       oldDetails: false,
       hydrated: false,
       hostMutation: false

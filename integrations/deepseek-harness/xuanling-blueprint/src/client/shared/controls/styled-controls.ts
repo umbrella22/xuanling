@@ -24,6 +24,10 @@ export interface StyledSelectProps extends Omit<React.SelectHTMLAttributes<HTMLS
   React?: typeof ReactSeat
   /** Trigger-only label; option labels and values retain their full identity. */
   selectedLabel?: React.ReactNode
+  /** Render an in-list search field that filters options by label or `data-bp-group`. */
+  filterable?: boolean
+  searchPlaceholder?: string
+  noMatchesLabel?: string
   [attribute: `data-${string}`]: string | boolean | undefined
 }
 export function StyledSelect({
@@ -34,26 +38,45 @@ export function StyledSelect({
   onChange,
   className = '',
   selectedLabel,
+  filterable = false,
+  searchPlaceholder = '',
+  noMatchesLabel,
   ...attributes
 }: StyledSelectProps): React.ReactElement {
   const root = React.useRef<HTMLDivElement>(null),
     trigger = React.useRef<HTMLButtonElement>(null),
-    list = React.useRef<HTMLDivElement>(null)
+    list = React.useRef<HTMLDivElement>(null),
+    search = React.useRef<HTMLInputElement>(null)
   const [id] = React.useState(() => controlId('select'))
   const [state, setState] = React.useState(initialSelectState)
-  const options: Array<{ value: string; label: React.ReactNode; text: string; disabled: boolean }> = []
+  const [query, setQuery] = React.useState('')
+  const options: Array<{ value: string; label: React.ReactNode; text: string; disabled: boolean; group?: string }> = []
   React.Children.forEach(children, child => {
     if (!React.isValidElement<React.OptionHTMLAttributes<HTMLOptionElement>>(child) || child.type !== 'option') return
-    const props = child.props
-    options.push({ value: String(props.value ?? ''), label: props.children, text: String(props.children ?? ''), disabled: !!props.disabled })
+    const props = child.props as React.OptionHTMLAttributes<HTMLOptionElement> & { [key: `data-${string}`]: unknown }
+    const rawGroup = props['data-bp-group']
+    options.push({
+      value: String(props.value ?? ''),
+      label: props.children,
+      text: String(props.children ?? ''),
+      disabled: !!props.disabled,
+      ...(typeof rawGroup === 'string' && rawGroup.length > 0 ? { group: rawGroup } : {})
+    })
   })
   const unavailable = disabled || !options.some(option => !option.disabled)
-  const context = { options, value: String(value ?? ''), disabled: !!disabled }
-  const selected = options.findIndex(option => option.value === context.value)
+  const needle = query.trim().toLocaleLowerCase()
+  const visible =
+    !filterable || needle === ''
+      ? options
+      : options.filter(option => option.text.toLocaleLowerCase().includes(needle) || (option.group?.toLocaleLowerCase().includes(needle) ?? false))
+  const context = { options: visible, value: String(value ?? ''), disabled: !!disabled }
+  const selected = visible.findIndex(option => option.value === context.value)
   const activeIndex = activeSelectIndex(state, context)
   const send = (intent: SelectSessionIntent) => {
     // Recheck fieldset state at the event, not only at the last render.
     const result = transitionSelect(state, { ...context, disabled: !!disabled || selectIsDisabled(trigger.current) }, intent)
+    if (result.state.open && !state.open) setQuery('')
+    if (!result.state.open && state.open) setQuery('')
     setState(result.state)
     if (result.chosen !== undefined) {
       const target = { value: result.chosen }
@@ -71,6 +94,9 @@ export function StyledSelect({
   React.useEffect(() => {
     if (unavailable) setState(previous => (previous.open ? { ...previous, open: false } : previous))
   }, [unavailable])
+  React.useEffect(() => {
+    if (state.open && filterable) search.current?.focus({ preventScroll: true })
+  }, [state.open, filterable])
   const { onBlur: _onBlur, onFocus: _onFocus, onKeyDown: _onKeyDown, ...rest } = attributes
   return styledSelectView(React, {
     root,
@@ -84,7 +110,29 @@ export function StyledSelect({
     selected,
     selectedLabel,
     activeIndex,
-    options,
+    options: visible,
+    ...(filterable
+      ? {
+          search: {
+            ref: search,
+            value: query,
+            placeholder: searchPlaceholder,
+            inputLabel: searchPlaceholder,
+            onChange: (event: React.ChangeEvent<HTMLInputElement>) => setQuery(event.target.value),
+            onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => {
+              if (event.nativeEvent.isComposing) return
+              const key = event.key
+              const intent: SelectSessionIntent = { type: 'key', key, now: Date.now(), ctrlKey: event.ctrlKey, metaKey: event.metaKey, altKey: event.altKey }
+              if (key === 'Escape' || key === 'Tab' || key === 'ArrowDown' || key === 'ArrowUp' || key === 'Home' || key === 'End' || key === 'Enter') {
+                const result = send(intent)
+                if (result.preventDefault) event.preventDefault()
+                if (result.stopPropagation) event.stopPropagation()
+              }
+            }
+          }
+        }
+      : {}),
+    ...(noMatchesLabel === undefined ? {} : { emptyLabel: noMatchesLabel }),
     attributes: rest as SelectMarkupProps['attributes'],
     onIntent: intent => {
       if (intent.type === 'toggle') send({ type: state.open ? 'close' : 'open' })

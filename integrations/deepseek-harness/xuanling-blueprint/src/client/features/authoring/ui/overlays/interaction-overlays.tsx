@@ -63,6 +63,7 @@ export function InteractionOverlay(props: OverlayProps): React.ReactElement {
     initialOverlaySession(overlay.kind, overlay.kind === 'rename' ? overlay.value : '', props.importTargets.find(target => !target.nonempty)?.blueprintId ?? '')
   )
   const [file, setFile] = React.useState<File | null>(null)
+  const importFileRef = React.useRef<HTMLInputElement>(null)
   const submenuFocus = React.useRef(false)
   const candidates = overlay.kind === 'node-search' ? compatibleSearchNodes(state.query, overlay.origin, t) : []
   const index = searchActiveIndex(state.active, candidates.length)
@@ -185,6 +186,9 @@ export function InteractionOverlay(props: OverlayProps): React.ReactElement {
     onIntent: send,
     onClose: close,
     onKeyDown: keyDown,
+    importFileName: file?.name ?? '',
+    importFileRef,
+    onChooseImportFile: () => importFileRef.current?.click(),
     onFileChange: event => {
       setFile(pickedOverlayFile(event))
       send({ type: 'file-changed' })

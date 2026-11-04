@@ -115,7 +115,10 @@ export const conversationCss = `
 .bp-conversation-editor-body{flex:1 1 auto;min-height:0;overflow:hidden}
 .bp-conversation-editor-body>.bp-workspace{height:100%}
 .bp-conversation-editor-body .bp-toolbar{padding-top:8px;-webkit-app-region:no-drag}
-.bp-conversation-editor-body [data-window-drag]{-webkit-app-region:no-drag}
+/* The embedded panel is content, not window chrome: suppress the host drag mark
+   with higher specificity than html[data-platform=darwin] [data-window-drag]. */
+html[data-platform=darwin] .bp-workspace.bp-conversation .bp-conversation-editor-body [data-window-drag]{-webkit-app-region:no-drag}
+html[data-platform=darwin] .bp-workspace.bp-conversation .bp-conversation-editor-body .bp-editor-toolbar{box-sizing:border-box;height:auto;min-height:48px;padding:6px 12px;-webkit-app-region:no-drag}
 
 /* Bound Run: flat canvas plus a compact attempts column. */
 .bp-conversation-body{display:flex;flex:1 1 auto;min-width:0;min-height:0;height:0;gap:12px;padding:12px 16px 16px;overflow:hidden}

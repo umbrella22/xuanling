@@ -218,3 +218,45 @@ test('T13: the production panel binding admits library selection and refresh, bu
   before.dispatch({ type: 'select-library', library: { kind: 'workspace', workspaceId: 'ws-a' } })
   assert.deepEqual(workspace.library, { kind: 'global' }, 'old panel lease must not change the current library')
 })
+
+test('T13: only the foreground perform seat may switch library while the workspace is busy', async t => {
+  const calls = []
+  const workspace = new BlueprintWorkspace(fakeHost(calls, { kind: 'workspace', workspaceId: 'ws-a' }), storage())
+  const binding = createPanelWorkspaceBinding(workspace)
+  const release = binding.acquire()
+  t.after(release)
+  await workspace.initialize('Untitled')
+  const view = binding.capture(workspace.getSnapshot().binding)
+  let rejectedWhileBusy
+  await view.perform(async dispatch => {
+    // Background admission refuses while perform() holds busy; the old cascade used
+    // this path and then failed load with "Blueprint not in configured catalog".
+    rejectedWhileBusy = view.dispatch({ type: 'select-library', library: { kind: 'global' } })
+    dispatch({ type: 'select-library', library: { kind: 'global' } })
+  })
+  assert.equal(rejectedWhileBusy, undefined)
+  assert.deepEqual(workspace.library, { kind: 'global' })
+})
+
+test('T13: cascade cross-library selection switches library, refreshes and loads the asset', async t => {
+  const calls = []
+  const workspace = new BlueprintWorkspace(fakeHost(calls, { kind: 'workspace', workspaceId: 'ws-a' }), storage())
+  const binding = createPanelWorkspaceBinding(workspace)
+  const release = binding.acquire()
+  t.after(release)
+  await workspace.initialize('Untitled')
+  assert.deepEqual(workspace.library, { kind: 'workspace', workspaceId: 'ws-a' })
+  const view = binding.capture(workspace.getSnapshot().binding)
+  await view.perform(async dispatch => {
+    dispatch({ type: 'select-library', library: { kind: 'global' } })
+    await workspace.refreshLibraries()
+    await workspace.load('bp-global')
+  })
+  assert.deepEqual(workspace.library, { kind: 'global' })
+  assert.equal(workspace.blueprintId, 'bp-global')
+  assert.equal(workspace.document?.definitionJson.includes('bp-global'), true)
+  assert.deepEqual(
+    calls.filter(call => call.method === 'loadDefinition').map(call => ({ id: call.blueprintId, library: call.library })),
+    [{ id: 'bp-global', library: { kind: 'global' } }]
+  )
+})

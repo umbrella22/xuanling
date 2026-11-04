@@ -4,6 +4,37 @@ All notable release changes are recorded here. XuanLing uses immutable release
 tags and publishes the launcher, native packages, DeepSeek Harness bundles, and
 ZCode projection from the same source commit.
 
+## 0.10.2 - 2026-11-04
+
+### Changed
+
+- Merge the Blueprint library cascade and blueprint picker into one searchable,
+  workspace-grouped selector; choosing an asset from another library switches
+  the library, refreshes the catalog and loads it in one step.
+- Move Blueprint share/reuse into a modal dialog with export, template and
+  Agent-document sections, and move blueprint renaming into a small dialog from
+  the document identity header and the overflow menu.
+- Add filterable, grouped option lists to the shared select control with SVG
+  chevrons, check marks and empty-result messaging. Replace raw file inputs with
+  choose-file controls that show the selected file name.
+- Collapse the Blueprint desktop toolbar into one macOS window-drag band and
+  restyle the authoring dialogs, document identity, diagnostics, resource add
+  control and checkboxes.
+- Converge injected style sheets to the running build instead of skipping an
+  existing sheet, so plugin hot updates pick up new rules without a page reload.
+
+### Fixed
+
+- Keep the embedded conversation editor's toolbar out of the native window-drag
+  region and preserve undo/redo, save state and narrow layouts in the new
+  single-row toolbar.
+
+### Compatibility and limits
+
+- Blueprint definition schema remains v2; no data migration is required.
+- The release publishes the existing npm items, DSH bundles and Blueprint plugin
+  from one verified commit. The harness-bridge release boundary is unchanged.
+
 ## 0.10.1 - 2026-11-02
 
 ### Changed

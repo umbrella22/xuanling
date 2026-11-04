@@ -10,7 +10,7 @@ worker、控制端和真实依赖场景均已通过验收。
 ## 使用
 
 ```sh
-npx @xuanling-rs/harness-bridge@0.10.1 --config /absolute/path/to/bridge-config.json
+npx @xuanling-rs/harness-bridge@0.10.2 --config /absolute/path/to/bridge-config.json
 ```
 
 在仓库中先构建：
