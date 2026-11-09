@@ -46,10 +46,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
-      - name: Install Rust 1.98
+      - name: Install Rust stable
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.98"
+          toolchain: "stable"
           components: rustfmt, clippy
       - name: Set up Python
         uses: actions/setup-python@v5

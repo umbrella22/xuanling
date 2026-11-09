@@ -33,7 +33,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        rust: ["1.98"]
+        rust: ["stable"]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -117,10 +117,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
-      - name: Install Rust 1.98
+      - name: Install Rust stable
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.98"
+          toolchain: "stable"
           targets: ${{ matrix.target }}
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }} -p xuanling-mcp
@@ -171,9 +171,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Install Rust 1.98
+      - name: Install Rust stable
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.98"
+          toolchain: "stable"
       - name: cargo check --workspace
         run: cargo check --workspace --all-targets
