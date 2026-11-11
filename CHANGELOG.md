@@ -4,7 +4,7 @@ All notable release changes are recorded here. XuanLing uses immutable release
 tags and publishes the launcher, native packages, DeepSeek Harness bundles, and
 ZCode projection from the same source commit.
 
-## 0.11.0 - 2026-11-11
+## 0.11.1 - 2026-11-11
 
 ### Changed
 
@@ -49,6 +49,10 @@ ZCode projection from the same source commit.
   field still needs a human decision node or a future boolean-extraction graph primitive.
 - The release publishes the nine npm items, DSH bundles and Blueprint plugin from one verified
   commit.
+- Release `0.11.1` supersedes an incomplete `0.11.0` publish attempt: only the
+  `xuanling-mcp-darwin-arm64` platform alias reached the registry, and no launcher, DSH
+  bundle or Blueprint package was published at `0.11.0`. The `0.11.0` tag remains as
+  release-audit evidence but is not a user-facing release.
 
 ## 0.10.2 - 2026-11-04
 
