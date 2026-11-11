@@ -894,8 +894,6 @@ fn eof_process_tree_spawner_helper() {
 /// server regresses and leaves the descendant alive.
 #[test]
 fn eof_process_tree_lock_holder_helper() {
-    use fs4::fs_std::FileExt;
-
     if std::env::var(EOF_HELPER_MODE).as_deref() != Ok("hold") {
         return;
     }
@@ -910,7 +908,7 @@ fn eof_process_tree_lock_holder_helper() {
         .truncate(false)
         .open(&lock_path)
         .expect("open lease file");
-    lock_file.lock_exclusive().expect("hold lease");
+    lock_file.lock().expect("hold lease");
     std::fs::write(&ready_path, b"ready").expect("publish lease readiness");
     while !release_path.exists() {
         std::thread::sleep(std::time::Duration::from_millis(20));
@@ -961,8 +959,6 @@ impl Drop for EofLeaseFixture {
 }
 
 fn lease_is_available(path: &Path) -> bool {
-    use fs4::fs_std::FileExt;
-
     let file = std::fs::OpenOptions::new()
         .create(true)
         .read(true)
@@ -970,12 +966,12 @@ fn lease_is_available(path: &Path) -> bool {
         .truncate(false)
         .open(path)
         .expect("open lease probe");
-    match file.try_lock_exclusive() {
-        Ok(true) => {
+    match file.try_lock() {
+        Ok(()) => {
             file.unlock().expect("unlock lease probe");
             true
         }
-        Ok(false) => false,
+        Err(std::fs::TryLockError::WouldBlock) => false,
         Err(error) => panic!("probe lease: {error}"),
     }
 }

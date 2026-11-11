@@ -30,7 +30,7 @@ tokio = { workspace = true }
 # Default features (base64, macros, server) are kept; we enable schemars +
 # transport-io explicitly. No client/HTTP/auth features are needed for the
 # local stdio MVP (plan §1.2).
-rmcp = { version = "3.1.2", features = ["server", "macros", "schemars", "transport-io"] }
+rmcp = { version = "3.9.0", features = ["server", "macros", "schemars", "transport-io"] }
 tokio-util = "0.7"
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt", "std"] }
@@ -38,8 +38,7 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["e
 [dev-dependencies]
 serde_json = { workspace = true }
 tempfile = "3"
-base64 = "0.22"
-fs4 = "0.13"
+base64 = "0.23"
 sha2 = { workspace = true }
 
 [target.'cfg(unix)'.dev-dependencies]

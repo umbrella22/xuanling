@@ -1586,9 +1586,11 @@
         }
       },
       "required": [
+        "not_modified",
         "offset",
         "length",
-        "total_bytes"
+        "total_bytes",
+        "truncated"
       ],
       "type": "object"
     }
@@ -1932,8 +1934,12 @@
         }
       },
       "required": [
+        "not_modified",
         "total_lines",
-        "newline_style"
+        "start_line",
+        "end_line",
+        "newline_style",
+        "truncated"
       ],
       "type": "object"
     }
@@ -2502,6 +2508,7 @@
       "required": [
         "created",
         "bytes",
+        "before_sha256",
         "after_sha256"
       ],
       "type": "object"
@@ -2694,7 +2701,10 @@
           },
           "required": [
             "kind",
-            "content"
+            "content",
+            "tags",
+            "applicability",
+            "pinned"
           ],
           "type": "object"
         },
@@ -3169,7 +3179,10 @@
           },
           "required": [
             "kind",
-            "content"
+            "content",
+            "tags",
+            "applicability",
+            "pinned"
           ],
           "type": "object"
         },
@@ -3546,7 +3559,10 @@
           },
           "required": [
             "kind",
-            "content"
+            "content",
+            "tags",
+            "applicability",
+            "pinned"
           ],
           "type": "object"
         },
@@ -3971,7 +3987,10 @@
           },
           "required": [
             "kind",
-            "content"
+            "content",
+            "tags",
+            "applicability",
+            "pinned"
           ],
           "type": "object"
         },
@@ -4478,7 +4497,10 @@
           },
           "required": [
             "kind",
-            "content"
+            "content",
+            "tags",
+            "applicability",
+            "pinned"
           ],
           "type": "object"
         },
@@ -5262,7 +5284,10 @@
           },
           "required": [
             "kind",
-            "content"
+            "content",
+            "tags",
+            "applicability",
+            "pinned"
           ],
           "type": "object"
         },
@@ -6879,6 +6904,7 @@
       },
       "required": [
         "candidates",
+        "selected",
         "pathext"
       ],
       "type": "object"
@@ -8057,6 +8083,7 @@
         "family",
         "os",
         "arch",
+        "cwd",
         "path_separator",
         "newline",
         "executable_suffixes",

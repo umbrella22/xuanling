@@ -9,7 +9,7 @@ rust-version.workspace = true
 test-fixtures = []
 
 [dependencies]
-base64 = "0.22"
+base64 = "0.23"
 globset = "0.4"
 ignore = { workspace = true }
 libc = { workspace = true }
@@ -35,7 +35,7 @@ windows-sys = { version = "0.61", features = [
 ] }
 
 [dev-dependencies]
-base64 = "0.22"
+base64 = "0.23"
 tempfile = "3"
 
 [[bin]]

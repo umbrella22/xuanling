@@ -14,10 +14,10 @@ path = "src/main.rs"
 path = "src/lib.rs"
 
 [dependencies]
-cap-std = "3.4.5"
+cap-std = "4.0.3"
 clap.workspace = true
 regex.workspace = true
-rmcp = { version = "3.1.2", features = ["server", "macros", "schemars", "transport-io"] }
+rmcp = { version = "3.9.0", features = ["server", "macros", "schemars", "transport-io"] }
 schemars = "1"
 same-file = "1"
 serde = { workspace = true }

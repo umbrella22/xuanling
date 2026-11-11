@@ -1,6 +1,6 @@
 {
   "name": "@xuanling-rs/xuanling-dsh-harness",
-  "version": "0.11.1",
+  "version": "0.11.2",
   "private": true,
   "description": "Result-only Harness Bridge provider and blocking tool for DeepSeek Harness and Blueprint.",
   "license": "MIT",

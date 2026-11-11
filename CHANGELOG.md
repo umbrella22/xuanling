@@ -4,6 +4,34 @@ All notable release changes are recorded here. XuanLing uses immutable release
 tags and publishes the launcher, native packages, DeepSeek Harness bundles, and
 ZCode projection from the same source commit.
 
+## 0.11.2 - 2026-11-11
+
+### Changed
+
+- Refresh the Rust dependency graph: `rmcp` 3.9, `tokio` 1.54, `uuid` 1.29,
+  `schemars` 1.2.3, `serde_json` 1.0.154 and the ICU/wasm stack; upgrade
+  `cap-std` to 4.0.3 and `base64` to 0.23.1.
+- Replace `fs4` with the standard library file-lock API (`File::lock` /
+  `try_lock`), removing a dev dependency.
+- Replace rmcp's deprecated `ServerInfo` alias with `ServerConfig` in both MCP
+  servers. Tool names and descriptions are unchanged.
+
+### Fixed
+
+- Regenerate the `tools/list` schema snapshot. Required keys now match fields
+  that were already always serialized (`not_modified`, `truncated`,
+  `before_sha256`, `selected`, memory proposal `tags`/`applicability`/`pinned`,
+  system `cwd`). No tool output or runtime behavior changed.
+
+### Compatibility and limits
+
+- No product behavior change; this is a dependency-maintenance release.
+- MCP tool names, descriptions and wire payloads are unchanged. The regenerated
+  schema only adds required keys for fields that were already present.
+- Definition schema remains v2 and the conversation canvas is unchanged.
+- The release publishes the nine npm items, DSH bundles and Blueprint plugin
+  from one verified commit.
+
 ## 0.11.1 - 2026-11-11
 
 ### Changed

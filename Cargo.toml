@@ -13,7 +13,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.11.1"
+version = "0.11.2"
 edition = "2024"
 license = "MIT"
 rust-version = "1.98"
@@ -25,7 +25,7 @@ libc = "0.2.186"
 regex = "1"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
-sha2 = "0.11.1"
+sha2 = "0.11.0"
 time = { version = "0.3.53", features = [
     "formatting",
     "local-offset",

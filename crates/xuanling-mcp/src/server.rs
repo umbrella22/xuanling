@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, Implementation, ListToolsResult,
-    PaginatedRequestParams, ProtocolVersion, ServerCapabilities, ServerInfo,
+    PaginatedRequestParams, ProtocolVersion, ServerCapabilities, ServerConfig,
 };
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData as McpError, RoleServer, ServerHandler};
@@ -334,10 +334,10 @@ impl XuanlingServer {
 }
 
 impl ServerHandler for XuanlingServer {
-    fn get_info(&self) -> ServerInfo {
-        // `ServerInfo` (= `InitializeResult`) is `#[non_exhaustive]`; use the
+    fn get_info(&self) -> ServerConfig {
+        // `ServerConfig` (= `InitializeResult`) is `#[non_exhaustive]`; use the
         // crate-provided constructor + builder instead of a struct literal.
-        let mut info = ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+        let mut info = ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("xuanling-mcp", env!("CARGO_PKG_VERSION")))
             .with_instructions(SERVER_INSTRUCTIONS)
             // Pin the fallback protocol revision to rmcp's latest *legacy*
