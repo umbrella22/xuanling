@@ -114,7 +114,10 @@ export function geometryProbe(scopeSelector) {
     scope: measure(scope),
     canvas: canvas ? measure(canvas) : null,
     body: scope.querySelector('.bp-conversation-body') ? measure(scope.querySelector('.bp-conversation-body')) : null,
-    attempts: scope.querySelector('.bp-conversation-attempts') ? measure(scope.querySelector('.bp-conversation-attempts')) : null,
+    attempts: null,
+    legend: scope.querySelector('[data-bp-legend]') ? measure(scope.querySelector('[data-bp-legend]')) : null,
+    legendChips: [...scope.querySelectorAll('[data-bp-legend-chip]')].map(el => ({ bucket: el.getAttribute('data-bp-legend-chip'), count: el.getAttribute('data-bp-legend-count'), rect: rect(el) })),
+    minimap: scope.querySelector('.react-flow__minimap') ? measure(scope.querySelector('.react-flow__minimap')) : null,
     toolbar: scope.querySelector('.bp-toolbar') ? measure(scope.querySelector('.bp-toolbar')) : null,
     status: scope.querySelector('.bp-conversation-status') ? measure(scope.querySelector('.bp-conversation-status')) : null,
     composer: [...document.querySelectorAll('[data-composer-input][role="textbox"]')].map(measure),
@@ -456,6 +459,45 @@ export async function runCollector(options) {
     check('U13', 'observation keeps frozen Run and introduces zero mutations', isDeepStrictEqual(before, after) && native.mutations() === mutations, {
       mutationsBefore: mutations,
       mutationsAfter: native.mutations()
+    })
+    // W1 RT browser contracts (C-01/C-02/C-05/C-09/C-10/C-11): archify runtime visuals.
+    await scene('runtime-visuals', async () => {
+      const visuals = await page.evaluate(() => {
+        const scope = document.querySelector('[data-bp-conversation="root"]')
+        const kinds = [...scope.querySelectorAll('[data-bp-node]')].map(el => ({
+          id: el.getAttribute('data-bp-node'),
+          kind: el.getAttribute('data-bp-kind'),
+          rawState: el.getAttribute('data-bp-raw-state'),
+          badge: el.querySelector('[data-bp-state-badge]')?.getAttribute('data-bp-state-badge') ?? null
+        }))
+        const rootStyle = getComputedStyle(scope.querySelector('.bp-conversation-canvas') ?? scope)
+        const tokens = ['input', 'agent-task', 'output', 'blueprint-call', 'condition', 'human-decision', 'join'].map(kind => [
+          kind,
+          rootStyle.getPropertyValue(`--bp-kind-${kind}`).trim()
+        ])
+        return {
+          kinds,
+          tokens,
+          markers: document.querySelectorAll('.react-flow__edges marker').length,
+          legendChips: [...scope.querySelectorAll('[data-bp-legend-chip]')].map(el => ({
+            bucket: el.getAttribute('data-bp-legend-chip'),
+            count: el.getAttribute('data-bp-legend-count')
+          })),
+          minimap: document.querySelector('.react-flow__minimap') !== null,
+          attemptsColumn: document.querySelector('.bp-conversation-attempts') !== null
+        }
+      })
+      check('RT01', 'frozen nodes declare data-bp-kind', visuals.kinds.length > 0 && visuals.kinds.every(node => node.kind), { kinds: visuals.kinds })
+      check('RT01', 'archify kind tokens are defined and distinct', (() => {
+        const defined = visuals.tokens.filter(([, value]) => value)
+        const distinct = new Set(defined.map(([, value]) => value))
+        return defined.length === 7 && distinct.size >= 6
+      })(), { tokens: visuals.tokens })
+      check('RT02', 'state badges mirror raw states', visuals.kinds.every(node => node.badge === node.rawState), { kinds: visuals.kinds })
+      check('RT05', 'edge arrows render via marker defs', visuals.markers > 0, { markers: visuals.markers })
+      check('RT09', 'legend card summarizes latest-attempt buckets', visuals.legendChips.length > 0, { chips: visuals.legendChips })
+      check('RT10', 'bound canvas mounts a minimap', visuals.minimap === true, { minimap: visuals.minimap })
+      check('RT08', 'attempts record column is removed', visuals.attemptsColumn === false, { attemptsColumn: visuals.attemptsColumn })
     })
     await scene('authoring', async () => {
       await page.getByRole('button', { name: /XuanLing Blueprint|玄灵蓝图/ }).click()

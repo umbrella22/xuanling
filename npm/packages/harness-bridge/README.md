@@ -12,7 +12,7 @@ these packages does not imply acceptance of every worker or controller host.
 ## Usage
 
 ```sh
-npx @xuanling-rs/harness-bridge@0.10.2 --config /absolute/path/to/bridge-config.json
+npx @xuanling-rs/harness-bridge@0.11.0 --config /absolute/path/to/bridge-config.json
 ```
 
 From a checkout, build the binary first:

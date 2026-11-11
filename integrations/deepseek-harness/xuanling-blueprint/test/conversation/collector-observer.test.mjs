@@ -199,13 +199,14 @@ test('frozen projection checks every focused Attempt and actual DOM node state',
     revision: 'rev-unit',
     nestedComposers: 0,
     attempts: ['a1', 'a2'],
+    focusedNodes: ['n1', 'n2'],
     nodes: [
       { nodeId: 'n1', state: 'running' },
       { nodeId: 'n2', state: 'running' }
     ]
   }
   assert.deepEqual(projectInspection(host, dom).focusAttemptIds, ['a1', 'a2'])
-  assert.throws(() => projectInspection(host, { ...dom, attempts: ['a1'] }), /EVIDENCE_DOM_FOCUS/)
+  assert.throws(() => projectInspection(host, { ...dom, focusedNodes: ['n1'] }), /EVIDENCE_DOM_FOCUS/)
   assert.throws(() => projectInspection(host, { ...dom, nodes: [{ nodeId: 'n1', state: 'running' }] }), /EVIDENCE_DOM_GRAPH/)
   assert.throws(
     () =>

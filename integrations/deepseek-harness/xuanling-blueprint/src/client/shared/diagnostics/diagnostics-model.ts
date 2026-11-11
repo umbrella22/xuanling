@@ -1,6 +1,6 @@
 /** Display projection of whitelisted durable facts. No UI or browser effects. */
 import { attemptDiagnosticsCodec } from '../../../host/runtime-diagnostics.ts'
-import type { AttemptDiagnostics } from '../../../host/runtime-diagnostics.ts'
+import type { AttemptDiagnostics, JsonDigest } from '../../../host/runtime-diagnostics.ts'
 import type { BlueprintLocaleProps } from '../i18n/locales.ts'
 
 export type PreflightActionKey =
@@ -18,9 +18,10 @@ export function preflightActionKey(code: string): PreflightActionKey {
   if (['input-missing', 'input-invalid', 'condition-input-invalid'].includes(code)) return 'diagnostics.action.input'
   if (code.includes('resource') || code === 'host-agent-unavailable' || code === 'host-skill-unavailable') return 'diagnostics.action.resource'
   if (code.includes('model-route')) return 'diagnostics.action.model'
-  if (code.includes('tool') || code.includes('agent-factory') || code.includes('executor') || code.includes('teamstage')) return 'diagnostics.action.tools'
-  if (code.includes('schema') || code.includes('output-port')) return 'diagnostics.action.schema'
   if (code.includes('unverified') || code.includes('approval')) return 'diagnostics.action.inspect'
+  if (code.includes('tool') || code.includes('capability') || code.includes('agent-factory') || code.includes('executor') || code.includes('teamstage'))
+    return 'diagnostics.action.tools'
+  if (code.includes('schema') || code.includes('output-port')) return 'diagnostics.action.schema'
   if (code.endsWith('ready') || code === 'definition-ready') return 'diagnostics.action.inspect'
   return 'diagnostics.action.retry'
 }
@@ -30,7 +31,7 @@ export function projectAttemptDiagnostics(value?: unknown): AttemptDiagnostics {
   return parsed.success ? parsed.data : { status: 'unavailable' }
 }
 
-type DiagnosticRowKey = 'input' | 'resources' | 'model' | 'tools' | 'denials' | 'acceptance' | 'recovery'
+type DiagnosticRowKey = 'input' | 'output' | 'resources' | 'model' | 'tools' | 'denials' | 'acceptance' | 'recovery'
 export interface DiagnosticRow {
   key: DiagnosticRowKey
   label: string
@@ -40,14 +41,20 @@ export type AttemptDiagnosticsViewModel =
   | { status: 'unavailable'; title: string; message: string }
   | { status: 'available'; title: string; rows: readonly DiagnosticRow[] }
 
+function digestText(digest: JsonDigest): string {
+  return `${digest.type} · ${digest.bytes} bytes · ${digest.sha256}`
+}
+
 export function presentAttemptDiagnostics(value: unknown, t: BlueprintLocaleProps['t']): AttemptDiagnosticsViewModel {
   const diagnostics = projectAttemptDiagnostics(value)
   const title = t('diagnostics.title')
   if (diagnostics.status === 'unavailable') return { status: 'unavailable', title, message: t('diagnostics.unavailable') }
   const row = (key: DiagnosticRowKey, values: string[]): DiagnosticRow => ({ key, label: t(`diagnostics.${key}`), values })
   const model = diagnostics.modelSelection
+  const output = diagnostics.output
   const rows = [
-    row('input', [`${diagnostics.input.type} · ${diagnostics.input.bytes} bytes · ${diagnostics.input.sha256}`]),
+    row('input', [digestText(diagnostics.input)]),
+    row('output', [output === undefined ? t('diagnostics.noOutput') : digestText(output)]),
     row(
       'resources',
       Object.entries(diagnostics.resourceDigests).map(([id, digest]) => `${id} · ${digest}`)

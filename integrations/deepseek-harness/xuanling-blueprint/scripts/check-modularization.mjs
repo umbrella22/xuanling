@@ -1250,13 +1250,13 @@ function conversation(graph) {
   const render = callable(graph, entry, 'ConversationBlueprintView')
   const required = [
     ['./conversation-renderers.tsx', ['FrozenNode', 'FrozenGroup', 'FrozenEdge', 'frozenContentShape', 'nodeTypes', 'edgeTypes']],
-    ['./conversation-attempts.tsx', ['renderConversationAttempts']],
+    ['./conversation-team-stage.tsx', ['renderTeamStage']],
     ['../presenters/conversation-presenter.ts', ['displayState', 'presentConversation']]
   ]
   const importsFor = source => [...view.imports].filter(([, item]) => item.source === source && !item.typeOnly)
   const missing = required.filter(([source]) => importsFor(source).length === 0)
   if (missing.length) {
-    throw new BoundaryOracleError('CONVERSATION_VIEW_CENTRALIZED', 'Conversation view still owns renderer, TeamStage, attempts or display projection roles', [
+    throw new BoundaryOracleError('CONVERSATION_VIEW_CENTRALIZED', 'Conversation view still owns renderer, TeamStage, picker or display projection roles', [
       graph.location(view, render, `missing extracted role imports: ${missing.map(([source]) => source).join(', ')}`)
     ])
   }
@@ -1278,7 +1278,7 @@ function conversation(graph) {
   const projection = callImport('../presenters/conversation-presenter.ts', 'presentConversation')
   callImport('./conversation-renderers.tsx', 'frozenContentShape')
   callImport('../presenters/conversation-presenter.ts', 'displayState')
-  callImport('./conversation-attempts.tsx', 'renderConversationAttempts')
+  callImport('./conversation-team-stage.tsx', 'renderTeamStage')
   for (const symbol of ['nodeTypes', 'edgeTypes']) {
     const local = importsFor('./conversation-renderers.tsx').find(([, item]) => item.imported === symbol)?.[0]
     requireFact(local, 'CONVERSATION_PRODUCTION_WIRING_MISSING', `Conversation view must import ${symbol} from the renderer module`)
@@ -1301,7 +1301,7 @@ function conversation(graph) {
           'FrozenEdge',
           'frozenContentShape',
           'renderTeamStage',
-          'renderConversationAttempts',
+          'renderAttemptPicker',
           'displayState',
           'presentConversation'
         ].includes(symbol)
@@ -1325,23 +1325,25 @@ function conversation(graph) {
       )
       .map(item => graph.location(renderer, item, item.source.value))
   )
-  const attemptsModule = graph.importedModule(view, importsFor('./conversation-attempts.tsx')[0][1])
-  const attemptsImport = attemptsModule.imports.get('renderTeamStage')
-  requireFact(
-    attemptsImport?.source === './conversation-team-stage.tsx' && !attemptsImport.typeOnly,
-    'CONVERSATION_ATTEMPTS_WIRING_MISSING',
-    'Conversation attempts view must own the TeamStage composition through its extracted renderer'
-  )
-  const attemptsFn = graph.exported(attemptsModule, 'renderConversationAttempts')
-  const attemptsBody = callable(graph, attemptsFn, 'renderConversationAttempts')
-  requireFact(
-    calls(attemptsBody).some(call => call.callee.type === 'Identifier' && call.callee.name === 'renderTeamStage'),
-    'CONVERSATION_ATTEMPTS_WIRING_MISSING',
-    'Conversation attempts view must render the TeamStage projection'
-  )
-  const teamStageModule = graph.importedModule(attemptsModule, attemptsImport)
+  const teamStageModule = graph.importedModule(view, importsFor('./conversation-team-stage.tsx')[0][1])
   graph.validateImports(teamStageModule)
   callable(graph, graph.exported(teamStageModule, 'renderTeamStage'), 'renderTeamStage')
+  const pickerImport = renderer.imports.get('renderAttemptPicker')
+  requireFact(
+    pickerImport?.source === './conversation-attempt-picker.tsx' && !pickerImport.typeOnly,
+    'CONVERSATION_ATTEMPT_PICKER_WIRING_MISSING',
+    'Conversation renderers must own the explicit attempt picker through its extracted module'
+  )
+  const pickerModule = graph.importedModule(renderer, pickerImport)
+  graph.validateImports(pickerModule)
+  callable(graph, graph.exported(pickerModule, 'renderAttemptPicker'), 'renderAttemptPicker')
+  const frozenNodeFn = graph.exported(renderer, 'FrozenNode')
+  const frozenNodeBody = callable(graph, frozenNodeFn, 'FrozenNode')
+  requireFact(
+    calls(frozenNodeBody).some(call => call.callee.type === 'Identifier' && call.callee.name === 'renderAttemptPicker'),
+    'CONVERSATION_ATTEMPT_PICKER_WIRING_MISSING',
+    'FrozenNode must render the explicit attempt picker'
+  )
   const presenter = graph.importedModule(view, importsFor('../presenters/conversation-presenter.ts')[0][1])
   const presenterRuntime = presenter.ast.body.filter(
     item => item.type === 'ImportDeclaration' && item.importKind !== 'type' && item.specifiers.some(specifier => specifier.importKind !== 'type')
@@ -1384,7 +1386,7 @@ function conversation(graph) {
   return [
     graph.location(view, render, 'ConversationBlueprintView'),
     graph.location(view, projection.calls[0], 'presentConversation'),
-    graph.location(attemptsModule, attemptsFn.declaration, 'renderConversationAttempts'),
+    graph.location(graph.importedModule(renderer, renderer.imports.get('renderAttemptPicker')), graph.exported(graph.importedModule(renderer, renderer.imports.get('renderAttemptPicker')), 'renderAttemptPicker').declaration, 'renderAttemptPicker'),
     graph.location(teamStageModule, graph.exported(teamStageModule, 'renderTeamStage').declaration, 'renderTeamStage'),
     graph.location(presenter, project.declaration, 'presentConversation'),
     graph.location(renderer, graph.exported(renderer, 'FrozenNode').declaration, 'FrozenNode'),

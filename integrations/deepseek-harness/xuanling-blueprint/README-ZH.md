@@ -51,17 +51,17 @@ DSH 负责模型、原生会话和工具权限；蓝图负责画布、保存的�
 把已发布包安装到提供 DSH Web 界面的同一个 profile：
 
 ```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.10.2
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.11.0
 ```
 
 重启该 profile 并刷新 DSH 页面。把 `web` 换成实际使用的 profile；新建的自定义 profile 只包含
 基础 bundle，不会自动包含 Web 应用。
 
-`0.10.2` 面向 DSH `next` 能力频道，开发与测试依赖固定为 `0.2.1-rc.2`，公开运行时 peer 下限
+`0.11.0` 面向 DSH `next` 能力频道，开发与测试依赖固定为 `0.2.1-rc.2`，公开运行时 peer 下限
 为 `>=0.2.1-alpha.5`。同一 profile 内的 DSH 包应保持在同一频道。checkout 链接构建见
 [开发](#开发)。
 
-**自 0.7.0 起的不兼容变更。** `0.10.2` 使用定义 schema v2。已发布的 `0.6.1` 保存的定义（schema v1，包括已移除的
+**自 0.7.0 起的不兼容变更。** `0.11.0` 使用定义 schema v2。已发布的 `0.6.1` 保存的定义（schema v1，包括已移除的
 `toolCall`、`scriptCall`、`subflow`、`iteration` 节点）会被拒绝并返回 `blueprint/definition-invalid`，
 无法打开或运行。请使用[蓝图迁移 Skill](../xuanling-skills/skills/xuanling-blueprint-migrate/SKILL.md)
 准备并校验独立副本，或继续用 `0.6.1` 运行原工作流。迁移需要手动执行；安装新版不会改写定义或 Run 历史。
@@ -202,6 +202,11 @@ result；Host 无法确认的结果会进入 `recovery_required`（需要恢复�
 和模型路由控件。输入、输出、条件、汇合和人工决策节点隐藏执行型绑定；定义中已有的引用仍会保留，
 并继续由 Host 运行前检查约束。没有声明工具集的节点没有业务工具；所选工具仍受 Host 权限和审批
 约束。运行前检查不证明 MCP 已连通或已获得审批。
+
+需要读取仓库或执行命令的智能体任务可以声明 `requiredCapabilities`（`repository-read` /
+`command-exec`）。运行前检查会在该节点解析不到任何业务工具时阻止启动
+（`required-capability-unbound`）；已绑定工具是否真正覆盖该能力仍以
+`capability-coverage-unverified` 显示，需人工确认。纯文本节点保持可运行。
 
 **资源来源** 位于检查器中，列出节点引用的每个资源来自哪里（包内路径、共享 Skill 根或 Host 身份），
 以及最近一次运行为该节点冻结的绑定 digest。TeamStage 成员 Agent 和 Host 绑定的 MCP 引用也会列出

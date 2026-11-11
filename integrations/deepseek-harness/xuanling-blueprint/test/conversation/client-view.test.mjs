@@ -22,7 +22,7 @@ seat.react = {
     return [
       f.states[i],
       value => {
-        f.states[i] = value
+        f.states[i] = typeof value === 'function' ? value(f.states[i]) : value
       }
     ]
   },
@@ -53,7 +53,7 @@ const hooks = registerHooks({
     if (context.parentURL?.startsWith(`${client}features/conversation/`) && spec === '@xyflow/react')
       return {
         url: url(
-          "export const ReactFlow='flow',Handle='handle',BaseEdge='edge';export const Position={Left:'left',Right:'right'};export const getSmoothStepPath=()=>['M 0 0 L 1 1'];"
+          "export const ReactFlow='flow',Handle='handle',BaseEdge='edge',MiniMap='minimap';export const Position={Left:'left',Right:'right'};export const getSmoothStepPath=()=>['M 0 0 L 1 1'];"
         ),
         shortCircuit: true
       }
@@ -252,10 +252,7 @@ test('readonly view provides collector identities, real focus set, native inspec
     assert.equal(tree.props['data-bp-run-id'], 'r1')
     assert.equal(tree.props['data-bp-frozen-revision'], 'frozen')
     assert.equal(all(tree, node => ['input', 'textarea', 'form'].includes(node.type)).length, 0)
-    assert.deepEqual(
-      all(tree, node => node.props['data-bp-attempt-id']).map(node => node.props['data-bp-attempt-id']),
-      ['a1', 'a2']
-    )
+    assert.equal(all(tree, node => node.props['data-bp-attempt-id']).length, 0, 'single-attempt fixture renders no explicit picker')
     assert.deepEqual(flow.props.fitViewOptions.nodes, [{ id: 'n1' }, { id: 'n2' }, { id: 'source' }, { id: 'bp:frozen-group:g' }])
     assert.equal(flow.props.nodesDraggable, false)
     assert.equal(flow.props.nodesConnectable, false)
@@ -276,7 +273,10 @@ test('readonly view provides collector identities, real focus set, native inspec
     assert.deepEqual(f.fits[1].nodes, [{ id: 'n1' }, { id: 'n2' }, { id: 'source' }, { id: 'bp:frozen-group:g' }])
     one(toolbar, node => node.props['aria-label'] === dict['conversation.inspectCall']).props.onClick()
     assert.deepEqual(f.inspections, ['call-1'])
-    one(tree, node => node.props['data-bp-attempt-id'] === 'a2').props.onClick()
+    await flow.props.onNodeClick(
+      {},
+      flow.props.nodes.find(node => node.id === 'n2')
+    )
     assert.equal(f.controller.getSnapshot().selectedAttemptId, 'a2')
     assert.deepEqual(f.fits[2].nodes, [{ id: 'n2' }])
     const group = flow.props.nodes.find(node => node.type === 'frozenGroup')
@@ -370,7 +370,7 @@ test('clicking a node with several canonical Attempts does not guess a latest id
     flow.props.nodes.find(node => node.id === 'n1')
   )
   assert.equal(f.controller.getSnapshot().selectedAttemptId, null)
-  one(tree, node => node.props['data-bp-attempt-id'] === 'a3').props.onClick()
+  one(frozenArticle(f, 'n1'), node => node.props['data-bp-attempt-id'] === 'a3').props.onClick()
   assert.equal(f.controller.getSnapshot().selectedAttemptId, 'a3')
 })
 
@@ -420,7 +420,7 @@ test('execution sync C-02: multiple Attempts require an explicit chat action, in
   )
   assert.equal(f.controller.getSnapshot().selectedAttemptId, null)
   assert.deepEqual(opened, [], 'node ambiguity must not guess a latest child from display order')
-  const explicit = one(tree, node => node.props['data-bp-open-attempt'] === 'a3')
+  const explicit = one(frozenArticle(f, 'n1'), node => node.props['data-bp-open-attempt'] === 'a3')
   assert.equal(explicit.type, 'button')
   assert.equal(explicit.props.disabled, false)
   await explicit.props.onClick()
@@ -448,10 +448,9 @@ test('execution sync C-02: missing-Session and non-Agent nodes never manufacture
       flow.props.nodes.find(node => node.id === id)
     )
   assert.deepEqual(opened, [])
-  const missing = one(tree, node => node.props['data-bp-open-attempt'] === 'a1')
-  assert.equal(missing.props.disabled, true, 'unavailable execution history must be visibly disabled')
-  assert.equal(all(tree, node => node.props['data-bp-open-attempt'] === 'a2' && !node.props.disabled).length, 0)
-  assert.equal(all(tree, node => node.props['data-bp-open-attempt'] === 'legacy-without-attempt-id').length, 0)
+  assert.equal(all(tree, node => node.props['data-bp-open-attempt']).length, 0, 'single-attempt nodes expose no separate chat action list')
+  assert.equal(frozenArticle(f, 'n1').props['data-bp-chat-link'], undefined, 'missing execution history must not manufacture a chat entry')
+  assert.equal(frozenArticle(f, 'n2').props['data-bp-chat-link'], undefined, 'non-agent nodes never open a structural chat')
 })
 
 test('execution sync C-02: explicit Team member history opens that member Session without issuing Team mutations', async () => {
@@ -489,13 +488,13 @@ test('execution sync C-03: failed Agent detail explains immutable history and of
     f.setResponse(value)
     await f.controller.refresh()
     f.controller.selectAttempt('a1')
-    const tree = f.render(),
-      explanation = one(tree, node => node.props['data-bp-failure-explanation'] === 'a1'),
+    const article = frozenArticle(f, 'n1'),
+      explanation = one(article, node => node.props['data-bp-failure-explanation'] === 'a1'),
       text = JSON.stringify(explanation.children)
     assert.match(text, dict === zh ? /主聊天.*(不会|不).*更新.*(运行|蓝图)/ : /main chat.*(does not|will not|won't).*update.*(run|blueprint)/i)
     assert.doesNotMatch(text, dict === zh ? /已经接管成功|已恢复成功/ : /takeover succeeded|recovered successfully/i)
-    await one(tree, node => node.props['data-bp-open-attempt'] === 'a1').props.onClick()
-    await one(tree, node => node.props['data-bp-source-chat'] === 'source').props.onClick()
+    await one(article, node => node.props['data-bp-open-attempt'] === 'a1').props.onClick()
+    await one(article, node => node.props['data-bp-source-chat'] === 'source').props.onClick()
     assert.deepEqual(opened, ['failed-child', 'source'])
     assert.equal(f.controller.getSnapshot().value.selected.run.attempts[0].state, 'failed')
     assert.equal(f.controller.getSnapshot().value.selected.run.state, 'failed')
@@ -515,9 +514,9 @@ test('execution sync C-03: a failed sidebar-origin Run with no source never gues
   f.setResponse(value)
   await f.controller.refresh()
   f.controller.selectAttempt('a1')
-  const tree = f.render()
-  assert.equal(all(tree, node => node.props['data-bp-failure-explanation'] === 'a1').length, 1)
-  assert.equal(all(tree, node => node.props['data-bp-source-chat'] !== undefined && !node.props.disabled).length, 0)
+  const article = frozenArticle(f, 'n1')
+  assert.equal(all(article, node => node.props['data-bp-failure-explanation'] === 'a1').length, 1)
+  assert.equal(all(article, node => node.props['data-bp-source-chat'] !== undefined && !node.props.disabled).length, 0)
 })
 
 test('execution sync C-02: only the requested target owner switches its persisted Blueprint tab to Chat, once', async t => {
@@ -863,4 +862,193 @@ test('C-04: a bound session still shows newly saved plans', async () => {
   const tree = f.render()
   const section = one(tree, node => node.props['data-bp-conversation-plans'] === '1')
   assert.equal(one(section, node => node.props['data-bp-plan'] === 'assoc-1').props['data-bp-plan-status'], 'saved')
+})
+
+/** ---------- W1 red tests: archify runtime canvas contracts (RT-01..RT-11) ----------
+ * Renderer contracts are exercised through flow.props.nodeTypes.frozen(...) with
+ * the same projected data the view passes (data + t + onContentMeasure). */
+
+const frozenArticle = (f, nodeId) => {
+  const flow = one(f.render(), node => node.type === 'flow')
+  const node = flow.props.nodes.find(item => item.id === nodeId && item.type === 'frozen')
+  assert.ok(node, `fixture must project frozen node ${nodeId}`)
+  return flow.props.nodeTypes.frozen({ data: node.data, selected: false })
+}
+
+test('RT-01 RED every frozen article declares its node kind for archify palette', async () => {
+  const f = fixture(en)
+  await f.controller.refresh()
+  const article = frozenArticle(f, 'n1')
+  assert.equal(article.type, 'article')
+  assert.equal(article.props['data-bp-kind'], 'agentTask', 'frozen node must expose data-bp-kind (RT-01/C-01)')
+  const source = frozenArticle(f, 'source')
+  assert.equal(source.props['data-bp-kind'], 'input')
+})
+
+test('RT-02 RED runtime state renders a badge plus pulse dot while active', async () => {
+  const f = fixture(en)
+  await f.controller.refresh()
+  const article = frozenArticle(f, 'n1')
+  const badge = one(article, node => node.props['data-bp-state-badge'])
+  assert.equal(badge.props['data-bp-state-badge'], 'running')
+  assert.ok(JSON.stringify(badge.children).toLowerCase().includes('running'), 'badge must keep the readable state word')
+  assert.ok(article.props['data-bp-motion'], 'fixture projects a pulse node')
+  one(article, node => node.props['data-bp-pulse-dot'])
+  const settled = fixture(en)
+  await settled.controller.refresh()
+  const idleArticle = frozenArticle(settled, 'source')
+  assert.equal(all(idleArticle, node => node.props['data-bp-pulse-dot']).length, 0, 'idle node has no pulse dot')
+})
+
+test('RT-06 RED single-attempt agent task marks the article as a chat entry', async () => {
+  const f = fixture(en)
+  f.setResponse(() => {
+    const value = data()
+    value.selected.run.attempts[0].sessionId = 'child-exec-1'
+    return value
+  })
+  await f.controller.refresh()
+  const article = frozenArticle(f, 'n1')
+  assert.equal(article.props['data-bp-chat-link'], 'child-exec-1', 'node with a session must expose the chat entry marker (RT-06/C-07)')
+  const noChat = frozenArticle(f, 'source')
+  assert.equal(noChat.props['data-bp-chat-link'], undefined, 'nodes without a session get no chat entry')
+})
+
+test('RT-07 RED multi-attempt node exposes an explicit attempt picker', async () => {
+  const f = fixture(en)
+  f.setResponse(() => {
+    const value = data()
+    value.selected.run.attempts = [
+      { attemptId: 'a1', nodeId: 'n1', attempt: 1, state: 'failed' },
+      { attemptId: 'a1b', nodeId: 'n1', attempt: 2, state: 'running' },
+      { attemptId: 'a2', nodeId: 'n2', attempt: 1, state: 'idle' }
+    ]
+    return value
+  })
+  await f.controller.refresh()
+  const article = frozenArticle(f, 'n1')
+  const picker = one(article, node => node.props['data-bp-attempt-picker'])
+  assert.deepEqual(
+    all(picker, node => node.props['data-bp-picker-attempt']).map(node => node.props['data-bp-picker-attempt']),
+    ['a1', 'a1b'],
+    'picker lists every attempt by ordinal, never auto-picking (RT-07/C-08)'
+  )
+  assert.equal(
+    all(picker, node => node.props['data-bp-picker-attempt']).every(node => node.props.disabled !== true),
+    true
+  )
+})
+
+test('RT-07b RED legacy attempts without ids stay explicit and unselectable in the picker', async () => {
+  const f = fixture(en)
+  f.setResponse(() => {
+    const value = data()
+    value.selected.run.attempts = [
+      { nodeId: 'n1', attempt: 1, state: 'succeeded' },
+      { attemptId: 'a1', nodeId: 'n1', attempt: 2, state: 'failed' }
+    ]
+    value.selected.focusAttemptIds = ['a1']
+    return value
+  })
+  await f.controller.refresh()
+  const picker = one(frozenArticle(f, 'n1'), node => node.props['data-bp-attempt-picker'])
+  const legacy = one(picker, node => node.props['data-bp-picker-legacy'])
+  assert.equal(legacy.props.disabled, true, 'legacy attempt stays visible but disabled')
+})
+
+test('RT-11 RED team member elapsed time renders from real observations only', async () => {
+  const f = fixture(en)
+  f.setResponse(() => {
+    const value = data()
+    value.selected.run.attempts[0].state = 'running'
+    value.selected.run.team = {
+      schemaVersion: 1,
+      runId: 'r1',
+      stageId: 'n1',
+      teamId: 'source',
+      leadSessionId: 'source',
+      attemptId: 'a1',
+      taskId: 'native-task',
+      taskRevision: 3,
+      taskSpecificationFingerprint: 'a'.repeat(64),
+      state: 'active',
+      updatedAt: 3,
+      members: [{ memberId: 'producer', name: 'producer', sessionId: 'child-producer', phase: 'active', status: 'active' }],
+      runtime: {
+        attemptId: 'a1',
+        observedAt: 51_000,
+        members: [
+          {
+            memberId: 'producer',
+            sessionId: 'child-producer',
+            activity: 'thinking',
+            updatedAt: 50_000,
+            requestOrdinal: 1,
+            textDeltas: 0,
+            reasoningDeltas: 0,
+            toolCallDeltas: 0,
+            requestStartedAt: 9_000
+          }
+        ]
+      }
+    }
+    return value
+  })
+  await f.controller.refresh()
+  const article = frozenArticle(f, 'n1')
+  const elapsed = one(article, node => node.props['data-bp-member-elapsed'])
+  assert.equal(elapsed.props['data-bp-member-elapsed'], 42, 'elapsed seconds come from the observed request window')
+})
+
+test('RT-08 RED the attempts record column is gone and the canvas owns the body', async () => {
+  const f = fixture(en)
+  await f.controller.refresh()
+  const tree = f.render()
+  assert.equal(all(tree, node => node.type === 'aside').length, 0, 'attempt record aside must be removed (RT-08/C-09)')
+  assert.equal(all(tree, node => String(node.props.className ?? '').includes('bp-conversation-attempts')).length, 0)
+})
+
+test('RT-09 RED legend card summarizes latest-attempt buckets and fits on click', async () => {
+  const f = fixture(en)
+  await f.controller.refresh()
+  const tree = f.render()
+  const legend = one(tree, node => node.props['data-bp-legend'])
+  const chip = one(legend, node => node.props['data-bp-legend-chip'] === 'running')
+  assert.equal(chip.props['data-bp-legend-count'], 2, 'n1 and n2 are both running in this fixture')
+  f.attach(tree)
+  chip.props.onClick()
+  const last = f.fits[f.fits.length - 1]
+  assert.deepEqual([...last.nodes].map(node => node.id).sort(), ['n1', 'n2'], 'clicking a bucket fits its nodes (RT-09/C-10)')
+})
+
+test('RT-10 RED the bound canvas mounts a minimap', async () => {
+  const f = fixture(en)
+  await f.controller.refresh()
+  one(f.render(), node => node.type === 'minimap')
+})
+
+/** W4 C-08 failure row: a poll between opening the picker and choosing must not
+ * silently discard the explicit-selection surface. */
+test('W4: poll refresh keeps an open attempt picker open until the user chooses', async () => {
+  const f = fixture(en)
+  f.setResponse(() => {
+    const value = data()
+    value.selected.run.attempts.push({ nodeId: 'n1', attemptId: 'a3', attempt: 2, state: 'failed' })
+    return value
+  })
+  await f.controller.refresh()
+  const flow = one(f.render(), node => node.type === 'flow')
+  await flow.props.onNodeClick(
+    {},
+    flow.props.nodes.find(node => node.id === 'n1')
+  )
+  f.setResponse(() => {
+    const polled = data('r1', 2)
+    polled.selected.run.attempts.push({ nodeId: 'n1', attemptId: 'a3', attempt: 2, state: 'failed' })
+    return polled
+  })
+  await f.controller.poll()
+  const picker = one(frozenArticle(f, 'n1'), node => node.props['data-bp-attempt-picker'])
+  assert.ok(String(picker.props.className).includes('is-open'), 'poll must not close an open explicit picker')
+  one(picker, node => node.props['data-bp-attempt-id'] === 'a3')
 })

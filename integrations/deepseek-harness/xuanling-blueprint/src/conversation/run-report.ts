@@ -24,6 +24,8 @@ export interface RunReportStep {
   readonly durationMs?: number
   readonly model?: { readonly provider: string; readonly model: string; readonly reasoningEffort?: string }
   readonly resultKind?: string
+  /** Schema acceptance code, kept beside the scheduler state: succeeded is not delivered. */
+  readonly acceptance?: string
   readonly errorCode?: string
 }
 
@@ -247,6 +249,7 @@ export function projectRunReport(record: RunRecord, decode?: (definitionJson: st
     const model = modelRouteOf(selection)
     const title = titles[attempt.nodeId]?.title
     const errorCode = errorCodeOf(attempt)
+    const acceptance = attempt.diagnostics?.status === 'available' ? attempt.diagnostics.acceptance.code : undefined
     const startedAt = attempt.intent?.at
     const endedAt = attempt.result?.at
     const recovered = attempt.result !== undefined && settledByRecovery(attempt.result.outcome)
@@ -260,6 +263,7 @@ export function projectRunReport(record: RunRecord, decode?: (definitionJson: st
       ...(startedAt !== undefined && endedAt !== undefined && endedAt >= startedAt && !recovered ? { durationMs: endedAt - startedAt } : {}),
       ...(model === undefined ? {} : { model }),
       ...(attempt.result === undefined ? {} : { resultKind: attempt.result.ok ? 'succeeded' : (errorCode ?? attempt.state) }),
+      ...(acceptance === undefined ? {} : { acceptance }),
       ...(errorCode === undefined ? {} : { errorCode })
     }
   })
@@ -337,13 +341,13 @@ export function renderReportMarkdown(report: Omit<RunReport, 'markdown'>): strin
   lines.push('')
   if (report.steps.length === 0) lines.push('No step was dispatched.')
   else {
-    lines.push('| Step | Kind | Attempt | State | Duration | Model | Error |')
-    lines.push('| --- | --- | --- | --- | --- | --- | --- |')
+    lines.push('| Step | Kind | Attempt | State | Acceptance | Duration | Model | Error |')
+    lines.push('| --- | --- | --- | --- | --- | --- | --- | --- |')
     for (const step of report.steps) {
       const label = step.title === undefined ? step.nodeId : `${step.title} (${step.nodeId})`
       const model = step.model === undefined ? '-' : `${step.model.provider}/${step.model.model}`
       lines.push(
-        `| ${cell(label)} | ${step.kind ?? '-'} | ${step.attempt} | ${step.state} | ${seconds(step.durationMs)} | ${cell(model)} | ${step.errorCode ?? '-'} |`
+        `| ${cell(label)} | ${step.kind ?? '-'} | ${step.attempt} | ${step.state} | ${step.acceptance ?? '-'} | ${seconds(step.durationMs)} | ${cell(model)} | ${step.errorCode ?? '-'} |`
       )
     }
   }

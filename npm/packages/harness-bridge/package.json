@@ -1,6 +1,6 @@
 {
   "name": "@xuanling-rs/harness-bridge",
-  "version": "0.10.2",
+  "version": "0.11.0",
   "description": "Launcher for the XuanLing result-only harness bridge (MCP stdio).",
   "license": "MIT",
   "author": "umbrella22 and XuanLing contributors",
@@ -36,9 +36,9 @@
     "directory": "npm/packages/harness-bridge"
   },
   "optionalDependencies": {
-    "harness-bridge-darwin-arm64": "npm:@xuanling-rs/harness-bridge-darwin-arm64@0.10.2-darwin-arm64",
-    "harness-bridge-linux-x64-gnu": "npm:@xuanling-rs/harness-bridge-linux-x64-gnu@0.10.2-linux-x64-gnu",
-    "harness-bridge-win32-x64-msvc": "npm:@xuanling-rs/harness-bridge-win32-x64-msvc@0.10.2-win32-x64-msvc"
+    "harness-bridge-darwin-arm64": "npm:@xuanling-rs/harness-bridge-darwin-arm64@0.11.0-darwin-arm64",
+    "harness-bridge-linux-x64-gnu": "npm:@xuanling-rs/harness-bridge-linux-x64-gnu@0.11.0-linux-x64-gnu",
+    "harness-bridge-win32-x64-msvc": "npm:@xuanling-rs/harness-bridge-win32-x64-msvc@0.11.0-win32-x64-msvc"
   },
   "publishConfig": {
     "access": "public",

@@ -137,7 +137,7 @@ export * from './teamstage/index.ts'
 
 /** Build metadata surfaced through `ping` for install diagnostics. */
 export const PLUGIN_NAME = '@xuanling-rs/xuanling-dsh-blueprint'
-export const PLUGIN_VERSION = '0.10.2'
+export const PLUGIN_VERSION = '0.11.0'
 const DEFAULT_MAX_QUEUED_TOOL_RUNS = 8
 
 export interface PingValue {

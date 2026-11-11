@@ -1,6 +1,7 @@
 /** Frozen DTO -> XYFlow projection. Never load a live definition or write layout. */
 import { projectLayoutCollisions, avoidGroupHeaders } from '../../authoring/logic/graph/layout-collisions.ts'
-import { nodeContentMinimum } from '../../authoring/logic/graph/node-geometry.ts'
+import { nodeContentMinimum, runtimeNodeMetrics } from '../../authoring/logic/graph/node-geometry.ts'
+import type { NodeContentShape } from '../../authoring/logic/graph/node-geometry.ts'
 import { effectivePortVisibility, connectedPortEdges } from '../../authoring/logic/graph/port-visibility.ts'
 import type { Edge, Node } from '@xyflow/react'
 import type { FrozenGraphView, InspectSessionValue } from '../../../../conversation/contracts.ts'
@@ -8,6 +9,7 @@ import type { TeamStageRuntime } from '../../../../host/teamstage-diagnostics.ts
 import type { ConversationSnapshot } from '../logic/conversation-controller.ts'
 import { flowEdgeEndpoints } from '../../authoring/logic/graph/flow-geometry.ts'
 import { projectRuntimeMotion } from '../../../shared/styles/runtime-motion.ts'
+import type { MotionMode } from '../../../shared/styles/runtime-motion.ts'
 
 export type FrozenNodeData = {
   node: FrozenGraphView['nodes'][number]
@@ -25,6 +27,32 @@ export type FrozenNodeData = {
   portEdgePriority: string[]
   controlOutputs: string[]
   memberActivities: TeamMemberActivity[]
+  /** Present only for a single-attempt agentTask whose attempt owns a session:
+   * the whole node then acts as the chat entry. Multi-attempt nodes go through
+   * the explicit attempt picker instead. */
+  chatSessionId?: string
+  /** Every durable attempt by ordinal; the explicit picker is the only surface
+   * that may select among them. Present when a node owns several attempts. */
+  attemptChoices?: FrozenAttemptChoice[]
+  /** Selected failed attempt fact rendered at node level; never a live retry. */
+  failureNotice?: { attemptId: string; sessionId?: string; sourceSessionId?: string }
+  /** Managed interaction waiting for input, surfaced without opening the picker. */
+  managedWaiting?: boolean
+}
+export type FrozenAttemptChoice = {
+  attemptId?: string
+  attempt: number
+  state: string
+  sessionId?: string
+  childRunId?: string
+}
+/** View-injected picker state and navigation callbacks; never persisted. */
+export type FrozenPickerProps = {
+  pickerOpen?: boolean
+  onPickAttempt?: (attemptId: string) => void
+  onOpenAttemptChat?: (attemptId: string) => void
+  onOpenChildRun?: (runId: string) => void
+  onOpenSourceChat?: (sessionId: string) => void
 }
 export type TeamMemberActivity = {
   memberId: string
@@ -33,9 +61,13 @@ export type TeamMemberActivity = {
   elapsedSeconds?: number
 }
 export type FrozenFlowNode = Node<FrozenNodeData, 'frozen'>
-export type FrozenEdgeData = { points: Array<{ x: number; y: number }> }
+export type FrozenEdgeData = { points: Array<{ x: number; y: number }>; motion: MotionMode; traversed: boolean }
 export type FrozenFlowEdge = Edge<FrozenEdgeData, 'frozen'>
 export type FrozenGroupNode = Node<{ groupId: string; label: string; nodeIds: string[] }, 'frozenGroup'>
+
+/** Read-only nodes are not wiring targets: the runtime seat measures the dense
+ * caption geometry instead of the authoring 40 px port rows. */
+export const frozenNodeMinimum = (shape: NodeContentShape): { width: number; height: number } => nodeContentMinimum(shape, runtimeNodeMetrics)
 
 /** Ordinals are facts; array position is not a tie-breaker for latest state. */
 function latestNodeAttempt(attempts: Extract<InspectSessionValue, { status: 'bound' }>['selected']['run']['attempts']) {
@@ -98,6 +130,14 @@ export function projectFrozenCanvas(
   })
   const focuses = new Set(focusAttemptIds)
   const memberActivities = conversationTeamMembers(snapshot)
+  // Latest-attempt failure facts feed edge marker semantics; a stale/unknown
+  // attempt never counts as failed.
+  const motionFailure = new Map(
+    graph.nodes.map(node => {
+      const { attempt } = latest.get(node.id)!
+      return [node.id, attempt?.state === 'failed' || attempt?.state === 'timed_out'] as const
+    })
+  )
   const nodes: FrozenFlowNode[] = graph.nodes.map((node, index) => {
     const layout = presentation?.nodes[node.id]
     const { attempts, attempt } = latest.get(node.id)!
@@ -123,7 +163,7 @@ export function projectFrozenCanvas(
       },
       graph.edges
     )
-    const minimum = nodeContentMinimum({
+    const minimum = frozenNodeMinimum({
       title: layout?.title ?? node.id,
       state: projected.state,
       inputs: node.inputs ?? {},
@@ -186,7 +226,36 @@ export function projectFrozenCanvas(
               return endpoint.source === node.id ? [endpoint.sourceHandle.slice('control:'.length)] : []
             })
           ])
-        ]
+        ],
+        ...(node.kind === 'agentTask' && attempts.length === 1 && attempt?.attemptId !== undefined && attempt.sessionId !== undefined
+          ? { chatSessionId: attempt.sessionId }
+          : {}),
+        ...(attempts.length > 1
+          ? {
+              attemptChoices: [...attempts]
+                .filter(choice => Number.isSafeInteger(choice.attempt) && choice.attempt > 0)
+                .sort((a, b) => a.attempt - b.attempt)
+                .map(choice => ({
+                  ...(choice.attemptId === undefined ? {} : { attemptId: choice.attemptId }),
+                  attempt: choice.attempt,
+                  state: choice.state,
+                  ...(choice.sessionId === undefined ? {} : { sessionId: choice.sessionId }),
+                  ...(choice.childRunId === undefined ? {} : { childRunId: choice.childRunId })
+                }))
+            }
+          : {}),
+        ...(attempt?.attemptId !== undefined &&
+        attempt.attemptId === snapshot.selectedAttemptId &&
+        (attempt.state === 'failed' || attempt.state === 'timed_out')
+          ? {
+              failureNotice: {
+                attemptId: attempt.attemptId,
+                ...(attempt.sessionId === undefined ? {} : { sessionId: attempt.sessionId }),
+                ...(value.selected.source?.sessionId === undefined ? {} : { sourceSessionId: value.selected.source.sessionId })
+              }
+            }
+          : {}),
+        ...(node.interaction === 'managed' && attempt?.state === 'waiting_input' ? { managedWaiting: true } : {})
       }
     }
   })
@@ -203,6 +272,11 @@ export function projectFrozenCanvas(
   if (collision.ok) for (const node of nodes) node.position = collision.positions.get(node.id)!
   const edges: FrozenFlowEdge[] = graph.edges.map((edge, index) => {
     const route = presentation?.edges?.find(item => item.kind === edge.kind && item.from === edge.from && item.to === edge.to)
+    const motionEdge = motion.edges[index]!
+    // Marker color is a concrete SVG paint, not a CSS variable context: use the
+    // dark-first token fallbacks. Semantics: active flow > traversed > failed source.
+    const markerColor =
+      motionEdge.motion === 'pulse' ? '#679abc' : motionEdge.traversed ? '#34d399' : motionFailure.get(flowEdgeEndpoints(edge).source) ? '#c46b6b' : '#939aa4'
     return {
       id: `frozen-edge-${index}`,
       ...flowEdgeEndpoints(edge),
@@ -210,8 +284,15 @@ export function projectFrozenCanvas(
       selectable: false,
       deletable: false,
       animated: false,
-      className: edge.kind === 'control' ? 'bp-edge-control' : '',
-      data: { points: collision.ok && collision.changed ? [] : (route?.points ?? []) }
+      markerEnd: { type: 'arrowclosed', width: 14, height: 14, color: markerColor },
+      className: [
+        edge.kind === 'control' ? 'bp-edge-control' : '',
+        motionEdge.motion === 'pulse' ? 'bp-edge-motion' : '',
+        motionEdge.traversed ? 'bp-edge-traversed' : ''
+      ]
+        .filter(Boolean)
+        .join(' '),
+      data: { points: collision.ok && collision.changed ? [] : (route?.points ?? []), motion: motionEdge.motion, traversed: motionEdge.traversed }
     }
   })
   const byId = new Map(nodes.map(node => [node.id, node]))
@@ -225,7 +306,7 @@ export function projectFrozenCanvas(
     const right = Math.max(...members.map(node => node.position.x + Math.max(Number(node.style!.width), measurements.get(node.id)?.width ?? 0)))
     const bottom = Math.max(
       ...members.map(node => {
-        const minimum = nodeContentMinimum({
+        const minimum = frozenNodeMinimum({
           title: node.data.title,
           state: node.data.state,
           inputs: node.data.node.inputs ?? {},

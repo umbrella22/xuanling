@@ -7,6 +7,8 @@ test('preflight action mapping turns stable check codes into bounded next action
   assert.equal(preflightActionKey('host-resource-unavailable'), 'diagnostics.action.resource')
   assert.equal(preflightActionKey('model-route-declared'), 'diagnostics.action.model')
   assert.equal(preflightActionKey('tool-binding-unavailable'), 'diagnostics.action.tools')
+  assert.equal(preflightActionKey('required-capability-unbound'), 'diagnostics.action.tools')
+  assert.equal(preflightActionKey('capability-coverage-unverified'), 'diagnostics.action.inspect')
   assert.equal(preflightActionKey('output-schema-unavailable'), 'diagnostics.action.schema')
   assert.equal(preflightActionKey('host-approval-unverified'), 'diagnostics.action.inspect')
   assert.equal(preflightActionKey('future-host-code'), 'diagnostics.action.retry')

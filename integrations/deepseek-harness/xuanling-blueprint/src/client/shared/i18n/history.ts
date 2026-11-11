@@ -41,6 +41,7 @@ export const zh = {
   'report.copyMarkdown': '复制 Markdown',
   'report.step': '{step} · {state} · {duration}',
   'report.model': '模型：{model}',
+  'report.acceptance': '验收：{acceptance}',
   'recovery.title': '恢复处理',
   'recovery.help': '这个运行有一步的副作用未知。系统不会自动重放。请先检查该步骤的会话，再写下你确认到的情况并选择结果。',
   'recovery.quiescent': '我已确认原任务及其外部操作均已停止，并检查了工作区中的部分写入；允许解除此任务的写入阻挡。',
@@ -154,6 +155,7 @@ export const en = {
   'report.copyMarkdown': 'Copy Markdown',
   'report.step': '{step} · {state} · {duration}',
   'report.model': 'Model: {model}',
+  'report.acceptance': 'Acceptance: {acceptance}',
   'recovery.title': 'Recovery',
   'recovery.help':
     'One step of this run has an unknown effect. It is never replayed automatically. Check the step session, then record what you confirmed and choose the outcome.',

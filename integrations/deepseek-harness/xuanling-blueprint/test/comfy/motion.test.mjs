@@ -210,3 +210,36 @@ test('C-10 projection does not mutate or retain node/edge/snapshot objects', () 
   assert.deepEqual(source, before)
   assert.equal(motion.projectRuntimeMotion(source).edges[0].motion, 'pulse')
 })
+
+/** W2 C-06: settled-run traversal is a pure derivation — succeeded source with
+ * an attempted target marks the edge; unproven condition branches never do. */
+test('C-06 traversed marks succeeded-source edges with attempted targets regardless of motion gates', () => {
+  for (const targetState of ['succeeded', 'failed', 'cancelled', 'timed_out', 'skipped']) {
+    const result = project({ snapshot: snapshot([attempt('source', 'succeeded'), attempt('target', targetState)], 'succeeded') })
+    assert.equal(result.edges[0].traversed, true, targetState)
+  }
+  for (const targetState of ['running', 'preparing']) {
+    const result = project({ snapshot: snapshot([attempt('source', 'succeeded'), attempt('target', targetState)]) })
+    assert.equal(result.edges[0].traversed, true, targetState)
+  }
+  assert.equal(
+    project({ snapshot: snapshot([attempt('source', 'succeeded'), attempt('target', 'ready')]) }).edges[0].traversed,
+    false,
+    'ready is admitted, never walked'
+  )
+  assert.equal(
+    project({ snapshot: snapshot([attempt('source', 'succeeded'), attempt('target', 'ready')], 'succeeded') }).edges[1].traversed,
+    false,
+    'unattempted sink target never traversed'
+  )
+  assert.equal(
+    project({ snapshot: snapshot([attempt('source', 'running'), attempt('target', 'ready')]) }).edges[0].traversed,
+    false,
+    'running source is motion, not traversal'
+  )
+  assert.equal(
+    project({ overlayEligible: false, snapshot: snapshot([attempt('source', 'succeeded'), attempt('target', 'ready')]) }).edges[0].traversed,
+    false,
+    'unbound overlay projects nothing'
+  )
+})

@@ -58,6 +58,11 @@ export interface PortType {
   name: string
 }
 
+/** Closed vocabulary for capability requirements; an unknown value fails
+ * definition decode instead of passing silently. */
+export const REQUIRED_CAPABILITIES = ['repository-read', 'command-exec'] as const
+export type RequiredCapability = (typeof REQUIRED_CAPABILITIES)[number]
+
 /** Explicit agentTask collaboration contract; execution requires a Team driver. */
 export interface TeamStageConfig {
   task: { subject: string; description: string }
@@ -80,6 +85,10 @@ export interface GraphNode {
   toolsetRefs?: string[]
   /** Optional narrowing of the declared Host binding union. */
   toolAllowlist?: string[]
+  /** Business capabilities this node is expected to reach. Preflight blocks a
+   * node that resolves no business tool; a bound toolset still leaves coverage
+   * unverified. */
+  requiredCapabilities?: RequiredCapability[]
   /** Explicit per-node model route. Omitted means the host default is captured. */
   modelSelection?: ModelSelection
   outputSchemaRef?: string

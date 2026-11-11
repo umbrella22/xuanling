@@ -283,6 +283,7 @@ export const runReportCodec = () =>
         durationMs: z.number().finite().nonnegative().optional(),
         model: z.strictObject({ provider: z.string(), model: z.string(), reasoningEffort: z.string().optional() }).optional(),
         resultKind: z.string().optional(),
+        acceptance: z.string().optional(),
         errorCode: z.string().optional()
       })
     ),

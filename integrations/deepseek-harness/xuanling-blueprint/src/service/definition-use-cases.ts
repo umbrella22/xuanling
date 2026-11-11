@@ -96,7 +96,7 @@ export class BlueprintDefinitionUseCases {
       throw new RemoteError('blueprint/capability-unavailable', 'library root unavailable', {
         method: 'createDefinition',
         plugin: '@xuanling-rs/xuanling-dsh-blueprint',
-        version: '0.10.2'
+        version: '0.11.0'
       })
     const id = createdBlueprintId(args.requestId)
     const definition = decodeOrThrow(args.definitionJson)
@@ -137,7 +137,7 @@ export class BlueprintDefinitionUseCases {
       throw new RemoteError('blueprint/capability-unavailable', 'library unavailable', {
         method: 'deleteDefinition',
         plugin: '@xuanling-rs/xuanling-dsh-blueprint',
-        version: '0.10.2'
+        version: '0.11.0'
       })
     const replay = () => {
       const deleted = documents.readDeletion(args.blueprintId)
@@ -223,7 +223,7 @@ export class BlueprintDefinitionUseCases {
       throw new RemoteError('blueprint/capability-unavailable', 'library unavailable', {
         method: 'createBlueprint',
         plugin: '@xuanling-rs/xuanling-dsh-blueprint',
-        version: '0.10.2'
+        version: '0.11.0'
       })
     const id = createdBlueprintId(JSON.stringify([source.sessionId, requestId]))
     const definition = { ...result.definition, id }

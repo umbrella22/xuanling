@@ -4,11 +4,15 @@
 import { z } from 'zod'
 import type { ModelSelection } from '@deepseek-ai/dsh-agent'
 
+export type JsonDigest = { type: 'null' | 'array' | 'object' | 'string' | 'number' | 'boolean'; bytes: number; sha256: string }
 export type AttemptDiagnostics =
   | { status: 'unavailable' }
   | {
       status: 'available'
-      input: { type: 'null' | 'array' | 'object' | 'string' | 'number' | 'boolean'; bytes: number; sha256: string }
+      input: JsonDigest
+      /** Digest of the same payload `outputJson` exposes: outputs and/or value.
+       * Bytes only — raw output never enters durable diagnostics. */
+      output?: JsonDigest
       resourceDigests: Record<string, string>
       modelSelection?: ModelSelection
       tools: { effectiveNames: string[]; denials?: Array<{ toolName: string; code: string }> }
@@ -22,18 +26,20 @@ export function attemptDiagnosticsCodec(): z.ZodType<AttemptDiagnostics> {
   // Code vocabulary belongs to the producer, not a new spelling constraint.
   const code = z.string().min(1)
   const digest = z.string().regex(/^[0-9a-f]{64}$/)
+  const jsonDigest = z
+    .object({
+      type: z.enum(['null', 'array', 'object', 'string', 'number', 'boolean']),
+      bytes: z.number().int().nonnegative(),
+      sha256: digest
+    })
+    .strict()
   return z.discriminatedUnion('status', [
     z.object({ status: z.literal('unavailable') }).strict(),
     z
       .object({
         status: z.literal('available'),
-        input: z
-          .object({
-            type: z.enum(['null', 'array', 'object', 'string', 'number', 'boolean']),
-            bytes: z.number().int().nonnegative(),
-            sha256: digest
-          })
-          .strict(),
+        input: jsonDigest,
+        output: jsonDigest.optional(),
         resourceDigests: z.record(z.string(), digest),
         modelSelection: z
           .object({

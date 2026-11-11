@@ -26,11 +26,22 @@ test('hydrated runtime view follows the real child and Session, keeps breadcrumb
   const before = (await h.runtime.store.get(h.rootRunId)).definitionJson
   const { page, calls, errors } = await managedBrowser(t, 'runtime-navigation.fixture.ts', h.service, { sessionId: h.caller.session.id })
   await page.locator(`[data-bp-conversation][data-bp-run-id="${h.rootRunId}"]`).waitFor()
-  await page.locator(`[data-bp-open-child="${h.childRunId}"]`).click()
+  // W3 interaction grammar: single-attempt nodes navigate by node click; the
+  // visible open-child button only exists inside the multi-attempt picker.
+  // Node clicks are actionable only after the measured automatic Fit; the
+  // projection keeps nodes visibility-hidden until they report dimensions.
+  await page.waitForFunction(
+    () => {
+      const root = document.querySelector('[data-bp-conversation="root"]')
+      return root?.getAttribute('data-bp-layout-ready') === 'true' && root?.getAttribute('data-bp-fit-ready') === 'true'
+    },
+    undefined,
+    { timeout: 15000 }
+  )
+  await page.locator(`[data-bp-node="call"]`).click()
   await page.locator(`[data-bp-conversation][data-bp-run-id="${h.childRunId}"]`).waitFor()
   await page.locator(`[data-bp-breadcrumb="${h.rootRunId}"]`).waitFor()
-  const node = (await h.runtime.store.get(h.childRunId)).attempts.find(a => a.nodeId === 'work')
-  await page.locator(`[data-bp-open-attempt="${node.attemptId}"]`).click()
+  await page.locator(`[data-bp-node="work"]`).click()
   assert.deepEqual(await page.evaluate(() => window.runtimeView.openCalls), [h.agent.session.id])
   await page.locator(`[data-bp-breadcrumb="${h.rootRunId}"]`).click()
   await page.locator(`[data-bp-conversation][data-bp-run-id="${h.rootRunId}"]`).waitFor()

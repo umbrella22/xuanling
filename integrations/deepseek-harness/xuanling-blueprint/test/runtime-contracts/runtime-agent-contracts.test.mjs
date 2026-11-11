@@ -4,8 +4,10 @@
  * toolsetRefs/binding/allowlist wiring is separately tested via public service. */
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { createHash } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { projectRunSnapshot } from '../../src/conversation/run-projection.ts'
 import { Context } from '@deepseek-ai/cordis'
 import { assertObjectJsonSchema, validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
 import { BlueprintService } from '../../src/index.ts'
@@ -245,6 +247,24 @@ test('C-03 frozen schema + authoritative native tool: committed object, not cont
   assert.ok(!h.nativeTools.get('structured_output'), 'C-03: capture is Attempt-local, not global')
 })
 
+test('C-03 durable output digest matches the exact public outputJson payload', async t => {
+  const h = await harness(t, {
+    onTurn: async call => {
+      call.captured = await executeTool(call, 'structured_output', { answer: 42 })
+      call.finish(undefined, '{"answer":-999}')
+    }
+  })
+  const { record } = await runSaved(h, structuredDefinition())
+  const durable = work(record).diagnostics
+  assert.ok(durable?.output, 'C-03: successful structured output must carry a durable digest')
+  const projected = projectRunSnapshot(record).attempts.find(attempt => attempt.nodeId === 'work')?.outputJson
+  assert.ok(projected, 'C-03: the same payload stays readable through outputJson')
+  assert.equal(durable.output.sha256, createHash('sha256').update(projected).digest('hex'))
+  assert.equal(durable.output.bytes, Buffer.byteLength(projected))
+  assert.equal(durable.output.type, 'object')
+  assert.ok(!JSON.stringify(durable).includes('"answer":42'), 'C-03: diagnostics carry bytes, never raw output')
+})
+
 test('C-03 missing capture: terminal completed text is typed structured-output-missing and never dispatches downstream', async t => {
   const h = await harness(t, { onTurn: call => call.finish(undefined, '{"answer":42}') })
   const { record } = await runSaved(h, structuredDefinition())
@@ -357,7 +377,7 @@ test('C-04 diagnostics: durable input digests, resources, actual model/options a
   assert.ok(durable, 'C-04 capability oracle: actual durable Attempt currently has no diagnostics')
   assert.deepEqual(inspected.attempts[0].diagnostics, durable, 'C-04: inspectRun projects durable facts, not Host guess')
   assert.ok(
-    Object.keys(durable).every(key => ['status', 'input', 'resourceDigests', 'modelSelection', 'tools', 'acceptance', 'recovery'].includes(key)),
+    Object.keys(durable).every(key => ['status', 'input', 'output', 'resourceDigests', 'modelSelection', 'tools', 'acceptance', 'recovery'].includes(key)),
     'C-04: no raw spec/prompt/body copied into diagnostics'
   )
   assert.deepEqual(durable.input, { type: 'object', bytes: Buffer.byteLength(JSON.stringify(input)), sha256: sha256(JSON.stringify(input)) })

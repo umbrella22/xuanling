@@ -7,6 +7,7 @@
 import { createRequire } from 'node:module'
 import {
   DefinitionInvalidError,
+  REQUIRED_CAPABILITIES,
   SCHEMA_VERSION,
   type BlueprintDefinition,
   type GraphEdge,
@@ -84,6 +85,7 @@ const nodeSchema = z
     skillRefs: z.array(z.string().regex(idPattern)).optional(),
     toolsetRefs: z.array(z.string().regex(idPattern)).optional(),
     toolAllowlist: z.array(z.string().min(1)).optional(),
+    requiredCapabilities: z.array(z.enum(REQUIRED_CAPABILITIES)).min(1).optional(),
     modelSelection: modelSelectionSchema.optional(),
     condition: z
       .object({

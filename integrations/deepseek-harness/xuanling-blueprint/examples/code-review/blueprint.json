@@ -17,6 +17,7 @@
         "agentRef": "reviewer",
         "skillRefs": ["reviewSkill"],
         "toolsetRefs": ["repoTools"],
+        "requiredCapabilities": ["repository-read"],
         "outputSchemaRef": "resultSchema",
         "inputs": { "input": "string" },
         "outputs": { "result": "json" }

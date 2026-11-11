@@ -16,6 +16,7 @@ import { readRevisionEntries, revisionResourceFilesChanged, summarizeDefinitionD
 import { runStateTitle } from '../../presenters/canvas-presentation.ts'
 import { teamStageBlocksRecovery } from '../../../../../host/teamstage-recovery.ts'
 import type { ResourceRef } from '../../../../../definition/types.ts'
+import type { RunReportValue } from '../../../../../conversation/contracts.ts'
 
 type Perform = (action: () => Promise<unknown>) => void
 
@@ -196,13 +197,7 @@ export function RevisionHistorySection({ t, hostLink, workspace, editable, perfo
   )
 }
 
-interface ReportView {
-  outcome: string
-  summary: { steps: number; succeeded: number; failed: number; skipped: number; pending: number }
-  steps: Array<{ nodeId: string; title?: string; attemptId: string; state: string; durationMs?: number; model?: { provider: string; model: string } }>
-  problems: Array<{ nodeId?: string; code: string; why: string; avoid: string }>
-  markdown: string
-}
+type ReportView = Pick<RunReportValue, 'outcome' | 'summary' | 'steps' | 'problems' | 'markdown'>
 
 function readReport(value: unknown): ReportView | null {
   if (value === null || typeof value !== 'object') return null
@@ -350,6 +345,9 @@ export function RunReportSection({ t, hostLink, workspace, snapshot, perform }: 
                   duration: seconds(step.durationMs)
                 })}
                 {step.model !== undefined && <small>{` · ${t('report.model', { model: `${step.model.provider}/${step.model.model}` })}`}</small>}
+                {step.acceptance !== undefined && (
+                  <small data-bp-report-acceptance={step.acceptance}>{` · ${t('report.acceptance', { acceptance: step.acceptance })}`}</small>
+                )}
               </li>
             ))}
           </ol>

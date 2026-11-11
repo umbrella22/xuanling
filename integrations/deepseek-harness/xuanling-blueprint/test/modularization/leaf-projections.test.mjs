@@ -53,9 +53,19 @@ test('diagnostics preserve display values, order and zero issue count across loc
     const t = key => dict[key]
     const html = renderToStaticMarkup(renderAttemptDiagnostics(value, t))
     const keys = [...html.matchAll(/data-bp-diagnostic="([^"]+)"/g)].map(match => match[1])
-    assert.deepEqual(keys, ['input', 'resources', 'model', 'tools', 'denials', 'acceptance'])
-    for (const text of [`null · 0 bytes · ${digest}`, '名称 &lt;one&gt;', 'tool.&lt;raw&gt;', 'tool.二', 'valid · 0', dict['diagnostics.noModel']])
+    assert.deepEqual(keys, ['input', 'output', 'resources', 'model', 'tools', 'denials', 'acceptance'])
+    for (const text of [
+      `null · 0 bytes · ${digest}`,
+      '名称 &lt;one&gt;',
+      'tool.&lt;raw&gt;',
+      'tool.二',
+      'valid · 0',
+      dict['diagnostics.noModel'],
+      dict['diagnostics.noOutput']
+    ])
       assert.ok(html.includes(text), text)
+    const withOutput = renderToStaticMarkup(renderAttemptDiagnostics({ ...value, output: { type: 'object', bytes: 2, sha256: digest } }, t))
+    assert.ok(withOutput.includes(`object · 2 bytes · ${digest}`), 'a reported output digest is displayed as bytes and sha256 only')
     for (const malformed of [undefined, null, [], { ...value, rawBody: 'PRIVATE_DIAGNOSTIC_CANARY' }, { ...value, tools: { effectiveNames: [false] } }]) {
       assert.equal(
         renderToStaticMarkup(renderAttemptDiagnostics(malformed, t)),

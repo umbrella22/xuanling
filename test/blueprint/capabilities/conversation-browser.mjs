@@ -69,6 +69,7 @@ export function conversationDomProbe() {
     revision: root.getAttribute('data-bp-frozen-revision'),
     nodes: [...root.querySelectorAll('[data-bp-node]')].map(node => ({ nodeId: node.getAttribute('data-bp-node'), state: node.getAttribute('data-bp-raw-state') })),
     attempts: [...root.querySelectorAll('[data-bp-attempt-id]')].map(item => item.getAttribute('data-bp-attempt-id')),
+    focusedNodes: [...root.querySelectorAll('[data-bp-node][data-bp-focus=true]')].map(item => item.getAttribute('data-bp-node')),
     nestedComposers: root.querySelectorAll('[data-composer-input]').length }
 }
 export function conversationDomReadyForSession(dom, sessionId, inspected) {
@@ -83,7 +84,17 @@ export function projectInspection(value, dom) {
   const { run, graph, focusAttemptIds, source } = value.selected
   ensure(dom.runId === run.runId && dom.revision === run.definitionRevision, 'EVIDENCE_DOM_RUN_MISMATCH')
   ensure(identical(dom.nodes.map(item => item.nodeId).sort(), graph.nodes.map(item => item.id).sort()), 'EVIDENCE_DOM_GRAPH_MISMATCH')
-  ensure(dom.nestedComposers === 0 && focusAttemptIds.every(id => dom.attempts.includes(id)), 'EVIDENCE_DOM_FOCUS_MISSING')
+  // W3 grammar: focused attempts are represented by their owning node's
+  // data-bp-focus marker (the attempt record column is gone); multi-attempt
+  // pickers additionally expose data-bp-attempt-id items.
+  ensure(
+    dom.nestedComposers === 0 &&
+      focusAttemptIds.every(id => {
+        const attempt = run.attempts.find(item => item.attemptId === id)
+        return attempt && dom.focusedNodes.includes(attempt.nodeId)
+      }),
+    'EVIDENCE_DOM_FOCUS_MISSING'
+  )
   const focus = run.attempts.filter(item => focusAttemptIds.includes(item.attemptId))
   const latest = new Map()
   for (const attempt of run.attempts) if (!latest.has(attempt.nodeId) || latest.get(attempt.nodeId).attempt < attempt.attempt) latest.set(attempt.nodeId, attempt)

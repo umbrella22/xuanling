@@ -297,7 +297,7 @@ const frozenHooks = registerHooks({
     if (context.parentURL?.startsWith(`${frozenClient}features/conversation/`) && spec === '@xyflow/react')
       return {
         url: frozenUrl(
-          "export const ReactFlow='flow',Handle='handle',BaseEdge='edge';export const Position={Left:'left',Right:'right'};export const getSmoothStepPath=()=>['M 0 0 L 1 1'];"
+          "export const ReactFlow='flow',Handle='handle',BaseEdge='edge',MiniMap='minimap';export const Position={Left:'left',Right:'right'};export const getSmoothStepPath=()=>['M 0 0 L 1 1'];"
         ),
         shortCircuit: true
       }

@@ -135,7 +135,7 @@ export function validateDefinition(definition: BlueprintDefinition): void {
       })
     }
     if (node.kind === 'blueprintCall') {
-      for (const field of ['agentRef', 'skillRefs', 'toolsetRefs', 'outputSchemaRef', 'join', 'branches', 'condition'] as const) {
+      for (const field of ['agentRef', 'skillRefs', 'toolsetRefs', 'requiredCapabilities', 'outputSchemaRef', 'join', 'branches', 'condition'] as const) {
         if (node[field] !== undefined)
           issues.push({ code: 'invalid-value', message: 'blueprintCall uses only its declared interface and fixed reference', pointer: `${pointer}/${field}` })
       }
@@ -145,6 +145,19 @@ export function validateDefinition(definition: BlueprintDefinition): void {
     }
     if (node.modelSelection !== undefined && node.kind !== 'agentTask') {
       issues.push({ code: 'invalid-value', message: 'modelSelection belongs to agentTask only', pointer: `${pointer}/modelSelection` })
+    }
+    if (node.requiredCapabilities !== undefined) {
+      const capabilitiesPointer = `${pointer}/requiredCapabilities`
+      if (node.kind !== 'agentTask') {
+        issues.push({ code: 'invalid-value', message: 'requiredCapabilities belongs to agentTask only', pointer: capabilitiesPointer })
+      }
+      const seen = new Set<string>()
+      for (const [i, capability] of node.requiredCapabilities.entries()) {
+        if (seen.has(capability)) {
+          issues.push({ code: 'duplicate-id', message: `duplicate required capability "${capability}"`, pointer: `${capabilitiesPointer}/${i}` })
+        }
+        seen.add(capability)
+      }
     }
     if (nodeById.has(node.id)) {
       issues.push({ code: 'duplicate-id', message: `node id "${node.id}" is duplicated`, pointer: `${pointer}/id` })

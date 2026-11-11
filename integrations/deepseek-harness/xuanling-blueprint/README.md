@@ -61,17 +61,17 @@ light/dark theme settings.*
 Install the published package into the same profile that serves your DSH Web UI:
 
 ```sh
-dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.10.2
+dsh plugin --profile web add @xuanling-rs/xuanling-dsh-blueprint@0.11.0
 ```
 
 Restart that profile and refresh the DSH page. Replace `web` with the profile you use. A new custom
 profile contains only the base bundle and does not include the Web application.
 
-Release `0.10.2` targets the DSH `next` capability channel, with development and harness dependencies
+Release `0.11.0` targets the DSH `next` capability channel, with development and harness dependencies
 pinned to `0.2.1-rc.2` and a public runtime peer floor of `>=0.2.1-alpha.5`. Keep DSH packages within
 one profile on the same channel. See [Development](#development) for a linked checkout build.
 
-**Compatibility break since 0.7.0.** Release `0.10.2` uses definition schema v2. Definitions saved by the
+**Compatibility break since 0.7.0.** Release `0.11.0` uses definition schema v2. Definitions saved by the
 published `0.6.1` package (schema v1, including the removed `toolCall`, `scriptCall`, `subflow` and
 `iteration` nodes) are rejected with `blueprint/definition-invalid` and cannot be opened or run.
 Use the [Blueprint migration Skill](../xuanling-skills/skills/xuanling-blueprint-migrate/SKILL.md)
@@ -242,6 +242,12 @@ Skill, Toolset, output-schema and model-route controls. Input, Output, Condition
 nodes hide execution bindings; original references remain in the definition and stay subject to
 Host preflight. A node without a declared toolset has no business tools; Host permissions and
 approvals still apply to selected tools. Preflight does not establish MCP reachability or approval.
+
+An Agent task that must read a repository or run commands can declare `requiredCapabilities`
+(`repository-read` / `command-exec`). Preflight blocks admission when the node resolves no business
+tool (`required-capability-unbound`); a bound toolset still reports
+`capability-coverage-unverified`, because binding existence is not proof of coverage. Text-only
+nodes remain runnable without the field.
 
 **Resource provenance** in the Inspector lists where each resource the node references comes
 from (package path, shared skill root, or Host identity) and the binding digests the latest Run

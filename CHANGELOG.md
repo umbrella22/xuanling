@@ -4,6 +4,52 @@ All notable release changes are recorded here. XuanLing uses immutable release
 tags and publishes the launcher, native packages, DeepSeek Harness bundles, and
 ZCode projection from the same source commit.
 
+## 0.11.0 - 2026-11-11
+
+### Changed
+
+- Rebuild the conversation Blueprint view around a read-only runtime canvas: compact node
+  readouts with kind rails and state chips, a single-line run ribbon with a DSH-native
+  28 px selector, a `版本` revision chip, a status-filtered legend and a populated minimap.
+- Multi-attempt nodes open an explicit popover picker; the separate attempts column is gone.
+  Frozen runs keep the archify seven-color kind palette, traversed edges and the optional
+  TeamStage card.
+- Align the conversation accent with the host interactive blue
+  (`--dsw-alias-state-business-primary`) and the run picker with DSH's model/workspace picker
+  grammar: 28 px, transparent, content width, hover-only fill, state dot.
+- Add `requiredCapabilities` (`repository-read` / `command-exec`) for Agent tasks. Preflight
+  blocks admission when a node declares a capability but resolves no business tool, and marks
+  bound coverage as unverified. The Inspector shows declared capabilities; clipboard and
+  advanced JSON preserve them.
+
+### Added
+
+- Attempt diagnostics carry an `output` digest (type, bytes, SHA-256) derived from the
+  authoritative outcome; the diagnostics panel shows it without storing raw output.
+- Run reports expose per-step `acceptance` beside the scheduler state in the wire codec,
+  Markdown table and report UI, so a scheduled step is not mistaken for a delivered one.
+- Add `examples/repository-implementation`, a strict implementation-report schema that rejects
+  placeholders, missing receipts or unknown fields, plus delivery-gate guidance.
+
+### Fixed
+
+- Render a populated minimap for read-only runs by replaying measured content dimensions
+  without pinning node wrappers, which previously stalled the automatic Fit.
+- Keep exactly one live status node per seat state, including unbound sessions, and restore
+  the selected/run accent to the host's interactive blue.
+
+### Compatibility and limits
+
+- Definition schema remains v2; `requiredCapabilities` is optional and additive. Existing
+  definitions remain valid and require no migration.
+- New diagnostics and report fields are optional; legacy records read without migration.
+- Model availability is still not validated before execution: `model-route-declared` remains
+  an info check until the Host exposes an authoritative model catalog.
+- The strict report schema constrains structure, not business truth. Branching on a report
+  field still needs a human decision node or a future boolean-extraction graph primitive.
+- The release publishes the nine npm items, DSH bundles and Blueprint plugin from one verified
+  commit.
+
 ## 0.10.2 - 2026-11-04
 
 ### Changed

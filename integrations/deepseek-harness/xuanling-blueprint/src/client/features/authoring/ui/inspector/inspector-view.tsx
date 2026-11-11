@@ -311,6 +311,23 @@ export function inspectorView(model: InspectorViewModel, t: BlueprintLocaleProps
       )}
       {capability.agentBindings && references('skillRefs', 'inspector.skillBindings')}
       {capability.agentBindings && references('toolsetRefs', 'inspector.toolsetBindings')}
+      {capability.requiredCapabilities && (
+        <fieldset data-bp-required-capabilities={true}>
+          <legend>{t('inspector.requiredCapabilities')}</legend>
+          {model.requiredCapabilities.length === 0 ? (
+            <p className={'bp-muted'}>{t('inspector.requiredCapabilitiesNone')}</p>
+          ) : (
+            <ul>
+              {model.requiredCapabilities.map(value => (
+                <li key={value} data-bp-required-capability={value}>
+                  {t(`inspector.capability.${value}`)}
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className={'bp-muted'}>{t('inspector.requiredCapabilitiesHelp')}</p>
+        </fieldset>
+      )}
       {capability.agentBindings && select('outputSchemaRef', 'inspector.outputSchemaBinding', 'inspector.selectOutputSchema')}
       {capability.agentBindings && <p className={'bp-muted'}>{t('resource.availabilityUnchecked')}</p>}
       <fieldset data-bp-port-visibility={true}>

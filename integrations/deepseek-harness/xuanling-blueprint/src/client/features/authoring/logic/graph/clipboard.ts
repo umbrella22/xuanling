@@ -1,4 +1,5 @@
 /** Declaration-only clipboard. No file, runtime, or system clipboard access. */
+import { requiredCapabilityList } from './node-capabilities.ts'
 import type { GraphEdge, GraphNode, Presentation, ResourceRef } from '../../../../../definition/types.ts'
 
 export interface ClipboardFragment {
@@ -210,6 +211,7 @@ function checkNode(raw: unknown, at: string): GraphNode {
       'skillRefs',
       'toolsetRefs',
       'toolAllowlist',
+      'requiredCapabilities',
       'condition',
       'outputSchemaRef',
       'join',
@@ -265,6 +267,8 @@ function checkNode(raw: unknown, at: string): GraphNode {
       fail(`${at}/condition`)
   }
   if (n.toolAllowlist !== undefined && n.kind !== 'agentTask') fail(`${at}/toolAllowlist`)
+  if (Object.hasOwn(n, 'requiredCapabilities') && (n.kind !== 'agentTask' || !requiredCapabilityList(n.requiredCapabilities)))
+    fail(`${at}/requiredCapabilities`)
   return raw as GraphNode
 }
 

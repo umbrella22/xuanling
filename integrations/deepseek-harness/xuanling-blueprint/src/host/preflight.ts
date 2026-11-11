@@ -242,8 +242,19 @@ export async function collectPreflight(
       if (!Object.hasOwn(definition.resources, resourceId)) checks.push({ code: 'resource-unavailable', status: 'block', nodeId: node.id, resourceId })
     }
     try {
-      resolveEffectiveToolNames(ctx, definition, node, options.toolBindings)
+      const effectiveToolNames = resolveEffectiveToolNames(ctx, definition, node, options.toolBindings)
       checks.push({ code: 'tool-binding-ready', status: 'pass', nodeId: node.id })
+      // Zero resolved tools is the silent-zero-tool case: block admission rather
+      // than schedule a task that can only hallucinate. A bound toolset proves a
+      // binding exists, not that it covers the declared capability.
+      if (node.requiredCapabilities?.length) {
+        if (effectiveToolNames.length === 0) {
+          checks.push({ code: 'required-capability-unbound', status: 'block', nodeId: node.id })
+        } else {
+          checks.push({ code: 'required-capability-ready', status: 'pass', nodeId: node.id })
+          checks.push({ code: 'capability-coverage-unverified', status: 'warning', nodeId: node.id })
+        }
+      }
       for (const resourceId of new Set(node.toolsetRefs ?? [])) {
         checks.push({ code: 'reachability-unverified', status: 'warning', nodeId: node.id, resourceId })
       }

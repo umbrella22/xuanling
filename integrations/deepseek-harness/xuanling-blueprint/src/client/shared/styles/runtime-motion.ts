@@ -28,6 +28,9 @@ export interface EdgeMotion {
   edgeIndex: number
   motion: MotionMode
   related: boolean
+  /** Settled-run fact: source succeeded and the target was attempted; control
+   * edges additionally require a proven branch. Presentation-only derivation. */
+  traversed: boolean
 }
 export interface RuntimeMotionProjection {
   runState: RunState | 'unknown' | 'idle'
@@ -155,7 +158,11 @@ export function projectRuntimeMotion(input: RuntimeMotionInput): RuntimeMotionPr
       !!to &&
       active(to.state) &&
       (edge.kind === 'data' ? from.state === 'succeeded' || from.state === 'running' : provenControlPath(resolved, from))
-    return { edgeIndex, motion: loopsAllowed && proven ? 'pulse' : 'static', related }
+    // Admission without a start (ready) is not a walked path.
+    // Admission without a start (ready) is not a walked path.
+    const traversed =
+      !!resolved && !!from && from.state === 'succeeded' && !!to && to.state !== 'ready' && (edge.kind === 'data' ? true : provenControlPath(resolved, from))
+    return { edgeIndex, motion: loopsAllowed && proven ? 'pulse' : 'static', related, traversed }
   })
   const nodes = input.nodes.map((node): NodeMotion => {
     const attempt = latest.get(node.id)

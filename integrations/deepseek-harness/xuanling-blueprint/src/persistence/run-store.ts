@@ -12,6 +12,7 @@ import { isDeepStrictEqual } from 'node:util'
 import { z } from 'zod'
 import { runSourceCodec, type RunSource } from '../conversation/contracts.ts'
 import { attemptDiagnosticsCodec, type AttemptDiagnostics } from '../host/runtime-diagnostics.ts'
+import { digestJson, outputPayload } from './output-digest.ts'
 import { teamStageExecutionCodec, type TeamStageExecution } from '../host/teamstage-diagnostics.ts'
 import type { ModelSelection as HostModelSelection } from '@deepseek-ai/dsh-agent'
 import type { DomainLike, KvTableLike } from './domain.ts'
@@ -163,6 +164,18 @@ export class TerminalStateError extends Error {
   constructor(runId: string, state: RunState) {
     super(`run ${runId} is terminal (${state}); transitions are immutable`)
   }
+}
+
+/** Overwrite any caller-supplied digest with one computed from the authoritative
+ * outcome, so a producer cannot describe output bytes it did not settle. */
+function diagnosticsWithOutput(result: { ok: boolean; outcome: unknown; diagnostics?: AttemptDiagnostics }): AttemptDiagnostics | undefined {
+  const diagnostics = result.diagnostics
+  if (diagnostics?.status !== 'available') return diagnostics
+  const { output: _output, ...withoutOutput } = diagnostics
+  if (!result.ok) return withoutOutput
+  const payload = outputPayload(result.outcome)
+  const digest = payload === undefined ? undefined : digestJson(payload)
+  return digest === undefined ? withoutOutput : { ...withoutOutput, output: digest }
 }
 
 export class RunStore {
@@ -1277,7 +1290,8 @@ export class RunStore {
     attemptId: string,
     result: { ok: boolean; outcome: unknown; evidence: string; diagnostics?: AttemptDiagnostics }
   ): Promise<RunRecord> {
-    const diagnostics = result.diagnostics === undefined ? undefined : attemptDiagnosticsCodec().parse(result.diagnostics)
+    const prepared = diagnosticsWithOutput(result)
+    const diagnostics = prepared === undefined ? undefined : attemptDiagnosticsCodec().parse(prepared)
     return await this.transition(runId, draft => {
       const seq = draft.seq + 1
       const attempt = draft.attempts.find(a => a.attemptId === attemptId)

@@ -216,3 +216,29 @@ test('run report omits duration for attempts settled by human recovery', () => {
   )
   assert.equal(emptyMarker.steps[0].durationMs, 599_000, 'only a non-empty recovery marker suppresses the duration')
 })
+
+test('BP-02 report keeps schema acceptance beside the scheduler state', () => {
+  const base = record()
+  const diagnostics = {
+    status: 'available',
+    input: { type: 'object', bytes: 2, sha256: 'a'.repeat(64) },
+    output: { type: 'object', bytes: 2, sha256: 'b'.repeat(64) },
+    resourceDigests: {},
+    tools: { effectiveNames: [] },
+    acceptance: { code: 'accepted' }
+  }
+  const report = projectRunReport(
+    record({
+      state: 'succeeded',
+      attempts: [{ ...base.attempts[0], diagnostics }]
+    })
+  )
+  assert.equal(report.steps[0].state, 'succeeded')
+  assert.equal(report.steps[0].acceptance, 'accepted', 'a dispatched step carries its acceptance code')
+  assert.equal(report.steps[0].resultKind, 'succeeded')
+  assert.equal(runReportCodec().safeParse(report).success, true, 'the wire codec carries acceptance without raw evidence')
+  assert.match(report.markdown, /\| Acceptance \|/)
+  assert.match(report.markdown, /\| succeeded \| accepted \|/)
+  const legacy = projectRunReport(record())
+  assert.equal(legacy.steps[0].acceptance, undefined, 'legacy attempts without diagnostics stay absent')
+})

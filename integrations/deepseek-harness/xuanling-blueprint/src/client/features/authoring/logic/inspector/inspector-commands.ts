@@ -1,4 +1,5 @@
 /** Pure Inspector parsing and patch decisions; semantic mutations stay in the session adapter. */
+import { requiredCapabilityList } from '../graph/node-capabilities.ts'
 import type { GraphNode, ResourceRef } from '../../../../../definition/types.ts'
 import type { EditorNode } from '../graph/graph-editor.ts'
 import type { HostResourceCatalogEntry } from '../../../../adapters/host/remote.ts'
@@ -36,10 +37,14 @@ const optionKeys = [
   'branches',
   'condition',
   'toolAllowlist',
+  'requiredCapabilities',
   'modelSelection',
   'interaction',
   'blueprintRef'
 ] as const satisfies readonly OptionKey[]
+function isOptionKey(key: string): key is (typeof optionKeys)[number] {
+  return optionKeys.some(option => option === key)
+}
 export function object(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -63,9 +68,7 @@ export function graphNode(node: EditorNode): GraphNode {
 export function nodeOptions(node: EditorNode): GraphNode {
   const definition = graphNode(node)
   // Client-compatible extra names are display metadata, not Host node options.
-  return Object.fromEntries(
-    Object.entries(definition).filter(([key]) => key === 'id' || key === 'kind' || optionKeys.some(option => option === key))
-  ) as unknown as GraphNode
+  return Object.fromEntries(Object.entries(definition).filter(([key]) => key === 'id' || key === 'kind' || isOptionKey(key))) as unknown as GraphNode
 }
 function validOption(key: (typeof optionKeys)[number], value: unknown): boolean {
   switch (key) {
@@ -88,6 +91,8 @@ function validOption(key: (typeof optionKeys)[number], value: unknown): boolean 
     case 'branches':
     case 'toolAllowlist':
       return stringList(value)
+    case 'requiredCapabilities':
+      return requiredCapabilityList(value)
     case 'agentRef':
     case 'outputSchemaRef':
       return typeof value === 'string' && value.length > 0
@@ -126,8 +131,7 @@ export function parseInspectorJson(
   if ((Object.hasOwn(value, 'id') && value.id !== node.id) || (Object.hasOwn(value, 'kind') && value.kind !== node.kind))
     return { ok: false, issue: 'identity-not-option' }
   const entries = Object.entries(value).filter(([key]) => key !== 'id' && key !== 'kind')
-  if (entries.some(([key, item]) => !optionKeys.some(option => option === key) || !validOption(key as (typeof optionKeys)[number], item)))
-    return { ok: false, issue: 'node-options-shape' }
+  if (entries.some(([key, item]) => !isOptionKey(key) || !validOption(key, item))) return { ok: false, issue: 'node-options-shape' }
   // Omitted fields deliberately retain the legacy merge behavior (not deletion).
   return { ok: true, patch: Object.fromEntries(entries) as InspectorNodePatch }
 }
@@ -138,12 +142,7 @@ export function deriveInspectorPatch(
   patch: InspectorNodePatch
 ): { ok: true; changed: boolean; changes: InspectorNodePatch } | { ok: false; issue: InspectorIssue } {
   const entries = Object.entries(patch)
-  if (
-    entries.some(
-      ([key, value]) => !optionKeys.some(option => option === key) || (value !== undefined && !validOption(key as (typeof optionKeys)[number], value))
-    )
-  )
-    return { ok: false, issue: 'node-options-shape' }
+  if (entries.some(([key, value]) => !isOptionKey(key) || (value !== undefined && !validOption(key, value)))) return { ok: false, issue: 'node-options-shape' }
   const current = graphNode(node)
   const changes = Object.fromEntries(Object.entries(patch).filter(([key, value]) => !equivalent(current[key as OptionKey], value)))
   if (Object.keys(changes).length === 0) return { ok: true, changed: false, changes: {} }

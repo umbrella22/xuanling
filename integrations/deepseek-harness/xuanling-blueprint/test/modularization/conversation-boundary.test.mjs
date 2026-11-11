@@ -21,7 +21,7 @@ function sourceCopy(action) {
   }
 }
 
-test('Conversation boundary resolves the extracted renderer, attempts and presenter owners', () => {
+test('Conversation boundary resolves the extracted renderer, attempt picker, team stage and presenter owners', () => {
   const result = check(plugin)
   assert.equal(result.ok, true, JSON.stringify(result))
   assert.equal(result.code, 'BOUNDARY_EXTRACTED', JSON.stringify(result))
@@ -30,7 +30,7 @@ test('Conversation boundary resolves the extracted renderer, attempts and presen
     'features/conversation/ui/conversation-view.tsx',
     'features/conversation/ui/conversation-renderers.tsx',
     'features/conversation/ui/conversation-team-stage.tsx',
-    'features/conversation/ui/conversation-attempts.tsx',
+    'features/conversation/ui/conversation-attempt-picker.tsx',
     'features/conversation/presenters/conversation-presenter.ts'
   ])
     assert.ok(
@@ -47,15 +47,15 @@ test('Conversation view cannot regain inline renderer ownership', () => {
   })
 })
 
-test('Conversation presenter and attempts keep their extracted contracts', () => {
+test('Conversation presenter and attempt picker keep their extracted contracts', () => {
   sourceCopy(root => {
     const presenter = join(root, 'src/client/features/conversation/presenters/conversation-presenter.ts')
     writeFileSync(presenter, 'export function presentConversation(){ return {} }\nexport function displayState(){ return "" }\n')
     assert.equal(check(root).code, 'CONVERSATION_PRESENTER_CONTRACT_MISSING')
-    const attempts = join(root, 'src/client/features/conversation/ui/conversation-attempts.tsx')
-    const source = readFileSync(attempts, 'utf8').replace("import { renderTeamStage } from './conversation-team-stage.tsx'\n", '')
-    writeFileSync(attempts, source)
-    assert.equal(check(root).code, 'CONVERSATION_ATTEMPTS_WIRING_MISSING')
+    const renderers = join(root, 'src/client/features/conversation/ui/conversation-renderers.tsx')
+    const source = readFileSync(renderers, 'utf8').replace("import { renderAttemptPicker } from './conversation-attempt-picker.tsx'\n", '')
+    writeFileSync(renderers, source)
+    assert.equal(check(root).code, 'CONVERSATION_ATTEMPT_PICKER_WIRING_MISSING')
   })
 })
 
@@ -68,4 +68,21 @@ test('Conversation source parse and import failures stay distinct from structura
     writeFileSync(path, `import './missing-conversation-source.ts'\n${source}`)
     assert.equal(check(root).code, 'SOURCE_UNAVAILABLE')
   })
+})
+
+/** W1 target contract (C-08/C-09): once the runtime-canvas refactor lands, the
+ * conversation boundary must own an attempt-picker module instead of the
+ * attempts record column. Red until Wave 3 lands; existing assertions above
+ * migrate in the same work package (W3.4/W3.5) and never separately. */
+test('W1 target contract: conversation boundary owns the attempt picker, not the record column', () => {
+  const result = check(plugin)
+  const paths = result.evidence.map(entry => entry.path)
+  assert.ok(
+    paths.some(path => path.endsWith('features/conversation/ui/conversation-attempt-picker.tsx')),
+    `attempt-picker owner missing from boundary evidence: ${JSON.stringify(paths)}`
+  )
+  assert.ok(
+    !paths.some(path => path.endsWith('features/conversation/ui/conversation-attempts.tsx')),
+    'attempts record column owner must leave the boundary evidence'
+  )
 })
