@@ -26,13 +26,13 @@ const localIntegrity = `sha512-${createHash("sha512").update(tarball).digest("ba
 if (localIntegrity !== manifest.integrity) {
   throw new Error(`${specifier} local tarball integrity does not match its pack manifest`);
 }
-const lookup = await run(
+const lookup = () => run(
   "npm",
-  ["view", specifier, "dist.integrity", "--json", "--registry", registry],
+  ["view", specifier, "dist.integrity", "--json", "--prefer-online", "--registry", registry],
   { allowFailure: true },
 );
 
-const decision = classifyIntegrityLookup(lookup, {
+const decision = classifyIntegrityLookup(await lookup(), {
   expectedIntegrity: manifest.integrity,
   specifier,
 });
@@ -54,11 +54,7 @@ await run("npm", [
 ]);
 const reconciliation = await reconcilePublishedIntegrity({
   expectedIntegrity: manifest.integrity,
-  lookup: () => run(
-    "npm",
-    ["view", specifier, "dist.integrity", "--json", "--registry", registry],
-    { allowFailure: true },
-  ),
+  lookup,
   onRetry: ({ attempt, delayMs, totalAttempts }) => {
     console.log(
       `${specifier} is not visible yet; retrying lookup ${attempt}/${totalAttempts} `

@@ -36,6 +36,14 @@ export const PUBLISH_RECONCILIATION_DELAYS_MS = Object.freeze([
   30_000,
   30_000,
   30_000,
+  30_000,
+  30_000,
+  30_000,
+  30_000,
+  30_000,
+  30_000,
+  30_000,
+  30_000,
 ]);
 
 export async function reconcilePublishedIntegrity({

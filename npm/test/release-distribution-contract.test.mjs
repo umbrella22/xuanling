@@ -95,7 +95,7 @@ test("registry integrity reconciliation has exact publish, skip, and failure sta
   );
 });
 
-test("published packages tolerate two minutes of delayed registry visibility", async () => {
+test("published packages tolerate six minutes of delayed registry visibility", async () => {
   const expectedIntegrity = "sha512-fixture";
   const specifier = "@xuanling-rs/xuanling-mcp@0.2.4";
   const waits = [];
@@ -103,7 +103,7 @@ test("published packages tolerate two minutes of delayed registry visibility", a
 
   assert.deepEqual(
     PUBLISH_RECONCILIATION_DELAYS_MS,
-    [0, 2_000, 4_000, 8_000, 16_000, 30_000, 30_000, 30_000],
+    [0, 2_000, 4_000, 8_000, 16_000, 30_000, 30_000, 30_000, 30_000, 30_000, 30_000, 30_000, 30_000, 30_000, 30_000, 30_000],
   );
   const reconciliation = await reconcilePublishedIntegrity({
     expectedIntegrity,
@@ -120,8 +120,8 @@ test("published packages tolerate two minutes of delayed registry visibility", a
 
   assert.deepEqual(waits, PUBLISH_RECONCILIATION_DELAYS_MS.slice(1));
   assert.deepEqual(reconciliation, {
-    attempts: 8,
-    elapsedMs: 120_000,
+    attempts: 16,
+    elapsedMs: 360_000,
     integrity: expectedIntegrity,
   });
 
@@ -132,7 +132,7 @@ test("published packages tolerate two minutes of delayed registry visibility", a
       sleep: async () => {},
       specifier,
     }),
-    /did not become visible after 8 reconciliation lookups over 120 seconds/,
+    /did not become visible after 16 reconciliation lookups over 360 seconds/,
   );
 });
 
